@@ -1,0 +1,1 @@
+ALTER TABLE public.book_formats ADD CONSTRAINT book_formats_book_id_format_unique UNIQUE (book_id, format);

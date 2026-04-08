@@ -1,0 +1,1 @@
+ALTER TABLE public.book_formats ADD COLUMN isbn text DEFAULT NULL;

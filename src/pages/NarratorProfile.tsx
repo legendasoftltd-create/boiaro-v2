@@ -1,0 +1,157 @@
+import { useParams, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Navbar } from "@/components/Navbar";
+import { Footer } from "@/components/Footer";
+import { Badge } from "@/components/ui/badge";
+import { Star, Headphones } from "lucide-react";
+import { FollowButton } from "@/components/FollowButton";
+
+interface NarratorBook {
+  id: string;
+  title: string;
+  title_en: string | null;
+  slug: string;
+  cover_url: string | null;
+  rating: number | null;
+}
+
+const NarratorProfile = () => {
+  const { id } = useParams<{ id: string }>();
+  const [narrator, setNarrator] = useState<any>(null);
+  const [books, setBooks] = useState<NarratorBook[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!id) return;
+    const load = async () => {
+      setLoading(true);
+
+      // Fetch narrator info and their audiobooks in parallel
+      const [narratorRes, formatsRes] = await Promise.all([
+        supabase.from("narrators").select("id, name, name_en, avatar_url, bio, specialty, rating, is_featured, is_trending, priority, status, user_id, created_at, updated_at").eq("id", id).single(),
+        supabase
+          .from("book_formats")
+          .select("book_id, books!inner(id, title, title_en, slug, cover_url, rating, submission_status)")
+          .eq("narrator_id", id)
+          .eq("format", "audiobook")
+          .eq("is_available", true)
+          .eq("submission_status", "approved"),
+      ]);
+
+      setNarrator(narratorRes.data);
+
+      if (formatsRes.data) {
+        const seen = new Set<string>();
+        const narratorBooks: NarratorBook[] = [];
+        for (const f of formatsRes.data) {
+          const b = f.books as any;
+          if (b && b.submission_status === "approved" && !seen.has(b.id)) {
+            seen.add(b.id);
+            narratorBooks.push({
+              id: b.id,
+              title: b.title,
+              title_en: b.title_en,
+              slug: b.slug,
+              cover_url: b.cover_url,
+              rating: b.rating,
+            });
+          }
+        }
+        setBooks(narratorBooks);
+      }
+
+      setLoading(false);
+    };
+    load();
+  }, [id]);
+
+  if (loading) return (
+    <main className="min-h-screen bg-background">
+      <Navbar />
+      <div className="container mx-auto px-4 py-20 text-center text-muted-foreground">Loading...</div>
+    </main>
+  );
+
+  if (!narrator) return (
+    <main className="min-h-screen bg-background">
+      <Navbar />
+      <div className="container mx-auto px-4 py-20 text-center text-muted-foreground">Narrator not found</div>
+      <Footer />
+    </main>
+  );
+
+  return (
+    <main className="min-h-screen bg-background">
+      <Navbar />
+      <div className="container mx-auto px-4 lg:px-8 pt-20 pb-10">
+        {/* Narrator Info */}
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-10">
+          <div className="relative w-32 h-32 rounded-full overflow-hidden ring-2 ring-blue-500/20 flex-shrink-0">
+            <img src={narrator.avatar_url || ""} alt={narrator.name} className="w-full h-full object-cover" />
+          </div>
+          <div className="text-center md:text-left">
+            <div className="flex items-center gap-2 justify-center md:justify-start">
+              <h1 className="text-2xl md:text-3xl font-serif font-bold text-foreground">{narrator.name}</h1>
+              {narrator.is_featured && <Badge className="bg-blue-500 text-foreground text-xs">TOP</Badge>}
+            </div>
+            {narrator.name_en && <p className="text-sm text-muted-foreground">{narrator.name_en}</p>}
+            {narrator.specialty && <p className="text-sm text-muted-foreground mt-1">{narrator.specialty}</p>}
+            {narrator.bio && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{narrator.bio}</p>}
+            <div className="flex items-center gap-4 mt-4 justify-center md:justify-start">
+              {narrator.rating && <span className="flex items-center gap-1 text-sm text-muted-foreground"><Star className="w-4 h-4 fill-primary text-primary" />{narrator.rating}</span>}
+              <FollowButton profileId={narrator.id} profileType="narrator" />
+            </div>
+          </div>
+        </div>
+
+        {/* Audiobooks Section */}
+        <section>
+          <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+            <Headphones className="w-5 h-5 text-primary" />
+            অডিওবুক সমূহ
+            <span className="text-sm font-normal text-muted-foreground">({books.length})</span>
+          </h2>
+
+          {books.length === 0 ? (
+            <p className="text-muted-foreground text-sm">এই বর্ণনাকারীর কোনো অডিওবুক পাওয়া যায়নি।</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {books.map((book) => (
+                <Link
+                  key={book.id}
+                  to={`/book/${book.slug}`}
+                  className="group block rounded-lg overflow-hidden border border-border bg-card hover:shadow-lg transition-shadow"
+                >
+                  <div className="aspect-[3/4] bg-muted overflow-hidden">
+                    <img
+                      src={book.cover_url || "/placeholder.svg"}
+                      alt={book.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="p-2.5">
+                    <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug">{book.title}</h3>
+                    {book.title_en && (
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{book.title_en}</p>
+                    )}
+                    {book.rating && book.rating > 0 && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Star className="w-3 h-3 fill-primary text-primary" />
+                        <span className="text-xs text-muted-foreground">{book.rating}</span>
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+      <Footer />
+    </main>
+  );
+};
+
+export default NarratorProfile;

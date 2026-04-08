@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS book_contributors_unique_assignment ON book_contributors (book_id, user_id, role, COALESCE(format, '__null__'));

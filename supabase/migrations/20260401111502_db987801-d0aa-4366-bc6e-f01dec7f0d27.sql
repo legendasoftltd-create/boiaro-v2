@@ -1,0 +1,1 @@
+ALTER TABLE public.audiobook_tracks ADD COLUMN IF NOT EXISTS chapter_price numeric DEFAULT NULL;

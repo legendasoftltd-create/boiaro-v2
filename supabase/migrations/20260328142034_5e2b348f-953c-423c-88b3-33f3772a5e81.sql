@@ -1,0 +1,1 @@
+ALTER TABLE public.book_formats ADD COLUMN IF NOT EXISTS publisher_commission_percent numeric DEFAULT 0;

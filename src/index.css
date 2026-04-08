@@ -1,0 +1,262 @@
+/* Google Fonts loaded via index.html <link> for non-blocking rendering */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 6%;
+    --foreground: 0 0% 96%;
+
+    --card: 240 8% 9%;
+    --card-foreground: 0 0% 96%;
+
+    --popover: 240 8% 9%;
+    --popover-foreground: 0 0% 96%;
+
+    --primary: 43 70% 50%;
+    --primary-foreground: 240 10% 6%;
+
+    --secondary: 240 6% 12%;
+    --secondary-foreground: 0 0% 96%;
+
+    --muted: 240 5% 11%;
+    --muted-foreground: 240 5% 50%;
+
+    --accent: 43 70% 50%;
+    --accent-foreground: 240 10% 6%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 96%;
+
+    --border: 240 6% 15%;
+    --input: 240 6% 12%;
+    --ring: 43 70% 50%;
+
+    --radius: 0.75rem;
+
+    --gold: 43 70% 50%;
+    --gold-light: 43 55% 58%;
+    --gold-dark: 43 80% 40%;
+
+    --sidebar-background: 240 8% 8%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-primary: 43 70% 50%;
+    --sidebar-primary-foreground: 240 10% 6%;
+    --sidebar-accent: 240 6% 12%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 240 6% 15%;
+    --sidebar-ring: 43 70% 50%;
+  }
+
+  .dark {
+    --background: 240 10% 6%;
+    --foreground: 0 0% 96%;
+    --card: 240 8% 9%;
+    --card-foreground: 0 0% 96%;
+    --popover: 240 8% 9%;
+    --popover-foreground: 0 0% 96%;
+    --primary: 43 70% 50%;
+    --primary-foreground: 240 10% 6%;
+    --secondary: 240 6% 12%;
+    --secondary-foreground: 0 0% 96%;
+    --muted: 240 5% 11%;
+    --muted-foreground: 240 5% 50%;
+    --accent: 43 70% 50%;
+    --accent-foreground: 240 10% 6%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 96%;
+    --border: 240 6% 15%;
+    --input: 240 6% 12%;
+    --ring: 43 70% 50%;
+    --sidebar-background: 240 8% 8%;
+    --sidebar-foreground: 0 0% 96%;
+    --sidebar-primary: 43 70% 50%;
+    --sidebar-primary-foreground: 240 10% 6%;
+    --sidebar-accent: 240 6% 12%;
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 240 6% 15%;
+    --sidebar-ring: 43 70% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply tracking-tight;
+  }
+
+  /* Smooth scroll */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  /* Section wrapper — tighter vertical rhythm + auto content-visibility */
+  .section-container {
+    @apply py-4 md:py-14 lg:py-20;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 400px;
+  }
+
+  /* Section header */
+  .section-header {
+    @apply flex items-center gap-2 md:gap-3.5 mb-3 md:mb-8;
+  }
+
+  .section-icon {
+    @apply w-7 h-7 md:w-10 md:h-10 rounded-lg md:rounded-xl flex items-center justify-center shrink-0;
+  }
+
+  /* Card hover */
+  .card-hover {
+    @apply bg-card border border-border/60 rounded-2xl transition-all duration-300 hover:border-primary/25 hover:shadow-lg hover:shadow-primary/[0.04];
+  }
+
+  /* Scroll row — GPU-accelerated horizontal scroll */
+  .scroll-row {
+    @apply flex gap-3 md:gap-4 overflow-x-auto pb-2 md:pb-4 scrollbar-hide snap-x snap-mandatory -mx-4 px-4;
+    -webkit-overflow-scrolling: touch;
+    will-change: scroll-position;
+    touch-action: pan-x pan-y;
+  }
+
+  /* CTA buttons */
+  .btn-gold {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 font-semibold rounded-xl transition-all duration-200 shadow-sm shadow-primary/20;
+  }
+
+  .btn-gold-outline {
+    @apply border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground font-semibold rounded-xl transition-all duration-200;
+  }
+
+  /* Glassmorphism */
+  .glass {
+    @apply bg-card/60 backdrop-blur-xl border border-border/40;
+  }
+}
+
+/* Scrollbar hide */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Fade-in-up animation — uses transform3d for GPU compositing */
+@keyframes fade-in-up {
+  0% { opacity: 0; transform: translate3d(0, 12px, 0); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: opacity, transform;
+}
+
+/* Staggered children — reduced delays for snappier feel */
+.stagger-children > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 40ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 80ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 160ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 200ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 240ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 280ms; }
+
+/* Reduce motion for users who prefer it and low-end devices */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in-up,
+  .stagger-children > *,
+  .animate-float,
+  .drm-watermark-cell {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Premium glow */
+.glow-gold {
+  box-shadow: 0 0 60px -15px hsl(43 70% 50% / 0.2);
+}
+
+/* Focus ring override */
+*:focus-visible {
+  outline: 2px solid hsl(43 70% 50% / 0.5);
+  outline-offset: 2px;
+}
+
+/* Selection color */
+::selection {
+  background: hsl(43 70% 50% / 0.25);
+  color: hsl(0 0% 96%);
+}
+
+/* Hero progress bar animation */
+@keyframes hero-progress {
+  0% { width: 0; }
+  100% { width: 100%; }
+}
+
+/* Float animation for decorative elements */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* DRM watermark drift animation — subtle position & opacity shifts */
+@keyframes drm-drift {
+  0%   { transform: translate(0, 0);       opacity: 0.04; }
+  25%  { transform: translate(6px, -4px);   opacity: 0.055; }
+  50%  { transform: translate(-3px, 5px);   opacity: 0.035; }
+  75%  { transform: translate(4px, 2px);    opacity: 0.05; }
+  100% { transform: translate(0, 0);       opacity: 0.04; }
+}
+.drm-watermark-cell {
+  animation: drm-drift 12s ease-in-out infinite;
+}
+
+/* Block printing in reader */
+@media print {
+  .drm-print-block * { display: none !important; }
+  .drm-print-block::after {
+    content: "Printing is disabled for this content.";
+    display: block;
+    text-align: center;
+    padding: 2rem;
+    font-size: 1.5rem;
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+@media print {
+  /* Investor report print styles */
+  body { background: white !important; color: black !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print\\:hidden, nav, aside, header, [data-sidebar], .print\\:hidden { display: none !important; }
+  .print\\:block { display: block !important; }
+  .print\\:p-0 { padding: 0 !important; }
+  .print\\:border { border: 1px solid #e5e7eb !important; }
+  .print\\:shadow-none { box-shadow: none !important; }
+  .print\\:grid-cols-2 { grid-template-columns: repeat(2, 1fr) !important; }
+  .print\\:grid-cols-4 { grid-template-columns: repeat(4, 1fr) !important; }
+  .print\\:gap-2 { gap: 0.5rem !important; }
+  .print\\:text-xl { font-size: 1.25rem !important; }
+  .print-h-200 { height: 200px !important; }
+  .print-w-120 { width: 120px !important; }
+  .print-h-120 { height: 120px !important; }
+  .print\\:break-inside-avoid { break-inside: avoid !important; }
+}

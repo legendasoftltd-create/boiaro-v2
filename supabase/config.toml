@@ -1,0 +1,13 @@
+project_id = "kxpqejmjfnzhqcefyued"
+
+[functions.process-email-queue]
+verify_jwt = true
+
+[functions.sslcommerz-webhook]
+verify_jwt = false
+
+[functions.courier-webhook]
+verify_jwt = false
+
+[functions.coin-purchase-webhook]
+verify_jwt = false
