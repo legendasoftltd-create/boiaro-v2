@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { BarChart3, Users, DollarSign, BookOpen, Headphones, BookCopy, ShieldCheck, Activity, PlayCircle, Clock, CheckCircle, AlertTriangle, Bell, Coffee, Zap, Trophy } from "lucide-react";
 import { useRef } from "react";
+import SummaryCard from "@/components/admin/SummaryCard";
 
 function getWeekRange() {
   const now = new Date();
@@ -190,145 +191,67 @@ export default function AdminWeeklyReport() {
         <div>
           <div className="grid  grid-cols-1 lg:grid-cols-2 gap-3">
             {/* new user card  */}
-            <div className="w-full p-6 bg-white border border-gray-400 rounded-2xl shadow-sm font-sans">
-              {/* Upper Section: Icon and Label */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="text-[#FF8904]">
-                  <Users size={24} strokeWidth={2.5} />
-                </div>
-                <span className="text-[#FF8904] font-bold tracking-wider text-sm">
-                  New Users
-                </span>
-              </div>
-
-              {/* Lower Section: Number */}
-              <div className="text-2xl font-black text-[#FF8904]">
-                {d.newUsers}
-              </div>
-            </div>
+            
+            <SummaryCard
+              icon={Users}
+              title="New Users" 
+              value={d.newUsers} 
+              color="#FF8904" 
+            />
 
             {/* Revenue card */}
-            <div className="w-full p-6 bg-white border border-gray-400 rounded-2xl shadow-sm font-sans">
-              {/* Upper Section: Icon and Label */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="">
-                  <span className="text-2xl font-bold text-[#017B51]">৳</span>
-                </div>
-                <span className="text-[#017B51] font-bold tracking-wider text-sm">
-                  Revenue ({d.totalOrders} orders)
-                </span>
-              </div>
-
-              {/* Lower Section: Number */}
-              <div className="text-2xl font-black text-[#017B51]">
-                {d.totalRevenue.toLocaleString()}
-              </div>
-            </div>
+            <SummaryCard
+              title={`Revenue (${d.totalOrders} orders)`}
+              value={d.totalRevenue.toLocaleString()}
+              color="#017B51"
+            />
 
             {/* eBook Reading */}
-            <div className="w-full p-6 bg-white border border-gray-400 rounded-2xl shadow-sm font-sans">
-              {/* Upper Section: Icon and Label */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="text-[#E20057]">
-                  <BookOpen size={24} strokeWidth={2.5} />
-                </div>
-                <span className="text-[#E20057] font-bold tracking-wider text-sm">
-                  eBook Reading
-                </span>
-              </div>
 
-              {/* Lower Section: Number */}
-              <div className="text-2xl font-black text-[#E20057]">
-                {d.ebookHours}h
-              </div>
-            </div>
-
+            <SummaryCard
+              icon={BookOpen}
+              title="eBook Reading" 
+              value={`${d.ebookHours}h`} 
+              color="#E20057" 
+            />
 
             {/* Audiobook Listening */}
-            <div className="w-full p-6 bg-white border border-gray-400 rounded-2xl shadow-sm font-sans">
-              {/* Upper Section: Icon and Label */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="text-[#E200C4]">
-                  <Headphones size={24} strokeWidth={2.5} />
-                </div>
-                <span className="text-[#E200C4] font-bold tracking-wider text-sm">
-                  Audiobook Listening
-                </span>
-              </div>
-
-              {/* Lower Section: Number */}
-              <div className="text-2xl font-black text-[#E200C4]">
-                {d.audioHours}h
-              </div>
-            </div>
+            <SummaryCard
+              icon={BookOpen}
+              title="Audiobook Listening" 
+              value={`${d.audioHours}h`} 
+              color="#E200C4" 
+            />
 
             {/* Total Income */}
-            <div className="w-full p-6 bg-white border border-gray-400 rounded-2xl shadow-sm font-sans">
-              {/* Upper Section: Icon and Label */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="">
-                  <span className="text-2xl font-bold text-[#017B51]">৳</span>
-                </div>
-                <span className="text-[#017B51] font-bold tracking-wider text-sm">
-                  Total Income
-                </span>
-              </div>
-
-              {/* Lower Section: Number */}
-              <div className="text-2xl font-black text-[#017B51]">
-                {d.income.toLocaleString()}
-              </div>
-            </div>
-
-
+            
+            <SummaryCard
+              title={`Total Income`}
+              value={d.income.toLocaleString()}
+              color="#017B51"
+            />
 
             {/* Total Expense  */}
-            <div className="w-full p-6 bg-white border border-gray-400 rounded-2xl shadow-sm font-sans">
-              {/* Upper Section: Icon and Label */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="">
-                  <span className="text-2xl font-bold text-red-500">৳</span>
-                </div>
-                <span className="text-red-500 font-bold tracking-wider text-sm">
-                  Total Expense
-                </span>
-              </div>
-
-              {/* Lower Section: Number */}
-              <div className="text-2xl font-black text-red-500">
-                {d.expense.toLocaleString()}
-              </div>
-            </div>
-
-            
-
-
-
-
-
-
+          
+        <SummaryCard
+              title=" Total Expense" 
+              value={d.expense.toLocaleString()} 
+              color="#EF4444" 
+            />
+  
           </div>
 
 
-
           {/* Net Profit  */}
-            <div className="w-full p-6 bg-white border border-gray-400 rounded-2xl shadow-sm font-sans mt-4">
-              {/* Upper Section: Icon and Label */}
-              <div className="flex items-center gap-3 mb-4">
-                <div className="">
-                  <span className="text-2xl font-bold text-[#017B51]">৳</span>
-                </div>
-                <span className="text-[#017B51] font-bold tracking-wider text-sm">
-                  Net Profit
-                </span>
-              </div>
-
-              {/* Lower Section: Number */}
-              <div className="text-2xl font-black text-[#017B51]">
-                {d.netProfit.toLocaleString()}
-              </div>
-            </div>
-
+          <div className="mt-5"> 
+            <SummaryCard
+              title="Net Profit" 
+              value={d.netProfit.toLocaleString()} 
+              color="#017B51" 
+            />
+          </div>
+              
+            
 
 
 
@@ -336,55 +259,42 @@ export default function AdminWeeklyReport() {
       </div>
 
 
-
-
-
-
-
-
-
-     
-
-
-
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
 
         {/* Total Alerts Card */}
-        <div className="bg-white border border-gray-400 rounded-2xl shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-3 text-blue-600">
-            <Bell size={20} strokeWidth={2.5} />
-            <span className="text-[10px] font-bold tracking-widest uppercase">Total Alerts</span>
-          </div>
-          <div className="text-2xl font-black text-gray-900">{d.alertsTotal}</div>
-        </div>
+        
+        <SummaryCard
+              icon={Bell}
+              title="Total Alerts" 
+              value={d.alertsTotal} 
+              color="#005ae2" 
+            />
 
         {/* Critical Card */}
-        <div className="bg-white border border-gray-400 rounded-2xl shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-3 text-red-500">
-            <AlertTriangle size={20} strokeWidth={2.5} />
-            <span className="text-[10px] font-bold tracking-widest uppercase">Critical</span>
-          </div>
-          <div className="text-2xl font-black text-gray-900">{d.alertsCritical}</div>
-        </div>
+        
+        <SummaryCard
+              icon={AlertTriangle}
+              title="Critical Alerts" 
+              value={d.alertsCritical} 
+              color="#e20f00" 
+            />
 
         {/* Resolved Card */}
-        <div className="bg-white border border-gray-400 rounded-2xl shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-3 text-emerald-500">
-            <CheckCircle size={20} strokeWidth={2.5} />
-            <span className="text-[10px] font-bold tracking-widest uppercase">Resolved</span>
-          </div>
-          <div className="text-2xl font-black text-gray-900">{d.alertsResolved}</div>
-        </div>
+        
+        <SummaryCard
+              icon={CheckCircle}
+              title="Resolved" 
+              value={d.alertsResolved} 
+              color="#017B51" 
+            />
 
         {/* Unresolved Card */}
-        <div className="bg-white border border-gray-400 rounded-2xl shadow-sm p-5">
-          <div className="flex items-center gap-2 mb-3 text-amber-500">
-            <Clock size={20} strokeWidth={2.5} />
-            <span className="text-[10px] font-bold tracking-widest uppercase">Unresolved</span>
-          </div>
-          <div className="text-2xl font-black text-gray-900">{d.alertsUnresolved}</div>
-        </div>
+        <SummaryCard
+              icon={Clock}
+              title="Unresolved" 
+              value={d.alertsUnresolved} 
+              color="#F68B1E" 
+            />
       </div>
 
  {/* database health status  */}
