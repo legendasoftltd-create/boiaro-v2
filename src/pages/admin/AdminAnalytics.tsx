@@ -245,7 +245,7 @@ export default function AdminAnalytics() {
       <div className="flex-1 min-w-[130px]">
         <label className="text-lg font-bold text-black mb-1.5 block">Format</label>
         <Select value={formatFilter} onValueChange={setFormatFilter}>
-          <SelectTrigger className="w-full h-10 border-gray-200 bg-[#017B51] ">
+          <SelectTrigger className="w-full h-10 border-gray-200 bg-[#017B51]  text-white">
             <SelectValue />
           </SelectTrigger>
           <SelectContent style={{ backgroundColor: "#017B51" }}>
@@ -260,7 +260,7 @@ export default function AdminAnalytics() {
       <div className="flex-1 min-w-[150px]">
         <label className="text-lg font-bold text-black mb-1.5 block">Category</label>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full h-10 border-gray-200 bg-[#017B51]">
+          <SelectTrigger className="w-full h-10 border-gray-200 bg-[#017B51] text-white">
             <SelectValue />
           </SelectTrigger>
           <SelectContent style={{ backgroundColor: "#017B51" }}>
