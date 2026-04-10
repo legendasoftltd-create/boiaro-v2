@@ -406,7 +406,8 @@ export default function AdminLayout() {
       )}
 
       <main className={cn("flex-1 overflow-y-auto", isMobile && "pt-14")}>
-        <div className="p-5 max-w-7xl mx-auto" style={{backgroundColor:'#F9FAFB'}}>
+        {/* p-5 max-w-7xl min-h-screen mx-auto */}
+        <div className="p-5 w-full min-h-screen mx-auto" style={{backgroundColor:'#F9FAFB'}}>
           <Outlet />
         </div>
       </main>
