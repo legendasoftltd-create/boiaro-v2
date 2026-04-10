@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DollarSign, ShoppingCart, Users, BookOpen, Download,
   TrendingUp, BarChart3, PieChart as PieChartIcon,
+  CalendarIcon,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -17,6 +18,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { isVerifiedRevenueOrder, isInDateRange, type RevenueOrder } from "@/hooks/useUnifiedRevenue";
+import SummaryCard from "@/components/admin/SummaryCard";
 
 const COLORS = ["hsl(var(--primary))", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
@@ -203,80 +205,448 @@ export default function AdminAnalytics() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2"><BarChart3 className="h-6 w-6 text-primary" /> Analytics & Reports</h1>
-      </div>
+      
+      <h1 className="text-2xl font-bold text-black"> Analytics </h1>
 
       {/* FILTERS */}
-      <Card>
-        <CardContent className="pt-4 pb-3">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">From</label>
-              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40 h-9" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">To</label>
-              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-40 h-9" />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Format</label>
-              <Select value={formatFilter} onValueChange={setFormatFilter}>
-                <SelectTrigger className="w-36 h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Formats</SelectItem>
-                  <SelectItem value="ebook">eBook</SelectItem>
-                  <SelectItem value="audiobook">Audiobook</SelectItem>
-                  <SelectItem value="hardcopy">Hard Copy</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Category</label>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name_bn || c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => { setDateFrom(""); setDateTo(""); setFormatFilter("all"); setCategoryFilter("all"); }}>
-              Clear
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+     
+<Card className="border-0 shadow-sm bg-white/90 backdrop-blur-sm p-2 py-8">
+  <>
+    <div className="flex flex-wrap gap-4 items-end">
+      
 
-      {/* SUMMARY CARDS */}
+    <div className="flex-1 min-w-[140px]">
+      <label className="text-lg font-bold text-black mb-1.5 block">From</label>
+      <div className="relative">
+        <Input 
+          type="date" 
+          value={dateFrom} 
+          onChange={e => setDateFrom(e.target.value)} 
+          className="w-full h-10 border-gray-200 focus:border-blue-500 focus:ring-blue-500 transition-all bg-[#017B51] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer" 
+        />
+        <CalendarIcon className="absolute right-3 top-1/2 -translate-y-1/2 text-white pointer-events-none" size={18} />
+      </div>
+    </div>
+
+
+      <div className="flex-1 min-w-[140px]">
+        <label className="text-lg font-bold text-black mb-1.5 block">To</label>
+        <div className="relative">
+          <Input 
+            type="date" 
+            value={dateTo} 
+            onChange={e => setDateTo(e.target.value)} 
+            className="w-full h-10 border-gray-200 focus:border-blue-500 focus:ring-blue-500 transition-all bg-[#017B51] text-white [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer" 
+          />
+          <CalendarIcon className="absolute right-3 top-1/2 -translate-y-1/2 text-white pointer-events-none" size={18} />
+        </div>
+      </div>
+      
+      <div className="flex-1 min-w-[130px]">
+        <label className="text-lg font-bold text-black mb-1.5 block">Format</label>
+        <Select value={formatFilter} onValueChange={setFormatFilter}>
+          <SelectTrigger className="w-full h-10 border-gray-200 bg-[#017B51] ">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent style={{ backgroundColor: "#017B51" }}>
+            <SelectItem value="all">All Formats</SelectItem>
+            <SelectItem value="ebook">eBook</SelectItem>
+            <SelectItem value="audiobook">Audiobook</SelectItem>
+            <SelectItem value="hardcopy">Hard Copy</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      
+      <div className="flex-1 min-w-[150px]">
+        <label className="text-lg font-bold text-black mb-1.5 block">Category</label>
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-full h-10 border-gray-200 bg-[#017B51]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent style={{ backgroundColor: "#017B51" }}>
+            <SelectItem value="all">All Categories</SelectItem>
+            {categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name_bn || c.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      
+      <div className="flex-shrink-0">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => { setDateFrom(""); setDateTo(""); setFormatFilter("all"); setCategoryFilter("all"); }}
+          className="h-10 px-4 hover:text-white  bg-red-500 text-white hover:bg-red-700 transition-all"
+        >
+          Clear All
+        </Button>
+      </div>
+    </div>
+  </>
+</Card>
+
+
+    {/* SUMMARY CARDS */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Verified Order Revenue", value: `৳${totalRevenue.toLocaleString()}`, icon: DollarSign, color: "text-green-400" },
-          { label: "Total Orders", value: totalOrdersCount, icon: ShoppingCart, color: "text-blue-400" },
-          { label: "Active Users", value: uniqueUsers, icon: Users, color: "text-purple-400" },
-          { label: "Books Sold", value: totalBooksSold, icon: BookOpen, color: "text-primary" },
+          { label: "Verified Order Revenue", value: `${totalRevenue.toLocaleString()}`, icon: '', color: "green" },
+          { label: "Total Orders", value: totalOrdersCount, icon: ShoppingCart, color: "blue" },
+          { label: "Active Users", value: uniqueUsers, icon: Users, color: "purple" },
+          { label: "Books Sold", value: totalBooksSold, icon: BookOpen, color: "orange" },
         ].map(c => (
-          <Card key={c.label}>
+          <> 
+          {/* <Card key={c.label}>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{c.label}</CardTitle>
               <c.icon className={`h-4 w-4 ${c.color}`} />
             </CardHeader>
             <CardContent><div className="text-2xl font-bold">{c.value}</div></CardContent>
-          </Card>
+          </Card> */}
+          <SummaryCard
+              icon={c.icon}
+              title={c.label}
+              value={c.value}
+              color={c.color}
+            />
+          </>
         ))}
       </div>
 
+
+  {/*  Detailed Reports */}
+  <Tabs defaultValue="sales" className="space-y-6">
+
+    {/* Tabs */}
+    <TabsList className="flex flex-wrap gap-2 bg-transparent p-0">
+      {["sales","books","creators","readers"].map(tab => (
+        <TabsTrigger
+          key={tab}
+          value={tab}
+          className="px-4 py-2 text-sm rounded-xl border border-black text-zinc-400 
+          data-[state=active]:bg-[#017B51] data-[state=active]:text-white text-black  
+          hover:bg-[#017B51] transition-all data-[state=active]:border-[#017B51] hover:text-white hover:border-white"
+        >
+          {tab === "sales" && "Sales Report"}
+          {tab === "books" && "Book-wise Sales"}
+          {tab === "creators" && "Creator Earnings"}
+          {tab === "readers" && "Top Readers"}
+        </TabsTrigger>
+      ))}
+    </TabsList>
+
+    {/* SALES */}
+    <TabsContent value="sales">
+      <div className="bg-zinc-950 rounded-2xl shadow-lg">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 bg-[#017B51] rounded-tl-2xl rounded-tr-2xl">
+          <h2 className="text-sm font-semibold text-zinc-200">
+            Daily Sales (Last 30 days)
+          </h2>
+          <button onClick={() => exportCSV(dailySales, "daily-sales")} className="flex items-center gap-1 text-xs px-3 py-1.5 border border-white rounded-lg text-zinc-300 hover:bg-[#1FCE75] hover:border-[#1FCE75]">
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-auto max-h-[400px]">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-white">
+              <tr className="text-black text-xs">
+                <th className="text-left px-4 py-3">Date</th>
+                <th className="text-right px-4 py-3">Orders</th>
+                <th className="text-right px-4 py-3">Revenue</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {dailySales.length > 0 ? dailySales.map((d, i) => (
+                <tr key={d.date} className="border-t border-zinc-800 bg-white text-black hover:bg-gray-200 transition">
+                  <td className="px-4 py-3">{d.date}</td>
+                  <td className="px-4 py-3 text-right">{d.count}</td>
+                  <td className="px-4 py-3 text-right font-medium text-[#017B51]">
+                    ৳ {d.revenue.toLocaleString()}
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={3} className="text-center py-6 text-zinc-500">
+                    No sales data
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </TabsContent>
+
+    {/* BOOKS */}
+    <TabsContent value="books">
+      <div className="bg-zinc-950 rounded-2xl shadow-lg">
+        
+        <div className="flex items-center justify-between px-5 py-4 bg-[#017B51] rounded-tl-2xl rounded-tr-2xl">
+          <h2 className="text-sm font-semibold text-zinc-200">Book-wise Sales</h2>
+          <button onClick={() => exportCSV(bookSales, "book-sales")} className="flex items-center gap-1 text-xs px-3 py-1.5 border border-white rounded-lg text-zinc-300 hover:bg-[#1FCE75] hover:border-[#1FCE75]">
+            <Download className="w-3.5 h-3.5" /> Export
+          </button>
+        </div>
+
+        <div className="overflow-auto max-h-[500px]">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-white">
+              <tr className="text-black text-xs">
+                <th className="text-left px-4 py-3">Book</th>
+                <th className="text-right px-4 py-3">Units</th>
+                <th className="text-right px-4 py-3">eBook</th>
+                <th className="text-right px-4 py-3">Audio</th>
+                <th className="text-right px-4 py-3">Hardcopy</th>
+                <th className="text-right px-4 py-3">Total</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {bookSales.length > 0 ? bookSales.map((b, i) => (
+                <tr key={i} className="border-t border-zinc-800 bg-white text-black hover:bg-gray-200 transition">
+                  <td className="px-4 py-3 max-w-[220px] truncate font-medium">{b.title}</td>
+                  <td className="px-4 py-3 text-right">{b.sales}</td>
+                  <td className="px-4 py-3 text-right text-black">৳{b.ebook.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-black">৳{b.audiobook.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right text-black">৳{b.hardcopy.toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-[#017B51]">৳{b.revenue.toLocaleString()}</td>
+                </tr>
+              )) : (
+                <tr>
+                  <td colSpan={6} className="text-center py-6 text-zinc-500">No data</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </TabsContent>
+
+    {/*  creators  */}
+    <TabsContent value="creators">
+    <div className="bg-zinc-950 rounded-2xl shadow-lg">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 bg-[#017B51] rounded-tl-2xl rounded-tr-2xl">
+        <h2 className="text-sm font-semibold text-zinc-200">
+          Creator Earnings
+        </h2>
+
+        <button
+          onClick={() =>
+            exportCSV(
+              creatorEarnings.map(e => ({
+                name: profileMap[e.user_id] || e.user_id.slice(0, 8),
+                role: e.role,
+                total: e.total,
+                paid: e.paid,
+                pending: e.pending
+              })),
+              "creator-earnings"
+            )
+          }
+          className="flex items-center gap-1 text-xs px-3 py-1.5 border border-white rounded-lg text-zinc-300 hover:bg-[#1FCE75] hover:border-[#1FCE75]"
+        >
+          <Download className="w-3.5 h-3.5" /> Export
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-auto max-h-[500px]">
+        <table className="w-full text-sm">
+          
+          <thead className="sticky top-0 bg-white">
+            <tr className="text-black text-xs">
+              <th className="text-left px-4 py-3">Creator</th>
+              <th className="text-left px-4 py-3">Role</th>
+              <th className="text-right px-4 py-3">Total</th>
+              <th className="text-right px-4 py-3">Paid</th>
+              <th className="text-right px-4 py-3">Pending</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {creatorEarnings.length > 0 ? creatorEarnings.map((e, i) => (
+              <tr
+                key={i}
+                className="border-t border-zinc-800 bg-white text-black hover:bg-gray-200 transition"
+              >
+                <td className="px-4 py-3 font-medium text-black">
+                  {profileMap[e.user_id] || e.user_id.slice(0, 8)}
+                </td>
+
+                <td className="px-4 py-3">
+                  <span className="text-[11px] px-2 py-1 rounded-md border border-zinc-700 bg-zinc-800 text-zinc-300 capitalize">
+                    {e.role}
+                  </span>
+                </td>
+
+                <td className="px-4 py-3 text-right font-medium">
+                  ৳{e.total.toLocaleString()}
+                </td>
+
+                <td className="px-4 py-3 text-right text-green-400">
+                  ৳{e.paid.toLocaleString()}
+                </td>
+
+                <td className="px-4 py-3 text-right text-yellow-400">
+                  ৳{e.pending.toLocaleString()}
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={5} className="text-center py-6 text-zinc-500">
+                  No earnings data
+                </td>
+              </tr>
+            )}
+          </tbody>
+
+        </table>
+      </div>
+
+    </div>
+  </TabsContent>
+
+  {/* READERS */}
+  <TabsContent value="readers">
+    <div className="bg-zinc-950 rounded-2xl shadow-lg">
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 bg-[#017B51] rounded-tl-2xl rounded-tr-2xl">
+        <h2 className="text-sm font-semibold text-zinc-200">
+          Top Readers / Buyers
+        </h2>
+
+        <button
+          onClick={() =>
+            exportCSV(
+              topReaders.map(r => ({
+                name: profileMap[r.user_id] || r.user_id.slice(0, 8),
+                orders: r.orders,
+                spent: r.spent
+              })),
+              "top-readers"
+            )
+          }
+          className="flex items-center gap-1 text-xs px-3 py-1.5 border border-white rounded-lg text-zinc-300 hover:bg-[#1FCE75] hover:border-[#1FCE75]"
+        >
+          <Download className="w-3.5 h-3.5" /> Export
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-auto max-h-[400px]">
+        <table className="w-full text-sm">
+
+          <thead className="sticky top-0 bg-white">
+            <tr className="text-black text-xs">
+              <th className="text-left px-4 py-3">#</th>
+              <th className="text-left px-4 py-3">User</th>
+              <th className="text-right px-4 py-3">Orders</th>
+              <th className="text-right px-4 py-3">Total Spent</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {topReaders.length > 0 ? topReaders.map((r, i) => (
+              <tr
+                key={r.user_id}
+                className="border-t border-zinc-800 bg-white text-black hover:bg-gray-200 transition"
+              >
+                <td className="px-4 py-3 text-black">{i + 1}</td>
+
+                <td className="px-4 py-3 font-medium text-black">
+                  {profileMap[r.user_id] || r.user_id.slice(0, 8)}
+                </td>
+
+                <td className="px-4 py-3 text-right">
+                  {r.orders}
+                </td>
+
+                <td className="px-4 py-3 text-right font-semibold text-[#017B51]">
+                  ৳{r.spent.toLocaleString()}
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan={4} className="text-center py-6 text-zinc-500">
+                  No data
+                </td>
+              </tr>
+            )}
+          </tbody>
+
+        </table>
+      </div>
+
+    </div>
+  </TabsContent>
+
+  </Tabs>
+
+    <div className="grid md:grid-cols-2 gap-6">
+
+            <Card style={{backgroundColor:'#c94364'}}>
+              <CardHeader><CardTitle className="text-base flex items-center gap-2 mb-3"><PieChartIcon className="h-4 w-4 text-blue-400" /> Revenue by Format</CardTitle></CardHeader>
+              <CardContent>
+                {revenueByFormat.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={240} >
+                    <PieChart>
+                      <Pie data={revenueByFormat} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={4} dataKey="value" label={({ name, value }) => `${name}: ৳${value.toLocaleString()}`}>
+                        {revenueByFormat.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      </Pie>
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`৳${v.toLocaleString()}`, "Revenue"]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-sm text-muted-foreground text-center py-10">No data</p>}
+              </CardContent>
+            </Card>
+
+            <Card style={{backgroundColor:'#F68B1E'}}>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2"><BarChart3 className="h-4 w-4 text-white" /> Top Selling Books</CardTitle>
+                <Button variant="outline" size="sm" className="bg-[#017B51] hover:text-white border-white hover:bg-[#1FCE75]" onClick={() => exportCSV(bookSales.slice(0, 10), "top-books")}>
+                  <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {bookSales.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={bookSales.slice(0, 10)} layout="vertical" margin={{ top: 20, left: 0, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                      <YAxis dataKey="title" type="category" width={150} tick={{ fontSize: 10, fill: "white" }} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`৳${v.toLocaleString()}`, "Revenue"]} />
+                      <Bar dataKey="revenue" fill="#017B51" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : <p className="text-sm text-muted-foreground text-center py-10">No data</p>}
+              </CardContent>
+            </Card>
+    </div>
+
+
+ {/* Top Books Bar Chart */}
+      
+
       {/* CHARTS */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card>
+      <div className="grid grid-cols-1 gap-6">
+        <Card style={{backgroundColor:'#0e351d'}}>
           <CardHeader><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4 text-primary" /> Revenue Over Time</CardTitle></CardHeader>
           <CardContent>
             {revenueOverTime.length > 0 ? (
               <ResponsiveContainer width="100%" height={240}>
                 <AreaChart data={revenueOverTime}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                  <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="white" />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#F68B1E" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "#F68B1E" }} />
                   <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`৳${v.toLocaleString()}`, "Revenue"]} />
                   <Area type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.15} strokeWidth={2} />
                 </AreaChart>
@@ -285,212 +655,15 @@ export default function AdminAnalytics() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><PieChartIcon className="h-4 w-4 text-blue-400" /> Revenue by Format</CardTitle></CardHeader>
-          <CardContent>
-            {revenueByFormat.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <PieChart>
-                  <Pie data={revenueByFormat} cx="50%" cy="50%" innerRadius={50} outerRadius={85} paddingAngle={4} dataKey="value" label={({ name, value }) => `${name}: ৳${value.toLocaleString()}`}>
-                    {revenueByFormat.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`৳${v.toLocaleString()}`, "Revenue"]} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : <p className="text-sm text-muted-foreground text-center py-10">No data</p>}
-          </CardContent>
-        </Card>
+        
       </div>
 
-      {/* Top Books Bar Chart */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2"><BarChart3 className="h-4 w-4 text-primary" /> Top Selling Books</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => exportCSV(bookSales.slice(0, 10), "top-books")}>
-            <Download className="h-3.5 w-3.5 mr-1" /> Export CSV
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {bookSales.length > 0 ? (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={bookSales.slice(0, 10)} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
-                <YAxis dataKey="title" type="category" width={150} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`৳${v.toLocaleString()}`, "Revenue"]} />
-                <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <p className="text-sm text-muted-foreground text-center py-10">No data</p>}
-        </CardContent>
-      </Card>
+     
 
-      {/* TABS: Detailed Reports */}
-      <Tabs defaultValue="sales" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="sales">Sales Report</TabsTrigger>
-          <TabsTrigger value="books">Book-wise Sales</TabsTrigger>
-          <TabsTrigger value="creators">Creator Earnings</TabsTrigger>
-          <TabsTrigger value="readers">Top Readers</TabsTrigger>
-        </TabsList>
 
-        {/* SALES REPORT */}
-        <TabsContent value="sales">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Daily Sales (Last 30 days)</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => exportCSV(dailySales, "daily-sales")}>
-                <Download className="h-3.5 w-3.5 mr-1" /> Export
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-auto max-h-[400px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Orders</TableHead>
-                      <TableHead className="text-right">Revenue</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {dailySales.length > 0 ? dailySales.map(d => (
-                      <TableRow key={d.date}>
-                        <TableCell className="text-sm">{d.date}</TableCell>
-                        <TableCell className="text-right text-sm">{d.count}</TableCell>
-                        <TableCell className="text-right text-sm font-medium">৳{d.revenue.toLocaleString()}</TableCell>
-                      </TableRow>
-                    )) : (
-                      <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No sales data</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* BOOK-WISE SALES */}
-        <TabsContent value="books">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Book-wise Sales</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => exportCSV(bookSales, "book-sales")}>
-                <Download className="h-3.5 w-3.5 mr-1" /> Export
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-auto max-h-[500px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Book</TableHead>
-                      <TableHead className="text-right">Units</TableHead>
-                      <TableHead className="text-right">eBook</TableHead>
-                      <TableHead className="text-right">Audio</TableHead>
-                      <TableHead className="text-right">Hardcopy</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {bookSales.length > 0 ? bookSales.map((b, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-sm font-medium max-w-[200px] truncate">{b.title}</TableCell>
-                        <TableCell className="text-right text-sm">{b.sales}</TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">৳{b.ebook.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">৳{b.audiobook.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-sm text-muted-foreground">৳{b.hardcopy.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-sm font-medium text-green-400">৳{b.revenue.toLocaleString()}</TableCell>
-                      </TableRow>
-                    )) : (
-                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground">No data</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* CREATOR EARNINGS */}
-        <TabsContent value="creators">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Creator Earnings</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => exportCSV(creatorEarnings.map(e => ({ name: profileMap[e.user_id] || e.user_id.slice(0, 8), role: e.role, total: e.total, paid: e.paid, pending: e.pending })), "creator-earnings")}>
-                <Download className="h-3.5 w-3.5 mr-1" /> Export
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-auto max-h-[500px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Creator</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Paid</TableHead>
-                      <TableHead className="text-right">Pending</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {creatorEarnings.length > 0 ? creatorEarnings.map((e, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="text-sm font-medium">{profileMap[e.user_id] || e.user_id.slice(0, 8)}</TableCell>
-                        <TableCell><Badge variant="outline" className="capitalize text-[10px]">{e.role}</Badge></TableCell>
-                        <TableCell className="text-right text-sm font-medium">৳{e.total.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-sm text-green-400">৳{e.paid.toLocaleString()}</TableCell>
-                        <TableCell className="text-right text-sm text-yellow-400">৳{e.pending.toLocaleString()}</TableCell>
-                      </TableRow>
-                    )) : (
-                      <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No earnings data</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        {/* TOP READERS */}
-        <TabsContent value="readers">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Top Readers / Buyers</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => exportCSV(topReaders.map(r => ({ name: profileMap[r.user_id] || r.user_id.slice(0, 8), orders: r.orders, spent: r.spent })), "top-readers")}>
-                <Download className="h-3.5 w-3.5 mr-1" /> Export
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-auto max-h-[400px]">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>#</TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead className="text-right">Orders</TableHead>
-                      <TableHead className="text-right">Total Spent</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {topReaders.length > 0 ? topReaders.map((r, i) => (
-                      <TableRow key={r.user_id}>
-                        <TableCell className="text-sm text-muted-foreground">{i + 1}</TableCell>
-                        <TableCell className="text-sm font-medium">{profileMap[r.user_id] || r.user_id.slice(0, 8)}</TableCell>
-                        <TableCell className="text-right text-sm">{r.orders}</TableCell>
-                        <TableCell className="text-right text-sm font-medium text-green-400">৳{r.spent.toLocaleString()}</TableCell>
-                      </TableRow>
-                    )) : (
-                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">No data</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }
