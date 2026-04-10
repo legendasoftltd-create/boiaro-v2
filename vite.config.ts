@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    allowedHosts: ['boiarov2.blocknots.com'],
     hmr: {
       overlay: false,
     },
