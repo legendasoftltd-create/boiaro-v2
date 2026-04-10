@@ -22,6 +22,6 @@ jobs:
             cd /var/www/html/boiarov2.blocknots.com/boiaro-v2
             git pull origin main
             # Add your build/restart commands below, for example:
-            bun install
-            bun run build
-            pm2 restart boiaro-new-app
+            /root/.bun/bin/bun install
+            /root/.bun/bin/bun run build
+            /root/.nvm/versions/node/v24.14.0/bin/pm2 restart boiaro-new-app
