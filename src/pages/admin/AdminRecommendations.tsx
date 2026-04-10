@@ -137,10 +137,10 @@ export default function AdminRecommendations() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
-          <Sparkles className="w-6 h-6 text-primary" /> Recommendations & AI
+        <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black">
+           Recommendations & AI
         </h1>
-        <p className="text-muted-foreground text-sm">Configure recommendation engine and view analytics</p>
+        
       </div>
 
       {/* Stats */}
@@ -161,7 +161,7 @@ export default function AdminRecommendations() {
       </div>
 
       <Tabs defaultValue="settings">
-        <TabsList>
+        <TabsList className="bg-transparent  w-full flex items-center gap-4 mb-4">
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
@@ -219,9 +219,9 @@ export default function AdminRecommendations() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>#</TableHead>
-                      <TableHead>Book</TableHead>
-                      <TableHead className="text-right">Views</TableHead>
+                      <TableHead className="text-white hover:text-black">#</TableHead>
+                      <TableHead className="text-white ">Book</TableHead>
+                      <TableHead className="text-white text-right ">Views</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

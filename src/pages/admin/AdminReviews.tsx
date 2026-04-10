@@ -35,24 +35,24 @@ export default function AdminReviews() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Reviews</h1>
-          <p className="text-sm text-muted-foreground">Moderate user reviews</p>
+          <h1 className="text-2xl font-bold text-black">Reviews</h1>
+          
         </div>
         <div className="flex gap-2 text-sm">
           <Badge variant="outline">{reviews.filter(r => (r.status || "approved") === "approved").length} Visible</Badge>
           <Badge variant="outline" className="text-muted-foreground">{reviews.filter(r => r.status === "hidden").length} Hidden</Badge>
         </div>
       </div>
-      <div className="rounded-lg border">
+      <div className="border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Book</TableHead>
-              <TableHead>Rating</TableHead>
-              <TableHead>Comment</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-white">Book</TableHead>
+              <TableHead className="text-white">Rating</TableHead>
+              <TableHead className="text-white">Comment</TableHead>
+              <TableHead className="text-white">Status</TableHead>
+              <TableHead className="text-white">Date</TableHead>
+              <TableHead className="text-right text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

@@ -583,7 +583,7 @@ export default function AdminBooks() {
         </Select>
       </div>
 
-      <div className="rounded-lg shadow-lg border">
+      <div className=" shadow-lg border">
         <Table>
           <TableHeader >
             <>
