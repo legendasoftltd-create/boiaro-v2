@@ -277,7 +277,7 @@ export default function AdminAnalytics() {
           onClick={() => { setDateFrom(""); setDateTo(""); setFormatFilter("all"); setCategoryFilter("all"); }}
           className="h-10 px-4 hover:text-white  bg-red-500 text-white hover:bg-red-700 transition-all"
         >
-          Clear all
+          Clear All
         </Button>
       </div>
     </div>

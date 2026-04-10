@@ -20,6 +20,7 @@ import {
   Clock, AlertOctagon,
 } from "lucide-react";
 import { isVerifiedRevenueOrder, type RevenueOrder } from "@/hooks/useUnifiedRevenue";
+import SummaryCard from "@/components/admin/SummaryCard";
 
 /* ─────── helpers ─────── */
 type TimeRange = "today" | "7d" | "30d";
@@ -37,7 +38,7 @@ function fmtDate(s: string) { return new Date(s).toLocaleString("en-GB", { day: 
 /* ─────── Health badge ─────── */
 function HealthBadge({ ok, label, count }: { ok: boolean; label: string; count?: number }) {
   return (
-    <Card className="border-border/30">
+    <Card className="border-border/30" style={{ backgroundColor: '#017B51' }}>
       <CardContent className="p-3 flex items-center gap-3">
         {ok ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" /> : <AlertTriangle className="w-5 h-5 text-destructive shrink-0 animate-pulse" />}
         <div className="flex-1 min-w-0">
@@ -277,51 +278,47 @@ export default function AdminLiveMonitoring() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold font-serif flex items-center gap-2">
-            <Activity className="w-6 h-6 text-primary" /> Live Monitoring
+      
+          <h1 className="text-2xl font-bold font-serif flex items-center gap-2 text-black">
+             Live Monitoring
           </h1>
-          <p className="text-sm text-muted-foreground">Production health dashboard — read-only</p>
+          
+      {/* filter  */}
+      <div className="w-full bg-white px-2 py-5 rounded-xl  shadow-sm">
+        {/* Container: Stacked on mobile, 2-cols on small screens, flex-row on large */}
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 items-center justify-center gap-4 w-full">
+          
+          <Select value={range} onValueChange={v => setRange(v as TimeRange)}>
+                <SelectTrigger className=""><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="7d">Last 7 days</SelectItem>
+                  <SelectItem value="30d">Last 30 days</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={formatFilter} onValueChange={setFormatFilter}>
+                <SelectTrigger className=""><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Formats</SelectItem>
+                  <SelectItem value="ebook">Ebook</SelectItem>
+                  <SelectItem value="audiobook">Audiobook</SelectItem>
+                  <SelectItem value="hardcopy">Hardcopy</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input placeholder="User ID" value={userIdFilter} onChange={e => setUserIdFilter(e.target.value)} className="w-[180px]  placeholder:text-gray-400" />
+              <Input placeholder="Book ID" value={bookIdFilter} onChange={e => setBookIdFilter(e.target.value)} className="w-[180px]  placeholder:text-gray-400" />
+
+              {/* Reset Button (Optional but helpful for "Sundor" UX) */}
+              <button 
+                onClick={() => {window.location.reload()}} 
+                className=" px-4 py-2 text-sm font-medium text-white bg-[#EF4444] rounded-md transition-colors"
+              >
+                Clear All
+              </button>
         </div>
-        <Button variant="outline" size="sm" className="gap-2" onClick={() => window.location.reload()}>
-          <RefreshCw className="w-3.5 h-3.5" /> Refresh
-        </Button>
       </div>
 
-      {/* SECTION 7 — Filters */}
-      <div className="flex flex-wrap gap-3">
-        <Select value={range} onValueChange={v => setRange(v as TimeRange)}>
-          <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="today">Today</SelectItem>
-            <SelectItem value="7d">Last 7 days</SelectItem>
-            <SelectItem value="30d">Last 30 days</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={formatFilter} onValueChange={setFormatFilter}>
-          <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Formats</SelectItem>
-            <SelectItem value="ebook">Ebook</SelectItem>
-            <SelectItem value="audiobook">Audiobook</SelectItem>
-            <SelectItem value="hardcopy">Hardcopy</SelectItem>
-          </SelectContent>
-        </Select>
-        <Input placeholder="User ID..." value={userIdFilter} onChange={e => setUserIdFilter(e.target.value)} className="w-[180px]" />
-        <Input placeholder="Book ID..." value={bookIdFilter} onChange={e => setBookIdFilter(e.target.value)} className="w-[180px]" />
-      </div>
-
-      {/* SECTION 6 — Health Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <HealthBadge ok={paymentOk} label="Payments" count={paymentStats.failed} />
-        <HealthBadge ok={coinOk} label="Coins" />
-        <HealthBadge ok={unlockOk} label="Unlocks" count={unlockStats.failed} />
-        <HealthBadge ok={revenueOk} label="Revenue Sync" count={revenueStats.missingLedger + revenueStats.dupLedger} />
-        <HealthBadge ok={errorStats.total === 0} label="Errors" count={errorStats.total} />
-      </div>
-
-      {/* SECTION 8 — Alerts */}
+      {/*   Alerts */}
       {alerts.length > 0 && (
         <Card className="border-destructive/30 bg-destructive/5">
           <CardHeader className="pb-2 pt-3 px-4">
@@ -342,7 +339,7 @@ export default function AdminLiveMonitoring() {
 
       {/* Tabbed sections */}
       <Tabs defaultValue="payments" className="space-y-4">
-        <TabsList className="flex flex-wrap h-auto gap-1">
+        <TabsList className="flex flex-wrap h-auto gap-1 bg-">
           <TabsTrigger value="payments" className="gap-1.5 text-xs"><CreditCard className="w-3.5 h-3.5" />Payments</TabsTrigger>
           <TabsTrigger value="coins" className="gap-1.5 text-xs"><Coins className="w-3.5 h-3.5" />Coins</TabsTrigger>
           <TabsTrigger value="unlocks" className="gap-1.5 text-xs"><Unlock className="w-3.5 h-3.5" />Unlocks</TabsTrigger>
@@ -352,13 +349,45 @@ export default function AdminLiveMonitoring() {
 
         {/* SECTION 1 — Payments */}
         <TabsContent value="payments" className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Total Attempts" value={paymentStats.total} icon={CreditCard} />
-            <Stat label="Successful" value={paymentStats.success} icon={CheckCircle2} accent="text-green-500" />
-            <Stat label="Failed" value={paymentStats.failed} icon={XCircle} accent="text-destructive" />
-            <Stat label="Success Rate" value={`${paymentStats.rate}%`} icon={TrendingUp} accent={paymentStats.rate >= 80 ? "text-green-500" : "text-destructive"} />
+          <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-5 gap-3">
+
+            <SummaryCard
+              icon={CreditCard}
+              title="Total Attempts"
+              value={paymentStats.total}
+              color="#F68B1E"
+            />
+
+            <SummaryCard
+              icon={CheckCircle2}
+              title="Successful"
+              value={paymentStats.success} 
+              color="#017B51"
+            />
+
+            <SummaryCard
+              icon={XCircle}
+              title="Failed"
+              value={paymentStats.failed}
+              color="#DC2626"
+            />
+
+              <SummaryCard
+              icon={TrendingUp}
+              title="Success Rate"
+              value={`${paymentStats.rate}%`}
+              color={paymentStats.rate >= 80 ? "#017B51" : "#DC2626"}
+            />
+
+            <SummaryCard
+              icon={Clock}
+              title="Pending"
+              value={paymentStats.pending}
+              color="#F59F48"
+            />
+
           </div>
-          <Stat label="Pending" value={paymentStats.pending} icon={Clock} accent="text-amber-500" />
+          
 
           {paymentStats.recentFailed.length > 0 && (
             <Card className="border-border/30">
@@ -384,12 +413,12 @@ export default function AdminLiveMonitoring() {
           )}
 
           {(paymentEvents || []).length > 0 && (
-            <Card className="border-border/30">
-              <CardHeader className="pb-2 pt-3 px-4"><CardTitle className="text-sm">Recent Payment Events (IPN/Webhook)</CardTitle></CardHeader>
+            <Card className="border-0 shadow-lg" >
+              <CardHeader className="pb-2 pt-3 px-4" style={{backgroundColor:'#017B51'}}><CardTitle className="text-sm text-white">Recent Payment Events (IPN/Webhook)</CardTitle></CardHeader>
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="bg-white text-black">
                   <TableHeader><TableRow>
-                    <TableHead>Gateway</TableHead><TableHead>Event</TableHead><TableHead>Status</TableHead><TableHead>Amount</TableHead><TableHead>Time</TableHead>
+                    <TableHead >Gateway</TableHead><TableHead>Event</TableHead><TableHead>Status</TableHead><TableHead>Amount</TableHead><TableHead>Time</TableHead>
                   </TableRow></TableHeader>
                   <TableBody>
                     {(paymentEvents || []).slice(0, 30).map((e: any) => (
@@ -411,23 +440,53 @@ export default function AdminLiveMonitoring() {
         {/* SECTION 2 — Coins */}
         <TabsContent value="coins" className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Coins Awarded" value={coinStats.awarded} icon={Coins} accent="text-green-500" />
-            <Stat label="Coins Spent" value={coinStats.spent} icon={Coins} accent="text-destructive" />
-            <Stat label="Ad Rewards" value={coinStats.adRewards} icon={Activity} />
-            <Stat label="Bonus Rewards" value={coinStats.bonusRewards} icon={Heart} />
+
+            {/* <Stat label="Coins Awarded" value={coinStats.awarded} icon={Coins} accent="text-green-500" /> */}
+
+            <SummaryCard
+              icon={Coins}
+              title="Coins Awarded"
+              value={coinStats.awarded} 
+              color="#017B51"
+            />
+
+            {/* <Stat label="Coins Spent" value={coinStats.spent} icon={Coins} accent="text-destructive" /> */}
+            
+            <SummaryCard
+              icon={Coins}
+              title="Coins Spent"
+              value={coinStats.spent}
+              color="#a50606"
+            />
+            {/* <Stat label="Ad Rewards" value={coinStats.adRewards} icon={Activity} /> */}
+
+            <SummaryCard
+              icon={Activity}
+              title="Ad Rewards"
+              value={coinStats.adRewards} 
+              color="#017B51"
+            />
+
+            {/* <Stat label="Bonus Rewards" value={coinStats.bonusRewards} icon={Heart} /> */}
+            <SummaryCard
+              icon={Heart}
+              title="Bonus Rewards"
+              value={coinStats.bonusRewards}
+              color="#017B51"
+            />
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
-            <Card className="border-border/30">
-              <CardHeader className="pb-2 pt-3 px-4"><CardTitle className="text-sm">Recent Coin Awards</CardTitle></CardHeader>
+            <Card className="border-0">
+              <CardHeader className="pb-2 pt-3 px-4 bg-[#017B51] rounded-t-lg"><CardTitle className="text-sm">Recent Coin Awards</CardTitle></CardHeader>
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="bg-white text-black">
                   <TableHeader><TableRow><TableHead>Amount</TableHead><TableHead>Source</TableHead><TableHead>Desc</TableHead><TableHead>Time</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {coinStats.recentEarn.map((t: any) => (
                       <TableRow key={t.id}>
                         <TableCell className="text-green-500 font-semibold">+{t.amount}</TableCell>
-                        <TableCell><Badge variant="secondary" className="text-[10px]">{t.source || "—"}</Badge></TableCell>
+                        <TableCell><Badge variant="secondary" className="text-[10px] bg-[#017B51]">{t.source || "—"}</Badge></TableCell>
                         <TableCell className="text-xs max-w-[150px] truncate">{t.description}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{fmtDate(t.created_at)}</TableCell>
                       </TableRow>
@@ -437,15 +496,16 @@ export default function AdminLiveMonitoring() {
               </div>
             </Card>
 
-            <Card className="border-border/30">
-              <CardHeader className="pb-2 pt-3 px-4"><CardTitle className="text-sm">Recent Coin Deductions</CardTitle></CardHeader>
+            <Card className="border-0">
+              <CardHeader className="pb-2 pt-3 px-4 bg-[#017B51] rounded-t-lg"><CardTitle className="text-sm">Recent Coin Deductions</CardTitle></CardHeader>
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="bg-white text-black">
                   <TableHeader><TableRow><TableHead>Amount</TableHead><TableHead>Source</TableHead><TableHead>Desc</TableHead><TableHead>Time</TableHead></TableRow></TableHeader>
                   <TableBody>
-                    {coinStats.recentSpend.map((t: any) => (
+                    
+                    {coinStats?.recentSpend?.map((t: any) => (
                       <TableRow key={t.id}>
-                        <TableCell className="text-destructive font-semibold">{t.amount}</TableCell>
+                        <TableCell className="text-destructive font-semibold">{t.amount} </TableCell>
                         <TableCell><Badge variant="secondary" className="text-[10px]">{t.source || "—"}</Badge></TableCell>
                         <TableCell className="text-xs max-w-[150px] truncate">{t.description}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{fmtDate(t.created_at)}</TableCell>
@@ -481,10 +541,39 @@ export default function AdminLiveMonitoring() {
         {/* SECTION 3 — Unlocks */}
         <TabsContent value="unlocks" className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Total Unlocks" value={unlockStats.total} icon={Unlock} />
-            <Stat label="Chapter Unlocks" value={unlockStats.chapters} icon={Unlock} accent="text-primary" />
-            <Stat label="Full Purchases" value={unlockStats.full} icon={CheckCircle2} accent="text-green-500" />
-            <Stat label="Failed" value={unlockStats.failed} icon={XCircle} accent="text-destructive" />
+
+            {/* <Stat label="Total Unlocks" value={unlockStats.total} icon={Unlock} /> */}
+
+            <SummaryCard
+              icon={Unlock}
+              title="Total Unlocks"
+              value={unlockStats.total} 
+              color="#F59F48"
+            />
+
+            {/* <Stat label="Chapter Unlocks" value={unlockStats.chapters} icon={Unlock} accent="text-primary" /> */}
+            <SummaryCard
+              icon={Unlock}
+              title="Chapter Unlocks"
+              value={unlockStats.chapters}
+              color="#F59F48"
+            />
+
+            {/* <Stat label="Full Purchases" value={unlockStats.full} icon={CheckCircle2} accent="text-green-500" /> */}
+            <SummaryCard
+              icon={CheckCircle2}
+              title="Full Purchases"
+              value={unlockStats.full} 
+              color="#017B51"
+            />
+
+            {/* <Stat label="Failed" value={unlockStats.failed} icon={XCircle} accent="text-destructive" /> */}
+            <SummaryCard
+              icon={XCircle}
+              title="Failed"
+              value={unlockStats.failed}
+              color="#b60909"
+            />
           </div>
 
           {unlockFailLogs.length > 0 && (
@@ -512,23 +601,94 @@ export default function AdminLiveMonitoring() {
         {/* SECTION 4 — Revenue */}
         <TabsContent value="revenue" className="space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Today Revenue" value={`৳${revenueStats.todayRev.toLocaleString()}`} icon={BarChart3} accent="text-green-500" />
-            <Stat label={`${range === "today" ? "Today" : range} Revenue`} value={`৳${revenueStats.totalRev.toLocaleString()}`} icon={TrendingUp} />
-            <Stat label="Ebook Revenue" value={`৳${revenueStats.ebookRev.toLocaleString()}`} icon={BarChart3} accent="text-primary" />
-            <Stat label="Audiobook Revenue" value={`৳${revenueStats.audioRev.toLocaleString()}`} icon={BarChart3} accent="text-primary" />
+
+            {/* <Stat label="Today Revenue" value={`৳${revenueStats.todayRev.toLocaleString()}`} icon={BarChart3} accent="text-green-500" /> */}
+
+            <SummaryCard
+              icon={BarChart3}
+              title="Today Revenue"
+              value={`৳${revenueStats.todayRev.toLocaleString()}`}
+              color="#017B51"
+            />
+
+            {/* <Stat label={`${range === "today" ? "Today" : range} Revenue`} value={`৳${revenueStats.totalRev.toLocaleString()}`} icon={TrendingUp} /> */}
+
+            <SummaryCard
+              icon={TrendingUp}
+              title={`${range === "today" ? "Today" : range} Revenue`}
+              value={`৳${revenueStats.totalRev.toLocaleString()}`}
+              color="#017B51"
+            />
+
+            {/* <Stat label="Ebook Revenue" value={`৳${revenueStats.ebookRev.toLocaleString()}`} icon={BarChart3} accent="text-primary" /> */}
+
+            <SummaryCard
+              icon={BarChart3}
+              title="Ebook Revenue"
+              value={`৳${revenueStats.ebookRev.toLocaleString()}`}
+              color="#017B51"
+            />
+
+            {/* <Stat label="Audiobook Revenue" value={`৳${revenueStats.audioRev.toLocaleString()}`} icon={BarChart3} accent="text-primary" /> */}
+
+            <SummaryCard
+              icon={BarChart3}
+              title="Audiobook Revenue"
+              value={`৳${revenueStats.audioRev.toLocaleString()}`}
+              color="#017B51"
+            />
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Stat label="Verified Orders" value={revenueStats.orderCount} icon={CheckCircle2} />
-            <Stat label="Ledger Entries" value={revenueStats.ledgerCount} icon={BarChart3} />
-            <Stat label="Missing Ledger" value={revenueStats.missingLedger} icon={revenueStats.missingLedger > 0 ? AlertTriangle : CheckCircle2} accent={revenueStats.missingLedger > 0 ? "text-destructive" : "text-green-500"} />
-            <Stat label="Duplicate Ledger" value={revenueStats.dupLedger} icon={revenueStats.dupLedger > 0 ? AlertTriangle : CheckCircle2} accent={revenueStats.dupLedger > 0 ? "text-amber-500" : "text-green-500"} />
+
+            {/* <Stat label="Verified Orders" value={revenueStats.orderCount} icon={CheckCircle2} /> */}
+
+            <SummaryCard
+              icon={CheckCircle2}
+              title="Verified Orders"
+              value={revenueStats.orderCount}
+              color="#F59F48"
+            />
+
+            {/* <Stat label="Ledger Entries" value={revenueStats.ledgerCount} icon={BarChart3} /> */}
+
+            <SummaryCard
+              icon={BarChart3}
+              title="Ledger Entries"
+              value={revenueStats.ledgerCount}
+              color="#F59F48"
+            />
+            {/* <Stat label="Missing Ledger" value={revenueStats.missingLedger} icon={revenueStats.missingLedger > 0 ? AlertTriangle : CheckCircle2} accent={revenueStats.missingLedger > 0 ? "text-destructive" : "text-green-500"} /> */}
+
+              <SummaryCard
+              icon={revenueStats.missingLedger > 0 ? AlertTriangle : CheckCircle2}
+              title="Missing Ledger"
+              value={revenueStats.missingLedger}
+              color={revenueStats.missingLedger > 0 ? "#c40808" : "#017B51"}
+            />
+
+            {/* <Stat label="Duplicate Ledger" value={revenueStats.dupLedger} icon={revenueStats.dupLedger > 0 ? AlertTriangle : CheckCircle2} accent={revenueStats.dupLedger > 0 ? "text-amber-500" : "text-green-500"} /> */}
+
+              <SummaryCard
+              icon={revenueStats.dupLedger > 0 ? AlertTriangle : CheckCircle2}
+              title="Duplicate Ledger"
+              value={revenueStats.dupLedger}
+              color={revenueStats.dupLedger > 0 ? "#F59F48" : "#017B51"}
+            />
+
           </div>
         </TabsContent>
 
         {/* SECTION 5 — Errors */}
         <TabsContent value="errors" className="space-y-4">
-          <Stat label="Total Errors" value={errorStats.total} icon={AlertOctagon} accent="text-destructive" />
+          {/* <Stat label="Total Errors" value={errorStats.total} icon={AlertOctagon} accent="text-destructive" /> */}
+
+          <SummaryCard
+              icon={AlertOctagon}
+              title="Total Errors"
+              value={errorStats.total}
+              color="#d10d0d"
+            />
 
           {errorStats.repeated.length > 0 && (
             <Card className="border-border/30">
@@ -549,12 +709,13 @@ export default function AdminLiveMonitoring() {
             </Card>
           )}
 
-          <Card className="border-border/30">
-            <CardHeader className="pb-2 pt-3 px-4"><CardTitle className="text-sm">Recent System Errors</CardTitle></CardHeader>
+          <Card className="">
+            <CardHeader className="pb-2 pt-3 px-4 bg-[#EF4444] rounded-t-md"><CardTitle className="text-sm">Recent System Errors</CardTitle></CardHeader>
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="bg-white text-black">
                 <TableHeader><TableRow><TableHead>Level</TableHead><TableHead>Module</TableHead><TableHead>Message</TableHead><TableHead>Count</TableHead><TableHead>Time</TableHead></TableRow></TableHeader>
                 <TableBody>
+                  
                   {errorStats.errors.slice(0, 30).map((l: any) => (
                     <TableRow key={l.id} className={l.level === "critical" ? "bg-destructive/5" : ""}>
                       <TableCell><Badge variant="destructive" className="text-[10px]">{l.level}</Badge></TableCell>
@@ -573,6 +734,16 @@ export default function AdminLiveMonitoring() {
           </Card>
         </TabsContent>
       </Tabs>
+
+       {/* Health Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <HealthBadge ok={paymentOk} label="Payments" count={paymentStats.failed} />
+        <HealthBadge ok={coinOk} label="Coins" />
+        <HealthBadge ok={unlockOk} label="Unlocks" count={unlockStats.failed} />
+        <HealthBadge ok={revenueOk} label="Revenue Sync" count={revenueStats.missingLedger + revenueStats.dupLedger} />
+        <HealthBadge ok={errorStats.total === 0} label="Errors" count={errorStats.total} />
+      </div>
+
     </div>
   );
 }
