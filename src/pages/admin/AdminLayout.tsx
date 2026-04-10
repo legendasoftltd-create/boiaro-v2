@@ -203,7 +203,7 @@ function SidebarNav({
               onClick={() => toggleGroup(gIdx)}
               className={cn(
                 "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold uppercase tracking-wider transition-colors",
-                hasActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                hasActive ? "text-primary" : "text-black hover:text-[#017B51]"
               )}
             >
               <group.icon className="h-3.5 w-3.5 shrink-0 text-black" />
