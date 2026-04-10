@@ -8,6 +8,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -16,6 +17,7 @@ import {
   Shield, Zap, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
+import SummaryCard from "@/components/admin/SummaryCard";
 
 interface RolloutConfig {
   current_percent: number;
@@ -123,7 +125,7 @@ export default function AdminR2Dashboard() {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">R2 CDN Rollout Dashboard</h1>
-        <div className="flex items-center gap-2 text-muted-foreground">
+        <div className="flex items-center gap-2 text-black">
           <RefreshCw className="w-4 h-4 animate-spin" /> Loading...
         </div>
       </div>
@@ -135,71 +137,123 @@ export default function AdminR2Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Cloud className="w-6 h-6 text-primary" />
+          <h1 className="text-2xl font-bold flex items-center gap-2 text-black">
             R2 CDN Rollout
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Control media delivery migration to Cloudflare R2
-          </p>
+          
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => triggerAutoAdjust.mutate()} disabled={triggerAutoAdjust.isPending}>
-            <Zap className="w-4 h-4 mr-1" />
-            Run Auto-Adjust
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
+          <Button className="bg-[#017B51] text-white hover:bg-[#017B51]/80 hover:text-white border-0" variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="w-4 h-4 mr-1" />
             Refresh
           </Button>
+          <Button className="bg-[#017B51] text-white hover:bg-[#017B51]/80 hover:text-white border-0"  variant="outline" size="sm" onClick={() => triggerAutoAdjust.mutate()} disabled={triggerAutoAdjust.isPending}>
+            <Zap className="w-4 h-4 mr-1" />
+             Auto-Adjust
+          </Button>
+          
         </div>
       </div>
 
       {/* Health Summary */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="border-border/30">
-          <CardContent className="p-3 flex items-center gap-3">
-            {overallErrorRate < 3 ? (
-              <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-5 h-5 text-destructive shrink-0 animate-pulse" />
-            )}
-            <div>
-              <p className="text-xs text-muted-foreground">Error Rate</p>
-              <p className="font-bold">{overallErrorRate.toFixed(1)}%</p>
+
+        <SummaryCard
+          icon={Shield}
+          title="Playback Success"
+          value={`${playbackSuccessRate.toFixed(1)}%`}
+          color="#017B51"
+        />
+
+        <SummaryCard
+          icon={Activity}
+          title="Total Requests"
+          value={fmtNum(totalRequestsToday)}
+          color="#017B51"
+        />
+
+        <SummaryCard
+          icon={overallErrorRate < 3 ? (
+            CheckCircle2
+          ) : (
+            AlertTriangle
+          )}
+          title="Error Rate"
+          value={`${overallErrorRate.toFixed(1)}%`}
+          color="#017B51"
+        />
+
+
+        <SummaryCard
+          icon={Server}
+          title="Fallbacks"
+          value={fmtNum(todayData?.fallback_count || 0)}
+          color="#017B51"
+        />
+      </div>
+
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Server className="w-4 h-4 text-green-500" /> Supabase Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span>Requests</span>
+              <span className="font-mono">{fmtNum(todayData?.supabase_requests || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Errors</span>
+              <span className="font-mono text-destructive">{fmtNum(todayData?.supabase_errors || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Error Rate</span>
+              <Badge variant={
+                (todayData?.error_rate_supabase || 0) > 3 ? "destructive" : "default"
+              }>
+                {todayData?.error_rate_supabase?.toFixed(2) || "0.00"}%
+              </Badge>
+            </div>
+            <div className="flex justify-between">
+              <span>Fallback Serves</span>
+              <span className="font-mono">{fmtNum(todayData?.fallback_count || 0)}</span>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Cloud className="w-4 h-4 text-blue-500" /> R2 Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span>Requests</span>
+              <span className="font-mono">{fmtNum(todayData?.r2_requests || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Errors</span>
+              <span className="font-mono text-destructive">{fmtNum(todayData?.r2_errors || 0)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Error Rate</span>
+              <Badge variant={
+                (todayData?.error_rate_r2 || 0) > 3 ? "destructive" :
+                  (todayData?.error_rate_r2 || 0) > 1 ? "secondary" : "default"
+              }>
+                {todayData?.error_rate_r2?.toFixed(2) || "0.00"}%
+              </Badge>
+            </div>
+            <div className="flex justify-between">
+              <span>Signed URL Failures</span>
+              <span className="font-mono">{fmtNum(todayData?.r2_signed_url_failures || 0)}</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-border/30">
-          <CardContent className="p-3 flex items-center gap-3">
-            <Activity className="w-5 h-5 text-primary shrink-0" />
-            <div>
-              <p className="text-xs text-muted-foreground">Total Requests</p>
-              <p className="font-bold">{fmtNum(totalRequestsToday)}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/30">
-          <CardContent className="p-3 flex items-center gap-3">
-            <Shield className="w-5 h-5 text-green-500 shrink-0" />
-            <div>
-              <p className="text-xs text-muted-foreground">Playback Success</p>
-              <p className="font-bold">{playbackSuccessRate.toFixed(1)}%</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/30">
-          <CardContent className="p-3 flex items-center gap-3">
-            <Server className="w-5 h-5 text-amber-500 shrink-0" />
-            <div>
-              <p className="text-xs text-muted-foreground">Fallbacks</p>
-              <p className="font-bold">{fmtNum(todayData?.fallback_count || 0)}</p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Circuit Breaker Alert */}
@@ -251,13 +305,13 @@ export default function AdminR2Dashboard() {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Badge variant={currentPercent === 0 ? "secondary" : currentPercent < 50 ? "outline" : "default"}>
+              <Badge className="text-[#017B51] " variant={currentPercent === 0 ? "secondary" : currentPercent < 50 ? "outline" : "default"}>
                 {currentPercent}% → R2
               </Badge>
-              <Badge variant="secondary">{100 - currentPercent}% → Supabase</Badge>
+              <Badge variant="outline" className="text-[#017B51] ">{100 - currentPercent}% → Supabase</Badge>
             </div>
             {pendingPercent !== null && pendingPercent !== config?.current_percent && (
-              <Button size="sm" onClick={() => updateConfig.mutate({ current_percent: pendingPercent })} disabled={updateConfig.isPending}>
+              <Button className="bg-[#017B51] text-white" size="sm" onClick={() => updateConfig.mutate({ current_percent: pendingPercent })} disabled={updateConfig.isPending}>
                 Apply
               </Button>
             )}
@@ -288,6 +342,7 @@ export default function AdminR2Dashboard() {
               </p>
             </div>
             <Switch
+              style={{backgroundColor:'#017B51'}}
               checked={config?.auto_scale_enabled || false}
               onCheckedChange={(v) => updateConfig.mutate({ auto_scale_enabled: v })}
             />
@@ -336,69 +391,7 @@ export default function AdminR2Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Today's Breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Cloud className="w-4 h-4 text-blue-500" /> R2 Performance
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span>Requests</span>
-              <span className="font-mono">{fmtNum(todayData?.r2_requests || 0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Errors</span>
-              <span className="font-mono text-destructive">{fmtNum(todayData?.r2_errors || 0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Error Rate</span>
-              <Badge variant={
-                (todayData?.error_rate_r2 || 0) > 3 ? "destructive" :
-                (todayData?.error_rate_r2 || 0) > 1 ? "secondary" : "default"
-              }>
-                {todayData?.error_rate_r2?.toFixed(2) || "0.00"}%
-              </Badge>
-            </div>
-            <div className="flex justify-between">
-              <span>Signed URL Failures</span>
-              <span className="font-mono">{fmtNum(todayData?.r2_signed_url_failures || 0)}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Server className="w-4 h-4 text-green-500" /> Supabase Performance
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span>Requests</span>
-              <span className="font-mono">{fmtNum(todayData?.supabase_requests || 0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Errors</span>
-              <span className="font-mono text-destructive">{fmtNum(todayData?.supabase_errors || 0)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Error Rate</span>
-              <Badge variant={
-                (todayData?.error_rate_supabase || 0) > 3 ? "destructive" : "default"
-              }>
-                {todayData?.error_rate_supabase?.toFixed(2) || "0.00"}%
-              </Badge>
-            </div>
-            <div className="flex justify-between">
-              <span>Fallback Serves</span>
-              <span className="font-mono">{fmtNum(todayData?.fallback_count || 0)}</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+    
 
       {/* 7-Day History */}
       <Card>
