@@ -9,7 +9,12 @@ import {
 import {
   Database, Activity, AlertTriangle, CheckCircle2, RefreshCw,
   HardDrive, Gauge, Lock, BarChart3, Zap,
+  Spade,
+  User,
+  Timer,
 } from "lucide-react";
+
+import SummaryCard from "@/components/admin/SummaryCard";
 
 interface PoolStats {
   max_connections: number;
@@ -88,22 +93,16 @@ export default function AdminDbHealth() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Database className="w-6 h-6 text-primary" />
-            Database Health
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Real-time performance monitoring • Last updated: {dataUpdatedAt ? new Date(dataUpdatedAt).toLocaleTimeString() : "—"}
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
+        <h1 className="text-2xl text-black font-bold flex items-center gap-2">
+          Database Health
+        </h1>
+        <Button className="bg-[#017B51] text-white hover:bg-[#017B51]/80 hover:text-white border-0" variant="outline" size="sm" onClick={() => refetch()}>
           <RefreshCw className="w-4 h-4 mr-1" /> Refresh
         </Button>
       </div>
 
       {/* Health Score */}
-      {health && (
+      {/* {health && (
         <Card className={healthBg(health.status)}>
           <CardContent className="p-4 flex items-center gap-4">
             {health.status === "healthy" ? (
@@ -123,7 +122,10 @@ export default function AdminDbHealth() {
             </div>
           </CardContent>
         </Card>
-      )}
+      )} */}
+
+
+
 
       {/* Connection Pressure Alert */}
       {connections && connections.active > 40 && (
@@ -133,7 +135,7 @@ export default function AdminDbHealth() {
             <div>
               <p className="font-semibold text-destructive">Connection Pressure Warning</p>
               <p className="text-sm text-muted-foreground">
-                {connections.active} active connections — approaching pool limit. 
+                {connections.active} active connections — approaching pool limit.
                 Consider enabling PgBouncer (transaction mode) immediately.
               </p>
             </div>
@@ -142,88 +144,127 @@ export default function AdminDbHealth() {
       )}
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <Card className="border-border/30">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Activity className="w-4 h-4 text-primary" />
-              <span className="text-xs text-muted-foreground">Connections</span>
-            </div>
-            <p className="text-2xl font-bold">{pool?.current_used ?? connections?.active ?? 0}</p>
-            <p className="text-[10px] text-muted-foreground">
-              {(pool?.saturation_pct ?? 0) > 70 ? "⚠ HIGH" : (pool?.saturation_pct ?? 0) > 40 ? "⚡ MODERATE" : "✓ OK"}
-              {" "}/ {pool?.max_connections ?? 90} max ({pool?.saturation_pct ?? 0}%)
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-3  gap-3">
+        {health && (
+          <SummaryCard
+            icon={health.status === "healthy" ? (
+              CheckCircle2
+            ) : health.status === "degraded" ? (
+              AlertTriangle
+            ) : (
+              AlertTriangle
+            )}
+            title={`${connections?.active ?? 0} active connections • ${slowQueries?.count ?? 0} slow queries • Cache hit ${((cache?.ratio ?? 0) * 100).toFixed(1)}%`}
+            value={`${health.score}/100 — ${health.status.toUpperCase()}`}
+            color="#EF4444"
+          />
+        )}
 
-        <Card className="border-border/30">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Gauge className="w-4 h-4 text-amber-500" />
-              <span className="text-xs text-muted-foreground">Slow Queries</span>
-            </div>
-            <p className="text-2xl font-bold">{slowQueries?.count ?? 0}</p>
-          </CardContent>
-        </Card>
 
-        <Card className="border-border/30">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Zap className="w-4 h-4 text-green-500" />
-              <span className="text-xs text-muted-foreground">Cache Hit</span>
-            </div>
-            <p className="text-2xl font-bold">{((cache?.ratio ?? 0) * 100).toFixed(1)}%</p>
-          </CardContent>
-        </Card>
+        <SummaryCard
+          icon={Activity}
+          title={`${(pool?.saturation_pct ?? 0) > 70
+            ? "HIGH"
+            : (pool?.saturation_pct ?? 0) > 40
+              ? " MODERATE"
+              : " OK"} / ${pool?.max_connections ?? 90} max (${pool?.saturation_pct ?? 0}%)`}
+          value={pool?.current_used ?? connections?.active ?? 0}
+          color="#017B51"
+        />
 
-        <Card className="border-border/30">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <HardDrive className="w-4 h-4 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">DB Size</span>
-            </div>
-            <p className="text-2xl font-bold">{dbSize?.size_pretty ?? "—"}</p>
-          </CardContent>
-        </Card>
+        
+        <SummaryCard
+          icon={Gauge}
+          title="Slow Queries"
+          value={slowQueries?.count ?? 0}
+          color="#017B51"
+        />
 
-        <Card className="border-border/30">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2 mb-1">
-              <Lock className="w-4 h-4 text-destructive" />
-              <span className="text-xs text-muted-foreground">Blocked Locks</span>
-            </div>
-            <p className="text-2xl font-bold">{locks.length}</p>
-          </CardContent>
-        </Card>
+        <SummaryCard
+          icon={Zap}
+          title="Cache Hit"
+          value={`${((cache?.ratio ?? 0) * 100).toFixed(1)}%`}
+          color="#017B51"
+        />
+
+        <SummaryCard
+          icon={HardDrive}
+          title="DB Size"
+          value={dbSize?.size_pretty ?? "—"}
+          color="#017B51"
+        />
+
+        <SummaryCard
+          icon={Lock}
+          title="Blocked Locks"
+          value={locks.length}
+          color="#017B51"
+        />
+
       </div>
 
       {/* Connection Pool Stats */}
       {pool && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Activity className="w-4 h-4 text-primary" /> Connection Pool
+            <CardTitle className="text-base flex items-center gap-2 mb-2">
+              Connection Pool
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-              <div className="p-3 rounded-lg bg-muted/50">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+
+              {/* <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-xs text-muted-foreground">Used / Max</p>
                 <p className="text-lg font-bold">{pool.current_used} / {pool.max_connections}</p>
-              </div>
-              <div className={`p-3 rounded-lg ${pool.saturation_pct > 70 ? "bg-destructive/10" : pool.saturation_pct > 50 ? "bg-amber-500/10" : "bg-green-500/10"}`}>
+              </div> */}
+
+              <SummaryCard
+                icon={User}
+                title="Used / Max"
+                value={`${pool.current_used} / ${pool.max_connections}`}
+                color="#017B51"
+              />
+
+              {/* <div className={`p-3 rounded-lg ${pool.saturation_pct > 70 ? "bg-destructive/10" : pool.saturation_pct > 50 ? "bg-amber-500/10" : "bg-green-500/10"}`}>
                 <p className="text-xs text-muted-foreground">Saturation</p>
                 <p className="text-lg font-bold">{pool.saturation_pct}%</p>
-              </div>
-              <div className="p-3 rounded-lg bg-muted/50">
+              </div> */}
+
+              <SummaryCard
+                icon={User}
+                title="Saturation"
+                value={`${pool.saturation_pct}%`}
+                color={` ${pool.saturation_pct > 70 ? "#017B51" : pool.saturation_pct > 50 ? "#F5005B" : "#017B51"}`}
+              />
+
+              {/* <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-xs text-muted-foreground">Active / Idle</p>
                 <p className="text-lg font-bold">{pool.active} / {pool.idle}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-muted/50">
+              </div> */}
+              <SummaryCard
+                  icon={Activity}
+                  title="Active / Idle"
+                  value={`${pool.active} / ${pool.idle}`}
+                  color="#017B51"
+                />
+
+              {/* <div className="p-3 rounded-lg bg-muted/50">
                 <p className="text-xs text-muted-foreground">Avg Idle Time</p>
                 <p className="text-lg font-bold">{pool.avg_idle_seconds != null ? `${Math.round(pool.avg_idle_seconds)}s` : "—"}</p>
-              </div>
+              </div> */}
+
+              <SummaryCard
+                  icon={Timer}
+                  title="Avg Idle Time"
+                  value={
+                      pool.avg_idle_seconds != null
+                        ? `${Math.round(pool.avg_idle_seconds)}s`
+                        : "—"
+                    }
+                  color="#017B51"
+                />
+
             </div>
             {pool.waiting > 0 && (
               <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 text-sm">
@@ -246,7 +287,7 @@ export default function AdminDbHealth() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" /> Active Slow Queries
+               Active Slow Queries
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -284,7 +325,7 @@ export default function AdminDbHealth() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" /> Table Statistics
+             Table Statistics
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -317,7 +358,7 @@ export default function AdminDbHealth() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="w-4 h-4" /> Index Usage (Top 20)
+             Index Usage (Top 20)
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -353,7 +394,7 @@ export default function AdminDbHealth() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Activity className="w-4 h-4" /> Active Connections ({connections!.active})
+               Active Connections ({connections!.active})
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -392,8 +433,20 @@ export default function AdminDbHealth() {
         <CardHeader>
           <CardTitle className="text-base">Connection Pooling Readiness</CardTitle>
         </CardHeader>
-        <CardContent className="text-sm space-y-4">
-          <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+        <CardContent className="text-sm space-y-4 ">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-3 rounded-lg bg-[#017B51]/80   text-white">
+            <p className="font-semibold mb-2 text-white">Migration Steps</p>
+            <ol className="text-xs space-y-1.5 list-decimal list-inside">
+              <li>Switch connection string to pooler port (6543 instead of 5432)</li>
+              <li>Set pool mode to <code className="bg-muted px-1 rounded">transaction</code></li>
+              <li>Set pool size to 15–25 per service</li>
+              <li>Test with staging traffic before production cutover</li>
+              <li>Monitor idle connection count — should drop 50–70%</li>
+            </ol>
+          </div>
+
+          <div className="p-3 rounded-lg bg-[#017B51]/80   text-white">
             <p className="font-semibold mb-2">PgBouncer Checklist (Transaction Mode)</p>
             <ul className="text-xs space-y-1.5">
               <li className="flex items-center gap-1.5">
@@ -427,16 +480,9 @@ export default function AdminDbHealth() {
             </ul>
           </div>
 
-          <div className="p-3 rounded-lg bg-amber-500/5 border border-amber-500/20">
-            <p className="font-semibold mb-2 text-amber-600">Migration Steps</p>
-            <ol className="text-xs space-y-1.5 list-decimal list-inside">
-              <li>Switch connection string to pooler port (6543 instead of 5432)</li>
-              <li>Set pool mode to <code className="bg-muted px-1 rounded">transaction</code></li>
-              <li>Set pool size to 15–25 per service</li>
-              <li>Test with staging traffic before production cutover</li>
-              <li>Monitor idle connection count — should drop 50–70%</li>
-            </ol>
           </div>
+
+          
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/20">
