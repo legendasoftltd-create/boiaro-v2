@@ -543,8 +543,8 @@ export default function AdminBooks() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Books</h1>
-        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Book</Button>
+        <h1 className="text-2xl font-bold text-black">Books</h1>
+        <Button className="" onClick={openNew}><Plus className="h-4 w-4 mr-2 text-white" />Add Book</Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -583,20 +583,20 @@ export default function AdminBooks() {
         </Select>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-lg shadow-lg border">
         <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Cover</TableHead>
-              <TableHead>Title</TableHead>
-              <TableHead>Author</TableHead>
-              <TableHead>Narrator</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Publisher</TableHead>
-              <TableHead>Formats</TableHead>
-              <TableHead>Featured</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
+          <TableHeader >
+            <>
+              <TableHead className="text-white">Cover</TableHead>
+              <TableHead className="text-white">Title</TableHead>
+              <TableHead className="text-white">Author</TableHead>
+              <TableHead className="text-white">Narrator</TableHead>
+              <TableHead className="text-white">Category</TableHead>
+              <TableHead className="text-white">Publisher</TableHead>
+              <TableHead className="text-white">Formats</TableHead>
+              <TableHead className="text-white">Featured</TableHead>
+              <TableHead className="text-right text-white">Actions</TableHead>
+            </>
           </TableHeader>
           <TableBody>
             {filteredBooks.map((b) => (
@@ -632,7 +632,7 @@ export default function AdminBooks() {
                   </div>
                 </TableCell>
                 <TableCell>{b.is_featured ? "✓" : "—"}</TableCell>
-                <TableCell className="text-right space-x-1">
+                <TableCell className="text-right space-x-1 gap-2 flex gap-2 justify-between">
                   <Button size="sm" variant="outline" onClick={() => openFormats(b.id)}>Formats</Button>
                   <Button size="sm" variant="ghost" onClick={() => openEdit(b)}><Pencil className="h-3 w-3" /></Button>
                   <Button size="sm" variant="ghost" onClick={() => deleteBook(b.id)}><Trash2 className="h-3 w-3" /></Button>
