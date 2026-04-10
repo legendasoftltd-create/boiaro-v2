@@ -1,0 +1,27 @@
+name: Remote Deploy
+
+on:
+  push:
+    branches: [ main ]  # Trigger only on pushes to main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Execute Remote Commands via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            cd /var/www/html/boiarov2.blocknots.com/boiaro-v2
+            git pull origin main
+            # Add your build/restart commands below, for example:
+            bun install
+            bun run build
+            pm2 restart boiaro-new-app
