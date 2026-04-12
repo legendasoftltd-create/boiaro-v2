@@ -88,7 +88,7 @@ const Index = () => {
       <main className="min-h-screen bg-background">
         <Navbar />
         <Hero />
-        <PremiumRadixSlider />
+        {/* <PremiumRadixSlider /> */}
         <div className="transition-opacity duration-200 ease-out">
           {orderedKeys.map(key => (
             <LazySection key={key} sectionKey={key} books={books} popularAudiobooks={popularAudiobooks} />
