@@ -39,8 +39,8 @@ export default function AdminReviews() {
           
         </div>
         <div className="flex gap-2 text-sm">
-          <Badge variant="outline">{reviews.filter(r => (r.status || "approved") === "approved").length} Visible</Badge>
-          <Badge variant="outline" className="text-muted-foreground">{reviews.filter(r => r.status === "hidden").length} Hidden</Badge>
+          <Badge variant="outline" className="text-black">{reviews.filter(r => (r.status || "approved") === "approved").length} Visible</Badge>
+          <Badge variant="outline" className="text-black">{reviews.filter(r => r.status === "hidden").length} Hidden</Badge>
         </div>
       </div>
       <div className="border">
