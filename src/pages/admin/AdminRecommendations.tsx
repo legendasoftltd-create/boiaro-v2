@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sparkles, Save, TrendingUp, BookOpen, Eye, BarChart3, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import SummaryCard from '@/components/admin/SummaryCard';
 
 interface RecommendationSetting {
   key: string;
@@ -138,25 +139,35 @@ export default function AdminRecommendations() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black">
-           Recommendations & AI
+          Recommendations
         </h1>
-        
+
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map(s => (
-          <Card key={s.label} className="border-border/30">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-secondary/60">
-                <s.icon className={`w-5 h-5 ${s.color}`} />
-              </div>
-              <div>
-                <p className="text-xl font-bold">{s.value.toLocaleString()}</p>
-                <p className="text-[11px] text-muted-foreground">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
+          <>
+            {/* <Card key={s.label} className="border-border/30">
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-secondary/60">
+                  <s.icon className={`w-5 h-5 ${s.color}`} />
+                </div>
+                <div>
+                  <p className="text-xl font-bold">{s.value.toLocaleString()}</p>
+                  <p className="text-[11px] text-muted-foreground">{s.label}</p>
+                </div>
+              </CardContent>
+            </Card> */}
+
+            <SummaryCard
+              key={s.label}
+              icon={s.icon}
+              title={s.label}
+              value={s.value.toLocaleString()}
+              color="#017B51"
+            />
+          </>
         ))}
       </div>
 
