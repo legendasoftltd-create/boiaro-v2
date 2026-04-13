@@ -119,23 +119,23 @@ export default function AdminUserPermissions() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <Shield className="w-6 h-6 text-primary" /> Creator Permissions
+      <h1 className="text-2xl font-bold  text-black">
+        Creator Permissions
       </h1>
 
       <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
         <Input placeholder="Search creators..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Roles</TableHead>
-              <TableHead>Overrides</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-white">Name</TableHead>
+              <TableHead className="text-white">Roles</TableHead>
+              <TableHead className="text-white">Overrides</TableHead>
+              <TableHead className="text-right text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

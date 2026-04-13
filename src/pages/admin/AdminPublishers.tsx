@@ -109,7 +109,7 @@ export default function AdminPublishers() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Publishers</h1>
+        <h1 className="text-2xl font-bold text-black">Publishers</h1>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Publisher</Button>
       </div>
       <div className="mb-4">
@@ -117,26 +117,26 @@ export default function AdminPublishers() {
       </div>
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border/40 mb-4">
-          <span className="text-sm font-medium">{selected.size} selected</span>
+        <div className="flex items-center gap-3 p-3 rounded-lg  border border-border/40 mb-4">
+          <span className="text-sm font-medium text-black">{selected.size} selected</span>
           <Button size="sm" variant="outline" onClick={() => bulkSetStatus("active")}>Activate All</Button>
           <Button size="sm" variant="destructive" onClick={() => bulkSetStatus("inactive")}>Deactivate All</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
       )}
 
-      <div className="rounded-lg border">
+      <div className="">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selected.size === filtered.length} onCheckedChange={() => selected.size === filtered.length ? setSelected(new Set()) : setSelected(new Set(filtered.map(p => p.id)))} /></TableHead>
               <TableHead className="w-12"></TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Priority</TableHead>
-              <TableHead>Verified</TableHead>
-              <TableHead>Account</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-white">Name</TableHead>
+              <TableHead className="text-white">Priority</TableHead>
+              <TableHead className="text-white">Verified</TableHead>
+              <TableHead className="text-white">Account</TableHead>
+              <TableHead className="text-white">Status</TableHead>
+              <TableHead className="text-right text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
