@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Gift, Plus, Pencil, Trash2, ActivitySquare } from "lucide-react";
+import { Gift, Plus, Pencil, Trash2, ActivitySquare, UserPen } from "lucide-react";
 import SummaryCard from '@/components/admin/SummaryCard';
 
 
@@ -100,7 +100,7 @@ export default function AdminFreeShipping() {
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <SummaryCard
-          icon={``}
+          icon={UserPen}
           title={"Total Campaigns"}
           value={campaigns.length}
           color="#017B51"

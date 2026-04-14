@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Ticket, Plus, Pencil, Trash2, Search } from "lucide-react";
+import SummaryCard from '@/components/admin/SummaryCard';
 
 interface Coupon {
   id: string;
@@ -108,7 +109,7 @@ export default function AdminCoupons() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Coupons</h1>
+        <h1 className="text-2xl font-bold text-black">Coupons</h1>
         <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" /> Add Coupon</Button>
       </div>
 
@@ -119,21 +120,21 @@ export default function AdminCoupons() {
           { label: "Total Uses", value: totalUsed },
           { label: "Inactive", value: coupons.length - active },
         ].map(c => (
-          <Card key={c.label} className="bg-card border-border">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"><Ticket className="w-5 h-5 text-primary" /></div>
-              <div><p className="text-2xl font-bold">{c.value}</p><p className="text-xs text-muted-foreground">{c.label}</p></div>
-            </CardContent>
-          </Card>
+          <SummaryCard
+            icon={Ticket}
+            title={c.label}
+            value={c.value}
+            color="#017B51"
+          />
         ))}
       </div>
 
       <div className="relative mb-4 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder="Search coupons..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
+        <Input placeholder="Search coupons..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 " />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="">
         <Table>
           <TableHeader>
             <TableRow>
