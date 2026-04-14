@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Trophy, Award, Flame, Target, Plus, Edit, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import SummaryCard from '@/components/admin/SummaryCard';
 
 interface BadgeDef {
   id: string; key: string; title: string; description: string | null;
@@ -82,41 +83,50 @@ export default function AdminGamification() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold flex items-center gap-2"><Trophy className="w-5 h-5 text-primary" /> Gamification</h1>
+      <h1 className="text-xl font-bold flex items-center gap-2 text-black"> Gamification</h1>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="border-border/30"><CardContent className="p-4 text-center">
-          <Flame className="w-5 h-5 mx-auto text-orange-500 mb-1" />
-          <p className="text-xl font-bold">{stats.totalStreakUsers}</p>
-          <p className="text-[11px] text-muted-foreground">Streak Users</p>
-        </CardContent></Card>
-        <Card className="border-border/30"><CardContent className="p-4 text-center">
-          <Award className="w-5 h-5 mx-auto text-primary mb-1" />
-          <p className="text-xl font-bold">{stats.totalBadgesEarned}</p>
-          <p className="text-[11px] text-muted-foreground">Badges Earned</p>
-        </CardContent></Card>
-        <Card className="border-border/30"><CardContent className="p-4 text-center">
-          <Zap className="w-5 h-5 mx-auto text-yellow-500 mb-1" />
-          <p className="text-xl font-bold">{stats.totalPoints}</p>
-          <p className="text-[11px] text-muted-foreground">Total Points</p>
-        </CardContent></Card>
-        <Card className="border-border/30"><CardContent className="p-4 text-center">
-          <Target className="w-5 h-5 mx-auto text-emerald-500 mb-1" />
-          <p className="text-xl font-bold">{stats.activeGoals}</p>
-          <p className="text-[11px] text-muted-foreground">Active Goals</p>
-        </CardContent></Card>
+
+        <SummaryCard
+          icon={Flame}
+          title={"Streak Users"}
+          value={stats.totalStreakUsers}
+          color="#017B51"
+        />
+
+        <SummaryCard
+          icon={Award}
+          title={"Badges Earned"}
+          value={stats.totalBadgesEarned}
+          color="#017B51"
+        />
+        
+        <SummaryCard
+          icon={Zap}
+          title={"Total Points"}
+          value={stats.totalPoints}
+          color="#017B51"
+        />
+
+
+        <SummaryCard
+          icon={Target}
+          title={"Active Goals"}
+          value={stats.activeGoals}
+          color="#017B51"
+        />
       </div>
 
       <Tabs defaultValue="badges">
-        <TabsList className="bg-secondary/40 border border-border/30">
+        <TabsList className="flex items-center justify-center gap-5 w-full">
           <TabsTrigger value="badges" className="text-[13px]">Badge Management</TabsTrigger>
           <TabsTrigger value="settings" className="text-[13px]">Settings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="badges" className="mt-4">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-base font-semibold">Badge Definitions</h2>
+            <h2 className="text-base font-semibold text-black">Badge Definitions</h2>
             <Dialog open={showForm} onOpenChange={setShowForm}>
               <DialogTrigger asChild>
                 <Button size="sm" onClick={openNew} className="text-[13px] gap-1"><Plus className="w-3.5 h-3.5" /> Add Badge</Button>
@@ -160,15 +170,15 @@ export default function AdminGamification() {
 
           <div className="space-y-2">
             {badges.map(b => (
-              <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/20 bg-secondary/10">
-                <Award className={`w-5 h-5 shrink-0 ${b.is_active ? "text-primary" : "text-muted-foreground"}`} />
+              <div key={b.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/20 bg-[#017B51]">
+                <Award className={`w-5 h-5 shrink-0 ${b.is_active ? "text-primary" : ""}`} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-medium">{b.title}</span>
                     <Badge variant="outline" className="text-[10px]">{b.category}</Badge>
                     <Badge variant="outline" className="text-[10px]">{b.condition_type}: {b.condition_value}</Badge>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">{b.description} · Reward: {b.coin_reward} coins</p>
+                  <p className="text-[11px] ">{b.description} · Reward: {b.coin_reward} coins</p>
                 </div>
                 <Switch checked={b.is_active ?? true} onCheckedChange={v => toggleBadge(b.id, v)} />
                 <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(b)}><Edit className="w-3.5 h-3.5" /></Button>

@@ -65,10 +65,9 @@ export default function AdminAdPlacements() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-serif font-bold flex items-center gap-2"><LayoutGrid className="w-6 h-6 text-primary" /> Ad Placements</h1>
-        <p className="text-muted-foreground text-sm">Control where ads appear across the platform</p>
+        <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black"><LayoutGrid className="w-6 h-6 text-primary" /> Ad Placements</h1>
       </div>
-      <Card className="border-border/30">
+      <Card className="">
         <Table>
           <TableHeader>
             <TableRow>
@@ -83,14 +82,14 @@ export default function AdminAdPlacements() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-black">Loading...</TableCell></TableRow>
             ) : placements.map(p => (
               <TableRow key={p.id}>
                 <TableCell>
                   <p className="font-medium text-sm">{p.label}</p>
-                  <p className="text-[11px] text-muted-foreground font-mono">{p.placement_key}</p>
+                  <p className="text-[11px] text-black font-mono">{p.placement_key}</p>
                 </TableCell>
-                <TableCell><Badge variant="secondary">{p.ad_type}</Badge></TableCell>
+                <TableCell><Badge variant="secondary" className="bg-[#017B51]">{p.ad_type}</Badge></TableCell>
                 <TableCell className="text-sm">{p.frequency}</TableCell>
                 <TableCell className="text-sm">{p.device_visibility}</TableCell>
                 <TableCell className="text-sm">{p.display_priority}</TableCell>

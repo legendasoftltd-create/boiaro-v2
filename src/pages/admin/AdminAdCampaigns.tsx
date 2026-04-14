@@ -83,13 +83,12 @@ export default function AdminAdCampaigns() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-serif font-bold flex items-center gap-2"><Megaphone className="w-6 h-6 text-primary" /> Ad Campaigns</h1>
-          <p className="text-muted-foreground text-sm">Manage advertising campaigns</p>
+          <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black"> Ad Campaigns</h1>
         </div>
         <Button onClick={openNew}><Plus className="w-4 h-4 mr-1.5" />New Campaign</Button>
       </div>
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
         <Input placeholder="Search campaigns..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
       <Card className="border-border/30">

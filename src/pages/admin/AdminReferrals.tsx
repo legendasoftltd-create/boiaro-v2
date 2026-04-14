@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import SummaryCard from '@/components/admin/SummaryCard';
 
 interface Referral {
   id: string;
@@ -137,8 +138,7 @@ export default function AdminReferrals() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-foreground">Referral System</h1>
-          <p className="text-sm text-muted-foreground">Manage referrals, rewards, and settings</p>
+          <h1 className="text-2xl font-bold font-serif text-black">Referral System</h1>
         </div>
         <Badge variant={settings.referral_enabled ? "default" : "secondary"}>
           {settings.referral_enabled ? "Active" : "Disabled"}
@@ -148,23 +148,29 @@ export default function AdminReferrals() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { icon: Users, label: "Total Referrals", value: stats.total, color: "text-primary" },
-          { icon: TrendingUp, label: "Completed", value: stats.completed, color: "text-emerald-500" },
-          { icon: Coins, label: "Coins Distributed", value: stats.coinsDistributed, color: "text-amber-500" },
-          { icon: Trophy, label: "Pending", value: stats.pending, color: "text-blue-500" },
+          { icon: Users, label: "Total Referrals", value: stats.total, color: "#074fad" },
+          { icon: TrendingUp, label: "Completed", value: stats.completed, color: "#017B51" },
+          { icon: Coins, label: "Coins Distributed", value: stats.coinsDistributed, color: "#017B51" },
+          { icon: Trophy, label: "Pending", value: stats.pending, color: "rgb(238, 42, 7)" },
         ].map((s) => (
-          <Card key={s.label} className="bg-card border-border">
-            <CardContent className="p-4">
-              <s.icon className={`w-5 h-5 ${s.color} mb-2`} />
-              <p className="text-xs text-muted-foreground">{s.label}</p>
-              <p className="text-xl font-bold text-foreground">{s.value}</p>
-            </CardContent>
-          </Card>
+          // <Card key={s.label} className="bg-card border-border">
+          //   <CardContent className="p-4">
+          //     <s.icon className={`w-5 h-5 ${s.color} mb-2`} />
+          //     <p className="text-xs text-muted-foreground">{s.label}</p>
+          //     <p className="text-xl font-bold text-foreground">{s.value}</p>
+          //   </CardContent>
+          // </Card>
+          <SummaryCard
+          icon={s.icon}
+          title={s.label}
+          value={s.value}
+          color={s.color}
+        />
         ))}
       </div>
 
       <Tabs defaultValue="referrals">
-        <TabsList>
+        <TabsList className="w-full flex items-center justify-center gap-5">
           <TabsTrigger value="referrals">All Referrals</TabsTrigger>
           <TabsTrigger value="leaderboard">Top Referrers</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -197,7 +203,7 @@ export default function AdminReferrals() {
             </Button>
           </div>
 
-          <Card className="bg-card border-border">
+          <Card className="">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -213,14 +219,14 @@ export default function AdminReferrals() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-black py-8">
                       No referrals found
                     </TableCell>
                   </TableRow>
                 ) : (
                   filtered.map((r) => (
                     <TableRow key={r.id}>
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="text-xs text-black">
                         {new Date(r.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell className="font-mono text-xs">{r.referral_code}</TableCell>
@@ -249,7 +255,7 @@ export default function AdminReferrals() {
         </TabsContent>
 
         <TabsContent value="leaderboard" className="mt-4">
-          <Card className="bg-card border-border">
+          <Card className="">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-amber-500" /> Top Referrers
@@ -267,7 +273,7 @@ export default function AdminReferrals() {
               <TableBody>
                 {topReferrers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={4} className="text-center text-black py-8">
                       No data yet
                     </TableCell>
                   </TableRow>
@@ -291,7 +297,7 @@ export default function AdminReferrals() {
         </TabsContent>
 
         <TabsContent value="settings" className="space-y-4 mt-4">
-          <Card className="bg-card border-border">
+          <Card className=" border-border">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Settings className="w-5 h-5" /> Referral Settings
@@ -300,8 +306,8 @@ export default function AdminReferrals() {
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Enable Referral System</p>
-                  <p className="text-xs text-muted-foreground">Users can invite friends and earn coins</p>
+                  <p className="text-sm font-medium text-">Enable Referral System</p>
+                  <p className="text-xs text-muted-">Users can invite friends and earn coins</p>
                 </div>
                 <Switch
                   checked={settings.referral_enabled}
@@ -311,7 +317,7 @@ export default function AdminReferrals() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-foreground">Signup Reward (coins)</label>
+                  <label className="text-sm font-medium ">Signup Reward (coins)</label>
                   <Input
                     type="number"
                     min={0}
@@ -321,7 +327,7 @@ export default function AdminReferrals() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">Referred User Bonus (coins)</label>
+                  <label className="text-sm font-mediu">Referred User Bonus (coins)</label>
                   <Input
                     type="number"
                     min={0}
@@ -331,7 +337,7 @@ export default function AdminReferrals() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">First Read Reward (coins)</label>
+                  <label className="text-sm font-mediu">First Read Reward (coins)</label>
                   <Input
                     type="number"
                     min={0}
@@ -341,7 +347,7 @@ export default function AdminReferrals() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">First Unlock Reward (coins)</label>
+                  <label className="text-sm font-mediu">First Unlock Reward (coins)</label>
                   <Input
                     type="number"
                     min={0}
@@ -351,7 +357,7 @@ export default function AdminReferrals() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">Max Referrals Per Day</label>
+                  <label className="text-sm font-mediu">Max Referrals Per Day</label>
                   <Input
                     type="number"
                     min={1}
@@ -361,7 +367,7 @@ export default function AdminReferrals() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">Max Reward Coins Per Day</label>
+                  <label className="text-sm font-medium">Max Reward Coins Per Day</label>
                   <Input
                     type="number"
                     min={1}
