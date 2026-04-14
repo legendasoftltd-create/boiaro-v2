@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Crown, Plus, Pencil, Trash2, Star, Search } from "lucide-react";
+import SummaryCard from '@/components/admin/SummaryCard';
 
 interface Plan {
   id: string;
@@ -120,7 +121,7 @@ export default function AdminSubscriptionPlans() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Subscription Plans</h1>
+        <h1 className="text-2xl font-bold text-black">Subscription Plans</h1>
         <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" /> Add Plan</Button>
       </div>
 
@@ -131,26 +132,32 @@ export default function AdminSubscriptionPlans() {
           { label: "Featured", value: featured },
           { label: "Inactive", value: plans.length - active },
         ].map(c => (
-          <Card key={c.label} className="bg-card border-border">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Crown className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{c.value}</p>
-                <p className="text-xs text-muted-foreground">{c.label}</p>
-              </div>
-            </CardContent>
-          </Card>
+          // <Card key={c.label} className="bg-card border-border">
+          //   <CardContent className="p-4 flex items-center gap-3">
+          //     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+          //       <Crown className="w-5 h-5 text-primary" />
+          //     </div>
+          //     <div>
+          //       <p className="text-2xl font-bold">{c.value}</p>
+          //       <p className="text-xs text-muted-foreground">{c.label}</p>
+          //     </div>
+          //   </CardContent>
+          // </Card>
+          <SummaryCard
+          icon={Crown}
+          title={c.label}
+          value={c.value}
+          color="#017B51"
+        />
         ))}
       </div>
 
       <div className="relative mb-4 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder="Search plans..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
+        <Input placeholder="Search plans..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 " />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="">
         <Table>
           <TableHeader>
             <TableRow>
@@ -170,10 +177,10 @@ export default function AdminSubscriptionPlans() {
                 <TableCell>
                   <div>
                     <p className="font-medium text-sm">{p.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{p.code}</p>
+                    <p className="text-xs text-black font-mono">{p.code}</p>
                   </div>
                 </TableCell>
-                <TableCell><Badge variant="outline" className="capitalize">{billingLabels[p.billing_type] || p.billing_type}</Badge></TableCell>
+                <TableCell><Badge variant="outline" className="capitalize text-black">{billingLabels[p.billing_type] || p.billing_type}</Badge></TableCell>
                 <TableCell className="text-sm">{accessLabels[p.access_type] || p.access_type}</TableCell>
                 <TableCell className="font-semibold">৳{p.price}</TableCell>
                 <TableCell className="text-sm">{p.trial_days > 0 ? `${p.trial_days} days` : "—"}</TableCell>

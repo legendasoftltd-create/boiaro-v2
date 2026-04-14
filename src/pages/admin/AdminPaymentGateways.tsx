@@ -118,14 +118,12 @@ export default function AdminPaymentGateways() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Settings className="w-6 h-6 text-primary" /> Payment Gateways
+          <h1 className="text-2xl font-bold  text-black">
+             Payment Gateways
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Configure payment methods available at checkout
-          </p>
+         
         </div>
-        <Badge variant="outline" className="text-xs">
+        <Badge variant="outline" className="text-xs text-black">
           {gateways.filter(g => g.is_enabled).length} active
         </Badge>
       </div>
@@ -137,25 +135,25 @@ export default function AdminPaymentGateways() {
           const fields = gatewayConfigFields[gw.gateway_key] || [];
 
           return (
-            <Card key={gw.id} className={`border transition-colors ${gw.is_enabled ? "border-primary/30" : "border-border"}`}>
-              <CardHeader className="p-4 pb-0">
+            <Card key={gw.id} className={`border transition-colors  ${gw.is_enabled ? "border-primary/30" : "border-primary/30"}`}>
+              <CardHeader className="p-4 pb-0 py-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${gw.is_enabled ? "bg-primary/10" : "bg-muted"}`}>
-                      <Icon className={`w-5 h-5 ${gw.is_enabled ? "text-primary" : "text-muted-foreground"}`} />
+                    <div className={`w-10 h-10  rounded-lg flex items-center justify-center ${gw.is_enabled ? "bg-white" : "bg-[#EF4444]"}`}>
+                      <Icon className={`w-5 h-5 ${gw.is_enabled ? "text-primary" : "text-white"}`} />
                     </div>
                     <div>
                       <CardTitle className="text-sm font-semibold">{gw.label}</CardTitle>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Badge className={`text-[10px] ${gw.is_enabled ? "bg-emerald-500/20 text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+                        <Badge className={`text-[10px] ${gw.is_enabled ? "bg-white text-green-500" : "bg-white text-black"}`}>
                           {gw.is_enabled ? "Enabled" : "Disabled"}
                         </Badge>
                         {hasMode(gw.gateway_key) && (
-                          <Badge variant="outline" className="text-[10px]">
+                          <Badge variant="outline" className="text-[10px] text-white border border-white">
                             {gw.mode === "live" ? "Live" : "Test"}
                           </Badge>
                         )}
-                        <span className="text-[10px] text-muted-foreground">Priority: {gw.sort_priority}</span>
+                        <span className="text-[10px] text-white">Priority: {gw.sort_priority}</span>
                       </div>
                     </div>
                   </div>
@@ -176,7 +174,7 @@ export default function AdminPaymentGateways() {
                       <Input
                         value={gw.label}
                         onChange={e => updateField(gw.id, "label", e.target.value)}
-                        className="mt-1 bg-secondary"
+                        className="mt-1 "
                       />
                     </div>
                     <div>
@@ -185,14 +183,14 @@ export default function AdminPaymentGateways() {
                         type="number"
                         value={gw.sort_priority}
                         onChange={e => updateField(gw.id, "sort_priority", parseInt(e.target.value) || 0)}
-                        className="mt-1 bg-secondary"
+                        className="mt-1 "
                       />
                     </div>
                     {hasMode(gw.gateway_key) && (
                       <div>
                         <Label className="text-xs">Mode</Label>
                         <Select value={gw.mode} onValueChange={v => updateField(gw.id, "mode", v)}>
-                          <SelectTrigger className="mt-1 bg-secondary">
+                          <SelectTrigger className="mt-1 ">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -215,7 +213,7 @@ export default function AdminPaymentGateways() {
                               {f.secret && (
                                 <button
                                   onClick={() => setShowSecrets(prev => ({ ...prev, [`${gw.id}-${f.key}`]: !prev[`${gw.id}-${f.key}`] }))}
-                                  className="text-muted-foreground hover:text-foreground"
+                                  className=""
                                 >
                                   {showSecrets[`${gw.id}-${f.key}`] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                 </button>
@@ -226,7 +224,7 @@ export default function AdminPaymentGateways() {
                               value={gw.config[f.key] || ""}
                               onChange={e => updateConfig(gw.id, f.key, e.target.value)}
                               placeholder={f.placeholder}
-                              className="mt-1 bg-secondary font-mono text-xs"
+                              className="mt-1  font-mono text-xs"
                             />
                           </div>
                         ))}
@@ -240,7 +238,7 @@ export default function AdminPaymentGateways() {
                       value={gw.notes || ""}
                       onChange={e => updateField(gw.id, "notes", e.target.value)}
                       placeholder="Internal notes..."
-                      className="mt-1 bg-secondary text-xs"
+                      className="mt-1  text-xs"
                       rows={2}
                     />
                   </div>

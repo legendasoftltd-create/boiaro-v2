@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Mail, Send, Settings, CheckCircle, Info } from "lucide-react";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 export default function AdminEmailSettings() {
   const [testEmail, setTestEmail] = useState("");
@@ -39,21 +41,20 @@ export default function AdminEmailSettings() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-serif text-primary">Email Settings</h1>
-        <p className="text-sm text-muted-foreground">Manage email delivery configuration</p>
+        <h1 className="text-2xl font-bold font-serif text-black">Email Settings</h1>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Email Status */}
-        <Card className="bg-card/60 border-border/40">
+        <Card className=" border-border/40">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Settings className="h-5 w-5 text-primary" />
               Email Delivery Status
             </CardTitle>
-            <CardDescription>Lovable Cloud built-in email system</CardDescription>
+            <CardDescription className="text-white">Lovable Cloud built-in email system</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 ">
             <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
               <div className="flex items-center gap-2">
                 <Mail className="h-4 w-4 text-muted-foreground" />
@@ -95,9 +96,9 @@ export default function AdminEmailSettings() {
               <Mail className="h-5 w-5 text-primary" />
               Transactional Emails
             </CardTitle>
-            <CardDescription>Automated emails for system events</CardDescription>
+            <CardDescription className="text-white">Automated emails for system events</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 bg-white">
             {[
               { label: "Welcome Email", desc: "Sent on new signup", enabled: true },
               { label: "Order Confirmation", desc: "Sent after placing order", enabled: true },
@@ -109,7 +110,7 @@ export default function AdminEmailSettings() {
               <div key={item.label} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/20 transition-colors">
                 <div>
                   <p className="text-sm font-medium">{item.label}</p>
-                  <p className="text-xs text-muted-foreground">{item.desc}</p>
+                  <p className="text-xs text-black">{item.desc}</p>
                 </div>
                 <Switch checked={item.enabled} disabled />
               </div>
@@ -125,9 +126,9 @@ export default function AdminEmailSettings() {
             <Send className="h-5 w-5 text-primary" />
             Send Test Email
           </CardTitle>
-          <CardDescription>Test email delivery</CardDescription>
+          <CardDescription className="text-white">Test email delivery</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="bg-white">
           <div className="flex gap-3 max-w-md">
             <Input
               type="email"

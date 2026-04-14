@@ -19,6 +19,8 @@ import {
   type RevenueOrder, type RevenuePeriod, type OrderItemWithCost,
 } from "@/hooks/useUnifiedRevenue";
 import { toast } from "sonner";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 const COLORS = ["hsl(var(--primary))", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"];
 const chartTooltipStyle = { background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 };
@@ -255,13 +257,13 @@ export default function AdminInvestorReport() {
   return (
     <div className={`space-y-6 ${pm ? "max-w-5xl mx-auto" : ""}`}>
       {/* ── Header ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
+      <div className="flex items-center justify-between flex-wrap gap-3 print:hidden ">
         <div>
-          <h1 className={`font-bold flex items-center gap-2 ${pm ? "text-3xl" : "text-2xl"}`}>
-            <BarChart3 className="w-6 h-6 text-primary" /> {pm ? "BoiAro — Financial Summary" : "Investor Summary"}
+          <h1 className={`font-bold flex items-center gap-2 text-black ${pm ? "text-3xl" : "text-2xl"}`}>
+             {pm ? "BoiAro — Financial Summary" : "Investor Summary"}
           </h1>
-          {!pm && <p className="text-sm text-muted-foreground">Presentation-ready financial overview</p>}
-          {pm && <p className="text-sm text-muted-foreground mt-1">Period: {periodLabel} · {reportDate}</p>}
+          {!pm && <p className="text-sm text-black">Presentation-ready financial overview</p>}
+          {pm && <p className="text-sm text-black mt-1">Period: {periodLabel} · {reportDate}</p>}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -293,28 +295,81 @@ export default function AdminInvestorReport() {
       {/* ── Print Header ── */}
       <div className="hidden print:block mb-6">
         <h1 className="text-3xl font-bold">BoiAro — Financial Summary</h1>
-        <p className="text-sm text-muted-foreground mt-1">Period: {periodLabel} · Generated: {reportDate}</p>
+        <p className="text-sm text-black mt-1">Period: {periodLabel} · Generated: {reportDate}</p>
         <div className="border-b-2 border-primary mt-3" />
       </div>
 
       {/* ── Hero KPIs ── */}
       <div className={`grid gap-3 print:grid-cols-4 print:gap-2 ${pm ? "grid-cols-4" : "grid-cols-2 md:grid-cols-4"}`}>
-        <KPICard label="Verified Order Revenue" value={`৳${totalRevenue.toLocaleString()}`} sub="From verified paid orders only" icon={TrendingUp} variant="primary" large={pm} />
-        <KPICard label="Net Profit" value={`৳${netProfit.toLocaleString()}`} sub={`${profitMargin.toFixed(1)}% margin`} icon={netProfit >= 0 ? TrendingUp : TrendingDown} variant={netProfit >= 0 ? "success" : "danger"} large={pm} />
-        <KPICard label="Orders" value={totalOrderCount.toLocaleString()} sub={`AOV ৳${avgOrderValue.toFixed(0)}`} icon={ShoppingCart} variant="info" large={pm} />
-        <KPICard label="Customers" value={uniqueCustomers.toLocaleString()} sub={`of ${totalUsers.toLocaleString()} users`} icon={Users} variant="amber" large={pm} />
+
+        {/* <KPICard label="Verified Order Revenue" value={`৳${totalRevenue.toLocaleString()}`} sub="From verified paid orders only" icon={TrendingUp} variant="primary" large={pm} /> */}
+
+        <SummaryCard
+              icon={TrendingUp}
+              title="Verified paid Order Revenue"
+              value={totalRevenue.toLocaleString()}
+              color="#017B51"
+            />
+        
+        {/* <KPICard label="Net Profit" value={`৳${netProfit.toLocaleString()}`} sub={`${profitMargin.toFixed(1)}% margin`} icon={netProfit >= 0 ? TrendingUp : TrendingDown} variant={netProfit >= 0 ? "success" : "danger"} large={pm} /> */}
+
+          <SummaryCard
+              icon={TrendingUp}
+              title={`${profitMargin.toFixed(1)}% Profit Margin`}
+              value={netProfit.toLocaleString()}
+              color="#017B51"
+            />
+
+        {/* <KPICard label="Orders" value={totalOrderCount.toLocaleString()} sub={`AOV ৳${avgOrderValue.toFixed(0)}`} icon={ShoppingCart} variant="info" large={pm} /> */}
+
+        <SummaryCard
+              icon={''}
+              title={`AOV ${avgOrderValue.toFixed(0)}`}
+              value={`Orders ${totalOrderCount.toLocaleString()}`}
+              color="#017B51"
+            />
+
+        {/* <KPICard label="Customers" value={uniqueCustomers.toLocaleString()} sub={`of ${totalUsers.toLocaleString()} users`} icon={Users} variant="amber" large={pm} /> */}
+
+         <SummaryCard
+              icon={Users}
+              title={`of ${totalUsers.toLocaleString()} users`}
+              value={`Customers ${uniqueCustomers.toLocaleString()}`}
+              color="#017B51"
+            />
       </div>
 
       {/* ── Growth Indicator Row ── */}
       <div className={`grid gap-3 ${pm ? "grid-cols-3" : "grid-cols-1 sm:grid-cols-3"}`}>
-        <GrowthCard label="MoM Revenue" value={revenueGrowth} suffix="%" />
-        <GrowthCard label="This Month Revenue" value={thisMonthRev} prefix="৳" raw />
-        <GrowthCard label="Last Month Revenue" value={lastMonthRev} prefix="৳" raw />
+
+        {/* <GrowthCard label="MoM Revenue" value={revenueGrowth} suffix="%" /> */}
+
+        <SummaryCard
+              icon={Users}
+              title={`MoM Revenue`}
+              value={`${revenueGrowth}%`}
+              color="#017B51"
+            />
+
+        {/* <GrowthCard label="This Month Revenue" value={thisMonthRev} prefix="৳" raw /> */}
+        <SummaryCard
+              icon={``}
+              title={`This Month Revenue`}
+              value={`${thisMonthRev}`}
+              color="#017B51"
+            />
+        {/* <GrowthCard label="Last Month Revenue" value={lastMonthRev} prefix="৳" raw /> */}
+        <SummaryCard
+              icon={``}
+              title={`Last Month Revenue`}
+              value={`${lastMonthRev}`}
+              color="#017B51"
+            />
       </div>
 
       {/* ── Tabbed Sections ── */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className={`grid w-full ${pm ? "grid-cols-4 text-base" : "grid-cols-4"}`}>
+        <TabsList className={`grid w-full gap-5 ${pm ? "grid-cols-4 text-base" : "grid-cols-4"}`}>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="growth">Growth</TabsTrigger>
           <TabsTrigger value="cashflow">Cash Flow</TabsTrigger>
@@ -513,10 +568,10 @@ export default function AdminInvestorReport() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-10">#</TableHead>
-                    <TableHead>Book</TableHead>
-                    <TableHead className="text-right">Qty</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
+                    <TableHead className="w-10 text-white">#</TableHead>
+                    <TableHead className="text-white">Book</TableHead>
+                    <TableHead className="text-right text-white">Qty</TableHead>
+                    <TableHead className="text-right text-white">Revenue</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

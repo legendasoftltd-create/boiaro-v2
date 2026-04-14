@@ -528,10 +528,8 @@ export default function AdminRevenueAudit() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Revenue Audit</h1>
-        <p className="text-sm text-muted-foreground">
-          Debug individual orders and verify revenue consistency across orders and ledger
-        </p>
+        <h1 className="text-2xl font-bold text-black">Revenue Audit</h1>
+       
       </div>
       <OrderAuditTool />
       <ConsistencyCheck />

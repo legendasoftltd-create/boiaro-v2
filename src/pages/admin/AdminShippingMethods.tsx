@@ -11,6 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Truck, Package, Search, Plus, Pencil, Copy, Trash2, MapPin } from "lucide-react";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 interface ShippingMethod {
   id: string;
@@ -129,7 +131,7 @@ export default function AdminShippingMethods() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Shipping Methods</h1>
+        <h1 className="text-2xl font-bold text-black">Shipping Methods</h1>
         <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" /> Add Method</Button>
       </div>
 
@@ -139,24 +141,30 @@ export default function AdminShippingMethods() {
           { label: "ঢাকার ভিতরে", value: methods.filter(m => m.area_type === "inside_dhaka").length, icon: MapPin },
           { label: "ঢাকার বাইরে", value: methods.filter(m => m.area_type === "outside_dhaka").length, icon: Truck },
         ].map(c => (
-          <Card key={c.label} className="bg-card border-border">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <c.icon className="w-5 h-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{c.value}</p>
-                <p className="text-xs text-muted-foreground">{c.label}</p>
-              </div>
-            </CardContent>
-          </Card>
+          // <Card key={c.label} className="bg-card border-border">
+          //   <CardContent className="p-4 flex items-center gap-3">
+          //     <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+          //       <c.icon className="w-5 h-5 text-primary" />
+          //     </div>
+          //     <div>
+          //       <p className="text-2xl font-bold">{c.value}</p>
+          //       <p className="text-xs text-muted-foreground">{c.label}</p>
+          //     </div>
+          //   </CardContent>
+          // </Card>
+          <SummaryCard
+            icon={c.icon}
+            title={c.label}
+            value={c.value}
+            color="#017B51"
+          />
         ))}
       </div>
 
       <div className="flex flex-wrap gap-3 mb-4">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary border-border" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
+          <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={filterArea} onValueChange={setFilterArea}>
           <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
@@ -168,19 +176,19 @@ export default function AdminShippingMethods() {
         </Select>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Method</TableHead>
-              <TableHead>Area</TableHead>
-              <TableHead>Base Charge</TableHead>
-              <TableHead>Base Weight</TableHead>
-              <TableHead>Extra/kg</TableHead>
-              <TableHead>Delivery</TableHead>
-              <TableHead>Provider</TableHead>
-              <TableHead>Active</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-white">Method</TableHead>
+              <TableHead className="text-white">Area</TableHead>
+              <TableHead className="text-white">Base Charge</TableHead>
+              <TableHead className="text-white">Base Weight</TableHead>
+              <TableHead className="text-white">Extra/kg</TableHead>
+              <TableHead className="text-white">Delivery</TableHead>
+              <TableHead className="text-white">Provider</TableHead>
+              <TableHead className="text-white">Active</TableHead>
+              <TableHead className="text-right text-white">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
