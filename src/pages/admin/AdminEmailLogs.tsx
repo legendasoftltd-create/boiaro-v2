@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/select";
 import { Search, Mail, CheckCircle, XCircle, Clock } from "lucide-react";
 import { format } from "date-fns";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 interface EmailLog {
   id: string;
@@ -66,60 +68,49 @@ export default function AdminEmailLogs() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-serif text-primary">Email Logs</h1>
-        <p className="text-sm text-muted-foreground">Email delivery history from the system</p>
+        <h1 className="text-2xl font-bold font-serif text-black">Email Logs</h1>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <Card className="bg-card/60 border-border/40">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Mail className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{logs.length}</p>
-              <p className="text-xs text-muted-foreground">Total Emails</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/60 border-border/40">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{sentCount}</p>
-              <p className="text-xs text-muted-foreground">Sent</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/60 border-border/40">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-red-500/10 flex items-center justify-center">
-              <XCircle className="h-5 w-5 text-red-500" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{failedCount}</p>
-              <p className="text-xs text-muted-foreground">Failed</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/60 border-border/40">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
-              <Clock className="h-5 w-5 text-yellow-500" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{pendingCount}</p>
-              <p className="text-xs text-muted-foreground">Pending</p>
-            </div>
-          </CardContent>
-        </Card>
+        
+        
+
+        <SummaryCard
+          icon={Mail}
+          title={"Total Emails"}
+          value={logs.length}
+          color="#017B51"
+        />
+
+        
+
+        <SummaryCard
+          icon={CheckCircle}
+          title={"Sent"}
+          value={sentCount}
+          color="#017B51"
+        />
+        
+
+        <SummaryCard
+          icon={XCircle}
+          title={"Failed"}
+          value={failedCount}
+          color="#017B51"
+        />
+        
+
+        <SummaryCard
+          icon={Clock}
+          title={"Pending"}
+          value={pendingCount}
+          color="#017B51"
+        />
       </div>
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
           <Input placeholder="Search email or subject..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -140,7 +131,7 @@ export default function AdminEmailLogs() {
         </Select>
       </div>
 
-      <div className="rounded-lg border border-border/40 overflow-hidden">
+      <div className=" overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30">
@@ -154,16 +145,16 @@ export default function AdminEmailLogs() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-black">Loading...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground"><TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No email logs found</TableCell></TableRow></TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-black"><TableRow><TableCell colSpan={6} className="text-center py-8 text-black">No email logs found</TableCell></TableRow></TableCell></TableRow>
             ) : filtered.map((l) => (
               <TableRow key={l.id}>
                 <TableCell className="font-medium text-sm">{l.recipient_email}</TableCell>
-                <TableCell><Badge variant="outline" className="text-xs">{l.template_type}</Badge></TableCell>
-                <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{l.subject}</TableCell>
+                <TableCell><Badge variant="outline" className="text-xs text-black">{l.template_type}</Badge></TableCell>
+                <TableCell className="text-sm text-black max-w-[200px] truncate">{l.subject}</TableCell>
                 <TableCell>{statusBadge(l.status)}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">
+                <TableCell className="text-xs text-black">
                   {format(new Date(l.sent_at || l.created_at), "dd MMM yyyy HH:mm")}
                 </TableCell>
                 <TableCell className="text-xs text-destructive max-w-[150px] truncate">{l.error_message || "—"}</TableCell>

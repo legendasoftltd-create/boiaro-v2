@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Bell, CheckCircle2, AlertTriangle, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 interface SystemAlert {
   id: string;
@@ -74,10 +76,10 @@ export default function AdminAlerts() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <ShieldAlert className="w-6 h-6 text-primary" /> System Alerts
+          <h1 className="text-2xl font-bold flex items-center gap-2 text-black">
+             System Alerts
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-black mt-1">
             Automated platform health monitoring • {unresolved.length} active alerts
           </p>
         </div>
@@ -93,24 +95,27 @@ export default function AdminAlerts() {
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3">
-        <Card className={unresolved.some(a => a.severity === "critical") ? "border-destructive/30 bg-destructive/5" : "border-green-500/20 bg-green-500/5"}>
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{unresolved.filter(a => a.severity === "critical").length}</p>
-            <p className="text-xs text-muted-foreground">Critical</p>
-          </CardContent>
-        </Card>
-        <Card className="border-amber-500/20 bg-amber-500/5">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{unresolved.filter(a => a.severity === "warning").length}</p>
-            <p className="text-xs text-muted-foreground">Warnings</p>
-          </CardContent>
-        </Card>
-        <Card className="border-green-500/20 bg-green-500/5">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{resolved.length}</p>
-            <p className="text-xs text-muted-foreground">Resolved</p>
-          </CardContent>
-        </Card>
+        
+        <SummaryCard
+              icon={`s.icon`}
+              title={"Critical"}
+              value={unresolved.filter(a => a.severity === "critical").length}
+              color="#c4200b"
+            />
+        
+        <SummaryCard
+              icon={`s.icon`}
+              title={"Warnings"}
+              value={unresolved.filter(a => a.severity === "warning").length}
+              color="#a13a20"
+            />
+        
+        <SummaryCard
+              icon={`s.icon`}
+              title={"Resolved"}
+              value={resolved.length}
+              color="#017B51"
+            />
       </div>
 
       {/* Active Alerts */}
@@ -170,7 +175,7 @@ export default function AdminAlerts() {
       {resolved.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base text-muted-foreground">Recently Resolved ({resolved.length})</CardTitle>
+            <CardTitle className="text-base text-white">Recently Resolved ({resolved.length})</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
@@ -183,7 +188,7 @@ export default function AdminAlerts() {
               </TableHeader>
               <TableBody>
                 {resolved.slice(0, 20).map(a => (
-                  <TableRow key={a.id} className="opacity-60">
+                  <TableRow key={a.id} className="">
                     <TableCell>{severityBadge(a.severity)}</TableCell>
                     <TableCell className="text-sm">{a.title}</TableCell>
                     <TableCell className="text-xs">{a.resolved_at ? new Date(a.resolved_at).toLocaleString() : "—"}</TableCell>

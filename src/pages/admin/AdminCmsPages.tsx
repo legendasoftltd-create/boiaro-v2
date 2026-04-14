@@ -88,15 +88,15 @@ export default function AdminCmsPages() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-primary">Page Management</h1>
-          <p className="text-sm text-muted-foreground">Manage static pages</p>
+          <h1 className="text-2xl font-bold font-serif text-black">Page Management</h1>
+          
         </div>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />New Page</Button>
       </div>
 
       <div className="flex gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
           <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -109,7 +109,7 @@ export default function AdminCmsPages() {
         </Select>
       </div>
 
-      <div className="rounded-lg border border-border/40 bg-card/60">
+      <div className="">
         <Table>
           <TableHeader>
             <TableRow>
@@ -124,13 +124,13 @@ export default function AdminCmsPages() {
             {isLoading ? (
               <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No pages found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center py-8 text-black">No pages found</TableCell></TableRow>
             ) : filtered.map(p => (
               <TableRow key={p.id}>
                 <TableCell className="font-medium flex items-center gap-2"><FileText className="h-4 w-4 text-primary" />{p.title}</TableCell>
-                <TableCell className="text-muted-foreground">/{p.slug}</TableCell>
+                <TableCell className="text-black">/{p.slug}</TableCell>
                 <TableCell><Badge variant={p.status === "published" ? "default" : "secondary"}>{p.status === "published" ? "Published" : "Draft"}</Badge></TableCell>
-                <TableCell className="text-muted-foreground text-xs">{new Date(p.updated_at).toLocaleDateString()}</TableCell>
+                <TableCell className="text-black text-xs">{new Date(p.updated_at).toLocaleDateString()}</TableCell>
                 <TableCell><Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button></TableCell>
               </TableRow>
             ))}

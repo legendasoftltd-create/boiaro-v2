@@ -10,6 +10,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Coins, Plus, Pencil, Trash2, Save, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
+import SummaryCard from '@/components/admin/SummaryCard';
 
 interface CoinPackage {
   id: string;
@@ -103,32 +104,40 @@ export default function AdminCoinPackages() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Coin Packages</h1>
+        <h1 className="text-2xl font-bold text-black">Coin Packages</h1>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Package</Button>
       </div>
 
       {/* Revenue Stats */}
       <div className="grid grid-cols-3 gap-4">
-        <Card className="border-border/30">
+        {/* <Card className="border-border/30">
           <CardContent className="p-4 text-center">
             <TrendingUp className="w-5 h-5 text-primary mx-auto mb-1" />
             <p className="text-2xl font-bold text-primary">৳{stats.totalRevenue}</p>
             <p className="text-xs text-muted-foreground">Coin Revenue</p>
           </CardContent>
-        </Card>
-        <Card className="border-border/30">
-          <CardContent className="p-4 text-center">
-            <Coins className="w-5 h-5 text-emerald-400 mx-auto mb-1" />
-            <p className="text-2xl font-bold">{stats.totalCoins}</p>
-            <p className="text-xs text-muted-foreground">Coins Sold</p>
-          </CardContent>
-        </Card>
-        <Card className="border-border/30">
-          <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold">{stats.totalPurchases}</p>
-            <p className="text-xs text-muted-foreground">Purchases</p>
-          </CardContent>
-        </Card>
+        </Card> */}
+
+        <SummaryCard
+          icon={TrendingUp}
+          title={"Coin Revenue"}
+          value={` ${stats.totalRevenue}`}
+          color="#017B51"
+        />
+
+         <SummaryCard
+          icon={Coins}
+          title={"Coins Sold"}
+          value={stats.totalCoins}
+          color="#017B51"
+        />
+       
+        <SummaryCard
+          icon={Coins}
+          title={"Purchases"}
+          value={stats.totalPurchases}
+          color="#017B51"
+        />
       </div>
 
       {/* Packages Table */}

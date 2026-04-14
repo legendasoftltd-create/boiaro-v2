@@ -10,6 +10,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Eye, Search, CheckCircle2, XCircle, DollarSign, Clock, CreditCard, Banknote } from "lucide-react";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400",
@@ -101,55 +103,41 @@ export default function AdminPayments() {
   return (
     <div>
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-3">
-        <h1 className="text-2xl font-bold">Payments</h1>
+        <h1 className="text-2xl font-bold text-black">Payments</h1>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Collected</p>
-              <p className="text-lg font-bold text-foreground">৳{totalPaid.toLocaleString()}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Pending</p>
-              <p className="text-lg font-bold text-foreground">৳{totalPending.toLocaleString()}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
-              <XCircle className="w-5 h-5 text-red-400" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Failed</p>
-              <p className="text-lg font-bold text-foreground">৳{totalFailed.toLocaleString()}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card border-border">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-              <CreditCard className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Transactions</p>
-              <p className="text-lg font-bold text-foreground">{payments.length}</p>
-            </div>
-          </CardContent>
-        </Card>
+
+
+        <SummaryCard
+          icon={``}
+          title="Total Collected"
+          value={totalPaid.toLocaleString()}
+          color="#017B51"
+        />
+
+        <SummaryCard
+          icon={Clock}
+          title="Pending"
+          value={totalPending.toLocaleString()}
+          color="#017B51"
+        />
+
+        <SummaryCard
+          icon={XCircle}
+          title="Failed"
+          value={totalFailed.toLocaleString()}
+          color="#017B51"
+        />
+
+        <SummaryCard
+          icon={CreditCard}
+          title="Total Transactions"
+          value={payments.length}
+          color="#017B51"
+        />
+
       </div>
 
       {/* Method Breakdown */}
@@ -159,7 +147,7 @@ export default function AdminPayments() {
             const count = payments.filter(p => p.method === m).length;
             const sum = payments.filter(p => p.method === m && p.status === "paid").reduce((s, p) => s + Number(p.amount), 0);
             return (
-              <Badge key={m} variant="outline" className="px-3 py-1.5 text-xs gap-1.5">
+              <Badge key={m} variant="outline" className="px-3 py-1.5 text-xs gap-1.5 text-black">
                 <Banknote className="w-3 h-3" />
                 {methodLabel(m)}: {count} txn • ৳{sum.toLocaleString()}
               </Badge>
@@ -171,11 +159,11 @@ export default function AdminPayments() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search name, order, ID..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
+          <Input placeholder="Search name, order, ID..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 " />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-40 bg-[#017B51]"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
@@ -196,31 +184,31 @@ export default function AdminPayments() {
         </Select>
       </div>
 
-      <div className="rounded-lg border">
+      <div className="">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Order</TableHead>
-              <TableHead>Method</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Transaction ID</TableHead>
-              <TableHead className="w-10"></TableHead>
+              <TableHead className="text-white">Date</TableHead>
+              <TableHead className="text-white">Customer</TableHead>
+              <TableHead className="text-white">Order</TableHead>
+              <TableHead className="text-white">Method</TableHead>
+              <TableHead className="text-white">Amount</TableHead>
+              <TableHead className="text-white">Status</TableHead>
+              <TableHead className="text-white">Transaction ID</TableHead>
+              <TableHead className="w-10 text-white"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.map(p => (
-              <TableRow key={p.id}>
+              <TableRow key={p.id} className="text-black">
                 <TableCell className="text-xs">{new Date(p.created_at).toLocaleDateString()}</TableCell>
                 <TableCell className="text-sm">{p._customerName || "—"}</TableCell>
                 <TableCell className="font-mono text-xs">{p.orders?.order_number || p.order_id?.slice(0, 8) || "—"}</TableCell>
                 <TableCell>
-                  <Badge variant="outline" className="text-xs">{methodLabel(p.method)}</Badge>
+                  <Badge variant="outline" className="text-xs text-black">{methodLabel(p.method)}</Badge>
                 </TableCell>
                 <TableCell className="font-medium">৳{Number(p.amount).toLocaleString()}</TableCell>
-                <TableCell><Badge className={statusColors[p.status] || ""}>{p.status}</Badge></TableCell>
+                <TableCell><Badge className={`${statusColors[p.status] || ""} text-black`}>{p.status}</Badge></TableCell>
                 <TableCell className="font-mono text-xs max-w-[120px] truncate">{p.transaction_id || "—"}</TableCell>
                 <TableCell>
                   <Button size="icon" variant="ghost" onClick={() => setSelected(p)} className="h-7 w-7">

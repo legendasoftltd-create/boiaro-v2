@@ -96,7 +96,7 @@ export function AvatarUpload({
 
   return (
     <div>
-      <Label className="mb-2 block">{label}</Label>
+      <Label className="mb-2 block text-black">{label}</Label>
       <div className="flex items-center gap-4">
         <div className="relative">
           <Avatar className="h-16 w-16 border-2 border-border">

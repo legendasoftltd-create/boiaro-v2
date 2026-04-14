@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Bell, Plus, Send, Search, Trash2, Edit, Eye, Clock, ShoppingCart, CreditCard, Users, Megaphone, Calendar } from "lucide-react";
+import SummaryCard from '@/components/admin/SummaryCard';
 
 interface Notification {
   id: string; title: string; message: string; type: string; audience: string;
@@ -182,31 +183,33 @@ export default function AdminNotifications() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-serif font-bold">Notification System</h1>
-          <p className="text-sm text-muted-foreground">Create, schedule & manage notifications</p>
+          <h1 className="text-2xl font-serif font-bold text-black">Notification System</h1>
+         
         </div>
         <Button className="btn-gold gap-2" onClick={openCreate}><Plus className="w-4 h-4" /> New Notification</Button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: "Total", value: stats.total, icon: Bell, color: "text-primary" },
-          { label: "Draft", value: stats.draft, icon: Edit, color: "text-amber-400" },
-          { label: "Sent", value: stats.sent, icon: Send, color: "text-emerald-400" },
-          { label: "Scheduled", value: stats.scheduled, icon: Clock, color: "text-blue-400" },
-          { label: "Urgent", value: stats.high, icon: Megaphone, color: "text-red-400" },
+          { label: "Total", value: stats.total, icon: Bell, color: "#017B51" },
+          { label: "Draft", value: stats.draft, icon: Edit, color: "#017B51" },
+          { label: "Sent", value: stats.sent, icon: Send, color: "#017B51" },
+          { label: "Scheduled", value: stats.scheduled, icon: Clock, color: "#017B51" },
+          { label: "Urgent", value: stats.high, icon: Megaphone, color: "#017B51" },
         ].map((s) => (
-          <Card key={s.label} className="border-border/30">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-secondary/60"><s.icon className={`w-5 h-5 ${s.color}`} /></div>
-              <div><p className="text-2xl font-bold">{s.value}</p><p className="text-[12px] text-muted-foreground">{s.label}</p></div>
-            </CardContent>
-          </Card>
+         
+          <SummaryCard
+            icon={s.icon}
+            title={s.label}
+            value={s.value}
+            color={s.color}
+          />
+
         ))}
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList className="flex items-center justify-center gap-5 ">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="draft">Draft</TabsTrigger>
           <TabsTrigger value="sent">Sent</TabsTrigger>
@@ -218,7 +221,7 @@ export default function AdminNotifications() {
           <TabsContent key={tabKey} value={tabKey} className="space-y-4">
             <div className="flex flex-wrap gap-3">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
                 <Input placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
               </div>
               <Select value={filterType} onValueChange={setFilterType}>
@@ -244,17 +247,17 @@ export default function AdminNotifications() {
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-black">Loading...</TableCell></TableRow>
                   ) : filtered.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No notifications</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center py-8 text-black">No notifications</TableCell></TableRow>
                   ) : filtered.map((n) => (
                     <TableRow key={n.id}>
                       <TableCell className="font-medium max-w-[200px] truncate">{n.title}</TableCell>
-                      <TableCell><Badge variant="outline" className="text-[11px]">{channelLabel(n.channel)}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="text-[11px] bg-[#017B51]">{channelLabel(n.channel)}</Badge></TableCell>
                       <TableCell className="text-[12px]">{AUDIENCES.find((a) => a.value === n.audience)?.label || n.audience}</TableCell>
-                      <TableCell><Badge className={`text-[11px] ${priorityColor(n.priority)}`}>{PRIORITIES.find(p => p.value === n.priority)?.label || n.priority}</Badge></TableCell>
-                      <TableCell><Badge className={`text-[11px] ${statusColor(n.status)}`}>{statusLabel(n.status)}</Badge></TableCell>
-                      <TableCell className="text-[12px] text-muted-foreground">
+                      <TableCell><Badge className={`text-[11px]  ${priorityColor(n.priority)}`}>{PRIORITIES.find(p => p.value === n.priority)?.label || n.priority}</Badge></TableCell>
+                      <TableCell><Badge className={`text-[11px]  ${statusColor(n.status)}`}>{statusLabel(n.status)}</Badge></TableCell>
+                      <TableCell className="text-[12px] text-black">
                         {n.scheduled_at ? (<span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{new Date(n.scheduled_at).toLocaleDateString()}</span>) : new Date(n.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
@@ -279,7 +282,7 @@ export default function AdminNotifications() {
 
         <TabsContent value="templates" className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">Reusable notification templates</p>
+            <p className="text-sm text-black">Reusable notification templates</p>
             <Button variant="outline" className="gap-2" onClick={openCreateTpl}><Plus className="w-4 h-4" /> New Template</Button>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -287,14 +290,14 @@ export default function AdminNotifications() {
               <Card key={t.id} className="border-border/30">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-start justify-between">
-                    <div><p className="font-medium text-sm">{t.name}</p><p className="text-[12px] text-muted-foreground">{t.title}</p></div>
+                    <div><p className="font-medium text-sm">{t.name}</p><p className="text-[12px] text-black">{t.title}</p></div>
                     <div className="flex gap-1">
-                      <Badge variant="outline" className="text-[10px]">{channelLabel(t.channel)}</Badge>
-                      <Badge variant="outline" className="text-[10px]">{TYPES.find(ty => ty.value === t.type)?.label || t.type}</Badge>
+                      <Badge variant="outline" className="text-[10px] text-black">{channelLabel(t.channel)}</Badge>
+                      <Badge variant="outline" className="text-[10px] text-black">{TYPES.find(ty => ty.value === t.type)?.label || t.type}</Badge>
                     </div>
                   </div>
                   <p className="text-[12px] text-muted-foreground line-clamp-2">{t.message}</p>
-                  {t.cta_text && <p className="text-[11px] text-primary">{t.cta_text} → {t.cta_link}</p>}
+                  {t.cta_text && <p className="text-[11px] text-[#017B51]">{t.cta_text} → {t.cta_link}</p>}
                   <div className="flex gap-2 pt-1">
                     <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => useTemplate(t)}>Use</Button>
                     <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={() => openEditTpl(t)}><Edit className="w-3 h-3" /></Button>

@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Ticket, AlertCircle, Clock, CheckCircle, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 const statusColors: Record<string, string> = {
   open: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -95,36 +97,34 @@ export default function AdminTickets() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-serif text-primary">Support Tickets</h1>
-        <p className="text-sm text-muted-foreground">User support & complaint management</p>
+        <h1 className="text-2xl font-bold font-serif text-black">Support Tickets</h1>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-3">
         {[
-          { label: "Total", value: stats.total, icon: <Ticket className="h-4 w-4" />, color: "text-foreground" },
-          { label: "Open", value: stats.open, icon: statusIcons.open, color: "text-blue-400" },
-          { label: "In Progress", value: stats.in_progress, icon: statusIcons.in_progress, color: "text-yellow-400" },
-          { label: "Resolved", value: stats.resolved, icon: statusIcons.resolved, color: "text-green-400" },
-          { label: "Closed", value: stats.closed, icon: statusIcons.closed, color: "text-muted-foreground" },
-          { label: "Urgent", value: stats.urgent, icon: <AlertCircle className="h-4 w-4" />, color: "text-red-400" },
-          { label: "Complaints", value: stats.complaints, icon: <AlertCircle className="h-4 w-4" />, color: "text-orange-400" },
+          { label: "Total", value: stats.total, icon: <Ticket className="h-4 w-4" />, color: "#017B51" },
+          { label: "Open", value: stats.open, icon: statusIcons.open, color: "#017B51" },
+          { label: "In Progress", value: stats.in_progress, icon: statusIcons.in_progress, color: "#017B51" },
+          { label: "Resolved", value: stats.resolved, icon: statusIcons.resolved, color: "#017B51" },
+          { label: "Closed", value: stats.closed, icon: statusIcons.closed, color: "#017B51" },
+          { label: "Urgent", value: stats.urgent, icon: <AlertCircle className="h-4 w-4" />, color: "#017B51" },
+          { label: "Complaints", value: stats.complaints, icon: <AlertCircle className="h-4 w-4" />, color: "#017B51" },
         ].map(s => (
-          <Card key={s.label} className="bg-card/60 border-border/40">
-            <CardContent className="p-3 flex items-center gap-2">
-              <span className={s.color}>{s.icon}</span>
-              <div>
-                <div className={`text-lg font-bold ${s.color}`}>{s.value}</div>
-                <div className="text-[11px] text-muted-foreground">{s.label}</div>
-              </div>
-            </CardContent>
-          </Card>
+          
+          <SummaryCard
+          key={s.label}
+              icon={`s.icon`}
+              title={s.label}
+              value={s.value}
+              color={s.color}
+            />
         ))}
       </div>
 
       {/* Tabs and Filters */}
       <Tabs value={typeTab} onValueChange={setTypeTab}>
-        <TabsList>
+        <TabsList className="flex items-center justify-center gap-5">
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="ticket">Tickets</TabsTrigger>
           <TabsTrigger value="complaint">Complaints</TabsTrigger>
@@ -133,7 +133,7 @@ export default function AdminTickets() {
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
           <Input placeholder="Ticket number, name, email..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -165,7 +165,7 @@ export default function AdminTickets() {
       </div>
 
       {/* Tickets Table */}
-      <div className="rounded-lg border border-border/40 bg-card/60">
+      <div className="">
         <Table>
           <TableHeader>
             <TableRow>
@@ -182,7 +182,7 @@ export default function AdminTickets() {
             {isLoading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No tickets found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-black">No tickets found</TableCell></TableRow>
             ) : filtered.map(t => (
               <TableRow key={t.id} className="cursor-pointer hover:bg-muted/50">
                 <TableCell>
@@ -193,7 +193,7 @@ export default function AdminTickets() {
                 </TableCell>
                 <TableCell>
                   <div className="text-sm font-medium">{t.user_name || "—"}</div>
-                  <div className="text-xs text-muted-foreground">{t.user_email || t.user_phone || "—"}</div>
+                  <div className="text-xs text-black">{t.user_email || t.user_phone || "—"}</div>
                 </TableCell>
                 <TableCell className="max-w-[200px] truncate text-sm">{t.subject}</TableCell>
                 <TableCell><Badge variant="outline" className="text-[11px]">{categories.find(c => c.value === t.category)?.label || t.category}</Badge></TableCell>
@@ -203,7 +203,7 @@ export default function AdminTickets() {
                     {statusIcons[t.status]}{t.status === "open" ? "Open" : t.status === "in_progress" ? "In Progress" : t.status === "resolved" ? "Resolved" : "Closed"}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleDateString()}</TableCell>
+                <TableCell className="text-xs text-black">{new Date(t.created_at).toLocaleDateString()}</TableCell>
               </TableRow>
             ))}
           </TableBody>

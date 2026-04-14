@@ -79,12 +79,9 @@ export default function AdminAdSettings() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
-          <Settings className="w-6 h-6 text-primary" /> Ad Settings
+        <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black">
+           Ad Settings
         </h1>
-        <p className="text-sm text-muted-foreground">
-          Configure ad providers, unit IDs, and behavior. No passwords stored — only public ad unit identifiers.
-        </p>
       </div>
 
       {/* System Toggles */}
@@ -156,7 +153,7 @@ export default function AdminAdSettings() {
           <CardTitle className="text-base flex items-center gap-2">
             <Monitor className="w-4 h-4 text-primary" /> Web (AdSense) Unit IDs
           </CardTitle>
-          <p className="text-xs text-muted-foreground">Public ad unit identifiers from Google AdSense</p>
+          <p className="text-xs text-white">Public ad unit identifiers from Google AdSense</p>
         </CardHeader>
         <CardContent className="space-y-4">
           {PROVIDER_CONFIG.filter(c => c.group === "web").map(cfg => (
@@ -178,7 +175,7 @@ export default function AdminAdSettings() {
           <CardTitle className="text-base flex items-center gap-2">
             <Smartphone className="w-4 h-4 text-primary" /> App (AdMob) Unit IDs
           </CardTitle>
-          <p className="text-xs text-muted-foreground">Public ad unit identifiers from Google AdMob for native apps</p>
+          <p className="text-xs text-white">Public ad unit identifiers from Google AdMob for native apps</p>
         </CardHeader>
         <CardContent className="space-y-4">
           {PROVIDER_CONFIG.filter(c => c.group === "app").map(cfg => (

@@ -230,12 +230,12 @@ export default function AdminSubmissions() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <BookOpen className="w-6 h-6 text-primary" /> Content Submissions
+      <h1 className="text-2xl font-bold flex items-center gap-2 text-black">
+        Content Submissions
       </h1>
 
-      <Tabs value={filter} onValueChange={v => setFilter(v as any)}>
-        <TabsList>
+      <Tabs  value={filter} onValueChange={v => setFilter(v as any)}>
+        <TabsList className="bg-transparent  flex items-center gap-4 ">
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="edit_requests" className="gap-1">
             <Pencil className="w-3 h-3" />Edit Requests
@@ -294,22 +294,22 @@ export default function AdminSubmissions() {
         ) : submissions.length > 0 ? (
           <div className="space-y-2">
             {submissions.map(book => (
-              <div key={book.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/20 hover:bg-secondary/30 transition-colors">
+              <div key={book.id} className="flex items-center justify-between p-3 rounded-lg bg-[#017B51] border border-border/20 hover:bg-[#017B51]/90 transition-colors">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   {book.cover_url ? (
                     <img src={book.cover_url} alt="" className="w-10 h-14 object-cover rounded flex-shrink-0" />
                   ) : (
                     <div className="w-10 h-14 bg-muted rounded flex items-center justify-center flex-shrink-0">
-                      <Image className="w-4 h-4 text-muted-foreground" />
+                      <Image className="w-4 h-4 text-white" />
                     </div>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm truncate">{book.title}</p>
+                    <p className="font-medium text-sm truncate text-white">{book.title}</p>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      <span className="text-xs text-muted-foreground">by {book._submitter}</span>
+                      <span className="text-xs text-white">by {book._submitter}</span>
                       {(book.book_formats || []).map((f: any) => formatBadge(f.format))}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{new Date(book.created_at).toLocaleDateString()}</p>
+                    <p className="text-xs text-white mt-0.5">{new Date(book.created_at).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <Button size="sm" variant="outline" onClick={() => openPreview(book)} className="h-8 gap-1.5 text-xs ml-2">
