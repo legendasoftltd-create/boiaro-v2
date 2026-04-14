@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Mail, Plus, Search, Edit, Eye, Trash2, FileText, ShoppingCart, CreditCard, Users, Key, Crown, Wallet } from "lucide-react";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 interface EmailTemplate {
   id: string; name: string; template_type: string; subject: string;
@@ -108,36 +110,38 @@ export default function AdminEmailTemplates() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-primary">Email Templates</h1>
-          <p className="text-sm text-muted-foreground">Manage system email templates</p>
+          <h1 className="text-2xl font-bold font-serif text-black">Email Templates</h1>
         </div>
         <Button onClick={() => openEdit()} className="gap-2"><Plus className="h-4 w-4" /> New Template</Button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="bg-card/60 border-border/40">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><Mail className="h-5 w-5 text-primary" /></div>
-            <div><p className="text-2xl font-bold">{templates.length}</p><p className="text-xs text-muted-foreground">Total Templates</p></div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/60 border-border/40">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-green-500/10 flex items-center justify-center"><FileText className="h-5 w-5 text-green-500" /></div>
-            <div><p className="text-2xl font-bold">{activeCount}</p><p className="text-xs text-muted-foreground">Active</p></div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card/60 border-border/40">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-red-500/10 flex items-center justify-center"><FileText className="h-5 w-5 text-red-500" /></div>
-            <div><p className="text-2xl font-bold">{templates.length - activeCount}</p><p className="text-xs text-muted-foreground">Inactive</p></div>
-          </CardContent>
-        </Card>
+        
+        <SummaryCard
+          icon={Mail}
+          title={"Total Templates"}
+          value={templates.length}
+          color="#017B51"
+        />
+        
+        <SummaryCard
+          icon={FileText}
+          title={"Active"}
+          value={activeCount}
+          color="#017B51"
+        />
+        
+        <SummaryCard
+          icon={FileText}
+          title={"Inactive"}
+          value={templates.length - activeCount}
+          color="#017B51"
+        />
       </div>
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
           <Input placeholder="Search templates..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -150,7 +154,7 @@ export default function AdminEmailTemplates() {
         </Select>
       </div>
 
-      <div className="rounded-lg border border-border/40 overflow-hidden">
+      <div className=" overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/30">
@@ -164,15 +168,15 @@ export default function AdminEmailTemplates() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-black">Loading...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No templates found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-black">No templates found</TableCell></TableRow>
             ) : filtered.map((t) => {
               const typeInfo = TYPE_LABELS[t.template_type];
               return (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-xs">{typeInfo?.label || t.template_type}</Badge></TableCell>
+                  <TableCell><Badge variant="outline" className="text-xs text-black">{typeInfo?.label || t.template_type}</Badge></TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">{t.subject}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
