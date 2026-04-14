@@ -15,6 +15,8 @@ import {
   getOrderSellableAmount, calculateTotalDeliveryCharges, getLedgerOtherIncome, detectDuplicateLedgerEntries,
   type RevenueOrder, type RevenuePeriod, type OrderItemWithCost,
 } from "@/hooks/useUnifiedRevenue";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 
 const chartTooltipStyle = {
   background: "hsl(var(--card))",
@@ -187,10 +189,10 @@ export default function AdminFinancialReports() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileText className="w-6 h-6 text-primary" /> Financial Reports
+          <h1 className="text-2xl font-bold flex items-center gap-2 text-black">
+               Financial Reports
           </h1>
-          <p className="text-sm text-muted-foreground">P&L, revenue analysis, and book-wise profit</p>
+          
         </div>
         <Select value={periodFilter} onValueChange={(v) => setPeriodFilter(v as RevenuePeriod)}>
           <SelectTrigger className="w-[160px] h-9"><SelectValue /></SelectTrigger>
@@ -205,7 +207,7 @@ export default function AdminFinancialReports() {
       </div>
 
       <Tabs defaultValue="pnl" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-4 gap-5">
           <TabsTrigger value="pnl">P&L Statement</TabsTrigger>
           <TabsTrigger value="monthly">Monthly Trends</TabsTrigger>
           <TabsTrigger value="books">Book-wise Profit</TabsTrigger>
@@ -215,11 +217,58 @@ export default function AdminFinancialReports() {
         {/* ── P&L Statement ── */}
         <TabsContent value="pnl" className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <PLCard label="Verified Order Revenue" value={totalRevenue} icon={TrendingUp} color="text-emerald-400" bg="bg-emerald-500/10" />
-            <PLCard label="Gross Profit" value={grossProfit} icon={DollarSign} color="text-blue-400" bg="bg-blue-500/10" />
-            <PLCard label="Creator Payouts" value={creatorPayouts} icon={Wallet} color="text-amber-400" bg="bg-amber-500/10" />
-            <PLCard label="Net Profit" value={netProfit} icon={netProfit >= 0 ? TrendingUp : TrendingDown} color={netProfit >= 0 ? "text-primary" : "text-destructive"} bg={netProfit >= 0 ? "bg-primary/10" : "bg-destructive/10"} />
+            {/* <PLCard label="Verified Order Revenue" value={totalRevenue} icon={TrendingUp} color="text-emerald-400" bg="bg-emerald-500/10" /> */}
+            <SummaryCard
+              icon={TrendingUp}
+              title="Verified Order Revenue"
+              value={totalRevenue}
+              color="#017B51"
+            />
+
+            {/* <PLCard label="Gross Profit" value={grossProfit} icon={DollarSign} color="text-blue-400" bg="bg-blue-500/10" /> */}
+            <SummaryCard
+              icon={DollarSign}
+              title="Gross Profit"
+              value={grossProfit}
+              color="#017B51"
+            />
+            {/* <PLCard label="Creator Payouts" value={creatorPayouts} icon={Wallet} color="text-amber-400" bg="bg-amber-500/10" /> */}
+            <SummaryCard
+              icon={Wallet}
+              title="Creator Payouts"
+              value={creatorPayouts}
+              color="#017B51"
+            />
+            {/* <PLCard label="Net Profit" value={netProfit} icon={netProfit >= 0 ? TrendingUp : TrendingDown} color={netProfit >= 0 ? "text-primary" : "text-destructive"} bg={netProfit >= 0 ? "bg-primary/10" : "bg-destructive/10"} /> */}
+
+              <SummaryCard
+                icon={TrendingUp}
+                title="Net Profit"
+                value={netProfit}
+                color="#017B51"
+              />
           </div>
+
+          {/* Format-wise Profit */}
+          {formatProfitData.length > 0 && (
+            <Card className="border-border/30">
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Format-wise Profit</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-3">
+                  {formatProfitData.map(f => (
+                    <div key={f.format} className="p-3 rounded-lg bg-white text-center border border-gray-300">
+                      <p className="text-xs text-black mb-1">{f.format}</p>
+                      <p className="text-lg font-bold">৳{f.revenue.toLocaleString()}</p>
+                      <p className="text-[10px] text-black">Revenue</p>
+                      <p className={`text-sm font-semibold mt-1 ${f.profit >= 0 ? "text-[#017B51]" : "text-red-500"}`}>
+                        ৳{f.profit.toLocaleString()} profit
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card className="border-border/30">
             <CardHeader className="pb-2"><CardTitle className="text-sm">Profit & Loss Breakdown</CardTitle></CardHeader>
@@ -227,7 +276,7 @@ export default function AdminFinancialReports() {
               <Table>
                 <TableBody>
                   <PLRow label="Product Revenue (excl. delivery)" value={totalRevenue} type="income" bold />
-                  <PLRow label="Customer Delivery Charges (pass-through)" value={totalDeliveryCharges} type="info" />
+                  <PLRow  label="Customer Delivery Charges (pass-through)" value={totalDeliveryCharges} type="info" />
                   <PLRow label="(−) Buying Cost (unit_cost × qty)" value={totalBuyingCost} type="expense" />
                   <PLRow label="(−) Packaging Costs" value={totalPackaging} type="expense" />
                   <PLRow label="(−) Fulfillment Costs" value={totalFulfillment} type="expense" />
@@ -246,26 +295,7 @@ export default function AdminFinancialReports() {
             </CardContent>
           </Card>
 
-          {/* Format-wise Profit */}
-          {formatProfitData.length > 0 && (
-            <Card className="border-border/30">
-              <CardHeader className="pb-2"><CardTitle className="text-sm">Format-wise Profit</CardTitle></CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-3 gap-3">
-                  {formatProfitData.map(f => (
-                    <div key={f.format} className="p-3 rounded-lg bg-secondary/50 text-center">
-                      <p className="text-xs text-muted-foreground mb-1">{f.format}</p>
-                      <p className="text-lg font-bold">৳{f.revenue.toLocaleString()}</p>
-                      <p className="text-[10px] text-muted-foreground">Revenue</p>
-                      <p className={`text-sm font-semibold mt-1 ${f.profit >= 0 ? "text-emerald-400" : "text-destructive"}`}>
-                        ৳{f.profit.toLocaleString()} profit
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          
         </TabsContent>
 
         {/* ── Monthly Trends ── */}
@@ -323,29 +353,29 @@ export default function AdminFinancialReports() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>Book</TableHead>
-                    <TableHead className="text-right">Sales</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Buying Cost</TableHead>
-                    <TableHead className="text-right">Profit</TableHead>
-                    <TableHead className="text-right">Margin</TableHead>
+                    <TableHead  className=" text-white">#</TableHead>
+                    <TableHead className=" text-white">Book</TableHead>
+                    <TableHead className="text-right text-white">Sales</TableHead>
+                    <TableHead className="text-right text-white">Revenue</TableHead>
+                    <TableHead className="text-right text-white">Buying Cost</TableHead>
+                    <TableHead className="text-right text-white">Profit</TableHead>
+                    <TableHead className="text-right text-white">Margin</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bookProfitData.length === 0 ? (
-                    <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-10">No sales data for this period</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={7} className="text-center text-black py-10">No sales data for this period</TableCell></TableRow>
                   ) : bookProfitData.map((b, i) => (
                     <TableRow key={i}>
-                      <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
+                      <TableCell className="text-black text-xs">{i + 1}</TableCell>
                       <TableCell className="font-medium text-sm max-w-[200px] truncate">{b.title}</TableCell>
                       <TableCell className="text-right text-sm">{b.sales}</TableCell>
                       <TableCell className="text-right text-sm">৳{b.revenue.toLocaleString()}</TableCell>
-                      <TableCell className="text-right text-sm text-amber-400">৳{b.buyingCost.toLocaleString()}</TableCell>
-                      <TableCell className={`text-right text-sm font-semibold ${b.profit >= 0 ? "text-emerald-400" : "text-destructive"}`}>
+                      <TableCell className="text-right text-sm text-black">৳{b.buyingCost.toLocaleString()}</TableCell>
+                      <TableCell className={`text-right text-sm font-semibold ${b.profit >= 0 ? "text-[#017B51]" : "text-red-500"}`}>
                         ৳{b.profit.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right text-xs text-muted-foreground">
+                      <TableCell className="text-right text-xs text-black">
                         {b.revenue > 0 ? `${((b.profit / b.revenue) * 100).toFixed(0)}%` : "—"}
                       </TableCell>
                     </TableRow>
@@ -379,39 +409,28 @@ export default function AdminFinancialReports() {
         {/* ── COD Tracking ── */}
         <TabsContent value="cod" className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card className="border-amber-500/20">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-500/10">
-                  <DollarSign className="w-5 h-5 text-amber-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-amber-400">৳{codPending.toLocaleString()}</p>
-                  <p className="text-xs text-muted-foreground">Pending COD Collection</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-blue-500/20">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-500/10">
-                  <Wallet className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-blue-400">৳{codCollected.toLocaleString()}</p>
-                  <p className="text-xs text-muted-foreground">Collected by Courier</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="border-emerald-500/20">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-emerald-500/10">
-                  <TrendingUp className="w-5 h-5 text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-emerald-400">৳{codSettled.toLocaleString()}</p>
-                  <p className="text-xs text-muted-foreground">Settled to Account</p>
-                </div>
-              </CardContent>
-            </Card>
+
+            <SummaryCard
+              icon=""
+              title="Pending COD Collection"
+              value={codPending.toLocaleString()}
+              color="#cc2e06"
+            />
+
+
+            <SummaryCard
+              icon={Wallet}
+              title="Collected by Courier"
+              value={codCollected.toLocaleString()}
+              color="#017B51"
+            />
+
+            <SummaryCard
+              icon={TrendingUp}
+              title="Settled to Account"
+              value={codSettled.toLocaleString()}
+              color="#017B51"
+            />
           </div>
 
           <Card className="border-border/30">
@@ -420,11 +439,11 @@ export default function AdminFinancialReports() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Order</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Delivery</TableHead>
-                    <TableHead>COD Status</TableHead>
+                    <TableHead className="text-white">Order</TableHead>
+                    <TableHead className="text-white">Date</TableHead>
+                    <TableHead className="text-white">Amount</TableHead>
+                    <TableHead className="text-white">Delivery</TableHead>
+                    <TableHead className="text-white">COD Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -435,9 +454,9 @@ export default function AdminFinancialReports() {
                       <TableCell className="font-mono text-xs">#{o.id.slice(0, 8)}</TableCell>
                       <TableCell className="text-sm">{new Date(o.created_at).toLocaleDateString()}</TableCell>
                       <TableCell className="font-medium">৳{o.total_amount}</TableCell>
-                      <TableCell><Badge variant="outline" className="text-[10px] capitalize">{o.status}</Badge></TableCell>
-                      <TableCell>
-                        <CodBadge status={o.cod_payment_status} />
+                      <TableCell><Badge variant="outline" className="text-[10px] capitalize text-black">{o.status}</Badge></TableCell>
+                      <TableCell >
+                        <CodBadge  status={o.cod_payment_status} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -468,8 +487,8 @@ function PLCard({ label, value, icon: Icon, color, bg }: { label: string; value:
 function PLRow({ label, value, type, bold }: { label: string; value: number; type: "income" | "expense" | "info"; bold?: boolean }) {
   return (
     <TableRow>
-      <TableCell className={bold ? "font-semibold" : "text-muted-foreground text-sm"}>{label}</TableCell>
-      <TableCell className={`text-right ${bold ? "font-semibold" : ""} ${type === "income" ? "text-emerald-400" : type === "info" ? "text-muted-foreground" : "text-red-400"}`}>
+      <TableCell className={bold ? "font-semibold" : "text-black text-sm"}>{label}</TableCell>
+      <TableCell className={`text-right ${bold ? "font-semibold" : ""} ${type === "income" ? "text-emerald-400" : type === "info" ? "text-black" : "text-red-400"}`}>
         ৳{value.toLocaleString()}
       </TableCell>
     </TableRow>
@@ -484,6 +503,6 @@ function CodBadge({ status }: { status: string }) {
     settled_to_merchant: { label: "Settled", cls: "bg-emerald-500/20 text-emerald-400" },
     paid: { label: "Paid", cls: "bg-green-500/20 text-green-400" },
   };
-  const c = config[status] || { label: status || "N/A", cls: "bg-muted text-muted-foreground" };
+  const c = config[status] || { label: status || "N/A", cls: "bg-[#017B51] text-white border-0" };
   return <Badge variant="outline" className={`text-[10px] ${c.cls}`}>{c.label}</Badge>;
 }
