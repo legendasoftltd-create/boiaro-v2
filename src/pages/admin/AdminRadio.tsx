@@ -250,8 +250,7 @@ export default function AdminRadio() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Live Radio</h1>
-          <p className="text-muted-foreground text-sm">Configure and control your live radio stream</p>
+          <h1 className="text-2xl font-bold text-black">Live Radio</h1>
         </div>
         {station && (
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
@@ -274,7 +273,7 @@ export default function AdminRadio() {
         </CardHeader>
         <CardContent className="space-y-5">
           {/* ON/OFF Toggle — prominent */}
-          <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
+          <div className="flex items-center justify-between p-4 rounded-lg  border border-border">
             <div>
               <Label className="text-base font-medium">Station Active</Label>
               <p className="text-sm text-muted-foreground">

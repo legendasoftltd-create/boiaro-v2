@@ -102,8 +102,8 @@ export default function AdminHomepageSections() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-primary">Homepage Sections</h1>
-          <p className="text-sm text-muted-foreground">Drag rows or use arrows to reorder · Toggle visibility per section</p>
+          <h1 className="text-2xl font-bold font-serif text-black">Homepage Sections</h1>
+          
         </div>
         <div className="flex gap-2">
           {duplicates.size > 0 && (
@@ -141,9 +141,9 @@ export default function AdminHomepageSections() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">Loading sections...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-10 text-black">Loading sections...</TableCell></TableRow>
             ) : sections.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-10 text-muted-foreground">No sections found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-10 text-black">No sections found</TableCell></TableRow>
             ) : sections.map((s, i) => (
               <TableRow
                 key={s.id}
@@ -158,7 +158,7 @@ export default function AdminHomepageSections() {
               >
                 {/* Drag handle */}
                 <TableCell className="px-2 py-2">
-                  <GripVertical className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+                  <GripVertical className="h-4 w-4 text-white group-hover:text-muted-foreground transition-colors" />
                 </TableCell>
 
                 {/* Order badge */}
@@ -174,7 +174,7 @@ export default function AdminHomepageSections() {
 
                 {/* Section name */}
                 <TableCell className="py-2">
-                  <span className="font-medium text-sm truncate block">{formatKey(s.section_key)}</span>
+                  <span className="font-medium text-sm truncate block ">{formatKey(s.section_key)}</span>
                 </TableCell>
 
                 {/* Editable title */}
