@@ -161,12 +161,12 @@ export default function AdminFreeShipping() {
           <div className="space-y-4">
             <div>
               <Label className="text-sm mb-1.5">Campaign Name *</Label>
-              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="৳500+ ফ্রি শিপিং" className="bg-secondary" />
+              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="৳500+ ফ্রি শিপিং" className="" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm mb-1.5">Min Order Amount (৳)</Label>
-                <Input type="number" value={form.min_order_amount} onChange={e => setForm(f => ({ ...f, min_order_amount: Number(e.target.value) }))} className="bg-secondary" />
+                <Input type="number" value={form.min_order_amount} onChange={e => setForm(f => ({ ...f, min_order_amount: Number(e.target.value) }))} className="" />
               </div>
               <div>
                 <Label className="text-sm mb-1.5">Area</Label>
@@ -182,7 +182,7 @@ export default function AdminFreeShipping() {
             </div>
             <div>
               <Label className="text-sm mb-1.5">Description (optional)</Label>
-              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Campaign details..." className="bg-secondary" rows={2} />
+              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Campaign details..." className="" rows={2} />
             </div>
             <div className="flex items-center gap-3">
               <Switch checked={form.is_active} onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))} />

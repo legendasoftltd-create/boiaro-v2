@@ -236,11 +236,11 @@ export default function AdminShippingMethods() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm mb-1.5">Method Name *</Label>
-                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="bg-secondary" />
+                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="" />
               </div>
               <div>
                 <Label className="text-sm mb-1.5">Code *</Label>
-                <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} className="bg-secondary font-mono" />
+                <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} className=" font-mono" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -256,39 +256,39 @@ export default function AdminShippingMethods() {
               </div>
               <div>
                 <Label className="text-sm mb-1.5">Provider Code</Label>
-                <Input value={form.provider_code} onChange={e => setForm(f => ({ ...f, provider_code: e.target.value }))} placeholder="redx, pathao..." className="bg-secondary" />
+                <Input value={form.provider_code} onChange={e => setForm(f => ({ ...f, provider_code: e.target.value }))} placeholder="redx, pathao..." className="" />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label className="text-sm mb-1.5">Base Charge (৳)</Label>
-                <Input type="number" value={form.base_charge} onChange={e => setForm(f => ({ ...f, base_charge: Number(e.target.value) }))} className="bg-secondary" />
+                <Input type="number" value={form.base_charge} onChange={e => setForm(f => ({ ...f, base_charge: Number(e.target.value) }))} className="" />
               </div>
               <div>
                 <Label className="text-sm mb-1.5">Base Weight (kg)</Label>
-                <Input type="number" step="0.5" value={form.base_weight_kg} onChange={e => setForm(f => ({ ...f, base_weight_kg: Number(e.target.value) }))} className="bg-secondary" />
+                <Input type="number" step="0.5" value={form.base_weight_kg} onChange={e => setForm(f => ({ ...f, base_weight_kg: Number(e.target.value) }))} className="" />
               </div>
               <div>
                 <Label className="text-sm mb-1.5">Extra / kg (৳)</Label>
-                <Input type="number" value={form.extra_charge_per_kg} onChange={e => setForm(f => ({ ...f, extra_charge_per_kg: Number(e.target.value) }))} className="bg-secondary" />
+                <Input type="number" value={form.extra_charge_per_kg} onChange={e => setForm(f => ({ ...f, extra_charge_per_kg: Number(e.target.value) }))} className="" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm mb-1.5">Delivery Time</Label>
-                <Input value={form.delivery_time} onChange={e => setForm(f => ({ ...f, delivery_time: e.target.value }))} placeholder="1-3 দিন" className="bg-secondary" />
+                <Input value={form.delivery_time} onChange={e => setForm(f => ({ ...f, delivery_time: e.target.value }))} placeholder="1-3 দিন" className="" />
               </div>
               <div>
                 <Label className="text-sm mb-1.5">Sort Order</Label>
-                <Input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))} className="bg-secondary" />
+                <Input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))} className="" />
               </div>
             </div>
 
             {/* Charge preview */}
-            <div className="p-3 rounded-lg bg-muted/50 border text-sm space-y-1">
-              <p className="font-medium text-muted-foreground">চার্জ প্রিভিউ</p>
+            <div className="p-3 rounded-lg bg-[#017B51] border text-sm space-y-1">
+              <p className="font-medium text-white">চার্জ প্রিভিউ</p>
               {[0.5, 1, 1.5, 2, 3, 5].map(w => (
-                <div key={w} className="flex justify-between text-xs">
+                <div key={w} className="flex justify-between text-xs text-white">
                   <span>{w} kg</span>
                   <span className="font-medium">৳{previewCharge(form, w)}</span>
                 </div>
