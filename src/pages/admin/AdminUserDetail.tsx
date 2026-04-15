@@ -223,11 +223,11 @@ export default function AdminUserDetail() {
             <img src={form.avatar_url} alt="" className="w-12 h-12 rounded-xl object-cover border border-border/40" />
           )}
           <div>
-            <h1 className="text-xl font-bold font-serif">
+            <h1 className="text-xl font-bold font-serif text-black">
               {type === "user" ? (form.display_name || "User") : form.name}
             </h1>
             <div className="flex items-center gap-2 mt-0.5">
-              <Badge variant="outline" className="text-[11px] capitalize">{type}</Badge>
+              <Badge variant="outline" className="text-[11px] capitalize text-black">{type}</Badge>
               {roles.map(r => (
                 <Badge key={r} variant="secondary" className="text-[11px] capitalize">{r}</Badge>
               ))}
@@ -250,36 +250,36 @@ export default function AdminUserDetail() {
         <TabsContent value="profile" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Basic Info */}
-            <Card className="border-border/30 bg-card/60">
+            <Card className="border-border/30 ">
               <CardHeader className="pb-3"><CardTitle className="text-sm">Basic Information</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {type === "user" ? (
                   <>
-                    <div><Label className="text-xs text-muted-foreground">Display Name</Label><Input value={form.display_name} onChange={e => setForm({ ...form, display_name: e.target.value })} /></div>
-                    <div><Label className="text-xs text-muted-foreground">Avatar URL</Label><Input value={form.avatar_url} onChange={e => setForm({ ...form, avatar_url: e.target.value })} /></div>
-                    <div><Label className="text-xs text-muted-foreground">Bio</Label><Textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} rows={3} /></div>
+                    <div><Label className="text-xs ">Display Name</Label><Input value={form.display_name} onChange={e => setForm({ ...form, display_name: e.target.value })} /></div>
+                    <div><Label className="text-xs ">Avatar URL</Label><Input value={form.avatar_url} onChange={e => setForm({ ...form, avatar_url: e.target.value })} /></div>
+                    <div><Label className="text-xs ">Bio</Label><Textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} rows={3} /></div>
                   </>
                 ) : (
                   <>
-                    <div><Label className="text-xs text-muted-foreground">Name (Bengali)</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-                    <div><Label className="text-xs text-muted-foreground">Name (English)</Label><Input value={form.name_en} onChange={e => setForm({ ...form, name_en: e.target.value })} /></div>
-                    <div><Label className="text-xs text-muted-foreground">Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-                    <div><Label className="text-xs text-muted-foreground">Avatar / Logo URL</Label><Input value={form.avatar_url} onChange={e => setForm({ ...form, avatar_url: e.target.value })} /></div>
-                    {type === "author" && <div><Label className="text-xs text-muted-foreground">Genre</Label><Input value={form.genre} onChange={e => setForm({ ...form, genre: e.target.value })} /></div>}
+                    <div><Label className="text-xs ">Name (Bengali)</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                    <div><Label className="text-xs ">Name (English)</Label><Input value={form.name_en} onChange={e => setForm({ ...form, name_en: e.target.value })} /></div>
+                    <div><Label className="text-xs ">Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+                    <div><Label className="text-xs ">Avatar / Logo URL</Label><Input value={form.avatar_url} onChange={e => setForm({ ...form, avatar_url: e.target.value })} /></div>
+                    {type === "author" && <div><Label className="text-xs ">Genre</Label><Input value={form.genre} onChange={e => setForm({ ...form, genre: e.target.value })} /></div>}
                     {type === "narrator" && (
                       <>
-                        <div><Label className="text-xs text-muted-foreground">Specialty</Label><Input value={form.specialty} onChange={e => setForm({ ...form, specialty: e.target.value })} /></div>
-                        <div><Label className="text-xs text-muted-foreground">Rating</Label><Input type="number" step="0.1" value={form.rating} onChange={e => setForm({ ...form, rating: e.target.value })} /></div>
+                        <div><Label className="text-xs ">Specialty</Label><Input value={form.specialty} onChange={e => setForm({ ...form, specialty: e.target.value })} /></div>
+                        <div><Label className="text-xs ">Rating</Label><Input type="number" step="0.1" value={form.rating} onChange={e => setForm({ ...form, rating: e.target.value })} /></div>
                       </>
                     )}
-                    <div><Label className="text-xs text-muted-foreground">{type === "publisher" ? "Description" : "Bio"}</Label><Textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} rows={3} /></div>
+                    <div><Label className="text-xs ">{type === "publisher" ? "Description" : "Bio"}</Label><Textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} rows={3} /></div>
                   </>
                 )}
               </CardContent>
             </Card>
 
             {/* Controls */}
-            <Card className="border-border/30 bg-card/60">
+            <Card className="border-border/30 ">
               <CardHeader className="pb-3"><CardTitle className="text-sm">Controls & Flags</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {isCreator && (
@@ -318,17 +318,17 @@ export default function AdminUserDetail() {
                 {/* Auth metadata */}
                 {authMeta && (
                   <div className="pt-3 border-t border-border/30 space-y-2">
-                    <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Account Info</p>
+                    <p className="text-[11px]  font-medium uppercase tracking-wider">Account Info</p>
                     <div className="flex items-center gap-2 text-xs">
-                      <Mail className="h-3 w-3 text-muted-foreground" />
+                      <Mail className="h-3 w-3 " />
                       <span>{authMeta.email}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
-                      <Calendar className="h-3 w-3 text-muted-foreground" />
+                      <Calendar className="h-3 w-3 " />
                       <span>Joined: {authMeta.created_at ? new Date(authMeta.created_at).toLocaleDateString() : "—"}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs">
-                      <Calendar className="h-3 w-3 text-muted-foreground" />
+                      <Calendar className="h-3 w-3 " />
                       <span>Last login: {authMeta.last_sign_in_at ? new Date(authMeta.last_sign_in_at).toLocaleDateString() : "Never"}</span>
                     </div>
                     {authMeta.email_confirmed_at && (
