@@ -460,7 +460,7 @@ export default function AdminOrders() {
             <div className="space-y-4 text-sm">
               {/* Format Badge */}
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="gap-1">
+                <Badge variant="outline" className="gap-1 text-black">
                   {getFormatIcon(detailFormat)} {getFormatLabel(detailFormat)} Order
                 </Badge>
                 {detail.payment_method === "demo" && (

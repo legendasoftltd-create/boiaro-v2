@@ -204,12 +204,12 @@ export default function AdminSubscriptionPlans() {
           <DialogHeader><DialogTitle>{editing ? "Edit Plan" : "New Plan"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div><Label className="text-sm mb-1.5">Plan Name *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="bg-secondary" /></div>
-              <div><Label className="text-sm mb-1.5">Code *</Label><Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} className="bg-secondary font-mono" /></div>
+              <div><Label className="text-sm mb-1.5">Plan Name *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="" /></div>
+              <div><Label className="text-sm mb-1.5">Code *</Label><Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} className=" font-mono" /></div>
             </div>
-            <div><Label className="text-sm mb-1.5">Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="bg-secondary" rows={2} /></div>
+            <div><Label className="text-sm mb-1.5">Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="" rows={2} /></div>
             <div className="grid grid-cols-3 gap-4">
-              <div><Label className="text-sm mb-1.5">Price (৳)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))} className="bg-secondary" /></div>
+              <div><Label className="text-sm mb-1.5">Price (৳)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))} className="" /></div>
               <div>
                 <Label className="text-sm mb-1.5">Billing</Label>
                 <Select value={form.billing_type} onValueChange={v => setForm(f => ({ ...f, billing_type: v }))}>
@@ -235,8 +235,8 @@ export default function AdminSubscriptionPlans() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <div><Label className="text-sm mb-1.5">Trial Days</Label><Input type="number" value={form.trial_days} onChange={e => setForm(f => ({ ...f, trial_days: Number(e.target.value) }))} className="bg-secondary" /></div>
-              <div><Label className="text-sm mb-1.5">Sort Order</Label><Input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))} className="bg-secondary" /></div>
+              <div><Label className="text-sm mb-1.5">Trial Days</Label><Input type="number" value={form.trial_days} onChange={e => setForm(f => ({ ...f, trial_days: Number(e.target.value) }))} className="" /></div>
+              <div><Label className="text-sm mb-1.5">Sort Order</Label><Input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))} className="" /></div>
               <div className="flex items-end gap-2 pb-1">
                 <Switch checked={form.is_featured} onCheckedChange={v => setForm(f => ({ ...f, is_featured: v }))} />
                 <Label className="text-sm">Featured</Label>

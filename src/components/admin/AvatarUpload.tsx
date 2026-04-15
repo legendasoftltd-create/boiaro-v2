@@ -99,9 +99,9 @@ export function AvatarUpload({
       <Label className="mb-2 block text-black">{label}</Label>
       <div className="flex items-center gap-4">
         <div className="relative">
-          <Avatar className="h-16 w-16 border-2 border-border">
+          <Avatar className="h-16 w-16 border-2 border-white">
             <AvatarImage src={displayUrl} className="object-cover" />
-            <AvatarFallback className="bg-secondary text-muted-foreground">
+            <AvatarFallback className="bg-[#017B51] text-white">
               <User className="h-6 w-6" />
             </AvatarFallback>
           </Avatar>

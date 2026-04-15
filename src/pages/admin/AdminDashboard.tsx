@@ -890,14 +890,14 @@ export default function AdminDashboard() {
               {stats.recentOrders.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.recentOrders.map(o => (
-                    <div key={o.id} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={o.id} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono text-muted-foreground">#{o.id}</span>
+                        <span className="text-[10px] font-mono ">#{o.id}</span>
                         <Badge variant="outline" className={`text-[9px] px-1.5 py-0 capitalize ${statusColor[o.status] || ""}`}>{o.status}</Badge>
                       </div>
                       <div className="text-right">
                         <span className="text-xs font-medium">৳{o.total}</span>
-                        <span className="text-[10px] text-muted-foreground ml-1">{o.created}</span>
+                        <span className="text-[10px]  ml-1">{o.created}</span>
                       </div>
                     </div>
                   ))}
@@ -915,12 +915,12 @@ export default function AdminDashboard() {
               {stats.topBooks.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.topBooks.map((b, i) => (
-                    <div key={i} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={i} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground font-mono w-4">{i + 1}</span>
+                        <span className="text-[10px] font-mono w-4">{i + 1}</span>
                         <span className="text-sm truncate max-w-[140px]">{b.title}</span>
                       </div>
-                      <span className="text-xs text-muted-foreground">{b.reads} reads</span>
+                      <span className="text-xs ">{b.reads} reads</span>
                     </div>
                   ))}
                 </div>
@@ -937,14 +937,14 @@ export default function AdminDashboard() {
               {stats.topEarningBooks.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.topEarningBooks.map((b, i) => (
-                    <div key={i} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={i} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-muted-foreground font-mono w-4">{i + 1}</span>
+                        <span className="text-[10px]  font-mono w-4">{i + 1}</span>
                         <span className="text-sm truncate max-w-[120px]">{b.title}</span>
                       </div>
                       <div className="text-right">
                         <span className="text-xs font-medium text-emerald-400">৳{b.profit.toLocaleString()}</span>
-                        <span className="text-[10px] text-muted-foreground ml-1">(rev ৳{b.revenue.toLocaleString()})</span>
+                        <span className="text-[10px]  ml-1">(rev ৳{b.revenue.toLocaleString()})</span>
                       </div>
                     </div>
                   ))}
@@ -1128,7 +1128,7 @@ export default function AdminDashboard() {
               <p className="text-xs text-muted-foreground mb-2">Recent Transactions</p>
               <div className="space-y-2">
                 {stats.recentLedger.length > 0 ? stats.recentLedger.map((t, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                  <div key={i} className="flex items-center justify-between text-sm text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                     <span className="truncate max-w-[180px]">{t.description}</span>
                     <div className="flex items-center gap-2">
                       <span className={`font-medium ${t.type === "income" ? "text-emerald-400" : "text-red-400"}`}>
@@ -1189,7 +1189,7 @@ export default function AdminDashboard() {
               {stats.topRatedBooks.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.topRatedBooks.map((b, i) => (
-                    <div key={i} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={i} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-white font-mono w-4">{i + 1}</span>
                         <span className="text-sm truncate max-w-[120px]">{b.title}</span>
@@ -1214,7 +1214,7 @@ export default function AdminDashboard() {
               {stats.pendingApplications.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.pendingApplications.map(a => (
-                    <div key={a.id} className="flex items-center justify-between gap-2 hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={a.id} className="flex items-center justify-between gap-2 text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2 min-w-0">
                         <Badge variant="outline" className="text-[9px] capitalize bg-amber-500/15 text-amber-400 animate-pulse shrink-0">{a.role}</Badge>
                         <span className="text-sm truncate max-w-[80px]">{a.user}</span>
@@ -1238,7 +1238,7 @@ export default function AdminDashboard() {
               {stats.pendingReviews.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.pendingReviews.map(r => (
-                    <div key={r.id} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={r.id} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2">
                         <span className="text-sm truncate max-w-[120px]">{r.book}</span>
                         <span className="text-[10px] text-amber-400">{"★".repeat(r.rating)}</span>
@@ -1353,7 +1353,7 @@ function KPICard({ icon: Icon, label, value, color, bgColor, onClick, tooltip, p
               <Icon className={`h-4 w-4 ${color}`} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-lg font-bold truncate">{displayValue}</p>
+              <p className="text-lg text-white font-bold truncate">{displayValue}</p>
               <p className="text-[10px] text-white leading-tight">{label}</p>
             </div>
             <ArrowUpRight className="h-3.5 w-3.5 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
