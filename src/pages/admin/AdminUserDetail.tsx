@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import SummaryCard from '@/components/admin/SummaryCard';
+
 import {
   ArrowLeft, User, Shield, BookOpen, Key,
   Save, Send, Lock, Globe, Facebook, Youtube, Instagram,
@@ -240,7 +242,7 @@ export default function AdminUserDetail() {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-4">
-        <TabsList className="bg-muted/50">
+        <TabsList className=" flex items-center justify-center gap-5">
           <TabsTrigger value="profile" className="gap-1.5"><User className="h-3.5 w-3.5" /> Profile</TabsTrigger>
           {isCreator && <TabsTrigger value="business" className="gap-1.5"><BookOpen className="h-3.5 w-3.5" /> Business</TabsTrigger>}
           <TabsTrigger value="security" className="gap-1.5"><Shield className="h-3.5 w-3.5" /> Security</TabsTrigger>
@@ -350,19 +352,19 @@ export default function AdminUserDetail() {
 
           {/* Application Info */}
           {application && (
-            <Card className="border-border/30 bg-card/60">
+            <Card className="border-border/30 ">
               <CardHeader className="pb-3"><CardTitle className="text-sm">Application Details</CardTitle></CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div>
-                    <p className="text-muted-foreground">Status</p>
+                    <p className="">Status</p>
                     <Badge variant="outline" className={`text-[10px] mt-1 ${application.status === "approved" ? "bg-emerald-500/10 text-emerald-400" : application.status === "rejected" ? "bg-red-500/10 text-red-400" : "bg-yellow-500/10 text-yellow-400"}`}>{application.status}</Badge>
                   </div>
-                  <div><p className="text-muted-foreground">Full Name</p><p className="font-medium mt-1">{application.full_name || "—"}</p></div>
-                  <div><p className="text-muted-foreground">Phone</p><p className="font-medium mt-1">{application.phone || "—"}</p></div>
-                  <div><p className="text-muted-foreground">Experience</p><p className="font-medium mt-1 line-clamp-2">{application.experience || "—"}</p></div>
+                  <div><p className="">Full Name</p><p className="font-medium mt-1">{application.full_name || "—"}</p></div>
+                  <div><p className="">Phone</p><p className="font-medium mt-1">{application.phone || "—"}</p></div>
+                  <div><p className="">Experience</p><p className="font-medium mt-1 line-clamp-2">{application.experience || "—"}</p></div>
                 </div>
-                {application.message && <p className="text-xs text-muted-foreground mt-3 italic">"{application.message}"</p>}
+                {application.message && <p className="text-xs  mt-3 italic">"{application.message}"</p>}
                 <div className="flex gap-2 mt-3 flex-wrap">
                   {application.portfolio_url && <a href={application.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline flex items-center gap-1"><ExternalLink className="h-3 w-3" /> Portfolio</a>}
                   {application.website_url && <a href={application.website_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary hover:underline flex items-center gap-1"><Globe className="h-3 w-3" /> Website</a>}
@@ -379,32 +381,35 @@ export default function AdminUserDetail() {
         {isCreator && (
           <TabsContent value="business" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="border-border/30 bg-card/60">
-                <CardContent className="pt-5">
-                  <p className="text-xs text-muted-foreground">Total Earnings</p>
-                  <p className="text-2xl font-bold mt-1">৳{totalEarnings.toFixed(0)}</p>
-                </CardContent>
-              </Card>
-              <Card className="border-border/30 bg-card/60">
-                <CardContent className="pt-5">
-                  <p className="text-xs text-muted-foreground">Pending Earnings</p>
-                  <p className="text-2xl font-bold mt-1">৳{pendingEarnings.toFixed(0)}</p>
-                </CardContent>
-              </Card>
-              <Card className="border-border/30 bg-card/60">
-                <CardContent className="pt-5">
-                  <p className="text-xs text-muted-foreground">Books Submitted</p>
-                  <p className="text-2xl font-bold mt-1">{books.length}</p>
-                </CardContent>
-              </Card>
+
+              <SummaryCard
+              icon={``}
+              title="Total Earnings"
+              value={totalEarnings.toFixed(0)}
+              color="#017B51"
+            />
+
+              <SummaryCard
+              icon={``}
+              title="Pending Earnings"
+              value={pendingEarnings.toFixed(0)}
+              color="#017B51"
+            />
+              
+              <SummaryCard
+              icon={``}
+              title="Books Submitted"
+              value={books.length}
+              color="#017B51"
+            />
             </div>
 
             {/* Books */}
-            <Card className="border-border/30 bg-card/60">
+            <Card className="border-border/30 ">
               <CardHeader className="pb-3"><CardTitle className="text-sm">Submitted Books</CardTitle></CardHeader>
               <CardContent>
                 {books.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">No books submitted</p>
+                  <p className="text-sm  text-center py-6">No books submitted</p>
                 ) : (
                   <div className="space-y-2">
                     {books.map(b => (
@@ -412,7 +417,7 @@ export default function AdminUserDetail() {
                         {b.cover_url && <img src={b.cover_url} alt="" className="w-8 h-11 rounded object-cover" />}
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{b.title}</p>
-                          <p className="text-[11px] text-muted-foreground">{new Date(b.created_at).toLocaleDateString()}</p>
+                          <p className="text-[11px] ">{new Date(b.created_at).toLocaleDateString()}</p>
                         </div>
                         <Badge variant="outline" className="text-[10px]">{b.submission_status}</Badge>
                       </div>
@@ -423,18 +428,18 @@ export default function AdminUserDetail() {
             </Card>
 
             {/* Withdrawals */}
-            <Card className="border-border/30 bg-card/60">
+            <Card className="border-border/30 ">
               <CardHeader className="pb-3"><CardTitle className="text-sm">Withdrawal History</CardTitle></CardHeader>
               <CardContent>
                 {withdrawals.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">No withdrawal requests</p>
+                  <p className="text-sm  text-center py-6">No withdrawal requests</p>
                 ) : (
                   <div className="space-y-2">
                     {withdrawals.map(w => (
                       <div key={w.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/20">
                         <div>
                           <p className="text-sm font-medium">৳{Number(w.amount).toFixed(0)}</p>
-                          <p className="text-[11px] text-muted-foreground">{w.method} · {new Date(w.created_at).toLocaleDateString()}</p>
+                          <p className="text-[11px] ">{w.method} · {new Date(w.created_at).toLocaleDateString()}</p>
                         </div>
                         <Badge variant="outline" className="text-[10px]">{w.status}</Badge>
                       </div>
@@ -448,10 +453,10 @@ export default function AdminUserDetail() {
 
         {/* Security Tab */}
         <TabsContent value="security" className="space-y-4">
-          <Card className="border-border/30 bg-card/60">
+          <Card className="border-border/30 ">
             <CardHeader className="pb-3"><CardTitle className="text-sm flex items-center gap-2"><Key className="h-4 w-4" /> Password Management</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-xs text-muted-foreground">Passwords are never displayed. Use these actions to manage user access securely.</p>
+              <p className="text-xs ">Passwords are never displayed. Use these actions to manage user access securely.</p>
               <div className="flex gap-2 flex-wrap">
                 <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={handlePasswordReset}>
                   <Send className="h-3 w-3" /> Send Reset Link
@@ -469,7 +474,7 @@ export default function AdminUserDetail() {
               <div className="flex gap-2 flex-wrap">
                 {roles.length ? roles.map(r => (
                   <Badge key={r} className="capitalize">{r}</Badge>
-                )) : <p className="text-xs text-muted-foreground">No roles assigned</p>}
+                )) : <p className="text-xs ">No roles assigned</p>}
               </div>
             </CardContent>
           </Card>
@@ -481,7 +486,7 @@ export default function AdminUserDetail() {
         <DialogContent>
           <DialogHeader><DialogTitle>Set Temporary Password</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Set a temporary password for this user. They should change it after logging in.</p>
+            <p className="text-sm ">Set a temporary password for this user. They should change it after logging in.</p>
             <div><Label>New Password</Label><Input type="password" value={tempPassword} onChange={e => setTempPassword(e.target.value)} placeholder="Min 6 characters" /></div>
             <Button className="w-full" onClick={handleSetTempPassword} disabled={tempPassword.length < 6}>Set Password</Button>
           </div>
