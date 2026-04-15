@@ -42,7 +42,7 @@ function HealthBadge({ ok, label, count }: { ok: boolean; label: string; count?:
       <CardContent className="p-3 flex items-center gap-3">
         {ok ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" /> : <AlertTriangle className="w-5 h-5 text-destructive shrink-0 animate-pulse" />}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold">{label}</p>
+          <p className="text-sm font-semibold text-white">{label}</p>
           <p className={`text-xs ${ok ? "text-green-500" : "text-destructive"}`}>
             {ok ? "OK" : `Warning${count ? ` (${count})` : ""}`}
           </p>
@@ -305,8 +305,8 @@ export default function AdminLiveMonitoring() {
                   <SelectItem value="hardcopy">Hardcopy</SelectItem>
                 </SelectContent>
               </Select>
-              <Input placeholder="User ID" value={userIdFilter} onChange={e => setUserIdFilter(e.target.value)} className="w-[180px]  placeholder:text-gray-400" />
-              <Input placeholder="Book ID" value={bookIdFilter} onChange={e => setBookIdFilter(e.target.value)} className="w-[180px]  placeholder:text-gray-400" />
+              <Input placeholder="User ID" value={userIdFilter} onChange={e => setUserIdFilter(e.target.value)} className="w-[180px]  placeholder:text-white" />
+              <Input placeholder="Book ID" value={bookIdFilter} onChange={e => setBookIdFilter(e.target.value)} className="w-[180px]  placeholder:text-white" />
 
               {/* Reset Button (Optional but helpful for "Sundor" UX) */}
               <button 
