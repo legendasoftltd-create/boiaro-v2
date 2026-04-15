@@ -1353,7 +1353,7 @@ function KPICard({ icon: Icon, label, value, color, bgColor, onClick, tooltip, p
               <Icon className={`h-4 w-4 ${color}`} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-lg font-bold truncate">{displayValue}</p>
+              <p className="text-lg text-white font-bold truncate">{displayValue}</p>
               <p className="text-[10px] text-white leading-tight">{label}</p>
             </div>
             <ArrowUpRight className="h-3.5 w-3.5 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
