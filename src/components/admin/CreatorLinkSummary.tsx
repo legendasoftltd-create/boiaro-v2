@@ -67,23 +67,23 @@ export function CreatorLinkSummary({ userId }: CreatorLinkSummaryProps) {
       <Link
         key={item.id}
         to={`/admin/user/${type}/${item.id}`}
-        className="flex items-center gap-3 p-3 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors border border-border/20"
+        className="flex items-center gap-3 p-3 rounded-lg bg-white transition-colors border border-border/20"
       >
         <Avatar className="h-9 w-9">
           <AvatarImage src={item.avatar_url || item.logo_url || undefined} />
-          <AvatarFallback className="bg-secondary text-muted-foreground">
+          <AvatarFallback className="bg-secondary ">
             <Icon className="h-4 w-4" />
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{item.name}</p>
-          {item.name_en && <p className="text-[11px] text-muted-foreground truncate">{item.name_en}</p>}
+          {item.name_en && <p className="text-[11px]  truncate">{item.name_en}</p>}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <Badge variant="outline" className="text-[10px] capitalize">{type}</Badge>
+          <Badge variant="outline" className="text-[10px] capitalize text-black">{type}</Badge>
           <Badge
             variant={item.status === "active" ? "secondary" : "outline"}
-            className={`text-[10px] ${item.status === "active" ? "border-primary/20" : "text-muted-foreground"}`}
+            className={`text-[10px] ${item.status === "active" ? "border-primary/20" : ""}`}
           >
             {item.status}
           </Badge>

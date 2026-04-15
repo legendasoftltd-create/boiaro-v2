@@ -76,7 +76,7 @@ export function SearchableSelect({
           aria-expanded={open}
           className="w-full justify-between font-normal h-10"
         >
-          <span className={cn("truncate", !selectedLabel && "text-muted-foreground")}>
+          <span className={cn("truncate", !selectedLabel && "text-white")}>
             {selectedLabel || placeholder}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -85,7 +85,7 @@ export function SearchableSelect({
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         {/* Sticky search */}
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <Search className="h-4 w-4 shrink-0 text-white" />
           <Input
             ref={inputRef}
             placeholder={searchPlaceholder}

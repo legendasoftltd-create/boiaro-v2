@@ -90,10 +90,10 @@ export function BookContributors({ bookId }: BookContributorsProps) {
         {contributors.length > 0 ? (
           <div className="space-y-2">
             {contributors.map(c => (
-              <div key={c.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/50 text-sm">
+              <div key={c.id} className="flex items-center justify-between p-2 rounded-lg bg-[#017B51] text-sm">
                 <div className="flex items-center gap-2">
                   {roleBadge(c.role)}
-                  <span className="font-medium">{getDisplayName(c.user_id)}</span>
+                  <span className="font-medium text-white">{getDisplayName(c.user_id)}</span>
                   {c.format && <Badge variant="outline" className="text-[9px] capitalize">{c.format}</Badge>}
                 </div>
                 <Button size="sm" variant="ghost" onClick={() => removeContributor(c.id)}>

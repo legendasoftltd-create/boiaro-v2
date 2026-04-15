@@ -148,7 +148,7 @@ export default function AdminSiteSettings() {
       </div>
 
       {showPreview && (
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-primary/20 bg-white">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Eye className="w-4 h-4 text-primary" /> Live Footer Preview
