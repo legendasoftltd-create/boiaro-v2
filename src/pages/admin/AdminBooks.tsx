@@ -752,7 +752,7 @@ export default function AdminBooks() {
       <Dialog open={formatOpen} onOpenChange={setFormatOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Book Formats, Contributors & Revenue</DialogTitle>
+            <DialogTitle className="">Book Formats, Contributors & Revenue</DialogTitle>
           </DialogHeader>
 
           {/* Contributors */}
@@ -764,13 +764,13 @@ export default function AdminBooks() {
           {/* Existing Formats Summary */}
           <Card className="border-border/50">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 ">
                 Saved Formats
                 {formatsLoading && <span className="text-xs font-normal text-muted-foreground">(loading...)</span>}
                 {!formatsLoading && formatsLoaded && formats.length === 0 && <span className="text-xs font-normal text-muted-foreground">(none yet)</span>}
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
+            <CardContent className="pt-0 mt-2">
               {formatsLoading ? (
                 <p className="text-xs text-muted-foreground py-2">Loading saved formats...</p>
               ) : !formatsLoaded ? (
@@ -778,7 +778,7 @@ export default function AdminBooks() {
               ) : formats.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-2">No formats added yet. Use the editor below to add one.</p>
               ) : (
-                <div className="grid gap-2">
+                <div className="grid gap-2 ">
                   {formats.map((f) => {
                     const isEditing = formatForm.id === f.id;
                     const fmtConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -877,7 +877,7 @@ export default function AdminBooks() {
                   setFormatForm({ format: v, payout_model: v === 'hardcopy' ? 'inventory_resale' : 'revenue_share' });
                 }
               }}>
-                <TabsList className="grid w-full grid-cols-3 mb-4">
+                <TabsList className="grid w-full grid-cols-3 gap-5 mb-4">
                   <TabsTrigger value="ebook" className="gap-1.5"><BookOpen className="h-3.5 w-3.5" />eBook</TabsTrigger>
                   <TabsTrigger value="audiobook" className="gap-1.5"><Headphones className="h-3.5 w-3.5" />Audiobook</TabsTrigger>
                   <TabsTrigger value="hardcopy" className="gap-1.5"><Package className="h-3.5 w-3.5" />Hard Copy</TabsTrigger>
