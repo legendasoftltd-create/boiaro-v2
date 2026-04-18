@@ -2,11 +2,11 @@ export const homepageRoute = async (req: Request) => {
   try {
     const response = {
       status: true,
-      message: "Hello Rakib! API is now accessible.",
+      message: "Hello Boiaro! API is now accessible.",
       timestamp: new Date().toISOString(),
       data: {
-        user: "Rakib Molla",
-        project: "NRB Residence",
+        user: "Boiaro",
+        project: "boiaro ",
         note: "Security key verification disabled for testing"
       }
     };
