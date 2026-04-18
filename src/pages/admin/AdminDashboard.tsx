@@ -22,7 +22,6 @@ import { useToast } from "@/hooks/use-toast";
 import { approveCreatorApplication, rejectCreatorApplication } from "@/lib/approveCreator";
 import { useCountUp } from "@/hooks/useCountUp";
 import { isVerifiedRevenueOrder, calculateTotalProfit, calculateOrderProfit, getItemBuyingCost, type RevenueOrder, type OrderItemWithCost } from "@/hooks/useUnifiedRevenue";
-import BusinessOverviewCard from "@/components/BusinessOverviewCard";
 
 const COLORS = ["hsl(var(--primary))", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"];
 
@@ -415,562 +414,123 @@ export default function AdminDashboard() {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-6">
-
-  
-        {/*   Business  Overview */}
-        <div>
-          <h1 className="text-2xl font-bold text-black capitalize">Business overview </h1>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-balck">
-
-          {/* Left Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <BusinessOverviewCard
-                
-                label="Total Revenue"
-                value={stats.totalRevenue}
-                prefix="৳"
-                trendValue="12.5%"
-                trendType="up"
-                subText="Verified payments only"
-                onClick={() => navigate("/admin/revenue")}
-                backgroundColor="#FF8904"
-              />
+        {/* === EXECUTIVE COMMAND CENTER === */}
+        <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 via-background to-primary/5 p-4 animate-fade-in">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold tracking-wide uppercase text-primary flex items-center gap-2">
+              <Activity className="h-4 w-4" /> Executive Command Center
+            </h2>
+            <Badge variant="outline" className="text-[10px]">Live</Badge>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="bg-card/80 rounded-lg p-3 border border-border/30 cursor-pointer hover:border-primary/30 transition-colors" onClick={() => navigate("/admin/user-analytics")}>
+              <div className="flex items-center gap-2 mb-1">
+                <Users className="h-3.5 w-3.5 text-purple-400" />
+                <span className="text-[10px] text-muted-foreground">Active Now</span>
+              </div>
+              <p className="text-xl font-bold">{stats.onlineNow}</p>
+              <p className="text-[9px] text-muted-foreground">{stats.readingNow} reading · {stats.listeningNow} listening</p>
             </div>
-            <div>
-              <BusinessOverviewCard
-                icon={TrendingUp}
-                label="Real Net Profit"
-                value={stats.realNetProfit}
-                prefix="৳"
-                trendValue="12.5%"
-                trendType="up"
-                subText="Real Net Profit"
-                onClick={() => navigate("/admin/financial-reports")}
-                backgroundColor="#50CD89"
-              />
+            <div className="bg-card/80 rounded-lg p-3 border border-border/30 cursor-pointer hover:border-primary/30 transition-colors" onClick={() => navigate("/admin/financial-reports")}>
+              <div className="flex items-center gap-2 mb-1">
+                <DollarSign className="h-3.5 w-3.5 text-emerald-400" />
+                <span className="text-[10px] text-muted-foreground">Today Revenue</span>
+              </div>
+              <p className="text-xl font-bold">৳{stats.todayIncome.toLocaleString()}</p>
+              <p className="text-[9px] text-muted-foreground">Expense: ৳{stats.todayExpense.toLocaleString()}</p>
+            </div>
+            <div className="bg-card/80 rounded-lg p-3 border border-border/30 cursor-pointer hover:border-primary/30 transition-colors" onClick={() => navigate("/admin/analytics")}>
+              <div className="flex items-center gap-2 mb-1">
+                <Percent className="h-3.5 w-3.5 text-blue-400" />
+                <span className="text-[10px] text-muted-foreground">Conversion Rate</span>
+              </div>
+              <p className="text-xl font-bold">{conversionRate}%</p>
+              <p className="text-[9px] text-muted-foreground">{stats.paidUsers} / {stats.totalUsers} users</p>
+            </div>
+            <div className="bg-card/80 rounded-lg p-3 border border-border/30 cursor-pointer hover:border-primary/30 transition-colors" onClick={() => navigate("/admin/performance")}>
+              <div className="flex items-center gap-2 mb-1">
+                <Headphones className="h-3.5 w-3.5 text-cyan-400" />
+                <span className="text-[10px] text-muted-foreground">Playback Health</span>
+              </div>
+              <p className="text-xl font-bold text-emerald-400">✓ OK</p>
+              <p className="text-[9px] text-muted-foreground">No failures detected</p>
+            </div>
+            <div className={`bg-card/80 rounded-lg p-3 border cursor-pointer hover:border-primary/30 transition-colors ${activeAlerts > 0 ? "border-destructive/40" : "border-border/30"}`} onClick={() => navigate("/admin/alerts")}>
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className={`h-3.5 w-3.5 ${activeAlerts > 0 ? "text-destructive" : "text-emerald-400"}`} />
+                <span className="text-[10px] text-muted-foreground">Active Alerts</span>
+              </div>
+              <p className={`text-xl font-bold ${activeAlerts > 0 ? "text-destructive" : "text-emerald-400"}`}>{activeAlerts}</p>
+              <p className="text-[9px] text-muted-foreground">{activeAlerts === 0 ? "All systems healthy" : "Needs attention"}</p>
             </div>
           </div>
+        </div>
 
-          {/* Right Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="flex items-center justify-between animate-fade-in">
+          <div>
+            <h1 className="text-2xl font-bold">Business Dashboard</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Real-time business performance overview</p>
+          </div>
+          <Badge variant="outline" className="text-xs">{new Date().toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })}</Badge>
+        </div>
 
-            <StaggeredItem index={2} >
-              <KPICard cardBackground="#FF8904" icon={ArrowDownRight} label="Total Expense" value={stats.totalExpense} prefix="৳"  color="text-red-400" bgColor="bg-white" onClick={() => navigate("/admin/accounting")} />
-            </StaggeredItem>
+        {/* === SECTION 1: Financial KPIs === */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <StaggeredItem index={0}>
+            <KPICard icon={DollarSign} label="Verified Order Revenue" value={stats.totalRevenue} prefix="৳" tooltip="Revenue from verified paid orders only. Excludes manual ledger entries and adjustments." color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/financial-reports")} />
+          </StaggeredItem>
+          <StaggeredItem index={1}>
+            <KPICard icon={TrendingUp} label="Real Net Profit" value={stats.realNetProfit} prefix="৳" tooltip="Revenue - costs - creator payouts - expenses" color={stats.realNetProfit >= 0 ? "text-primary" : "text-red-400"} bgColor={stats.realNetProfit >= 0 ? "bg-primary/10" : "bg-red-500/10"} onClick={() => navigate("/admin/financial-reports")} />
+          </StaggeredItem>
+          <StaggeredItem index={2}>
+            <KPICard icon={ArrowDownRight} label="Total Expense" value={stats.totalExpense} prefix="৳" tooltip="Total expenses from ledger" color="text-red-400" bgColor="bg-red-500/10" onClick={() => navigate("/admin/accounting")} />
+          </StaggeredItem>
+          <StaggeredItem index={3}>
+            <KPICard icon={Wallet} label="COD Pending" value={stats.codPending} prefix="৳" tooltip="COD amount not yet collected" color="text-amber-400" bgColor="bg-amber-500/10" onClick={() => navigate("/admin/financial-reports")} />
+          </StaggeredItem>
+          <StaggeredItem index={4}>
+            <KPICard icon={Wallet} label="COD Settled" value={stats.codSettled} prefix="৳" tooltip="COD settled to account" color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/financial-reports")} />
+          </StaggeredItem>
+        </div>
 
-            <StaggeredItem index={3}>
-              <KPICard cardBackground="#7239EA" icon={Wallet} label="COD Pending" value={stats.codPending} prefix="৳"  color="text-amber-400" bgColor="bg-white" onClick={() => navigate("/admin/financial-reports")} />
-            </StaggeredItem>
-
-
-            <StaggeredItem index={4}>
-              <KPICard cardBackground="#50CD89" icon={Wallet} label="COD Settled" value={stats.codSettled} prefix="৳"  color="text-emerald-400" bgColor="bg-white" onClick={() => navigate("/admin/financial-reports")} />
-            </StaggeredItem>
-
-
-            <StaggeredItem index={4}>
-            <KPICard cardBackground="#7239EA" icon={Users} label="Active Users" value={stats.totalUsers} color="text-purple-400" bgColor="bg-white" onClick={() => navigate("/admin/users")} />
+        {/* === SECTION 2: User & Conversion KPIs === */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <StaggeredItem index={4}>
+            <KPICard icon={Users} label="Active Users" value={stats.totalUsers} tooltip="Total registered users" color="text-purple-400" bgColor="bg-purple-500/10" onClick={() => navigate("/admin/users")} />
           </StaggeredItem>
           <StaggeredItem index={5}>
-            <KPICard cardBackground="#50CD89" icon={UserCheck} label="Paid Users" value={stats.paidUsers} color="text-emerald-400" bgColor="bg-white" onClick={() => navigate("/admin/users")} />
+            <KPICard icon={UserCheck} label="Paid Users" value={stats.paidUsers} tooltip="Users with at least one order" color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/users")} />
           </StaggeredItem>
           <StaggeredItem index={6}>
-            <KPICard cardBackground="#3B82F6" icon={Percent} label="Conversion Rate" value={conversionRate} suffix="%" color="text-blue-400" bgColor="bg-white" onClick={() => navigate("/admin/analytics")} />
+            <KPICard icon={Percent} label="Conversion Rate" value={conversionRate} suffix="%" tooltip="Paid users / Total users" color="text-blue-400" bgColor="bg-blue-500/10" onClick={() => navigate("/admin/analytics")} />
           </StaggeredItem>
           <StaggeredItem index={7}>
-            <KPICard cardBackground="#F59E0B" icon={Coins} label="Coins Earned" value={stats.totalCoinsEarned} color="text-amber-400" bgColor="bg-white" onClick={() => navigate("/admin/coin-settings")} />
+            <KPICard icon={Coins} label="Coins Earned" value={stats.totalCoinsEarned} tooltip="Total coins earned by users" color="text-amber-400" bgColor="bg-amber-500/10" onClick={() => navigate("/admin/coin-settings")} />
           </StaggeredItem>
           <StaggeredItem index={8}>
-            <KPICard cardBackground="#F97316" icon={Coins} label="Coins Spent" value={stats.totalCoinsSpent}  color="text-orange-400" bgColor="bg-white" onClick={() => navigate("/admin/coin-settings")} />
+            <KPICard icon={Coins} label="Coins Spent" value={stats.totalCoinsSpent} tooltip="Total coins spent by users" color="text-orange-400" bgColor="bg-orange-500/10" onClick={() => navigate("/admin/coin-settings")} />
           </StaggeredItem>
           <StaggeredItem index={9}>
-            <KPICard cardBackground="#50CD89" icon={ShoppingCart} label="Total Orders" value={stats.totalOrders}  color="text-emerald-400" bgColor="bg-white" onClick={() => navigate("/admin/orders")} />
+            <KPICard icon={ShoppingCart} label="Total Orders" value={stats.totalOrders} tooltip="All orders placed" color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/orders")} />
           </StaggeredItem>
-
-
-          </div>
         </div>
 
-      
+        {/* === SECTION 2.5: Live Activity === */}
         <div className="grid grid-cols-3 gap-3">
           <StaggeredItem index={10}>
-            <KPICard cardBackground="#00e21e" icon={Activity} label="Online Now" value={stats.onlineNow}  color="text-white" bgColor="bg-green-500/10" onClick={() => navigate("/admin/reading-analytics")} />
+            <KPICard icon={Activity} label="Online Now" value={stats.onlineNow} tooltip="Users active in last 5 minutes" color="text-green-400" bgColor="bg-green-500/10" onClick={() => navigate("/admin/reading-analytics")} />
           </StaggeredItem>
           <StaggeredItem index={11}>
-            <KPICard cardBackground="#e200c4" icon={BookOpen} label="Reading Now" value={stats.readingNow}  color="text-white" bgColor="bg-blue-500/10" onClick={() => navigate("/admin/reading-analytics")} />
+            <KPICard icon={BookOpen} label="Reading Now" value={stats.readingNow} tooltip="Users currently reading ebooks" color="text-blue-400" bgColor="bg-blue-500/10" onClick={() => navigate("/admin/reading-analytics")} />
           </StaggeredItem>
           <StaggeredItem index={12}>
-            <KPICard cardBackground="#e20057" icon={Headphones} label="Listening Now" value={stats.listeningNow}  color="text-white" bgColor="bg-purple-500/10" onClick={() => navigate("/admin/reading-analytics")} />
+            <KPICard icon={Headphones} label="Listening Now" value={stats.listeningNow} tooltip="Users currently listening to audiobooks" color="text-purple-400" bgColor="bg-purple-500/10" onClick={() => navigate("/admin/reading-analytics")} />
           </StaggeredItem>
         </div>
 
-
-        {/* security overview  */}
-        <div>
-          <h1 className="text-2xl font-bold text-black capitalize">Security Overview </h1>
-        </div>
-
-
-
-        <div className=" animate-fade-in">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-
-            {/* revinew card */}
-            <div
-              className="group rounded-xl bg-[#FFFFFF] border-2 border-[#017B51] hover:border-[#F68B1E] p-4 cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg"
-              onClick={() => navigate("/admin/financial-reports")}
-            >
-              {/* Top Section */}
-              <div className="flex items-center justify-between mb-3">
-
-                {/* Left */}
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-[#017B51]/10">
-                    <DollarSign className="h-4 w-4 text-[#017B51]" />
-                  </div>
-                  <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Revenue Today
-                  </span>
-                </div>
-
-                {/* Right Indicator */}
-                <div className="flex items-center gap-1">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#017B51] opacity-70"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#017B51]"></span>
-                  </span>
-                  <span className="text-xs text-[#017B51] font-medium">Live</span>
-                </div>
-              </div>
-
-              {/* Main Amount */}
-              <p className="text-3xl font-bold text-gray-900">
-                ৳{stats.todayIncome.toLocaleString()}
-              </p>
-
-              {/* Sub Info */}
-              <div className="text-xs text-gray-500 mt-2 flex items-center gap-3 flex-wrap">
-                <span>📉 Expense: ৳{stats.todayExpense.toLocaleString()}</span>
-                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                <span className="text-[#017B51] font-medium">
-                  📈 Net: ৳{(stats.todayIncome - stats.todayExpense).toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            {/* live activity card */}
-            <div
-              className="group rounded-xl bg-[#FFFFFF] border-2 border-[#017B51] hover:border-[#F68B1E] p-4 cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg "
-              onClick={() => navigate("/admin/user-analytics")}
-            >
-              <div className="flex items-center justify-between mb-3">
-                {/* Left */}
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-[#017B51]/10">
-                    <Users className="h-4 w-4 text-[#017B51]" />
-                  </div>
-                  <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Live Activity
-                  </span>
-                </div>
-
-                {/* Live Indicator */}
-                <div className="flex items-center gap-1">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#017B51] opacity-70"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#017B51]"></span>
-                  </span>
-                  <span className="text-xs text-[#017B51] font-medium">Live</span>
-                </div>
-              </div>
-
-              {/* Main Number */}
-              <p className="text-3xl font-bold text-gray-900">
-                {stats.onlineNow}
-              </p>
-
-              {/* Sub info */}
-              <div className="text-xs text-gray-500 mt-2 flex items-center gap-3">
-                <span>📖 {stats.readingNow} reading</span>
-                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                <span>🎧 {stats.listeningNow} listening</span>
-              </div>
-            </div>
-
-            {/* conversation card */}
-            <div
-              className="group rounded-xl bg-[#FFFFFF] border-2 border-[#017B51] hover:border-[#F68B1E] p-4 cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg"
-              onClick={() => navigate("/admin/analytics")}
-            >
-              {/* Top Section */}
-              <div className="flex items-center justify-between mb-3">
-
-                {/* Left */}
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-[#017B51]/10">
-                    <Percent className="h-4 w-4 text-[#017B51]" />
-                  </div>
-                  <span className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Conversion Rate
-                  </span>
-                </div>
-
-                {/* Live Indicator */}
-                <div className="flex items-center gap-1">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#017B51] opacity-70"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#017B51]"></span>
-                  </span>
-                  <span className="text-xs text-[#017B51] font-medium">Live</span>
-                </div>
-              </div>
-
-              {/* Main Percentage */}
-              <p className="text-3xl font-bold text-gray-900">
-                {conversionRate}%
-              </p>
-
-              {/* Progress Bar */}
-              <div className="mt-3">
-                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#017B51] transition-all duration-700"
-                    style={{ width: `${conversionRate}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Sub Info */}
-              <div className="text-xs text-gray-500 mt-3 flex items-center justify-between">
-                <span>
-                  👥 {stats.paidUsers.toLocaleString()} paid
-                </span>
-                <span className="text-[#017B51] font-medium">
-                  Total: {stats.totalUsers.toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            {/* performance /health monitoring card */}
-            <div
-              className="group rounded-xl bg-[#FFFFFF] border-2 border-[#017B51] hover:border-[#F68B1E] p-4 cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg"
-              onClick={() => navigate("/admin/performance")}
-            >
-              {/* Top Section */}
-              <div className="flex items-center justify-between mb-3">
-
-                {/* Left */}
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-[#017B51]/10">
-                    <Headphones className="h-4 w-4 text-[#017B51]" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                      Performance/Health Monitoring
-                    </p>
-                    <p className="text-[10px] text-gray-400">Last 24 hours</p>
-                  </div>
-                </div>
-
-                {/* Status */}
-                <div className="text-right">
-                  <p className="text-[10px] text-gray-400">Status</p>
-                  <p className="text-xs font-semibold text-[#017B51]">Healthy</p>
-                </div>
-              </div>
-
-              {/* Main Status */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-baseline gap-2">
-                  <p className="text-2xl font-bold text-[#017B51]">OK</p>
-                  <span className="text-xs text-gray-500">operational</span>
-                </div>
-
-                <div className="text-right">
-                  <p className="text-[10px] text-gray-400">Uptime</p>
-                  <p className="text-sm font-bold text-gray-900">99.99%</p>
-                </div>
-              </div>
-
-              {/* Info */}
-              <p className="text-xs text-gray-500 mb-2">
-                No failures detected
-              </p>
-
-              {/* Metrics */}
-              <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-200">
-
-                <div>
-                  <p className="text-[10px] text-gray-400">Success Rate</p>
-                  <p className="text-sm font-semibold text-[#017B51]">100%</p>
-                </div>
-
-                <div>
-                  <p className="text-[10px] text-gray-400">Avg Buffering</p>
-                  <p className="text-sm font-semibold text-gray-900">0.2s</p>
-                </div>
-
-                <div>
-                  <p className="text-[10px] text-gray-400">Errors (24h)</p>
-                  <p className="text-sm font-semibold text-gray-900">0</p>
-                </div>
-
-                <div>
-                  <p className="text-[10px] text-gray-400">Active Streams</p>
-                  <p className="text-sm font-semibold text-gray-900">1,234</p>
-                </div>
-              </div>
-
-              {/* Hover CTA */}
-              <div className="mt-3 text-right">
-                <span className="text-xs text-[#F68B1E] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  View performance →
-                </span>
-              </div>
-            </div>
-
-            {/* active alarts card  */}
-            <div
-              className={`group rounded-xl bg-[#FFFFFF] border-2 p-4 cursor-pointer transition-all duration-300 shadow-md hover:shadow-lg ${activeAlerts > 0
-                ? "border-red-500 hover:border-red-600"
-                : "border-[#017B51] hover:border-[#F68B1E]"
-                }`}
-              onClick={() => navigate("/admin/alerts")}
-            >
-              {/* Top Section */}
-              <div className="flex items-center justify-between mb-3">
-
-                {/* Left */}
-                <div className="flex items-center gap-2">
-                  <div className={`p-2 rounded-lg ${activeAlerts > 0 ? "bg-red-100" : "bg-[#017B51]/10"
-                    }`}>
-                    <AlertTriangle className={`h-4 w-4 ${activeAlerts > 0 ? "text-red-500" : "text-[#017B51]"
-                      }`} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                      Active Alerts
-                    </p>
-                    <p className="text-[10px] text-gray-400">Last 24 hours</p>
-                  </div>
-                </div>
-
-                {/* Status Badge */}
-                <div className={`px-2 py-1 rounded-full text-[10px] font-medium ${activeAlerts > 0
-                  ? "bg-red-100 text-red-600"
-                  : "bg-[#017B51]/10 text-[#017B51]"
-                  }`}>
-                  {activeAlerts > 0 ? `${activeAlerts} Active` : "All Clear"}
-                </div>
-              </div>
-
-              {/* Main Count */}
-              <div className="flex items-center justify-between mb-3">
-                <p className={`text-3xl font-bold ${activeAlerts > 0 ? "text-red-600" : "text-[#017B51]"
-                  }`}>
-                  {activeAlerts}
-                </p>
-
-                {activeAlerts > 0 && (
-                  <div className="text-right">
-                    <p className="text-[10px] text-gray-400">Critical</p>
-                    <p className="text-sm font-bold text-red-600">
-                      {Math.ceil(activeAlerts * 0.6)}
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Severity Bars */}
-              {activeAlerts > 0 && (
-                <div className="space-y-2 mb-3">
-
-                  {/* Critical */}
-                  <div>
-                    <div className="flex justify-between text-[10px] text-gray-400 mb-1">
-                      <span>Critical</span>
-                      <span>{Math.ceil(activeAlerts * 0.6)}</span>
-                    </div>
-                    <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-red-500 rounded-full transition-all duration-500"
-                        style={{ width: `${(Math.ceil(activeAlerts * 0.6) / activeAlerts) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Warning */}
-                  <div>
-                    <div className="flex justify-between text-[10px] text-gray-400 mb-1">
-                      <span>Warning</span>
-                      <span>{Math.floor(activeAlerts * 0.3)}</span>
-                    </div>
-                    <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#F68B1E] rounded-full transition-all duration-500"
-                        style={{ width: `${(Math.floor(activeAlerts * 0.3) / activeAlerts) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Info */}
-                  <div>
-                    <div className="flex justify-between text-[10px] text-gray-400 mb-1">
-                      <span>Info</span>
-                      <span>{Math.floor(activeAlerts * 0.1)}</span>
-                    </div>
-                    <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#017B51] rounded-full transition-all duration-500"
-                        style={{ width: `${(Math.floor(activeAlerts * 0.1) / activeAlerts) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                </div>
-              )}
-
-              {/* Bottom Info */}
-              <div className="mt-2 pt-3 border-t border-gray-200">
-                <div className="flex justify-between items-center">
-                  <p className={`text-xs ${activeAlerts > 0 ? "text-red-500" : "text-[#017B51]"
-                    }`}>
-                    {activeAlerts > 0 ? "Immediate action required" : "No issues reported"}
-                  </p>
-
-                  <span className="text-xs text-[#F68B1E] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    View all →
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <Card className="border-border/40" style={{backgroundColor:"#7239EA"}}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Tooltip><TooltipTrigger><Layers className="h-4 w-4 text-blue-400" /></TooltipTrigger><TooltipContent>Book format breakdown</TooltipContent></Tooltip>
-                Format Distribution
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats.formatDistribution.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie data={stats.formatDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={4} dataKey="value" label={({ name, value }) => `${name}: ${value}`} animationDuration={1200} animationEasing="ease-out">
-                      {stats.formatDistribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <RechartsTooltip contentStyle={chartTooltipStyle} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : <EmptyState icon={Layers} message="No formats yet" />}
-            </CardContent>
-          </Card>
-
-          </div>
-        </div>
-
-
-
-        
-
-
-
-        <div className={`grid md:grid-cols-3 gap-4 transition-all duration-700 delay-300 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-
-          <Card className="border-border/40" style={{backgroundColor:'#050825'}}>
-            <CardHeader className="pb-2 flex flex-row items-center gap-2">
-              <Tooltip><TooltipTrigger><ShoppingCart className="h-4 w-4 text-emerald-400" /></TooltipTrigger><TooltipContent>Latest orders</TooltipContent></Tooltip>
-              <CardTitle className="text-sm font-medium">Recent Orders</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats.recentOrders.length > 0 ? (
-                <div className="space-y-2.5">
-                  {stats.recentOrders.map(o => (
-                    <div key={o.id} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono ">#{o.id}</span>
-                        <Badge variant="outline" className={`text-[9px] px-1.5 py-0 capitalize ${statusColor[o.status] || ""}`}>{o.status}</Badge>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs font-medium">৳{o.total}</span>
-                        <span className="text-[10px]  ml-1">{o.created}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <EmptyState icon={ShoppingCart} message="No orders yet" />}
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/40" style={{backgroundColor:'#1f0525'}}>
-            <CardHeader className="pb-2 flex flex-row items-center gap-2">
-              <Tooltip><TooltipTrigger><TrendingUp className="h-4 w-4 text-primary" /></TooltipTrigger><TooltipContent>Most read books</TooltipContent></Tooltip>
-              <CardTitle className="text-sm font-medium">Trending Books</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats.topBooks.length > 0 ? (
-                <div className="space-y-2.5">
-                  {stats.topBooks.map((b, i) => (
-                    <div key={i} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono w-4">{i + 1}</span>
-                        <span className="text-sm truncate max-w-[140px]">{b.title}</span>
-                      </div>
-                      <span className="text-xs ">{b.reads} reads</span>
-                    </div>
-                  ))}
-                </div>
-              ) : <EmptyState icon={TrendingUp} message="No reading data" />}
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/40" style={{backgroundColor:'#7a6907'}}>
-            <CardHeader className="pb-2 flex flex-row items-center gap-2">
-              <Tooltip><TooltipTrigger><DollarSign className="h-4 w-4 text-emerald-400" /></TooltipTrigger><TooltipContent>Real profit per book (revenue minus creator cost)</TooltipContent></Tooltip>
-              <CardTitle className="text-sm font-medium">Top Earning Books</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {stats.topEarningBooks.length > 0 ? (
-                <div className="space-y-2.5">
-                  {stats.topEarningBooks.map((b, i) => (
-                    <div key={i} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px]  font-mono w-4">{i + 1}</span>
-                        <span className="text-sm truncate max-w-[120px]">{b.title}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs font-medium text-emerald-400">৳{b.profit.toLocaleString()}</span>
-                        <span className="text-[10px]  ml-1">(rev ৳{b.revenue.toLocaleString()})</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : <EmptyState icon={DollarSign} message="No earnings data" />}
-            </CardContent>
-          </Card>
-
-          
-        </div>
-
-
-        <div className={`grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 transition-all duration-700 delay-400 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <MiniStat cardBackground="#FF8904" icon={BookOpen} label="Total Books" value={stats.totalBooks} color="text-primary" onClick={() => navigate("/admin/books")} />
-          <MiniStat cardBackground="#7239EA" icon={BookCopy} label="eBooks" value={stats.totalEbooks} color="text-blue-400" onClick={() => navigate("/admin/books")} />
-          <MiniStat cardBackground="#50CD89" icon={Headphones} label="Audiobooks" value={stats.totalAudiobooks}  color="text-purple-400" onClick={() => navigate("/admin/books")} />
-          <MiniStat cardBackground="#E20057" icon={Package} label="Hard Copies" value={stats.totalHardcopies}  color="text-emerald-400" onClick={() => navigate("/admin/books")} />
-          <MiniStat  cardBackground="#E200C4" icon={Users} label="Authors" value={stats.totalAuthors} color="text-amber-400" onClick={() => navigate("/admin/authors")} />
-          <MiniStat cardBackground="#00E21E" icon={Mic2} label="Narrators" value={stats.totalNarrators}  color="text-blue-400" onClick={() => navigate("/admin/narrators")} />
-          <MiniStat cardBackground="#F03F3F" icon={ArrowUpRight} label="Avg Rating" value={stats.topRatedBooks.length > 0 ? `★ ${(stats.topRatedBooks.reduce((s, b) => s + b.rating, 0) / stats.topRatedBooks.length).toFixed(1)}` : "—"}  color="text-amber-400" onClick={() => navigate("/admin/reviews")} />
-        </div>
-
-
-
+        {/* === SECTION 3: Revenue vs Cost vs Profit Chart + Format Distribution === */}
         <div className={`grid md:grid-cols-3 gap-4 transition-all duration-700 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <Card className="md:col-span-2 border-border/40" style={{backgroundColor:'#000000'}}>
+          <Card className="md:col-span-2 border-border/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Tooltip><TooltipTrigger><BarChart3 className="h-4 w-4 text-primary" /></TooltipTrigger><TooltipContent>Monthly financial breakdown</TooltipContent></Tooltip>
@@ -994,33 +554,33 @@ export default function AdminDashboard() {
               ) : <EmptyState icon={BarChart3} message="No financial data yet" />}
             </CardContent>
           </Card>
-            
-            <Card className="border-border/40" style={{backgroundColor:"#181C32"}}>
+
+          <Card className="border-border/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Tooltip><TooltipTrigger><ShoppingCart className="h-4 w-4 text-blue-400" /></TooltipTrigger><TooltipContent>Orders by status</TooltipContent></Tooltip>
-                Order Status Breakdown
+                <Tooltip><TooltipTrigger><Layers className="h-4 w-4 text-blue-400" /></TooltipTrigger><TooltipContent>Book format breakdown</TooltipContent></Tooltip>
+                Format Distribution
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {stats.ordersByStatus.length > 0 ? (
-                <ResponsiveContainer width="100%" height={200}>
+              {stats.formatDistribution.length > 0 ? (
+                <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
-                    <Pie data={stats.ordersByStatus} cx="50%" cy="50%" outerRadius={65} dataKey="value" label={({ name, value }) => `${name}: ${value}`} animationDuration={1200} animationEasing="ease-out">
-                      {stats.ordersByStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    <Pie data={stats.formatDistribution} cx="50%" cy="50%" innerRadius={45} outerRadius={75} paddingAngle={4} dataKey="value" label={({ name, value }) => `${name}: ${value}`} animationDuration={1200} animationEasing="ease-out">
+                      {stats.formatDistribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
                     <RechartsTooltip contentStyle={chartTooltipStyle} />
                   </PieChart>
                 </ResponsiveContainer>
-              ) : <EmptyState icon={ShoppingCart} message="No orders yet" />}
+              ) : <EmptyState icon={Layers} message="No formats yet" />}
             </CardContent>
           </Card>
-          
         </div>
 
-       
-        <div className={`grid md:grid-cols-2 gap-4 transition-all duration-700 delay-100 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <Card className="border-border/40" style={{backgroundColor:'#3a3a3a'}}>
+        {/* === SECTION 4: Hardcopy Inventory + Order Status + Funnel === */}
+        <div className={`grid md:grid-cols-3 gap-4 transition-all duration-700 delay-100 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <Card className="border-border/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Tooltip><TooltipTrigger><Package className="h-4 w-4 text-emerald-400" /></TooltipTrigger><TooltipContent>Hardcopy stock levels</TooltipContent></Tooltip>
@@ -1062,9 +622,28 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          
+          <Card className="border-border/40">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Tooltip><TooltipTrigger><ShoppingCart className="h-4 w-4 text-blue-400" /></TooltipTrigger><TooltipContent>Orders by status</TooltipContent></Tooltip>
+                Order Status Breakdown
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {stats.ordersByStatus.length > 0 ? (
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={stats.ordersByStatus} cx="50%" cy="50%" outerRadius={65} dataKey="value" label={({ name, value }) => `${name}: ${value}`} animationDuration={1200} animationEasing="ease-out">
+                      {stats.ordersByStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <RechartsTooltip contentStyle={chartTooltipStyle} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : <EmptyState icon={ShoppingCart} message="No orders yet" />}
+            </CardContent>
+          </Card>
 
-          <Card className="border-border/40" style={{backgroundColor:'#0e0936'}}>
+          <Card className="border-border/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Tooltip><TooltipTrigger><Activity className="h-4 w-4 text-purple-400" /></TooltipTrigger><TooltipContent>Views → Reads → Purchases</TooltipContent></Tooltip>
@@ -1103,7 +682,7 @@ export default function AdminDashboard() {
 
         {/* === SECTION 5: Financial Today + Creator Earnings === */}
         <div className={`grid md:grid-cols-2 gap-4 transition-all duration-700 delay-200 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          <Card className="border-border/40" style={{backgroundColor:'#09331c'}}>
+          <Card className="border-border/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Tooltip><TooltipTrigger><Clock className="h-4 w-4 text-amber-400" /></TooltipTrigger><TooltipContent>Today's ledger income, expense & balance from accounting_ledger</TooltipContent></Tooltip>
@@ -1128,7 +707,7 @@ export default function AdminDashboard() {
               <p className="text-xs text-muted-foreground mb-2">Recent Transactions</p>
               <div className="space-y-2">
                 {stats.recentLedger.length > 0 ? stats.recentLedger.map((t, i) => (
-                  <div key={i} className="flex items-center justify-between text-sm text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                  <div key={i} className="flex items-center justify-between text-sm hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                     <span className="truncate max-w-[180px]">{t.description}</span>
                     <div className="flex items-center gap-2">
                       <span className={`font-medium ${t.type === "income" ? "text-emerald-400" : "text-red-400"}`}>
@@ -1142,7 +721,7 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/40" style={{backgroundColor:'#000000'}}>
+          <Card className="border-border/40">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Tooltip><TooltipTrigger><Wallet className="h-4 w-4 text-primary" /></TooltipTrigger><TooltipContent>Earnings split between creators and platform</TooltipContent></Tooltip>
@@ -1176,27 +755,72 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-       
-        
-        <div className={`grid md:grid-cols-3 gap-4 transition-all duration-700 delay-500 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
-          
-          <Card className="border-border/40" style={{backgroundColor:'#E20057'}}>
+        {/* === SECTION 6: Content Performance === */}
+        <div className={`grid md:grid-cols-3 gap-4 transition-all duration-700 delay-300 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <Card className="border-border/40">
             <CardHeader className="pb-2 flex flex-row items-center gap-2">
-              <Tooltip><Star className="h-4 w-4 text-amber-400" /></Tooltip>
+              <Tooltip><TooltipTrigger><TrendingUp className="h-4 w-4 text-primary" /></TooltipTrigger><TooltipContent>Most read books</TooltipContent></Tooltip>
+              <CardTitle className="text-sm font-medium">Trending Books</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {stats.topBooks.length > 0 ? (
+                <div className="space-y-2.5">
+                  {stats.topBooks.map((b, i) => (
+                    <div key={i} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground font-mono w-4">{i + 1}</span>
+                        <span className="text-sm truncate max-w-[140px]">{b.title}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground">{b.reads} reads</span>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState icon={TrendingUp} message="No reading data" />}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/40">
+            <CardHeader className="pb-2 flex flex-row items-center gap-2">
+              <Tooltip><TooltipTrigger><DollarSign className="h-4 w-4 text-emerald-400" /></TooltipTrigger><TooltipContent>Real profit per book (revenue minus creator cost)</TooltipContent></Tooltip>
+              <CardTitle className="text-sm font-medium">Top Earning Books</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {stats.topEarningBooks.length > 0 ? (
+                <div className="space-y-2.5">
+                  {stats.topEarningBooks.map((b, i) => (
+                    <div key={i} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground font-mono w-4">{i + 1}</span>
+                        <span className="text-sm truncate max-w-[120px]">{b.title}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-medium text-emerald-400">৳{b.profit.toLocaleString()}</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">(rev ৳{b.revenue.toLocaleString()})</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState icon={DollarSign} message="No earnings data" />}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/40">
+            <CardHeader className="pb-2 flex flex-row items-center gap-2">
+              <Tooltip><TooltipTrigger><Star className="h-4 w-4 text-amber-400" /></TooltipTrigger><TooltipContent>Highest rated books</TooltipContent></Tooltip>
               <CardTitle className="text-sm font-medium">Top Rated</CardTitle>
             </CardHeader>
             <CardContent>
               {stats.topRatedBooks.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.topRatedBooks.map((b, i) => (
-                    <div key={i} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={i} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-white font-mono w-4">{i + 1}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono w-4">{i + 1}</span>
                         <span className="text-sm truncate max-w-[120px]">{b.title}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <span className="text-xs text-amber-400">★ {b.rating}</span>
-                        <span className="text-[10px] text-white">({b.reviews})</span>
+                        <span className="text-[10px] text-muted-foreground">({b.reviews})</span>
                       </div>
                     </div>
                   ))}
@@ -1204,17 +828,56 @@ export default function AdminDashboard() {
               ) : <EmptyState icon={Star} message="No ratings yet" />}
             </CardContent>
           </Card>
+        </div>
 
-          <Card className="border-border/40" style={{backgroundColor:'#0e661a'}}>
+        {/* === SECTION 7: Content Stats === */}
+        <div className={`grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 transition-all duration-700 delay-400 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <MiniStat icon={BookOpen} label="Books" value={stats.totalBooks} tooltip="Total books" color="text-primary" onClick={() => navigate("/admin/books")} />
+          <MiniStat icon={BookCopy} label="eBooks" value={stats.totalEbooks} tooltip="eBook formats" color="text-blue-400" onClick={() => navigate("/admin/books")} />
+          <MiniStat icon={Headphones} label="Audiobooks" value={stats.totalAudiobooks} tooltip="Audiobook formats" color="text-purple-400" onClick={() => navigate("/admin/books")} />
+          <MiniStat icon={Package} label="Hard Copies" value={stats.totalHardcopies} tooltip="Hardcopy formats" color="text-emerald-400" onClick={() => navigate("/admin/books")} />
+          <MiniStat icon={Users} label="Authors" value={stats.totalAuthors} tooltip="Total authors" color="text-amber-400" onClick={() => navigate("/admin/authors")} />
+          <MiniStat icon={Mic2} label="Narrators" value={stats.totalNarrators} tooltip="Total narrators" color="text-blue-400" onClick={() => navigate("/admin/narrators")} />
+          <MiniStat icon={ArrowUpRight} label="Avg Rating" value={stats.topRatedBooks.length > 0 ? `★ ${(stats.topRatedBooks.reduce((s, b) => s + b.rating, 0) / stats.topRatedBooks.length).toFixed(1)}` : "—"} tooltip="Average book rating" color="text-amber-400" onClick={() => navigate("/admin/reviews")} />
+        </div>
+
+        {/* === SECTION 8: Recent Orders + Pending Approvals + Reviews === */}
+        <div className={`grid md:grid-cols-3 gap-4 transition-all duration-700 delay-500 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
+          <Card className="border-border/40">
             <CardHeader className="pb-2 flex flex-row items-center gap-2">
-              <UserCheck className="h-4 w-4 text-yellow-400" />
+              <Tooltip><TooltipTrigger><ShoppingCart className="h-4 w-4 text-emerald-400" /></TooltipTrigger><TooltipContent>Latest orders</TooltipContent></Tooltip>
+              <CardTitle className="text-sm font-medium">Recent Orders</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {stats.recentOrders.length > 0 ? (
+                <div className="space-y-2.5">
+                  {stats.recentOrders.map(o => (
+                    <div key={o.id} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono text-muted-foreground">#{o.id}</span>
+                        <Badge variant="outline" className={`text-[9px] px-1.5 py-0 capitalize ${statusColor[o.status] || ""}`}>{o.status}</Badge>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-medium">৳{o.total}</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">{o.created}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <EmptyState icon={ShoppingCart} message="No orders yet" />}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/40">
+            <CardHeader className="pb-2 flex flex-row items-center gap-2">
+              <Tooltip><TooltipTrigger><UserCheck className="h-4 w-4 text-yellow-400" /></TooltipTrigger><TooltipContent>Creator role applications awaiting review</TooltipContent></Tooltip>
               <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
             </CardHeader>
             <CardContent>
               {stats.pendingApplications.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.pendingApplications.map(a => (
-                    <div key={a.id} className="flex items-center justify-between gap-2 text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={a.id} className="flex items-center justify-between gap-2 hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2 min-w-0">
                         <Badge variant="outline" className="text-[9px] capitalize bg-amber-500/15 text-amber-400 animate-pulse shrink-0">{a.role}</Badge>
                         <span className="text-sm truncate max-w-[80px]">{a.user}</span>
@@ -1229,21 +892,21 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/40" style={{backgroundColor:'#E20057'}}>
+          <Card className="border-border/40">
             <CardHeader className="pb-2 flex flex-row items-center gap-2">
-              <Star className="h-4 w-4 text-amber-400" />
+              <Tooltip><TooltipTrigger><Star className="h-4 w-4 text-amber-400" /></TooltipTrigger><TooltipContent>Latest book reviews</TooltipContent></Tooltip>
               <CardTitle className="text-sm font-medium">Recent Reviews</CardTitle>
             </CardHeader>
             <CardContent>
               {stats.pendingReviews.length > 0 ? (
                 <div className="space-y-2.5">
                   {stats.pendingReviews.map(r => (
-                    <div key={r.id} className="flex items-center justify-between text-white hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
+                    <div key={r.id} className="flex items-center justify-between hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
                       <div className="flex items-center gap-2">
                         <span className="text-sm truncate max-w-[120px]">{r.book}</span>
                         <span className="text-[10px] text-amber-400">{"★".repeat(r.rating)}</span>
                       </div>
-                      <span className="text-[10px] text-white">{r.date}</span>
+                      <span className="text-[10px] text-muted-foreground">{r.date}</span>
                     </div>
                   ))}
                 </div>
@@ -1329,9 +992,9 @@ function StaggeredItem({ children, index }: { children: React.ReactNode; index: 
   );
 }
 
-function KPICard({ icon: Icon, label, value, color, bgColor, onClick, tooltip, prefix, suffix, cardBackground }: {
+function KPICard({ icon: Icon, label, value, color, bgColor, onClick, tooltip, prefix, suffix }: {
   icon: any; label: string; value: string | number; color: string; bgColor: string;
-  href?: string; onClick?: () => void; tooltip?: string; prefix?: string; suffix?: string; cardBackground?: string;
+  href?: string; onClick?: () => void; tooltip?: string; prefix?: string; suffix?: string;
 }) {
   const numericValue = typeof value === "number" ? value : parseFloat(String(value).replace(/[^\d.-]/g, ""));
   const isNumeric = !isNaN(numericValue) && typeof value === "number";
@@ -1344,7 +1007,6 @@ function KPICard({ icon: Icon, label, value, color, bgColor, onClick, tooltip, p
     <Tooltip>
       <TooltipTrigger asChild>
         <Card
-          style={{backgroundColor:`${cardBackground}`}}
           className="border-border/40 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 active:scale-[0.97] transition-all duration-200 cursor-pointer group"
           onClick={onClick}
         >
@@ -1353,10 +1015,10 @@ function KPICard({ icon: Icon, label, value, color, bgColor, onClick, tooltip, p
               <Icon className={`h-4 w-4 ${color}`} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-lg text-white font-bold truncate">{displayValue}</p>
-              <p className="text-[10px] text-white leading-tight">{label}</p>
+              <p className="text-lg font-bold truncate">{displayValue}</p>
+              <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
             </div>
-            <ArrowUpRight className="h-3.5 w-3.5 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
+            <ArrowUpRight className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
           </CardContent>
         </Card>
       </TooltipTrigger>
@@ -1365,18 +1027,18 @@ function KPICard({ icon: Icon, label, value, color, bgColor, onClick, tooltip, p
   );
 }
 
-function MiniStat({ icon: Icon, label, value, color, onClick, tooltip, cardBackground }: {
-  icon: any; label: string; value: string | number; cardBackground:string; color: string; onClick?: () => void; tooltip?: string;
+function MiniStat({ icon: Icon, label, value, color, onClick, tooltip }: {
+  icon: any; label: string; value: string | number; color: string; onClick?: () => void; tooltip?: string;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Card className="border-border/40 hover:border-primary/30 hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 cursor-pointer group" onClick={onClick} style={{backgroundColor:`${cardBackground}`}}>
+        <Card className="border-border/40 hover:border-primary/30 hover:shadow-sm hover:-translate-y-0.5 active:scale-[0.97] transition-all duration-200 cursor-pointer group" onClick={onClick}>
           <CardContent className="p-3 flex items-center gap-2">
-            <Icon className={`h-3.5 w-3.5 ${color} shrink-0 group-hover:scale-110 transition-transform text-white`} />
+            <Icon className={`h-3.5 w-3.5 ${color} shrink-0 group-hover:scale-110 transition-transform`} />
             <div className="min-w-0">
               <p className="text-sm font-bold">{value}</p>
-              <p className="text-[9px] text-white ">{label}</p>
+              <p className="text-[9px] text-muted-foreground">{label}</p>
             </div>
           </CardContent>
         </Card>

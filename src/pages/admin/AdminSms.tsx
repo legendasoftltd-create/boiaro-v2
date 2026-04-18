@@ -14,8 +14,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
 import { Send, MessageSquare, History, Users, AlertTriangle, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import SummaryCard from '@/components/admin/SummaryCard';
-
 
 type RecipientGroup = "authors" | "narrators" | "publishers" | "users" | "rj" | "custom";
 
@@ -154,20 +152,21 @@ export default function AdminSms() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-bold text-black">SMS Center</h1>
+        <MessageSquare className="h-6 w-6 text-primary" />
+        <h1 className="text-2xl font-bold">SMS Center</h1>
       </div>
 
-      <Alert className="bg-[#EF4444] border-0">
+      <Alert>
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>SSL Wireless Integration</AlertTitle>
-        <AlertDescription >
+        <AlertDescription>
           SMS sending requires <strong>SSL_SMS_API_TOKEN</strong> and <strong>SSL_SMS_SID</strong> secrets.
           Messages will be logged but delivery will fail until credentials are configured.
         </AlertDescription>
       </Alert>
 
       <Tabs defaultValue="compose">
-        <TabsList className="flex items-center justify-center gap-5">
+        <TabsList>
           <TabsTrigger value="compose"><Send className="h-4 w-4 mr-1.5" />Compose</TabsTrigger>
           <TabsTrigger value="logs"><History className="h-4 w-4 mr-1.5" />Logs</TabsTrigger>
           <TabsTrigger value="templates"><MessageSquare className="h-4 w-4 mr-1.5" />Templates</TabsTrigger>

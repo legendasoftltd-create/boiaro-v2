@@ -14,11 +14,9 @@ import {
 import {
   Eye, BookOpen, Users, Flame, Download, Loader2, BarChart3,
   Activity, Headphones, CalendarDays,
-  Shield,
-  HeadphonesIcon,
 } from "lucide-react";
 import { format, subDays } from "date-fns";
-import SummaryCard from "@/components/admin/SummaryCard";
+
 
 
 function exportCSV(rows: Record<string, any>[], filename: string) {
@@ -299,85 +297,57 @@ export default function AdminReadingAnalytics() {
 
   return (
     <div className="space-y-6">
-
-      <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black">
-        Reading Analytics & Reports
-      </h1>
+      <div>
+        <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
+          <BarChart3 className="w-6 h-6 text-primary" /> Reading Analytics & Reports
+        </h1>
+        <p className="text-muted-foreground text-sm">Real-time reading activity, daily/monthly reports, and trending analysis</p>
+      </div>
 
       {/* Live Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-
         {statCards.map(s => (
-          // <Card
-          //   key={s.label}
-          //   className={`border-border/30 transition-colors ${s.filter ? "cursor-pointer hover:border-primary/40 hover:bg-secondary/30 " : ""}`}
-          //   onClick={() => s.filter && setLiveFilter(s.filter)}
-          // >
-          //   <CardContent className="p-4 flex items-center gap-3">
-          //     <div className="p-2.5 rounded-xl bg-secondary/60">
-          //       <s.icon className={`w-5 h-5 ${s.color}`} />
-          //     </div>
-          //     <div>
-          //       <p className="text-xl font-bold">{s.value.toLocaleString()}</p>
-          //       <p className="text-[11px] text-muted-foreground">{s.label}</p>
-          //     </div>
-          //   </CardContent>
-          // </Card>
-
-          <div
+          <Card
+            key={s.label}
+            className={`border-border/30 transition-colors ${s.filter ? "cursor-pointer hover:border-primary/40 hover:bg-secondary/30" : ""}`}
             onClick={() => s.filter && setLiveFilter(s.filter)}
-            className="w-full p-6 bg-white border border-gray-400 rounded-2xl shadow-sm font-sans cursor-pointer"
           >
-            {/* Upper Section */}
-            <div className="flex items-center gap-3 mb-4">
-
-              {/* Icon */}
-              <div style={{ color: "#017B51" }}>
-                <s.icon size={24} strokeWidth={2.5} />
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-secondary/60">
+                <s.icon className={`w-5 h-5 ${s.color}`} />
               </div>
-
-              {/* Title */}
-              <span
-                className="font-bold tracking-wider text-sm"
-                style={{ color: "#017B51" }}
-              >
-                {s.label}
-              </span>
-            </div>
-
-            {/* Value */}
-            <div
-              className="text-2xl font-black"
-              style={{ color: "#017B51" }}
-            >
-              {typeof s.value === "number"
-                ? s.value.toLocaleString()
-                : s.value}
-            </div>
-          </div>
-
+              <div>
+                <p className="text-xl font-bold">{s.value.toLocaleString()}</p>
+                <p className="text-[11px] text-muted-foreground">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       <LiveUsersModal filter={liveFilter} onClose={() => setLiveFilter(null)} />
 
-        {/* active readers and isteners */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* Active Readers Time Buckets */}
+      <Card className="border-border/30">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Users className="h-4 w-4 text-primary" /> Active Users by Time Window</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {activeReaders.map(b => (
-              <SummaryCard
-                key={b.label}
-                icon={HeadphonesIcon}
-                title={b.label}
-                value={`Readers- ${b.activeReaders}  Listeners- ${b.activeListeners} `}
-                color="#017B51"
-              />
-
+              <div key={b.label} className="p-3 rounded-lg bg-secondary/40 text-center space-y-1">
+                <p className="text-[11px] text-muted-foreground">{b.label}</p>
+                <p className="text-lg font-bold">{b.activeUsers}</p>
+                <div className="flex justify-center gap-2 text-[10px]">
+                  <span className="text-blue-400">📖 {b.activeReaders}</span>
+                  <span className="text-purple-400">🎧 {b.activeListeners}</span>
+                </div>
+              </div>
             ))}
           </div>
-
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="daily">
-        <TabsList className="flex-wrap gap-4 w-full bg-white">
+        <TabsList className="flex-wrap">
           <TabsTrigger value="daily">Daily Report</TabsTrigger>
           <TabsTrigger value="monthly">Monthly Report</TabsTrigger>
           <TabsTrigger value="bookviews">Book Views</TabsTrigger>
@@ -390,8 +360,8 @@ export default function AdminReadingAnalytics() {
         <TabsContent value="daily" className="space-y-4 mt-4">
           <Card className="border-border/30">
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2"> Daily Reading Report (Last 30 Days)</CardTitle>
-              <Button className="text-white" variant="outline" size="sm" onClick={() => exportCSV(dailyReport, "daily-reading-report")}>
+              <CardTitle className="text-base flex items-center gap-2"><CalendarDays className="h-4 w-4 text-primary" /> Daily Reading Report (Last 30 Days)</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => exportCSV(dailyReport, "daily-reading-report")}>
                 <Download className="h-3.5 w-3.5 mr-1" /> Export
               </Button>
             </CardHeader>
@@ -404,7 +374,7 @@ export default function AdminReadingAnalytics() {
                     <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
                     <Tooltip contentStyle={tooltipStyle} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="views" name="Views" fill="#F68B1E" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="views" name="Views" fill="hsl(var(--primary))" radius={[2, 2, 0, 0]} />
                     <Bar dataKey="reads" name="Reads" fill="#3b82f6" radius={[2, 2, 0, 0]} />
                     <Bar dataKey="uniqueReaders" name="Unique Readers" fill="#10b981" radius={[2, 2, 0, 0]} />
                   </BarChart>
@@ -641,8 +611,8 @@ export default function AdminReadingAnalytics() {
           <Card className="border-border/30">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-base flex items-center gap-2"> Trending Books</CardTitle>
-                <p className="text-xs text-white mt-1">Based on recent {trendingPeriod}-day activity (configurable via Recommendations settings)</p>
+                <CardTitle className="text-base flex items-center gap-2"><Flame className="h-4 w-4 text-orange-500" /> Trending Books</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">Based on recent {trendingPeriod}-day activity (configurable via Recommendations settings)</p>
               </div>
               <div className="flex items-center gap-2">
                 <Select value={trendingPeriod} onValueChange={setTrendingPeriod}>

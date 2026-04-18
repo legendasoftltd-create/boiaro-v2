@@ -12,7 +12,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Ticket, Plus, Pencil, Trash2, Search } from "lucide-react";
-import SummaryCard from '@/components/admin/SummaryCard';
 
 interface Coupon {
   id: string;
@@ -109,7 +108,7 @@ export default function AdminCoupons() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-black">Coupons</h1>
+        <h1 className="text-2xl font-bold">Coupons</h1>
         <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" /> Add Coupon</Button>
       </div>
 
@@ -120,21 +119,21 @@ export default function AdminCoupons() {
           { label: "Total Uses", value: totalUsed },
           { label: "Inactive", value: coupons.length - active },
         ].map(c => (
-          <SummaryCard
-            icon={Ticket}
-            title={c.label}
-            value={c.value}
-            color="#017B51"
-          />
+          <Card key={c.label} className="bg-card border-border">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center"><Ticket className="w-5 h-5 text-primary" /></div>
+              <div><p className="text-2xl font-bold">{c.value}</p><p className="text-xs text-muted-foreground">{c.label}</p></div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       <div className="relative mb-4 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
-        <Input placeholder="Search coupons..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 " />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input placeholder="Search coupons..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-secondary" />
       </div>
 
-      <div className="">
+      <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -184,7 +183,7 @@ export default function AdminCoupons() {
           <DialogHeader><DialogTitle>{editing ? "Edit Coupon" : "New Coupon"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div><Label className="text-sm mb-1.5">Code *</Label><Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} className=" font-mono" /></div>
+              <div><Label className="text-sm mb-1.5">Code *</Label><Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} className="bg-secondary font-mono" /></div>
               <div>
                 <Label className="text-sm mb-1.5">Applies To</Label>
                 <Select value={form.applies_to} onValueChange={v => setForm(f => ({ ...f, applies_to: v }))}>
@@ -200,7 +199,7 @@ export default function AdminCoupons() {
                  </Select>
               </div>
             </div>
-            <div><Label className="text-sm mb-1.5">Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="" rows={2} /></div>
+            <div><Label className="text-sm mb-1.5">Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="bg-secondary" rows={2} /></div>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label className="text-sm mb-1.5">Type</Label>
@@ -212,16 +211,16 @@ export default function AdminCoupons() {
                   </SelectContent>
                 </Select>
               </div>
-              <div><Label className="text-sm mb-1.5">Value</Label><Input type="number" value={form.discount_value} onChange={e => setForm(f => ({ ...f, discount_value: Number(e.target.value) }))} className="" /></div>
-              <div><Label className="text-sm mb-1.5">Min Amount (৳)</Label><Input type="number" value={form.min_order_amount} onChange={e => setForm(f => ({ ...f, min_order_amount: Number(e.target.value) }))} className="" /></div>
+              <div><Label className="text-sm mb-1.5">Value</Label><Input type="number" value={form.discount_value} onChange={e => setForm(f => ({ ...f, discount_value: Number(e.target.value) }))} className="bg-secondary" /></div>
+              <div><Label className="text-sm mb-1.5">Min Amount (৳)</Label><Input type="number" value={form.min_order_amount} onChange={e => setForm(f => ({ ...f, min_order_amount: Number(e.target.value) }))} className="bg-secondary" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label className="text-sm mb-1.5">Usage Limit</Label><Input type="number" value={form.usage_limit ?? ""} onChange={e => setForm(f => ({ ...f, usage_limit: e.target.value ? Number(e.target.value) : null }))} placeholder="Unlimited" className="" /></div>
-              <div><Label className="text-sm mb-1.5">Per User Limit</Label><Input type="number" value={form.per_user_limit} onChange={e => setForm(f => ({ ...f, per_user_limit: Number(e.target.value) }))} className="" /></div>
+              <div><Label className="text-sm mb-1.5">Usage Limit</Label><Input type="number" value={form.usage_limit ?? ""} onChange={e => setForm(f => ({ ...f, usage_limit: e.target.value ? Number(e.target.value) : null }))} placeholder="Unlimited" className="bg-secondary" /></div>
+              <div><Label className="text-sm mb-1.5">Per User Limit</Label><Input type="number" value={form.per_user_limit} onChange={e => setForm(f => ({ ...f, per_user_limit: Number(e.target.value) }))} className="bg-secondary" /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label className="text-sm mb-1.5">Start Date</Label><Input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} className="" /></div>
-              <div><Label className="text-sm mb-1.5">End Date</Label><Input type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} className="" /></div>
+              <div><Label className="text-sm mb-1.5">Start Date</Label><Input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} className="bg-secondary" /></div>
+              <div><Label className="text-sm mb-1.5">End Date</Label><Input type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} className="bg-secondary" /></div>
             </div>
             <div className="flex items-center gap-3">
               <Switch checked={form.first_order_only} onCheckedChange={v => setForm(f => ({ ...f, first_order_only: v }))} />

@@ -18,8 +18,6 @@ import {
   Search, AlertTriangle, AlertOctagon, ShieldAlert, Trash2, Eye, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
-import SummaryCard from '@/components/admin/SummaryCard';
-
 
 const PAGE_SIZE = 30;
 
@@ -95,10 +93,12 @@ export default function AdminSystemLogs() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif flex items-center gap-2 text-black">
-            System Logs
+          <h1 className="text-2xl font-bold font-serif flex items-center gap-2">
+            <Activity className="w-6 h-6 text-primary" /> System Logs
           </h1>
-
+          <p className="text-sm text-muted-foreground">
+            Error, warning, and critical system events only — not user activity
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleCleanup} className="gap-2">
           <Trash2 className="w-4 h-4" /> Cleanup 90d+
@@ -108,25 +108,23 @@ export default function AdminSystemLogs() {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Total", value: totalCount, color: "#017B51" },
-          { label: "Errors (page)", value: errorCount, color: "#017B51" },
-          { label: "Critical (page)", value: criticalCount, color: "#017B51" },
+          { label: "Total", value: totalCount, color: "text-primary" },
+          { label: "Errors (page)", value: errorCount, color: "text-red-400" },
+          { label: "Critical (page)", value: criticalCount, color: "text-red-300" },
         ].map(s => (
-        
-          <SummaryCard
-            key={s.label}
-            icon={`s.icon`}
-            title={s.label}
-            value={s.value.toLocaleString()}
-            color="#017B51"
-          />
+          <Card key={s.label} className="border-border/30">
+            <CardContent className="p-3 text-center">
+              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-[11px] text-muted-foreground">{s.label}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search message or module..."
             value={search}
@@ -167,11 +165,11 @@ export default function AdminSystemLogs() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-black">Loading...</TableCell>
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell>
               </TableRow>
             ) : logs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-black">
+                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                   No system logs found — that's a good sign!
                 </TableCell>
               </TableRow>
@@ -199,7 +197,7 @@ export default function AdminSystemLogs() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-[11px] text-black whitespace-nowrap">
+                    <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap">
                       {new Date(l.last_seen_at).toLocaleString()}
                     </TableCell>
                     <TableCell>
@@ -218,14 +216,14 @@ export default function AdminSystemLogs() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-black">
+          <p className="text-sm text-muted-foreground">
             Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
           </p>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
               Previous
             </Button>
-            <span className="text-sm text-black">Page {page + 1} / {totalPages}</span>
+            <span className="text-sm text-muted-foreground">Page {page + 1} / {totalPages}</span>
             <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
               Next
             </Button>
@@ -243,37 +241,37 @@ export default function AdminSystemLogs() {
             <div className="space-y-3 text-sm">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-black text-[11px]">Level</p>
+                  <p className="text-muted-foreground text-[11px]">Level</p>
                   <Badge className={LEVEL_STYLE[detail.level]?.color}>{detail.level}</Badge>
                 </div>
                 <div>
-                  <p className="text-black text-[11px]">Module</p>
+                  <p className="text-muted-foreground text-[11px]">Module</p>
                   <p className="font-medium capitalize">{detail.module}</p>
                 </div>
                 <div>
-                  <p className="text-black text-[11px]">Occurrences</p>
+                  <p className="text-muted-foreground text-[11px]">Occurrences</p>
                   <p className="font-medium">{detail.occurrence_count}</p>
                 </div>
                 <div>
-                  <p className="text-black text-[11px]">User ID</p>
+                  <p className="text-muted-foreground text-[11px]">User ID</p>
                   <p className="font-mono text-xs">{detail.user_id || "—"}</p>
                 </div>
               </div>
               <div>
-                <p className="text-black text-[11px]">Message</p>
+                <p className="text-muted-foreground text-[11px]">Message</p>
                 <p className="bg-muted/50 rounded p-2 text-xs">{detail.message}</p>
               </div>
               <div>
-                <p className="text-black text-[11px]">First Seen</p>
+                <p className="text-muted-foreground text-[11px]">First Seen</p>
                 <p className="text-xs">{new Date(detail.first_seen_at).toLocaleString()}</p>
               </div>
               <div>
-                <p className="text-black text-[11px]">Last Seen</p>
+                <p className="text-muted-foreground text-[11px]">Last Seen</p>
                 <p className="text-xs">{new Date(detail.last_seen_at).toLocaleString()}</p>
               </div>
               {detail.metadata && Object.keys(detail.metadata).length > 0 && (
                 <div>
-                  <p className="text-black text-[11px]">Metadata</p>
+                  <p className="text-muted-foreground text-[11px]">Metadata</p>
                   <pre className="bg-muted/50 rounded p-2 text-[11px] overflow-auto max-h-[200px]">
                     {JSON.stringify(detail.metadata, null, 2)}
                   </pre>

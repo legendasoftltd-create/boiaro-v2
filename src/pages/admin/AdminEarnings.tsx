@@ -10,8 +10,6 @@ import { Input } from "@/components/ui/input";
 import { DollarSign, CheckCircle2, Clock, Users, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
-import SummaryCard from '@/components/admin/SummaryCard';
-
 
 export default function AdminEarnings() {
   const [earnings, setEarnings] = useState<any[]>([]);
@@ -106,8 +104,8 @@ export default function AdminEarnings() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-black">
-          Contributor Earnings
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <DollarSign className="w-6 h-6 text-emerald-400" /> Contributor Earnings
         </h1>
         <div className="flex gap-2">
           {selectedIds.length > 0 && (
@@ -124,27 +122,20 @@ export default function AdminEarnings() {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Platform Earnings", value: `৳${platformEarnings.toFixed(0)}`, icon: TrendingUp, color: "#017B51" },
-          { label: "Creator Payouts", value: `৳${creatorPayouts.toFixed(0)}`, icon: Users, color: "#017B51" },
-          { label: "Confirmed", value: `৳${totalConfirmed.toFixed(0)}`, icon: CheckCircle2, color: "#017B51" },
-          { label: "Pending", value: `৳${totalPending.toFixed(0)}`, icon: Clock, color: "#017B51" },
+          { label: "Platform Earnings", value: `৳${platformEarnings.toFixed(0)}`, icon: TrendingUp, color: "text-primary" },
+          { label: "Creator Payouts", value: `৳${creatorPayouts.toFixed(0)}`, icon: Users, color: "text-purple-400" },
+          { label: "Confirmed", value: `৳${totalConfirmed.toFixed(0)}`, icon: CheckCircle2, color: "text-emerald-400" },
+          { label: "Pending", value: `৳${totalPending.toFixed(0)}`, icon: Clock, color: "text-yellow-400" },
         ].map(s => (
-          // <Card key={s.label} className="border-border/30 bg-card/60">
-          //   <CardContent className="p-4 flex items-center gap-3">
-          //     <s.icon className={`w-5 h-5 ${s.color}`} />
-          //     <div>
-          //       <p className="text-lg font-bold">{s.value}</p>
-          //       <p className="text-[10px] text-muted-foreground">{s.label}</p>
-          //     </div>
-          //   </CardContent>
-          // </Card>
-          <SummaryCard
-            key={s.label}
-            icon={s.icon}
-            title={s.label}
-            value={s.value}
-            color="#017B51"
-          />
+          <Card key={s.label} className="border-border/30 bg-card/60">
+            <CardContent className="p-4 flex items-center gap-3">
+              <s.icon className={`w-5 h-5 ${s.color}`} />
+              <div>
+                <p className="text-lg font-bold">{s.value}</p>
+                <p className="text-[10px] text-muted-foreground">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
@@ -153,7 +144,7 @@ export default function AdminEarnings() {
         <Input placeholder="Search by creator or book..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs h-9" />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[140px] h-9"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
+           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="confirmed">Confirmed</SelectItem>
@@ -173,7 +164,7 @@ export default function AdminEarnings() {
       </div>
 
       {/* Table */}
-      <Card className="">
+      <Card className="border-border/30 bg-card/60">
         <CardContent className="p-0">
           <Table>
             <TableHeader>
@@ -192,39 +183,39 @@ export default function AdminEarnings() {
                     className="rounded"
                   />
                 </TableHead>
-                <TableHead className="text-white">Creator</TableHead>
-                <TableHead className="text-white">Book</TableHead>
-                <TableHead className="text-white">Role</TableHead>
-                <TableHead className="text-white">Format</TableHead>
-                <TableHead className="text-white">Sale</TableHead>
-                <TableHead className="text-white">%</TableHead>
-                <TableHead className="text-white">Earned</TableHead>
-                <TableHead className="text-white">Status</TableHead>
-                <TableHead className="text-white">Date</TableHead>
-                <TableHead className="text-white">Action</TableHead>
+                <TableHead>Creator</TableHead>
+                <TableHead>Book</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Format</TableHead>
+                <TableHead>Sale</TableHead>
+                <TableHead>%</TableHead>
+                <TableHead>Earned</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={11} className="text-center py-10 text-muted-foreground">No earnings records found</TableCell></TableRow>
               ) : filtered.map(e => (
-                <TableRow key={e.id} className={` text-black ${selectedIds.includes(e.id) ? "bg-primary/5" : ""}`}>
+                <TableRow key={e.id} className={selectedIds.includes(e.id) ? "bg-primary/5" : ""}>
                   <TableCell>
                     {e.status === "pending" && (
                       <input type="checkbox" checked={selectedIds.includes(e.id)} onChange={() => toggleSelect(e.id)} className="rounded" />
                     )}
                   </TableCell>
-                  <TableCell className="font-medium text-sm ">
+                  <TableCell className="font-medium text-sm">
                     {e.role === "platform" ? "Platform" : profiles[e.user_id] || e.user_id.slice(0, 8)}
                   </TableCell>
                   <TableCell className="max-w-[150px] truncate text-sm">{e.books?.title || "—"}</TableCell>
                   <TableCell>{roleBadge(e.role)}</TableCell>
-                  <TableCell><Badge variant="outline" className="text-[10px] capitalize bg-[#017B51]">{e.format}</Badge></TableCell>
-                  <TableCell className="text-sm text-black">৳{e.sale_amount}</TableCell>
+                  <TableCell><Badge variant="outline" className="text-[10px] capitalize">{e.format}</Badge></TableCell>
+                  <TableCell className="text-sm">৳{e.sale_amount}</TableCell>
                   <TableCell className="text-sm">{e.percentage}%</TableCell>
-                  <TableCell className="text-sm font-semibold text-black">৳{e.earned_amount}</TableCell>
+                  <TableCell className="text-sm font-semibold text-emerald-400">৳{e.earned_amount}</TableCell>
                   <TableCell>{statusBadge(e.status)}</TableCell>
-                  <TableCell className="text-xs text-black">{new Date(e.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{new Date(e.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
                     {e.status === "pending" && (
                       <Button size="sm" variant="ghost" onClick={() => confirmEarnings([e.id])} className="h-7 text-xs">
@@ -240,9 +231,9 @@ export default function AdminEarnings() {
       </Card>
 
       {/* Info note */}
-      <Card className="gray-400">
-        <CardContent className="p-4 text-sm text-black space-y-1">
-          <p className="font-medium text-black flex items-center  gap-1"><Users className="w-4 h-4" /> Earnings Pipeline</p>
+      <Card className="border-blue-500/20 bg-blue-500/5">
+        <CardContent className="p-4 text-sm text-muted-foreground space-y-1">
+          <p className="font-medium text-foreground flex items-center gap-1"><Users className="w-4 h-4" /> Earnings Pipeline</p>
           <p>1. Order confirmed → <code>calculate-earnings</code> creates <strong>pending</strong> rows</p>
           <p>2. Admin confirms earnings → status becomes <strong>confirmed</strong></p>
           <p>3. Confirmed earnings are available for creator withdrawal</p>

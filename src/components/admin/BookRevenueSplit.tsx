@@ -144,7 +144,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
     <Card className="border-border/30">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-2"><DollarSign className="h-4 w-4 text-emerald-400" /> Creator Revenue Split</CardTitle>
-        <p className="text-[10px] text-white">Royalty distribution for digital formats. Hard Copy uses a separate commerce model below.</p>
+        <p className="text-[10px] text-muted-foreground">Royalty distribution for digital formats. Hard Copy uses a separate commerce model below.</p>
       </CardHeader>
       <CardContent>
         <div className="grid md:grid-cols-2 gap-4">
@@ -153,7 +153,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
             if (!split) return null;
             const total = getTotal(split);
             return (
-              <div key={format} className="p-3 rounded-lg border space-y-3">
+              <div key={format} className="p-3 rounded-lg bg-secondary/50 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-sm font-semibold">
                     <Icon className="h-4 w-4" /> {label}

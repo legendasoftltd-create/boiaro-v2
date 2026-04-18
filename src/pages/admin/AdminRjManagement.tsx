@@ -136,7 +136,8 @@ export default function AdminRjManagement() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-black">RJ Management</h1>
+          <h1 className="text-2xl font-bold">RJ Management</h1>
+          <p className="text-muted-foreground text-sm">Manage Radio Jockeys and live sessions</p>
         </div>
         <CreateRjDialog onCreated={fetchAll} />
       </div>
@@ -154,7 +155,7 @@ export default function AdminRjManagement() {
             {liveSessions.map((s) => {
               const rj = rjs.find(r => r.user_id === s.rj_user_id)
               return (
-                <div key={s.id} className="flex items-center justify-between p-3 rounded-lg  border border-border">
+                <div key={s.id} className="flex items-center justify-between p-3 rounded-lg bg-card/60 border border-border">
                   <div>
                     <p className="font-medium">{rj?.stage_name || "Unknown RJ"}</p>
                     <p className="text-xs text-muted-foreground">
@@ -181,7 +182,7 @@ export default function AdminRjManagement() {
         </CardHeader>
         <CardContent>
           {rjs.length === 0 ? (
-            <p className="text-sm text-black py-8 text-center">
+            <p className="text-sm text-muted-foreground py-8 text-center">
               No RJ profiles yet. Assign the "rj" role to a user to get started.
             </p>
           ) : (
@@ -239,7 +240,7 @@ export default function AdminRjManagement() {
         </CardHeader>
         <CardContent>
           {recentSessions.length === 0 ? (
-            <p className="text-sm text-black">No sessions recorded yet.</p>
+            <p className="text-sm text-muted-foreground">No sessions recorded yet.</p>
           ) : (
             <div className="space-y-2">
               {recentSessions.map((s) => {
@@ -248,7 +249,7 @@ export default function AdminRjManagement() {
                   <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 text-sm">
                     <div>
                       <p className="font-medium">{rj?.stage_name || "Unknown"} — {s.show_title || "Untitled"}</p>
-                      <p className="text-xs text-black">
+                      <p className="text-xs text-muted-foreground">
                         {new Date(s.started_at).toLocaleString()}
                         {s.ended_at && ` → ${new Date(s.ended_at).toLocaleTimeString()}`}
                       </p>

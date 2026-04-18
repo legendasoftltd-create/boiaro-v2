@@ -113,7 +113,7 @@ export default function AdminAuthors() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-black">Authors</h1>
+        <h1 className="text-2xl font-bold">Authors</h1>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Author</Button>
       </div>
       <div className="mb-4">
@@ -121,26 +121,26 @@ export default function AdminAuthors() {
       </div>
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 p-3 rounded-lg  border border-border/40 mb-4">
-          <span className="text-sm font-medium text-black">{selected.size} selected</span>
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border/40 mb-4">
+          <span className="text-sm font-medium">{selected.size} selected</span>
           <Button size="sm" variant="outline" onClick={() => bulkSetStatus("active")}>Activate All</Button>
           <Button size="sm" variant="destructive" onClick={() => bulkSetStatus("inactive")}>Deactivate All</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </div>
       )}
 
-      <div className=" ">
+      <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selected.size === filtered.length} onCheckedChange={() => selected.size === filtered.length ? setSelected(new Set()) : setSelected(new Set(filtered.map(a => a.id)))} /></TableHead>
               <TableHead className="w-12"></TableHead>
-              <TableHead className="text-white">Name</TableHead>
-              <TableHead className="text-white">Genre</TableHead>
-              <TableHead className="text-white">Priority</TableHead>
-              <TableHead className="text-white">Account</TableHead>
-              <TableHead className="text-white">Status</TableHead>
-              <TableHead className="text-right text-white">Actions</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Genre</TableHead>
+              <TableHead>Priority</TableHead>
+              <TableHead>Account</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -176,12 +176,12 @@ export default function AdminAuthors() {
         </Table>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen} >
-        <DialogContent className="max-h-[90vh] overflow-y-auto bg-white">
-          <DialogHeader><DialogTitle className="text-black">{edit ? "Edit Author" : "Add Author"}</DialogTitle></DialogHeader>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{edit ? "Edit Author" : "Add Author"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <AvatarUpload currentUrl={form.avatar_url} onUrlChange={(url) => setForm({ ...form, avatar_url: url })} folder="authors" label="Author Photo" />
-            <div><Label  className="text-black placeholder:text-black">Name (Bengali)</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>Name (Bengali)</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div><Label>Name (English)</Label><Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} /></div>
             <div><Label>Genre</Label><Input value={form.genre} onChange={(e) => setForm({ ...form, genre: e.target.value })} /></div>
             <div><Label>Priority</Label><Input type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} /></div>

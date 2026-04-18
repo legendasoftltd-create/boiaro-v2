@@ -11,9 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Gift, Plus, Pencil, Trash2, ActivitySquare, UserPen } from "lucide-react";
-import SummaryCard from '@/components/admin/SummaryCard';
-
+import { Gift, Plus, Pencil, Trash2 } from "lucide-react";
 
 interface Campaign {
   id: string;
@@ -92,42 +90,42 @@ export default function AdminFreeShipping() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2 text-black"> Free Shipping Campaigns</h1>
-         
+          <h1 className="text-2xl font-bold flex items-center gap-2"><Gift className="w-6 h-6 text-primary" /> Free Shipping Campaigns</h1>
+          <p className="text-sm text-muted-foreground mt-1">Create campaigns to offer free shipping based on order amount and delivery area</p>
         </div>
         <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" /> New Campaign</Button>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <SummaryCard
-          icon={UserPen}
-          title={"Total Campaigns"}
-          value={campaigns.length}
-          color="#017B51"
-        />
-        <SummaryCard
-          icon={ActivitySquare}
-          title={"Active"}
-          value={campaigns.filter(c => c.is_active).length}
-          color="#017B51"
-        />
-        <SummaryCard
-          icon={ActivitySquare}
-          title={"Inactive"}
-          value={campaigns.filter(c => !c.is_active).length}
-          color="#017B51"
-        />
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <p className="text-2xl font-bold">{campaigns.length}</p>
+            <p className="text-xs text-muted-foreground">Total Campaigns</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <p className="text-2xl font-bold text-emerald-400">{campaigns.filter(c => c.is_active).length}</p>
+            <p className="text-xs text-muted-foreground">Active</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="p-4">
+            <p className="text-2xl font-bold text-muted-foreground">{campaigns.filter(c => !c.is_active).length}</p>
+            <p className="text-xs text-muted-foreground">Inactive</p>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="">
+      <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-white">Campaign</TableHead>
-              <TableHead className="text-white">Min Order (৳)</TableHead>
-              <TableHead className="text-white">Area</TableHead>
-              <TableHead className="text-white">Active</TableHead>
-              <TableHead className="text-right text-white">Actions</TableHead>
+              <TableHead>Campaign</TableHead>
+              <TableHead>Min Order (৳)</TableHead>
+              <TableHead>Area</TableHead>
+              <TableHead>Active</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -135,7 +133,7 @@ export default function AdminFreeShipping() {
               <TableRow key={c.id}>
                 <TableCell>
                   <p className="font-medium text-sm">{c.name}</p>
-                  {c.description && <p className="text-xs text-black">{c.description}</p>}
+                  {c.description && <p className="text-xs text-muted-foreground">{c.description}</p>}
                 </TableCell>
                 <TableCell className="font-medium">৳{c.min_order_amount}</TableCell>
                 <TableCell><Badge className={areaColor[c.area_type] || ""}>{areaLabel[c.area_type] || c.area_type}</Badge></TableCell>
@@ -149,7 +147,7 @@ export default function AdminFreeShipping() {
               </TableRow>
             ))}
             {!campaigns.length && (
-              <TableRow><TableCell colSpan={5} className="text-center text-black py-8">No campaigns yet</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No campaigns yet</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -161,12 +159,12 @@ export default function AdminFreeShipping() {
           <div className="space-y-4">
             <div>
               <Label className="text-sm mb-1.5">Campaign Name *</Label>
-              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="৳500+ ফ্রি শিপিং" className="" />
+              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="৳500+ ফ্রি শিপিং" className="bg-secondary" />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm mb-1.5">Min Order Amount (৳)</Label>
-                <Input type="number" value={form.min_order_amount} onChange={e => setForm(f => ({ ...f, min_order_amount: Number(e.target.value) }))} className="" />
+                <Input type="number" value={form.min_order_amount} onChange={e => setForm(f => ({ ...f, min_order_amount: Number(e.target.value) }))} className="bg-secondary" />
               </div>
               <div>
                 <Label className="text-sm mb-1.5">Area</Label>
@@ -182,7 +180,7 @@ export default function AdminFreeShipping() {
             </div>
             <div>
               <Label className="text-sm mb-1.5">Description (optional)</Label>
-              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Campaign details..." className="" rows={2} />
+              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Campaign details..." className="bg-secondary" rows={2} />
             </div>
             <div className="flex items-center gap-3">
               <Switch checked={form.is_active} onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))} />

@@ -142,11 +142,12 @@ export default function AdminRoles() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-serif text-black">Roles & Permissions</h1>
+        <h1 className="text-2xl font-bold font-serif text-primary">Roles & Permissions</h1>
+        <p className="text-sm text-muted-foreground">Admin roles, permissions & user management</p>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex items-center gap-3 ">
+        <TabsList>
           <TabsTrigger value="roles" className="gap-1"><Shield className="h-3.5 w-3.5" />Roles</TabsTrigger>
           <TabsTrigger value="permissions" className="gap-1"><ShieldCheck className="h-3.5 w-3.5" />Permission Matrix</TabsTrigger>
           <TabsTrigger value="admins" className="gap-1"><Users className="h-3.5 w-3.5" />Admin Users</TabsTrigger>
@@ -156,23 +157,23 @@ export default function AdminRoles() {
           <div className="flex justify-end">
             <Button onClick={openNewRole}><Plus className="h-4 w-4 mr-2" />New Role</Button>
           </div>
-          <div className="">
+          <div className="rounded-lg border border-border/40 bg-card/60">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-white">Role</TableHead>
-                  <TableHead className="text-white">Name (Key)</TableHead>
-                  <TableHead className="text-white">Description</TableHead>
-                  <TableHead className="text-white">Type</TableHead>
-                  <TableHead className="text-white w-24">Actions</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Name (Key)</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="w-24">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {roles.map(r => (
                   <TableRow key={r.id}>
                     <TableCell className="font-medium flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />{r.label}</TableCell>
-                    <TableCell className="font-mono text-xs text-black">{r.name}</TableCell>
-                    <TableCell className="text-sm text-black max-w-[300px] truncate">{r.description || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{r.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground max-w-[300px] truncate">{r.description || "—"}</TableCell>
                     <TableCell><Badge variant={r.is_system ? "default" : "secondary"}>{r.is_system ? "System" : "Custom"}</Badge></TableCell>
                     <TableCell className="flex gap-1">
                       <Button size="icon" variant="ghost" onClick={() => openEditRole(r)}><Pencil className="h-4 w-4" /></Button>
@@ -201,16 +202,16 @@ export default function AdminRoles() {
           </div>
 
           {selectedRoleId && (
-            <Card className="">
+            <Card className="bg-card/60 border-border/40">
               <CardContent className="p-0 overflow-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-40 text-white">Module</TableHead>
-                      <TableHead className="text-center w-24 text-white">View</TableHead>
-                      <TableHead className="text-center w-24 text-white">Create</TableHead>
-                      <TableHead className="text-center w-24 text-white">Edit</TableHead>
-                      <TableHead className="text-center w-24 text-white">Delete</TableHead>
+                      <TableHead className="w-40">Module</TableHead>
+                      <TableHead className="text-center w-24">View</TableHead>
+                      <TableHead className="text-center w-24">Create</TableHead>
+                      <TableHead className="text-center w-24">Edit</TableHead>
+                      <TableHead className="text-center w-24">Delete</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -244,19 +245,19 @@ export default function AdminRoles() {
           <div className="flex justify-end">
             <Button onClick={() => { setAssignForm({ user_id: "", admin_role_id: "" }); setAssignDialog(true); }}><Plus className="h-4 w-4 mr-2" />Assign Role</Button>
           </div>
-          <div className="">
+          <div className="rounded-lg border border-border/40 bg-card/60">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-white">User ID</TableHead>
-                  <TableHead className="text-white">Role</TableHead>
-                  <TableHead className="text-white">Status</TableHead>
-                  <TableHead className="w-20 text-white">Toggle</TableHead>
+                  <TableHead>User ID</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="w-20">Toggle</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {adminUsers.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-8 text-black">No assignments. Unassigned admins operate as Super Admin.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No assignments. Unassigned admins operate as Super Admin.</TableCell></TableRow>
                 ) : adminUsers.map(u => (
                   <TableRow key={u.id}>
                     <TableCell className="font-mono text-xs">{u.user_id.slice(0, 8)}...</TableCell>

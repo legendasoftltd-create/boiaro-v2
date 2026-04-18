@@ -19,8 +19,6 @@ import { EditUserDialog } from "@/components/admin/EditUserDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import SummaryCard from '@/components/admin/SummaryCard';
-
 
 interface UserRow {
   user_id: string;
@@ -301,22 +299,22 @@ export default function AdminUsers() {
                 <Checkbox checked={list.length > 0 && selected.size === list.length} onCheckedChange={toggleSelectAll} />
               </TableHead>
             )}
-            <TableHead className="text-white">User</TableHead>
-            <TableHead className="text-white">Email</TableHead>
-            <TableHead className="text-white">Role</TableHead>
+            <TableHead>User</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Role</TableHead>
             {isDeletedTab ? (
               <>
-                <TableHead className="text-white">Deleted On</TableHead>
-                <TableHead className="text-white">Reason</TableHead>
+                <TableHead>Deleted On</TableHead>
+                <TableHead>Reason</TableHead>
               </>
             ) : (
               <>
-                <TableHead className="text-white">Status</TableHead>
-                <TableHead className="text-white">Verified</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Verified</TableHead>
               </>
             )}
-            <TableHead className="text-white">Orders</TableHead>
-            <TableHead className="text-white">Joined</TableHead>
+            <TableHead>Orders</TableHead>
+            <TableHead>Joined</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
@@ -422,35 +420,40 @@ export default function AdminUsers() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-serif font-bold text-black">Users</h1>
+        <h1 className="text-2xl font-serif font-bold">Users</h1>
+        <p className="text-sm text-muted-foreground">Manage all users</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Active Users", value: stats.total, icon: Users, color: "#017B51" },
-          { label: "Creators", value: stats.creators, icon: UserCheck, color: "#3B82F6" },
-          { label: "Verified", value: stats.verified, icon: Shield, color: "#10B981" },
-          { label: "Deleted", value: stats.deleted, icon: Trash2, color: "#EF4444" },
+          { label: "Active Users", value: stats.total, icon: Users, color: "text-primary" },
+          { label: "Creators", value: stats.creators, icon: UserCheck, color: "text-blue-400" },
+          { label: "Verified", value: stats.verified, icon: Shield, color: "text-emerald-400" },
+          { label: "Deleted", value: stats.deleted, icon: Trash2, color: "text-destructive" },
         ].map((s) => (
-          <SummaryCard
-            key={s.label}
-            icon={s.icon}
-            title={s.label}
-            value={loading ? "—" : s.value}
-            color={s.color}
-          />
+          <Card key={s.label} className="border-border/30">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-secondary/60">
+                <s.icon className={`w-5 h-5 ${s.color}`} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{loading ? "—" : s.value}</p>
+                <p className="text-[12px] text-muted-foreground">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       <Tabs value={tab} onValueChange={(v) => { setTab(v); setSelected(new Set()); }}>
-        <TabsList className="w-full flex items-center justify-center gap-5">
+        <TabsList>
           <TabsTrigger value="active">Active Users ({activeUsers.length})</TabsTrigger>
           <TabsTrigger value="deleted">Deleted Users ({deletedUsers.length})</TabsTrigger>
         </TabsList>
 
         <div className="flex flex-wrap gap-3 items-center mt-4">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search by name, email or phone..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
           </div>
           <Select value={filterRole} onValueChange={setFilterRole}>
@@ -477,8 +480,8 @@ export default function AdminUsers() {
         </div>
 
         {tab === "active" && selected.size > 0 && (
-          <div className="flex items-center gap-3 p-3 rounded-lg  border border-border/40 mb-4 mt-2">
-            <span className="text-sm font-medium text-black">{selected.size} selected</span>
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border/40 mt-3">
+            <span className="text-sm font-medium">{selected.size} selected</span>
             <Button size="sm" variant="outline" onClick={() => bulkSetActive(true)}>Activate All</Button>
             <Button size="sm" variant="destructive" onClick={() => bulkSetActive(false)}>Deactivate All</Button>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
@@ -514,8 +517,8 @@ export default function AdminUsers() {
             <DialogTitle className="text-destructive">Delete User</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This will soft-delete <strong>{deleteTarget?.display_name || deleteTarget?.full_name || "this user"}</strong>.
-            They will be unable to log in but all their data (orders, earnings, roles) will remain intact.
+            This will soft-delete <strong>{deleteTarget?.display_name || deleteTarget?.full_name || "this user"}</strong>. 
+            They will be unable to log in but all their data (orders, earnings, roles) will remain intact. 
             You can restore them later from the Deleted Users tab.
           </p>
           <div className="space-y-2">

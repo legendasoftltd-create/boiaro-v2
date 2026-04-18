@@ -49,12 +49,12 @@ export default function AdminCategories() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-black">Categories</h1>
+        <h1 className="text-2xl font-bold">Categories</h1>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Category</Button>
       </div>
-      <div className=" border">
+      <div className="rounded-lg border">
         <Table>
-          <TableHeader><TableRow><TableHead className="text-white">Bengali Name</TableHead><TableHead className="text-white">English</TableHead><TableHead className="text-white">Slug</TableHead><TableHead className="text-white">Priority</TableHead><TableHead className="text-white">Featured</TableHead><TableHead className="text-white">Trending</TableHead><TableHead className="text-white">Active</TableHead><TableHead className="text-right text-white">Actions</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Bengali Name</TableHead><TableHead>English</TableHead><TableHead>Slug</TableHead><TableHead>Priority</TableHead><TableHead>Featured</TableHead><TableHead>Trending</TableHead><TableHead>Active</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {items.map((c) => (
               <TableRow key={c.id}>

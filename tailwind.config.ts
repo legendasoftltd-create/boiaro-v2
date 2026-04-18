@@ -14,8 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["Hind Siliguri"],
-        serif: ["Hind Siliguri"],
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        serif: ["Playfair Display", "Georgia", "serif"],
       },
       colors: {
         border: "hsl(var(--border))",
