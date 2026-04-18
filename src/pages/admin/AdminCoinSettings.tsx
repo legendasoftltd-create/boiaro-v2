@@ -66,10 +66,10 @@ export default function AdminCoinSettings() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-serif font-bold  text-black">
-           Coin Settings
+        <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
+          <Coins className="w-6 h-6 text-primary" /> Coin Settings
         </h1>
-        
+        <p className="text-muted-foreground text-sm">Configure coin economy parameters</p>
       </div>
 
       <Card className="border-border/30">
@@ -108,10 +108,10 @@ export default function AdminCoinSettings() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/30 bg-gray-200">
+      <Card className="border-border/30 bg-primary/5">
         <CardContent className="p-4">
           <p className="text-sm font-medium mb-2">Current Economy Summary</p>
-          <div className="grid grid-cols-2 gap-2 text-xs text-black">
+          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
             <span>1 coin = ৳{settings.coin_conversion_ratio || "0.01"}</span>
             <span>Daily limit: {settings.coin_daily_limit || "50"} coins</span>
             <span>Signup bonus: {settings.coin_signup_bonus || "10"} coins</span>

@@ -7,7 +7,6 @@ import { usePopularAudiobooks } from "@/hooks/useRecommendations"
 import { useHomepageSections } from "@/hooks/useHomepageSections"
 import { Footer } from "@/components/Footer"
 import { SectionSkeleton } from "@/components/SectionSkeleton"
-import PremiumRadixSlider from "@/components/PremiumRadixSlider"
 
 const ContinueReading = lazy(() => import("@/components/ContinueReading").then(m => ({ default: m.ContinueReading })))
 const ContinueListening = lazy(() => import("@/components/ContinueListening").then(m => ({ default: m.ContinueListening })))
@@ -88,7 +87,6 @@ const Index = () => {
       <main className="min-h-screen bg-background">
         <Navbar />
         <Hero />
-        {/* <PremiumRadixSlider /> */}
         <div className="transition-opacity duration-200 ease-out">
           {orderedKeys.map(key => (
             <LazySection key={key} sectionKey={key} books={books} popularAudiobooks={popularAudiobooks} />

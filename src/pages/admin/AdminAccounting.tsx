@@ -16,8 +16,6 @@ import { AdminSearchBar } from "@/components/admin/AdminSearchBar";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
-import SummaryCard from '@/components/admin/SummaryCard';
-
 
 const LEDGER_CATEGORIES = ["creator_payout", "gateway_fee", "server_cost", "marketing", "development", "inventory_cost", "delivery_cost", "office_expense", "other"];
 
@@ -155,34 +153,50 @@ export default function AdminAccounting() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-black">Accounting Ledger</h1>
+          <h1 className="text-2xl font-bold">Accounting Ledger</h1>
+          <p className="text-sm text-muted-foreground">Single source of truth — synced across all reports</p>
         </div>
         <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-2" />Add Entry</Button>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-        <SummaryCard
-          icon={``}
-          title={"Total Ledger Income"}
-          value={totalIncome.toLocaleString()}
-          color="#017B51"
-        />
-
-        <SummaryCard
-          icon={``}
-          title={"Total Ledger Expense"}
-          value={totalExpense.toLocaleString()}
-          color="#017B51"
-        />
-        
-        <SummaryCard
-          icon={``}
-          title={"Net Ledger Balance"}
-          value={netBalance.toLocaleString()}
-          color={`${netBalance >= 0 ? "#017B51" : "#EF4444"}`}
-        />
+        <Card className="border-border/30">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10">
+              <TrendingUp className="w-5 h-5 text-emerald-500" />
+            </div>
+             <div>
+              <p className="text-2xl font-bold">৳{totalIncome.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Total Ledger Income</p>
+              <p className="text-[10px] text-muted-foreground/60">All sources: orders, manual, adjustments</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/30">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-red-500/10">
+              <TrendingDown className="w-5 h-5 text-red-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">৳{totalExpense.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Total Ledger Expense</p>
+              <p className="text-[10px] text-muted-foreground/60">All recorded expenses</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/30">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className={`p-2.5 rounded-xl ${netBalance >= 0 ? "bg-primary/10" : "bg-red-500/10"}`}>
+              <Wallet className={`w-5 h-5 ${netBalance >= 0 ? "text-primary" : "text-red-500"}`} />
+            </div>
+            <div>
+              <p className={`text-2xl font-bold ${netBalance < 0 ? "text-red-500" : ""}`}>৳{netBalance.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Net Ledger Balance</p>
+              <p className="text-[10px] text-muted-foreground/60">Income minus expenses (full ledger)</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Monthly Chart */}
@@ -221,17 +235,17 @@ export default function AdminAccounting() {
       </div>
 
       {/* Ledger Table */}
-      <div className="">
+      <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-white">Date</TableHead>
-              <TableHead className="text-white">Type</TableHead>
-              <TableHead className="text-white">Category</TableHead>
-              <TableHead className="text-white">Description</TableHead>
-              <TableHead className="text-white">Source</TableHead>
-              <TableHead className="text-right text-white">Amount</TableHead>
-              <TableHead className="text-right text-white">Actions</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -243,10 +257,10 @@ export default function AdminAccounting() {
                     {e.type === "income" ? "Income" : "Expense"}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-sm capitalize text-black">{(e.category || "").replace(/_/g, " ")}</TableCell>
+                <TableCell className="text-sm capitalize">{(e.category || "").replace(/_/g, " ")}</TableCell>
                 <TableCell className="text-sm max-w-[200px] truncate">{e.description || "—"}</TableCell>
                 <TableCell>
-                  <Badge variant="outline" className="text-xs text-black">
+                  <Badge variant="outline" className="text-xs">
                     {e.source === "manual" ? "Manual" : "Auto"}
                   </Badge>
                 </TableCell>

@@ -66,12 +66,13 @@ export default function AdminBanners() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-black">Hero Banners</h1>
+          <h1 className="text-2xl font-bold font-serif text-primary">Hero Banners</h1>
+          <p className="text-sm text-muted-foreground">Manage homepage banners</p>
         </div>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />New Banner</Button>
       </div>
 
-      <div className="">
+      <div className="rounded-lg border border-border/40 bg-card/60">
         <Table>
           <TableHeader>
             <TableRow>
@@ -86,11 +87,11 @@ export default function AdminBanners() {
             {isLoading ? (
               <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : banners.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-8 text-black">No banners</TableCell></TableRow>
+              <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No banners</TableCell></TableRow>
             ) : banners.map(b => (
               <TableRow key={b.id}>
                 <TableCell className="font-medium flex items-center gap-2"><Image className="h-4 w-4 text-primary" />{b.title}</TableCell>
-                <TableCell className="text-black">{b.cta_text || "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{b.cta_text || "—"}</TableCell>
                 <TableCell>{b.sort_order}</TableCell>
                 <TableCell><Badge variant={b.is_active ? "default" : "secondary"}>{b.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                 <TableCell className="flex gap-1">

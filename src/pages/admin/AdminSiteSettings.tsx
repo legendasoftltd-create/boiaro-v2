@@ -136,10 +136,12 @@ export default function AdminSiteSettings() {
     <div className="space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black">
-             Footer & Brand Settings
+          <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
+            <Settings className="w-6 h-6 text-primary" /> Footer & Brand Settings
           </h1>
-          
+          <p className="text-muted-foreground text-sm">
+            Manage your site branding, footer content, contact info, and social links
+          </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowPreview(!showPreview)} className="gap-1.5">
           <Eye className="w-4 h-4" />
@@ -148,12 +150,12 @@ export default function AdminSiteSettings() {
       </div>
 
       {showPreview && (
-        <Card className="border-primary/20 bg-white">
+        <Card className="border-primary/20 bg-primary/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
               <Eye className="w-4 h-4 text-primary" /> Live Footer Preview
             </CardTitle>
-            <p className="text-xs ">Changes update in real-time as you edit</p>
+            <p className="text-xs text-muted-foreground">Changes update in real-time as you edit</p>
           </CardHeader>
           <CardContent>
             <FooterPreview values={values} />
@@ -174,7 +176,7 @@ export default function AdminSiteSettings() {
                 <Icon className="w-4 h-4 text-primary" />
                 {meta.title}
               </CardTitle>
-              <p className="text-xs ">{meta.description}</p>
+              <p className="text-xs text-muted-foreground">{meta.description}</p>
             </CardHeader>
             <CardContent className="space-y-4">
               {items

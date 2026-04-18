@@ -281,8 +281,8 @@ export default function AdminPurchaseReport() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-black">Purchase & Profit Report</h1>
-          
+          <h1 className="text-2xl font-bold">Purchase & Profit Report</h1>
+          <p className="text-sm text-muted-foreground">Hardcopy book purchase costs & profit analysis</p>
         </div>
         <Button onClick={exportCSV} variant="outline" size="sm" className="gap-2">
           <Download className="h-4 w-4" /> Export CSV
@@ -320,11 +320,11 @@ export default function AdminPurchaseReport() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-white">Total Purchase Cost</CardTitle>
-            <DollarSign className="h-4 w-4 text-white" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Purchase Cost</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">৳{totalPurchase.toLocaleString()}</div>
@@ -332,54 +332,54 @@ export default function AdminPurchaseReport() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-white">Inventory Purchase</CardTitle>
-            <Package className="h-4 w-4 text-white" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Inventory Purchase</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">৳{totalInventory.toLocaleString()}</div>
-            <p className="text-xs text-black">{inventoryEntries.length} entries</p>
+            <p className="text-xs text-muted-foreground">{inventoryEntries.length} entries</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-white">Cost of Goods Sold</CardTitle>
-            <ShoppingCart className="h-4 w-4 text-white" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Cost of Goods Sold</CardTitle>
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">৳{totalCogs.toLocaleString()}</div>
-            <p className="text-xs text-black">{cogsEntries.length} entries</p>
+            <p className="text-xs text-muted-foreground">{cogsEntries.length} entries</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-white">Total Qty Purchased</CardTitle>
-            <Layers className="h-4 w-4 text-white" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Qty Purchased</CardTitle>
+            <Layers className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalOrderQty}</div>
-            <p className="text-xs text-black">hardcopy units</p>
+            <p className="text-xs text-muted-foreground">hardcopy units</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-white">Revenue (Verified)</CardTitle>
-            <DollarSign className="h-4 w-4 text-white" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Revenue (Verified)</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">৳{totalRevenue.toLocaleString()}</div>
-            <p className="text-xs text-black">excl. delivery</p>
+            <p className="text-xs text-muted-foreground">excl. delivery</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-white">Total Profit</CardTitle>
-            <TrendingUp className="h-4 w-4 text-white" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Profit</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${totalProfit >= 0 ? "text-green-600" : "text-destructive"}`}>
               ৳{totalProfit.toLocaleString()}
             </div>
-            <p className="text-xs text-black">
+            <p className="text-xs text-muted-foreground">
               {totalRevenue > 0 ? `${((totalProfit / totalRevenue) * 100).toFixed(1)}% margin` : "—"}
             </p>
           </CardContent>
@@ -435,7 +435,7 @@ export default function AdminPurchaseReport() {
                     <TableCell className="text-right">৳{totalPurchase.toLocaleString()}</TableCell>
                     <TableCell className="text-right">{totalOrderQty}</TableCell>
                     <TableCell className="text-right">৳{Math.round(totalRevenue).toLocaleString()}</TableCell>
-                    <TableCell className={`text-right ${totalProfit >= 0 ? "text-black" : "text-destructive"}`}>৳{Math.round(totalProfit).toLocaleString()}</TableCell>
+                    <TableCell className={`text-right ${totalProfit >= 0 ? "text-green-600" : "text-destructive"}`}>৳{Math.round(totalProfit).toLocaleString()}</TableCell>
                     <TableCell className="text-right">—</TableCell>
                   </TableRow>
                 </TableBody>

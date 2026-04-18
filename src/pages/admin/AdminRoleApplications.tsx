@@ -98,27 +98,27 @@ export default function AdminRoleApplications() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-serif font-bold text-black">
-         Role Applications
+      <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
+        <Users className="w-6 h-6 text-primary" /> Role Applications
       </h1>
 
       <Tabs value={filter} onValueChange={v => setFilter(v as any)}>
-        <TabsList className="flex w-full items-center justify-center gap-5">
+        <TabsList>
           <TabsTrigger value="pending">Pending</TabsTrigger>
           <TabsTrigger value="approved">Approved</TabsTrigger>
           <TabsTrigger value="rejected">Rejected</TabsTrigger>
         </TabsList>
       </Tabs>
 
-      <Card className="border-border/30 ">
+      <Card className="border-border/30 bg-card/60">
         <CardHeader><CardTitle className="text-base">Applications</CardTitle></CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-black animate-pulse">Loading...</p>
+            <p className="text-sm text-muted-foreground animate-pulse">Loading...</p>
           ) : apps.length === 0 ? (
-            <div className="text-center py-10 text-black">
-              <Clock className="w-8 h-8 mx-auto mb-2 opacity-30 text-black" />
-              <p className="text-sm text-black">No {filter} applications.</p>
+            <div className="text-center py-10 text-muted-foreground">
+              <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No {filter} applications.</p>
             </div>
           ) : (
             <div className="space-y-2">

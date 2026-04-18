@@ -13,8 +13,6 @@ import {
   TrendingUp, Users, Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
-import SummaryCard from '@/components/admin/SummaryCard';
-
 
 interface RevenueRule {
   id?: string;
@@ -196,8 +194,8 @@ export default function AdminRevenueSplits() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-black">
-           Revenue Management
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <DollarSign className="h-6 w-6 text-emerald-400" /> Revenue Management
         </h1>
         <Button onClick={() => {
           const rule = defaults.find(d => d.format === "ebook");
@@ -216,32 +214,24 @@ export default function AdminRevenueSplits() {
       </div>
 
       {/* Revenue Dashboard Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         {[
-          { label: "Total Sales", value: `${stats.totalSales.toFixed(0)}`, icon: TrendingUp, color: "#017B51" },
-          { label: "Platform Earnings", value: `${stats.platformEarnings.toFixed(0)}`, icon: DollarSign, color: "#017B51" },
-          { label: "Writer Payouts", value: `${stats.writerPayouts.toFixed(0)}`, icon: Users, color: "#017B51" },
-          { label: "Publisher Payouts", value: `${stats.publisherPayouts.toFixed(0)}`, icon: Package, color: "#017B51" },
-          { label: "Narrator Payouts", value: `${stats.narratorPayouts.toFixed(0)}`, icon: Headphones, color: "#017B51" },
-          { label: "Pending Withdrawals", value: `${stats.pendingWithdrawals.toFixed(0)}`, icon: Wallet, color: "#EF4444" },
+          { label: "Total Sales", value: `৳${stats.totalSales.toFixed(0)}`, icon: TrendingUp, color: "text-primary" },
+          { label: "Platform Earnings", value: `৳${stats.platformEarnings.toFixed(0)}`, icon: DollarSign, color: "text-emerald-400" },
+          { label: "Writer Payouts", value: `৳${stats.writerPayouts.toFixed(0)}`, icon: Users, color: "text-blue-400" },
+          { label: "Publisher Payouts", value: `৳${stats.publisherPayouts.toFixed(0)}`, icon: Package, color: "text-purple-400" },
+          { label: "Narrator Payouts", value: `৳${stats.narratorPayouts.toFixed(0)}`, icon: Headphones, color: "text-orange-400" },
+          { label: "Pending Withdrawals", value: `৳${stats.pendingWithdrawals.toFixed(0)}`, icon: Wallet, color: "text-yellow-400" },
         ].map(s => (
-          // <Card key={s.label} className="bg-card/60 border-border/30">
-          //   <CardContent className="p-4 flex items-center gap-3">
-          //     <s.icon className={`h-5 w-5 ${s.color} shrink-0`} />
-          //     <div className="min-w-0">
-          //       <p className="text-lg font-bold truncate">{s.value}</p>
-          //       <p className="text-[10px] text-muted-foreground">{s.label}</p>
-          //     </div>
-          //   </CardContent>
-          // </Card>
-
-          <SummaryCard
-              icon={``}
-              title={s.label}
-              value={s.value}
-              color={s.color}
-            />
-
+          <Card key={s.label} className="bg-card/60 border-border/30">
+            <CardContent className="p-4 flex items-center gap-3">
+              <s.icon className={`h-5 w-5 ${s.color} shrink-0`} />
+              <div className="min-w-0">
+                <p className="text-lg font-bold truncate">{s.value}</p>
+                <p className="text-[10px] text-muted-foreground">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
@@ -251,7 +241,7 @@ export default function AdminRevenueSplits() {
         <CardContent>
           <div className="grid md:grid-cols-3 gap-4">
             {defaults.map((rule, idx) => (
-              <Card key={rule.format} className="bg- border-border/30">
+              <Card key={rule.format} className="bg-secondary/50 border-border/30">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center gap-2 font-semibold text-sm">
                     {formatIcon(rule.format)}
@@ -305,10 +295,10 @@ export default function AdminRevenueSplits() {
                 {topContributors.map((c, i) => (
                   <div key={i} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-[10px] text-black capitalize">{c.role}</Badge>
-                      <span className="text-xs text-black truncate max-w-[120px]">{c.userId.slice(0, 8)}...</span>
+                      <Badge variant="outline" className="text-[10px] capitalize">{c.role}</Badge>
+                      <span className="text-xs text-muted-foreground truncate max-w-[120px]">{c.userId.slice(0, 8)}...</span>
                     </div>
-                    <span className="font-semibold text-black">৳{c.total.toFixed(0)}</span>
+                    <span className="font-semibold text-emerald-400">৳{c.total.toFixed(0)}</span>
                   </div>
                 ))}
               </div>
@@ -325,21 +315,21 @@ export default function AdminRevenueSplits() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-white">Book</TableHead>
-                  <TableHead className="text-white">Format</TableHead>
-                  <TableHead className="text-white">Writer</TableHead>
-                  <TableHead className="text-white">Publisher</TableHead>
-                  <TableHead className="text-white">Narrator</TableHead>
-                  <TableHead className="text-white">Platform</TableHead>
-                  <TableHead className="text-white">Fulfillment</TableHead>
-                  <TableHead className="text-white">Actions</TableHead>
+                  <TableHead>Book</TableHead>
+                  <TableHead>Format</TableHead>
+                  <TableHead>Writer</TableHead>
+                  <TableHead>Publisher</TableHead>
+                  <TableHead>Narrator</TableHead>
+                  <TableHead>Platform</TableHead>
+                  <TableHead>Fulfillment</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {bookSplits.map((s: any) => (
                   <TableRow key={s.id}>
                     <TableCell className="font-medium max-w-[120px] truncate">{s.books?.title || "—"}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px] text-black capitalize">{s.format}</Badge></TableCell>
+                    <TableCell><Badge variant="outline" className="text-[10px] capitalize">{s.format}</Badge></TableCell>
                     <TableCell>{s.writer_percentage}%</TableCell>
                     <TableCell>{s.publisher_percentage}%</TableCell>
                     <TableCell>{s.narrator_percentage > 0 ? `${s.narrator_percentage}%` : "—"}</TableCell>
@@ -366,25 +356,25 @@ export default function AdminRevenueSplits() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-white">Book</TableHead>
-                  <TableHead className="text-white">Format</TableHead>
-                  <TableHead className="text-white">Role</TableHead>
-                  <TableHead className="text-white">Sale</TableHead>
-                  <TableHead className="text-white">%</TableHead>
-                  <TableHead className="text-white">Earned</TableHead>
-                  <TableHead className="text-white">Status</TableHead>
+                  <TableHead>Book</TableHead>
+                  <TableHead>Format</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Sale</TableHead>
+                  <TableHead>%</TableHead>
+                  <TableHead>Earned</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {earnings.map((e: any) => (
                   <TableRow key={e.id}>
                     <TableCell className="max-w-[100px] truncate">{e.books?.title || "—"}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px]  text-black capitalize">{e.format}</Badge></TableCell>
-                    <TableCell className="capitalize text-xs text-black">{e.role}</TableCell>
+                    <TableCell><Badge variant="outline" className="text-[10px] capitalize">{e.format}</Badge></TableCell>
+                    <TableCell className="capitalize text-xs">{e.role}</TableCell>
                     <TableCell>৳{e.sale_amount}</TableCell>
                     <TableCell>{e.percentage}%</TableCell>
-                    <TableCell className="font-semibold text-black">৳{e.earned_amount}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px] capitalize text-black">{e.status}</Badge></TableCell>
+                    <TableCell className="font-semibold text-emerald-400">৳{e.earned_amount}</TableCell>
+                    <TableCell><Badge variant="outline" className="text-[10px] capitalize">{e.status}</Badge></TableCell>
                   </TableRow>
                 ))}
               </TableBody>

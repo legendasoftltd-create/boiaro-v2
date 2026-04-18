@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Eye, MousePointerClick, Coins, TrendingUp, BarChart3, Gift } from "lucide-react";
-import SummaryCard from '@/components/admin/SummaryCard';
 
 export default function AdminAdReports() {
   const [bannerStats, setBannerStats] = useState<any[]>([]);
@@ -36,34 +35,29 @@ export default function AdminAdReports() {
   const overallCtr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(1) + "%" : "0%";
 
   const statCards = [
-    { label: "Total Impressions", value: totalImpressions.toLocaleString(), icon: Eye, color: "#0037A1" },
-    { label: "Total Clicks", value: totalClicks.toLocaleString(), icon: MousePointerClick, color: "#017B51" },
-    { label: "Overall CTR", value: overallCtr, icon: TrendingUp, color: "#00A169" },
-    { label: "Rewarded Views", value: rewardedCount.toLocaleString(), icon: Gift, color: "#00a11b" },
-    { label: "Coins Distributed", value: totalCoinsGiven.toLocaleString(), icon: Coins, color: "#09a0c5" },
+    { label: "Total Impressions", value: totalImpressions.toLocaleString(), icon: Eye, color: "text-blue-400" },
+    { label: "Total Clicks", value: totalClicks.toLocaleString(), icon: MousePointerClick, color: "text-emerald-400" },
+    { label: "Overall CTR", value: overallCtr, icon: TrendingUp, color: "text-primary" },
+    { label: "Rewarded Views", value: rewardedCount.toLocaleString(), icon: Gift, color: "text-amber-400" },
+    { label: "Coins Distributed", value: totalCoinsGiven.toLocaleString(), icon: Coins, color: "text-purple-400" },
   ];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black"> Ad Reports</h1>
+        <h1 className="text-2xl font-serif font-bold flex items-center gap-2"><BarChart3 className="w-6 h-6 text-primary" /> Ad Reports</h1>
+        <p className="text-muted-foreground text-sm">Ad performance analytics and earnings overview</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {statCards.map(s => (
-          // <Card key={s.label} className="border-border/30">
-          //   <CardContent className="p-4 text-center">
-          //     <s.icon className={`w-5 h-5 mx-auto mb-1 ${s.color}`} />
-          //     <p className="text-xl font-bold">{loading ? "—" : s.value}</p>
-          //     <p className="text-[10px] text-muted-foreground">{s.label}</p>
-          //   </CardContent>
-          // </Card>
-          <SummaryCard
-            icon={s.icon}
-            title={s.label}
-            value={loading ? "—" : s.value}
-            color={s.color}
-          />
+          <Card key={s.label} className="border-border/30">
+            <CardContent className="p-4 text-center">
+              <s.icon className={`w-5 h-5 mx-auto mb-1 ${s.color}`} />
+              <p className="text-xl font-bold">{loading ? "—" : s.value}</p>
+              <p className="text-[10px] text-muted-foreground">{s.label}</p>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
@@ -82,9 +76,9 @@ export default function AdminAdReports() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-black">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : bannerStats.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-black">No banner data</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No banner data</TableCell></TableRow>
             ) : bannerStats.map((b: any) => (
               <TableRow key={b.id}>
                 <TableCell className="font-medium text-sm">{b.title || "Untitled"}</TableCell>

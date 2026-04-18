@@ -12,10 +12,14 @@ const CRITICAL_TABLES = [
 export default function AdminBackupStatus() {
   return (
     <div className="space-y-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-black">
-           Database Backup Status
+      <div>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Shield className="w-6 h-6 text-primary" /> Database Backup Status
         </h1>
-      
+        <p className="text-sm text-muted-foreground mt-1">
+          Automated backup managed by Lovable Cloud infrastructure
+        </p>
+      </div>
 
       {/* Backup Status */}
       <Card className="border-emerald-500/20 bg-emerald-500/5">
@@ -64,7 +68,7 @@ export default function AdminBackupStatus() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-             Critical Tables Covered
+            <Database className="w-4 h-4 text-primary" /> Critical Tables Covered
           </CardTitle>
         </CardHeader>
         <CardContent>

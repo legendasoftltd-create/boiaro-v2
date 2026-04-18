@@ -11,7 +11,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Wallet, Coins, TrendingUp, TrendingDown, Search, Plus, Minus, ArrowUpDown, Eye } from "lucide-react";
 import { toast } from "sonner";
-import SummaryCard from '@/components/admin/SummaryCard';
 
 interface UserWallet {
   id: string;
@@ -137,38 +136,40 @@ export default function AdminWallets() {
   };
 
   const statCards = [
-    { label: "Total Distributed", value: stats.totalDistributed, icon: TrendingUp, color: "#00A169" },
-    { label: "Total Spent", value: stats.totalSpent, icon: TrendingDown, color: "#EF4444" },
-    { label: "Total Users", value: stats.totalUsers, icon: Wallet, color: "#0037A1" },
-    { label: "Avg Balance", value: stats.avgBalance, icon: Coins, color: "#00E21E" },
+    { label: "Total Distributed", value: stats.totalDistributed, icon: TrendingUp, color: "text-emerald-400" },
+    { label: "Total Spent", value: stats.totalSpent, icon: TrendingDown, color: "text-red-400" },
+    { label: "Total Users", value: stats.totalUsers, icon: Wallet, color: "text-blue-400" },
+    { label: "Avg Balance", value: stats.avgBalance, icon: Coins, color: "text-primary" },
   ];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-serif font-bold text-black">Wallet Management</h1>
-        
+        <h1 className="text-2xl font-serif font-bold">Wallet Management</h1>
+        <p className="text-muted-foreground text-sm">Manage user wallets and coin transactions</p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map(s => (
-          <SummaryCard
-            key={s.label}
-              icon={s.icon}
-              title={s.label}
-              value={s.value.toLocaleString()}
-              color={s.color}
-            />
+          <Card key={s.label} className="border-border/30">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-secondary/60"><s.icon className={`w-5 h-5 ${s.color}`} /></div>
+              <div>
+                <p className="text-xl font-bold">{s.value.toLocaleString()}</p>
+                <p className="text-[11px] text-muted-foreground">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       <Tabs defaultValue="wallets">
-        <TabsList className="flex items-center justify-center gap-5 w-full"><TabsTrigger value="wallets">User Wallets</TabsTrigger><TabsTrigger value="transactions">All Transactions</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="wallets">User Wallets</TabsTrigger><TabsTrigger value="transactions">All Transactions</TabsTrigger></TabsList>
 
         <TabsContent value="wallets" className="space-y-4">
           <div className="flex gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input placeholder="Search by name or user ID..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
             </div>
           </div>
@@ -185,16 +186,16 @@ export default function AdminWallets() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-black">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
                 ) : filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-black">No wallets found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No wallets found</TableCell></TableRow>
                 ) : filtered.map(w => (
                   <TableRow key={w.id}>
                     <TableCell>
                       <p className="font-medium text-sm">{w.profiles?.display_name || "User"}</p>
-                      <p className="text-[11px] text-black font-mono">{w.user_id.slice(0, 8)}...</p>
+                      <p className="text-[11px] text-muted-foreground font-mono">{w.user_id.slice(0, 8)}...</p>
                     </TableCell>
-                    <TableCell className="text-right font-bold text-black">{w.balance}</TableCell>
+                    <TableCell className="text-right font-bold text-primary">{w.balance}</TableCell>
                     <TableCell className="text-right text-emerald-400">{w.total_earned}</TableCell>
                     <TableCell className="text-right text-red-400">{w.total_spent}</TableCell>
                     <TableCell className="text-right">

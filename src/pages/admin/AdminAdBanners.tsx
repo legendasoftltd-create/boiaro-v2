@@ -112,7 +112,8 @@ export default function AdminAdBanners() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black"> Ad Banners</h1>
+          <h1 className="text-2xl font-serif font-bold flex items-center gap-2"><ImageIcon className="w-6 h-6 text-primary" /> Ad Banners</h1>
+          <p className="text-muted-foreground text-sm">Manage banner advertisements</p>
         </div>
         <Button onClick={openNew}><Plus className="w-4 h-4 mr-1.5" />New Banner</Button>
       </div>
@@ -122,7 +123,7 @@ export default function AdminAdBanners() {
         <Input placeholder="Search banners..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
       </div>
 
-      <Card className="">
+      <Card className="border-border/30">
         <Table>
           <TableHeader>
             <TableRow>
@@ -137,9 +138,9 @@ export default function AdminAdBanners() {
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-black">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7} className="text-center py-8 text-black">No banners</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No banners</TableCell></TableRow>
             ) : filtered.map(b => (
               <TableRow key={b.id}>
                 <TableCell>
@@ -147,7 +148,7 @@ export default function AdminAdBanners() {
                     {b.image_url ? (
                       <img src={b.image_url} className="w-16 h-10 rounded object-cover border border-border/30" alt="" />
                     ) : (
-                      <div className="w-16 h-10 rounded bg-secondary/60 flex items-center justify-center"><ImageIcon className="w-4 h-4 text-black" /></div>
+                      <div className="w-16 h-10 rounded bg-secondary/60 flex items-center justify-center"><ImageIcon className="w-4 h-4 text-muted-foreground" /></div>
                     )}
                     <p className="text-sm font-medium">{b.title || "Untitled"}</p>
                   </div>

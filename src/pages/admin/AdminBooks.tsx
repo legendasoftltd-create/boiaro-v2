@@ -543,8 +543,8 @@ export default function AdminBooks() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold text-black">Books</h1>
-        <Button className="" onClick={openNew}><Plus className="h-4 w-4 mr-2 text-white" />Add Book</Button>
+        <h1 className="text-2xl font-bold">Books</h1>
+        <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Book</Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -583,20 +583,20 @@ export default function AdminBooks() {
         </Select>
       </div>
 
-      <div className=" shadow-lg border">
+      <div className="rounded-lg border">
         <Table>
-          <TableHeader >
-            <>
-              <TableHead className="text-white">Cover</TableHead>
-              <TableHead className="text-white">Title</TableHead>
-              <TableHead className="text-white">Author</TableHead>
-              <TableHead className="text-white">Narrator</TableHead>
-              <TableHead className="text-white">Category</TableHead>
-              <TableHead className="text-white">Publisher</TableHead>
-              <TableHead className="text-white">Formats</TableHead>
-              <TableHead className="text-white">Featured</TableHead>
-              <TableHead className="text-right text-white">Actions</TableHead>
-            </>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cover</TableHead>
+              <TableHead>Title</TableHead>
+              <TableHead>Author</TableHead>
+              <TableHead>Narrator</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Publisher</TableHead>
+              <TableHead>Formats</TableHead>
+              <TableHead>Featured</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
           </TableHeader>
           <TableBody>
             {filteredBooks.map((b) => (
@@ -632,7 +632,7 @@ export default function AdminBooks() {
                   </div>
                 </TableCell>
                 <TableCell>{b.is_featured ? "✓" : "—"}</TableCell>
-                <TableCell className="text-right space-x-1 gap-2 flex gap-2 justify-between">
+                <TableCell className="text-right space-x-1">
                   <Button size="sm" variant="outline" onClick={() => openFormats(b.id)}>Formats</Button>
                   <Button size="sm" variant="ghost" onClick={() => openEdit(b)}><Pencil className="h-3 w-3" /></Button>
                   <Button size="sm" variant="ghost" onClick={() => deleteBook(b.id)}><Trash2 className="h-3 w-3" /></Button>
@@ -752,7 +752,7 @@ export default function AdminBooks() {
       <Dialog open={formatOpen} onOpenChange={setFormatOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="">Book Formats, Contributors & Revenue</DialogTitle>
+            <DialogTitle>Book Formats, Contributors & Revenue</DialogTitle>
           </DialogHeader>
 
           {/* Contributors */}
@@ -764,13 +764,13 @@ export default function AdminBooks() {
           {/* Existing Formats Summary */}
           <Card className="border-border/50">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2 ">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 Saved Formats
                 {formatsLoading && <span className="text-xs font-normal text-muted-foreground">(loading...)</span>}
                 {!formatsLoading && formatsLoaded && formats.length === 0 && <span className="text-xs font-normal text-muted-foreground">(none yet)</span>}
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-0 mt-2">
+            <CardContent className="pt-0">
               {formatsLoading ? (
                 <p className="text-xs text-muted-foreground py-2">Loading saved formats...</p>
               ) : !formatsLoaded ? (
@@ -778,7 +778,7 @@ export default function AdminBooks() {
               ) : formats.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-2">No formats added yet. Use the editor below to add one.</p>
               ) : (
-                <div className="grid gap-2 ">
+                <div className="grid gap-2">
                   {formats.map((f) => {
                     const isEditing = formatForm.id === f.id;
                     const fmtConfig: Record<string, { icon: React.ReactNode; label: string; color: string }> = {
@@ -877,7 +877,7 @@ export default function AdminBooks() {
                   setFormatForm({ format: v, payout_model: v === 'hardcopy' ? 'inventory_resale' : 'revenue_share' });
                 }
               }}>
-                <TabsList className="grid w-full grid-cols-3 gap-5 mb-4">
+                <TabsList className="grid w-full grid-cols-3 mb-4">
                   <TabsTrigger value="ebook" className="gap-1.5"><BookOpen className="h-3.5 w-3.5" />eBook</TabsTrigger>
                   <TabsTrigger value="audiobook" className="gap-1.5"><Headphones className="h-3.5 w-3.5" />Audiobook</TabsTrigger>
                   <TabsTrigger value="hardcopy" className="gap-1.5"><Package className="h-3.5 w-3.5" />Hard Copy</TabsTrigger>

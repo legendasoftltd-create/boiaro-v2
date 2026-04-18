@@ -323,7 +323,7 @@ export default function AdminOrders() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-4 text-black">Orders</h1>
+      <h1 className="text-2xl font-bold mb-4">Orders</h1>
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <AdminSearchBar value={search} onChange={setSearch} placeholder="Search by order number, name, or ID..." className="flex-1 min-w-[200px] max-w-sm" />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -337,18 +337,18 @@ export default function AdminOrders() {
         </Select>
       </div>
 
-      <div className="shadow-lg overflow-x-auto">
+      <div className="rounded-lg border overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="text-white">Order #</TableHead>
-              <TableHead className="text-white">Customer</TableHead>
-              <TableHead className="text-white">Type</TableHead>
-              <TableHead className="text-white">Amount</TableHead>
-              <TableHead className="text-white">Payment Status</TableHead>
-              <TableHead className="text-white">Order Status</TableHead>
-              <TableHead className="text-white">Update Order</TableHead>
-              <TableHead className="text-right text-white">Actions</TableHead>
+              <TableHead>Order #</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Payment Status</TableHead>
+              <TableHead>Order Status</TableHead>
+              <TableHead>Update Order</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -363,48 +363,48 @@ export default function AdminOrders() {
                 <TableRow key={o.id}>
                   <TableCell>
                     <div>
-                      <p className="text-xs font-mono font-medium text-black">{o.order_number || o.id.slice(0, 8).toUpperCase()}</p>
+                      <p className="text-xs font-mono font-medium text-primary">{o.order_number || o.id.slice(0, 8).toUpperCase()}</p>
                       <p className="text-[10px] text-muted-foreground">{new Date(o.created_at).toLocaleDateString()}</p>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div>
                       <button
-                        className="text-sm font-medium text-black  cursor-pointer text-left"
+                        className="text-sm font-medium text-primary hover:underline cursor-pointer text-left"
                         onClick={() => o.user_id && setProfileUserId(o.user_id)}
                         disabled={!o.user_id}
                       >
                         {o._customerName}
                       </button>
-                      {o.shipping_district && <p className="text-xs text-black">{o.shipping_district}</p>}
+                      {o.shipping_district && <p className="text-xs text-muted-foreground">{o.shipping_district}</p>}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="gap-1 text-[10px] text-black">
+                    <Badge variant="outline" className="gap-1 text-[10px]">
                       {getFormatIcon(oFormat)} {getFormatLabel(oFormat)}
                     </Badge>
                   </TableCell>
                   <TableCell className="font-medium">৳{o.total_amount}</TableCell>
                   {/* Payment Status */}
                   <TableCell>
-                    <Badge className={`${pConfig.color} text-black`}>
+                    <Badge className={pConfig.color}>
                       <CreditCard className="w-3 h-3 mr-1" />
                       {pConfig.label}
                     </Badge>
                     {o.payment_method === "cod" && o.cod_payment_status && o.cod_payment_status !== "not_applicable" && (
-                      <Badge className={`ml-1 ${codPaymentStatusColors[o.cod_payment_status] || ""} `}>
+                      <Badge className={`ml-1 ${codPaymentStatusColors[o.cod_payment_status] || ""}`}>
                         {codPaymentStatusLabels[o.cod_payment_status] || o.cod_payment_status}
                       </Badge>
                     )}
                   </TableCell>
                   {/* Order Status */}
                   <TableCell>
-                    <Badge className={orderStatusColors[o.status] || "bg-muted"}>
+                    <Badge className={orderStatusColors[o.status] || "bg-muted text-muted-foreground"}>
                       {allOrderStatusLabels[o.status] || o.status}
                     </Badge>
                   </TableCell>
                   {/* Update Dropdown (format-aware) */}
-                  <TableCell className="text-white">
+                  <TableCell>
                     <Select value={o.status} onValueChange={(v) => updateOrderStatus(o.id, v)}>
                       <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                       <SelectContent>
@@ -460,7 +460,7 @@ export default function AdminOrders() {
             <div className="space-y-4 text-sm">
               {/* Format Badge */}
               <div className="flex items-center gap-2">
-                <Badge variant="outline" className="gap-1 text-black">
+                <Badge variant="outline" className="gap-1">
                   {getFormatIcon(detailFormat)} {getFormatLabel(detailFormat)} Order
                 </Badge>
                 {detail.payment_method === "demo" && (

@@ -10,7 +10,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import SummaryCard from '@/components/admin/SummaryCard';
 
 interface DrmSettings {
   drm_enabled: boolean;
@@ -112,7 +111,8 @@ export default function AdminDrmSettings() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-black">DRM & Content Protection</h1>
+          <h1 className="text-2xl font-bold font-serif text-foreground">DRM & Content Protection</h1>
+          <p className="text-sm text-muted-foreground">Manage secure content access, tokens, and protection settings</p>
         </div>
         <Badge variant={settings.drm_enabled ? "default" : "secondary"} className="text-xs">
           {settings.drm_enabled ? "DRM Active" : "DRM Disabled"}
@@ -120,7 +120,7 @@ export default function AdminDrmSettings() {
       </div>
 
       <Tabs defaultValue="settings">
-        <TabsList className="flex items-center w-full gap-5 bg-none">
+        <TabsList>
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="logs">Access Logs</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
@@ -135,13 +135,13 @@ export default function AdminDrmSettings() {
               { icon: Users, label: "Denied", value: stats.denied, color: "text-destructive" },
               { icon: Clock, label: "Today", value: stats.today, color: "text-blue-500" },
             ].map((s) => (
-              <SummaryCard
-                key={s.label}
-                icon={s.icon}
-                title={s.label}
-                value={s.value}
-                color="#017B51"
-              />
+              <Card key={s.label} className="bg-card border-border">
+                <CardContent className="p-4">
+                  <s.icon className={`w-5 h-5 ${s.color} mb-2`} />
+                  <p className="text-xs text-muted-foreground">{s.label}</p>
+                  <p className="text-xl font-bold text-foreground">{s.value}</p>
+                </CardContent>
+              </Card>
             ))}
           </div>
 
@@ -150,34 +150,34 @@ export default function AdminDrmSettings() {
             <CardHeader>
               <CardTitle className="text-base">Protection Controls</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6 bg-white text-black">
+            <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium ">Enable DRM System</p>
-                  <p className="text-xs ">All content access will require token validation</p>
+                  <p className="text-sm font-medium text-foreground">Enable DRM System</p>
+                  <p className="text-xs text-muted-foreground">All content access will require token validation</p>
                 </div>
                 <Switch checked={settings.drm_enabled} onCheckedChange={(v) => setSettings((p) => ({ ...p, drm_enabled: v }))} />
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium ">Block Direct Downloads</p>
-                  <p className="text-xs ">Prevent direct file URL access</p>
+                  <p className="text-sm font-medium text-foreground">Block Direct Downloads</p>
+                  <p className="text-xs text-muted-foreground">Prevent direct file URL access</p>
                 </div>
                 <Switch checked={settings.drm_block_download} onCheckedChange={(v) => setSettings((p) => ({ ...p, drm_block_download: v }))} />
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium ">Watermark on Content</p>
-                  <p className="text-xs ">Display user info overlay on ebook reader</p>
+                  <p className="text-sm font-medium text-foreground">Watermark on Content</p>
+                  <p className="text-xs text-muted-foreground">Display user info overlay on ebook reader</p>
                 </div>
                 <Switch checked={settings.drm_watermark_enabled} onCheckedChange={(v) => setSettings((p) => ({ ...p, drm_watermark_enabled: v }))} />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium ">Token Expiry (minutes)</label>
+                  <label className="text-sm font-medium text-foreground">Token Expiry (minutes)</label>
                   <Input
                     type="number"
                     min={1}
@@ -186,7 +186,7 @@ export default function AdminDrmSettings() {
                     onChange={(e) => setSettings((p) => ({ ...p, drm_token_expiry_minutes: parseInt(e.target.value) || 10 }))}
                     className="mt-1"
                   />
-                  <p className="text-xs  mt-1">How long each access token remains valid</p>
+                  <p className="text-xs text-muted-foreground mt-1">How long each access token remains valid</p>
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground">Max Concurrent Sessions</label>
@@ -198,7 +198,7 @@ export default function AdminDrmSettings() {
                     onChange={(e) => setSettings((p) => ({ ...p, drm_max_sessions: parseInt(e.target.value) || 3 }))}
                     className="mt-1"
                   />
-                  <p className="text-xs  mt-1">Maximum devices a user can stream from simultaneously</p>
+                  <p className="text-xs text-muted-foreground mt-1">Maximum devices a user can stream from simultaneously</p>
                 </div>
               </div>
 
@@ -229,41 +229,41 @@ export default function AdminDrmSettings() {
           <Card className="bg-card border-border">
             <Table>
               <TableHeader>
-                <TableRow className="bg-[#017B51]">
-                  <TableHead className="text-white">Time</TableHead>
-                  <TableHead className="text-white">User</TableHead>
-                  <TableHead className="text-white">Type</TableHead>
-                  <TableHead className="text-white">Status</TableHead>
-                  <TableHead className="text-white">Reason</TableHead>
-                  <TableHead className="text-white">IP</TableHead>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>User</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Reason</TableHead>
+                  <TableHead>IP</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredLogs.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-black py-8">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                       No access logs yet
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredLogs.map((log) => (
-                    <TableRow className="bg-[#017B51]" key={log.id}>
-                      <TableCell className="text-xs text-white">
+                    <TableRow key={log.id}>
+                      <TableCell className="text-xs text-muted-foreground">
                         {new Date(log.created_at).toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-xs font-mono text-white">{log.user_id.slice(0, 8)}…</TableCell>
+                      <TableCell className="text-xs font-mono">{log.user_id.slice(0, 8)}…</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="text-xs text-white">{log.content_type}</Badge>
+                        <Badge variant="outline" className="text-xs">{log.content_type}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant={log.access_granted ? "default" : "destructive"} className="text-xs">
                           {log.access_granted ? "Granted" : "Denied"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-xs text-whitemax-w-[200px] truncate text-white">
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
                         {log.denial_reason || "—"}
                       </TableCell>
-                      <TableCell className="text-xs text-white">{log.ip_address || "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{log.ip_address || "—"}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -274,29 +274,34 @@ export default function AdminDrmSettings() {
 
         <TabsContent value="analytics" className="space-y-4 mt-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <SummaryCard
-              icon={FileText}
-              title="Total Access Requests"
-              value={stats.total}
-              color="#017B51"
-            />
-            <SummaryCard
-              icon={Shield}
-              title="Approval Rate"
-              value={`${stats.total > 0 ? Math.round((stats.granted / stats.total) * 100) : 0}%`}
-              color="#017B51"
-            />
-            <SummaryCard
-              icon={Download}
-              title="Blocked Attempts"
-              value={stats.denied}
-              color="#017B51"
-            />
+            <Card className="bg-card border-border">
+              <CardContent className="p-6 text-center">
+                <FileText className="w-8 h-8 text-primary mx-auto mb-2" />
+                <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+                <p className="text-xs text-muted-foreground">Total Access Requests</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-card border-border">
+              <CardContent className="p-6 text-center">
+                <Shield className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-foreground">
+                  {stats.total > 0 ? Math.round((stats.granted / stats.total) * 100) : 0}%
+                </p>
+                <p className="text-xs text-muted-foreground">Approval Rate</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-card border-border">
+              <CardContent className="p-6 text-center">
+                <Download className="w-8 h-8 text-destructive mx-auto mb-2" />
+                <p className="text-2xl font-bold text-foreground">{stats.denied}</p>
+                <p className="text-xs text-muted-foreground">Blocked Attempts</p>
+              </CardContent>
+            </Card>
           </div>
 
-          <Card className="bg-[#017B51] border-border">
+          <Card className="bg-card border-border">
             <CardContent className="p-6">
-              <h3 className="font-medium text-white mb-3">Recent Denied Access</h3>
+              <h3 className="font-medium text-foreground mb-3">Recent Denied Access</h3>
               <div className="space-y-2">
                 {logs
                   .filter((l) => !l.access_granted)
@@ -304,14 +309,14 @@ export default function AdminDrmSettings() {
                   .map((l) => (
                     <div key={l.id} className="flex items-center justify-between text-sm border-b border-border pb-2">
                       <div>
-                        <span className="font-mono text-xs text-white">{l.user_id.slice(0, 8)}…</span>
+                        <span className="font-mono text-xs text-muted-foreground">{l.user_id.slice(0, 8)}…</span>
                         <Badge variant="outline" className="ml-2 text-xs">{l.content_type}</Badge>
                       </div>
-                      <span className="text-xs text-white">{l.denial_reason || "Unknown"}</span>
+                      <span className="text-xs text-muted-foreground">{l.denial_reason || "Unknown"}</span>
                     </div>
                   ))}
                 {logs.filter((l) => !l.access_granted).length === 0 && (
-                  <p className="text-sm text-white">No denied access attempts</p>
+                  <p className="text-sm text-muted-foreground">No denied access attempts</p>
                 )}
               </div>
             </CardContent>

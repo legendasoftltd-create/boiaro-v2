@@ -10,7 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sparkles, Save, TrendingUp, BookOpen, Eye, BarChart3, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import SummaryCard from '@/components/admin/SummaryCard';
 
 interface RecommendationSetting {
   key: string;
@@ -138,41 +137,31 @@ export default function AdminRecommendations() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-serif font-bold flex items-center gap-2 text-black">
-          Recommendations
+        <h1 className="text-2xl font-serif font-bold flex items-center gap-2">
+          <Sparkles className="w-6 h-6 text-primary" /> Recommendations & AI
         </h1>
-
+        <p className="text-muted-foreground text-sm">Configure recommendation engine and view analytics</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statCards.map(s => (
-          <>
-            {/* <Card key={s.label} className="border-border/30">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-secondary/60">
-                  <s.icon className={`w-5 h-5 ${s.color}`} />
-                </div>
-                <div>
-                  <p className="text-xl font-bold">{s.value.toLocaleString()}</p>
-                  <p className="text-[11px] text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card> */}
-
-            <SummaryCard
-              key={s.label}
-              icon={s.icon}
-              title={s.label}
-              value={s.value.toLocaleString()}
-              color="#017B51"
-            />
-          </>
+          <Card key={s.label} className="border-border/30">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-secondary/60">
+                <s.icon className={`w-5 h-5 ${s.color}`} />
+              </div>
+              <div>
+                <p className="text-xl font-bold">{s.value.toLocaleString()}</p>
+                <p className="text-[11px] text-muted-foreground">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       <Tabs defaultValue="settings">
-        <TabsList className="bg-transparent  w-full flex items-center gap-4 mb-4">
+        <TabsList>
           <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
@@ -230,9 +219,9 @@ export default function AdminRecommendations() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-white hover:text-black">#</TableHead>
-                      <TableHead className="text-white ">Book</TableHead>
-                      <TableHead className="text-white text-right ">Views</TableHead>
+                      <TableHead>#</TableHead>
+                      <TableHead>Book</TableHead>
+                      <TableHead className="text-right">Views</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
