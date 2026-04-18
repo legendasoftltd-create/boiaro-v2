@@ -1,83 +1,25 @@
-export const homepageRoute = async () => {
+export const homepageRoute = async (req: Request) => {
   try {
-
-    // const response = {
-    //   status: true,
-    //   data: {
-    //     "Recommended For You": [
-    //       {
-    //         id: 1,
-    //         title: "Atomic Habits",
-    //         author: "James Clear",
-    //         available_book_formats: ["pdf", "audio", "ebook"]
-    //       }
-    //     ],
-
-    //     "Top 10 Most Read": [
-    //       {
-    //         id: 2,
-    //         title: "Deep Work",
-    //         author: "Cal Newport",
-    //         available_book_formats: ["pdf"]
-    //       }
-    //     ],
-
-    //     "Popular Audiobooks": [
-    //       {
-    //         id: 3,
-    //         title: "Rich Dad Poor Dad",
-    //         author: "Kiyosaki",
-    //         available_book_formats: ["audio"]
-    //       }
-    //     ],
-
-    //     "Popular Hard Copies": [
-    //       {
-    //         id: 4,
-    //         title: "The Alchemist",
-    //         author: "Paulo Coelho",
-    //         available_book_formats: ["hardcopy"]
-    //       }
-    //     ]
-    //   }
-    // };
-
-
     const response = {
       status: true,
-      message: "Hello Rakib! Your custom API is working perfectly.",
+      message: "Hello Rakib! API is now accessible.",
       timestamp: new Date().toISOString(),
       data: {
-        user: {
-          name: "Rakib Molla",
-          role: "Web Developer",
-          project: "NRB Residence"
-        },
-        system_info: {
-          environment: "Supabase Edge Function",
-          runtime: "Deno",
-          docker_status: "Not Required (Testing Locally)"
-        },
-        test_features: [
-          "Custom API Logic",
-          "JSON Response",
-          "Error Handling"
-        ]
+        user: "Rakib Molla",
+        project: "NRB Residence",
+        note: "Security key verification disabled for testing"
       }
     };
 
     return new Response(JSON.stringify(response), {
-      headers: { "Content-Type": "application/json" }
+      headers: { 
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*" 
+      }
     });
-
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        status: false,
-        message: "Homepage error",
-        error: error.message
-      }),
-      { status: 500 }
-    );
+  } catch (error: any) {
+    return new Response(JSON.stringify({ status: false, error: error.message }), { 
+      status: 500 
+    });
   }
 };
