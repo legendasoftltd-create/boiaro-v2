@@ -12,24 +12,16 @@
     <link rel="preconnect" href="https://kxpqejmjfnzhqcefyued.supabase.co" />
 
     <!-- Non-blocking Google Fonts (replaces render-blocking CSS @import) -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" /></noscript>
 
     <!-- Inline critical above-the-fold CSS -->
     <style>
-        body {
-          margin: 0;
-          background: #0f0f17;
-          color: #f5f5f5;
-          font-family: 'Hind Siliguri', sans-serif !important;
-          -webkit-font-smoothing: antialiased;
-        }
-
-        #root {
-          min-height: 100svh;
-        }
-  </style>
+      body{margin:0;background:#0f0f17;color:#f5f5f5;font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+      #root{min-height:100svh}
+      .font-serif{font-family:'Playfair Display',Georgia,serif}
+    </style>
     <meta name="author" content="BoiAro" />
     <meta name="theme-color" content="#1a1a24" />
     <link rel="canonical" href="https://boiaro.com.bd/" />

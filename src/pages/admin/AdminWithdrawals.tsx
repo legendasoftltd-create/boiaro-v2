@@ -10,8 +10,6 @@ import { Label } from "@/components/ui/label";
 import { Wallet, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
-import SummaryCard from '@/components/admin/SummaryCard';
-
 
 export default function AdminWithdrawals() {
   const [requests, setRequests] = useState<any[]>([]);
@@ -55,33 +53,27 @@ export default function AdminWithdrawals() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold flex items-center gap-2 text-black">
-         Withdrawal Requests
+      <h1 className="text-2xl font-bold flex items-center gap-2">
+        <Wallet className="h-6 w-6 text-emerald-400" /> Withdrawal Requests
       </h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {[
-          { label: "Pending", count: requests.filter(r => r.status === "pending").length, icon: Clock, color: "#0037A1" },
-          { label: "Approved", count: requests.filter(r => r.status === "approved").length, icon: CheckCircle2, color: "#239640" },
-          { label: "Paid", count: requests.filter(r => r.status === "paid").length, icon: CheckCircle2, color: "#017B51" },
-          { label: "Rejected", count: requests.filter(r => r.status === "rejected").length, icon: XCircle, color: "#EF4444" },
+          { label: "Pending", count: requests.filter(r => r.status === "pending").length, icon: Clock, color: "text-yellow-400" },
+          { label: "Approved", count: requests.filter(r => r.status === "approved").length, icon: CheckCircle2, color: "text-blue-400" },
+          { label: "Paid", count: requests.filter(r => r.status === "paid").length, icon: CheckCircle2, color: "text-emerald-400" },
+          { label: "Rejected", count: requests.filter(r => r.status === "rejected").length, icon: XCircle, color: "text-destructive" },
         ].map(s => (
-          // <Card key={s.label} className="bg-card/60 border-border/30">
-          //   <CardContent className="p-4 flex items-center gap-3">
-          //     <s.icon className={`h-5 w-5 ${s.color}`} />
-          //     <div>
-          //       <p className="text-xl font-bold">{s.count}</p>
-          //       <p className="text-xs text-muted-foreground">{s.label}</p>
-          //     </div>
-          //   </CardContent>
-          // </Card>
-          <SummaryCard
-            icon={s.icon}
-            title={s.label}
-            value={s.count}
-            color={s.color}
-          />
-          ))}
+          <Card key={s.label} className="bg-card/60 border-border/30">
+            <CardContent className="p-4 flex items-center gap-3">
+              <s.icon className={`h-5 w-5 ${s.color}`} />
+              <div>
+                <p className="text-xl font-bold">{s.count}</p>
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <Card>
@@ -89,24 +81,24 @@ export default function AdminWithdrawals() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="text-white">User</TableHead>
-                <TableHead className="text-white">Amount</TableHead>
-                <TableHead className="text-white">Method</TableHead>
-                <TableHead className="text-white">Account</TableHead>
-                <TableHead className="text-white">Status</TableHead>
-                <TableHead className="text-white">Date</TableHead>
-                <TableHead className="text-white">Actions</TableHead>
+                <TableHead>User</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Method</TableHead>
+                <TableHead>Account</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {requests.map(r => (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.display_name}</TableCell>
-                  <TableCell className="font-semibold text-black">৳{r.amount}</TableCell>
+                  <TableCell className="font-semibold text-emerald-400">৳{r.amount}</TableCell>
                   <TableCell className="capitalize">{r.method}</TableCell>
                   <TableCell className="text-xs max-w-[120px] truncate">{r.account_info || "—"}</TableCell>
                   <TableCell>{statusBadge(r.status)}</TableCell>
-                  <TableCell className="text-xs text-black">{new Date(r.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</TableCell>
                   <TableCell>
                     <Button size="sm" variant="outline" onClick={() => { setSelected(r); setNotes(r.admin_notes || ""); setReviewOpen(true); }}>
                       Review
@@ -115,7 +107,7 @@ export default function AdminWithdrawals() {
                 </TableRow>
               ))}
               {!requests.length && (
-                <TableRow><TableCell colSpan={7} className="text-center text-black py-8">No withdrawal requests yet</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No withdrawal requests yet</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

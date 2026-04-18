@@ -12,9 +12,6 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import logoBoiaroFallback from "@/assets/logo_boiaro.png"
-import logoBoiaroShortFallback from "@/assets/logo_boiaro_short.png"
-import { useSiteSettings } from "@/hooks/useSiteSettings";
 
 interface NavItem {
   label: string;
@@ -185,8 +182,8 @@ function SidebarNav({
                     className={cn(
                       "flex items-center justify-center p-2 rounded-lg transition-colors",
                       active
-                        ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20 "
-                        : "text-muted-foreground hover:bg-blue hover:text-black"
+                        ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     )}
                   >
                     <item.icon className="h-4 w-4 shrink-0" />
@@ -203,17 +200,14 @@ function SidebarNav({
               onClick={() => toggleGroup(gIdx)}
               className={cn(
                 "w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[12px] font-semibold uppercase tracking-wider transition-colors",
-                hasActive ? "text-primary" : "text-black hover:text-[#017B51]"
+                hasActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}
             >
-              <group.icon className="h-3.5 w-3.5 shrink-0 text-black" />
-              <span className={cn(
-    "flex-1 text-left hover:text-black",
-    hasActive ? "text-[#017B51]" : ""
-  )}>{group.label}</span>
+              <group.icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1 text-left">{group.label}</span>
               <ChevronDown
                 className={cn(
-                  "h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-black",
+                  "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
                   isOpen ? "rotate-0" : "-rotate-90"
                 )}
               />
@@ -231,8 +225,8 @@ function SidebarNav({
                       className={cn(
                         "flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] font-medium transition-colors",
                         active
-                          ? "bg-[#017B51] text-white shadow-sm shadow-primary/20"
-                          : "text-muted-foreground hover:bg-[#017B51] hover:text-foreground"
+                          ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                       )}
                     >
                       <item.icon className="h-3.5 w-3.5 shrink-0" />
@@ -252,17 +246,10 @@ function SidebarNav({
 export default function AdminLayout() {
   const { isAdmin, loading } = useAdminCheck();
   const { canAccessPath, isLoading: permLoading } = useAdminPermissions();
-  const { get } = useSiteSettings()
   const location = useLocation();
   const isMobile = useIsMobile();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Dynamic logos from site settings, falling back to static assets
-    const logoDesktop = get("logo_url") || logoBoiaroFallback
-    const logoMobile = get("logo_mobile_url") || logoBoiaroShortFallback
-    const logoDark = get("logo_dark_url")
-    const brandName = get("brand_name", "BoiAro")
 
   const { data: unresolvedCount = 0 } = useQuery({
     queryKey: ["admin-unresolved-alerts-count"],
@@ -299,7 +286,7 @@ export default function AdminLayout() {
 
   if (loading || permLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
       </div>
     );
@@ -321,7 +308,7 @@ export default function AdminLayout() {
         <Link
           to="/"
           onClick={() => setMobileOpen(false)}
-          className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-muted-foreground hover:bg-[#017B51]hover:text-foreground transition-colors"
+          className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
         >
           <LogOut className="h-4 w-4" />
           <span>Back to Site</span>
@@ -334,22 +321,21 @@ export default function AdminLayout() {
     <div className="min-h-screen flex bg-background">
       {/* Mobile: top bar + sheet drawer */}
       {isMobile && (
-        <div className="fixed top-0 left-0 right-0 z-40 h-14 bg-white backdrop-blur-sm border-b border-border/40 flex items-center px-3 gap-3">
+        <div className="fixed top-0 left-0 right-0 z-40 h-14 bg-card/80 backdrop-blur-sm border-b border-border/40 flex items-center px-3 gap-3">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-9 w-9 bg-[#017B51]">
+              <Button size="icon" variant="ghost" className="h-9 w-9">
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-64 p-0 flex flex-col">
               <div className="p-3 flex items-center justify-between border-b border-border/40 h-14">
-                {/* <span className="font-bold text-primary font-serif text-lg">BoiAro Admin</span> */}
-                <img src={logoDesktop} alt={brandName} className="h-9 w-auto" />
+                <span className="font-bold text-primary font-serif text-lg">BoiAro Admin</span>
               </div>
               {sidebarContent}
             </SheetContent>
           </Sheet>
-          {/* <span className="font-bold text-primary font-serif text-base flex-1">BoiAro Admin</span> */}
+          <span className="font-bold text-primary font-serif text-base flex-1">BoiAro Admin</span>
           {unresolvedCount > 0 && (
             <Link to="/admin/alerts" className="relative">
               <Button size="icon" variant="ghost" className="h-9 w-9 text-destructive">
@@ -367,13 +353,12 @@ export default function AdminLayout() {
       {!isMobile && (
         <aside
           className={cn(
-            "sticky top-0 h-screen flex flex-col border-r border-border/40 bg-white backdrop-blur-sm transition-all duration-200",
+            "sticky top-0 h-screen flex flex-col border-r border-border/40 bg-card/60 backdrop-blur-sm transition-all duration-200",
             collapsed ? "w-[60px]" : "w-56"
           )}
         >
           <div className="p-3 flex items-center justify-between border-b border-border/40 h-14">
-            {!collapsed && <img src={logoDesktop} alt={brandName} className="h-9 w-auto" />}
-            
+            {!collapsed && <span className="font-bold text-primary font-serif text-lg">BoiAro</span>}
             {unresolvedCount > 0 && (
               <Link to="/admin/alerts" className="relative">
                 <ShieldCheck className="h-4 w-4 text-destructive" />
@@ -382,8 +367,8 @@ export default function AdminLayout() {
                 </span>
               </Link>
             )}
-            <Button size="icon" variant="ghost" onClick={() => setCollapsed(!collapsed)} className="shrink-0 h-8 w-8 rounded-lg text-black hover:bg-[#017B51] hover:text-white">
-              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4 " />}
+            <Button size="icon" variant="ghost" onClick={() => setCollapsed(!collapsed)} className="shrink-0 h-8 w-8 rounded-lg">
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
             </Button>
           </div>
           <SidebarNav
@@ -396,7 +381,7 @@ export default function AdminLayout() {
           <div className="p-2 border-t border-border/40">
             <Link
               to="/"
-              className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-muted-foreground hover:bg-[#017B51] hover:text-foreground transition-colors"
+              className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
             >
               <LogOut className="h-4 w-4" />
               {!collapsed && <span>Back to Site</span>}
@@ -406,8 +391,7 @@ export default function AdminLayout() {
       )}
 
       <main className={cn("flex-1 overflow-y-auto", isMobile && "pt-14")}>
-        {/* p-5 max-w-7xl min-h-screen mx-auto */}
-        <div className="p-5 w-full min-h-screen mx-auto" style={{backgroundColor:'#F9FAFB'}}>
+        <div className="p-5 max-w-7xl mx-auto">
           <Outlet />
         </div>
       </main>

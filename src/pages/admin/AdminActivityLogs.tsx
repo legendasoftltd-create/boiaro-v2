@@ -20,8 +20,6 @@ import {
   BookOpen, Users, ShoppingCart, CreditCard, Bell, Settings, Wallet,
   Megaphone, HeadphonesIcon, Sparkles, LayoutDashboard, Calendar,
 } from "lucide-react";
-import SummaryCard from '@/components/admin/SummaryCard';
-
 
 /* ── Types ───────────────────────────────── */
 
@@ -179,7 +177,8 @@ export default function AdminActivityLogs() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-black">Activity Logs & Audit Trail</h1>
+          <h1 className="text-2xl font-bold font-serif">Activity Logs & Audit Trail</h1>
+          <p className="text-sm text-muted-foreground">Detailed logs of all admin activities across modules</p>
         </div>
         <Button variant="outline" className="gap-2" onClick={exportCSV}>
           <Download className="w-4 h-4" /> Export CSV
@@ -187,34 +186,27 @@ export default function AdminActivityLogs() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { label: "Total Logs", value: totalCount, icon: Activity, color: "text-primary" },
           { label: "Page", value: `${page + 1} / ${totalPages || 1}`, icon: LayoutDashboard, color: "text-blue-400" },
         ].map((s) => (
-          // <Card key={s.label} className="border-border/30">
-          //   <CardContent className="p-3 flex items-center gap-2.5">
-          //     <div className="p-2 rounded-lg bg-secondary/60">
-          //       <s.icon className={`w-4 h-4 ${s.color}`} />
-          //     </div>
-          //     <div>
-          //       <p className="text-xl font-bold">{s.value}</p>
-          //       <p className="text-[11px] text-muted-foreground">{s.label}</p>
-          //     </div>
-          //   </CardContent>
-          // </Card>
-          <SummaryCard
-          key={s.label}
-              icon={s.icon}
-              title={s.label}
-              value={s.value}
-              color="#a13a20"
-            />
+          <Card key={s.label} className="border-border/30">
+            <CardContent className="p-3 flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-secondary/60">
+                <s.icon className={`w-4 h-4 ${s.color}`} />
+              </div>
+              <div>
+                <p className="text-xl font-bold">{s.value}</p>
+                <p className="text-[11px] text-muted-foreground">{s.label}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       <Tabs value={tab} onValueChange={(v) => { setTab(v); setPage(0); }}>
-        <TabsList className="flex items-center justify-center gap-5">
+        <TabsList>
           <TabsTrigger value="all">All Logs</TabsTrigger>
           <TabsTrigger value="login">Login History</TabsTrigger>
           <TabsTrigger value="sensitive">Sensitive Actions</TabsTrigger>
@@ -225,7 +217,7 @@ export default function AdminActivityLogs() {
             {/* Filters */}
             <div className="flex flex-wrap gap-3">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Search admin, action, module..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
               </div>
               <Select value={moduleFilter} onValueChange={(v) => { setModuleFilter(v); setPage(0); }}>
@@ -259,13 +251,13 @@ export default function AdminActivityLogs() {
             {/* Date Range */}
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
-                {/* <Calendar className="w-4 h-4 text-muted-foreground" /> */}
+                <Calendar className="w-4 h-4 text-muted-foreground" />
                 <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(0); }} className="w-[150px] h-9" placeholder="From" />
-                <span className="text-black text-sm">to</span>
+                <span className="text-muted-foreground text-sm">to</span>
                 <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(0); }} className="w-[150px] h-9" placeholder="To" />
               </div>
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-black">
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
                   Clear filters
                 </Button>
               )}
@@ -288,9 +280,9 @@ export default function AdminActivityLogs() {
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-black">Loading...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
                   ) : logs.length === 0 ? (
-                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-black">No logs found</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No logs found</TableCell></TableRow>
                   ) : (
                     logs.map((l) => (
                       <TableRow key={l.id} className={l.risk_level === "critical" ? "bg-red-500/5" : l.risk_level === "high" ? "bg-orange-500/5" : ""}>
@@ -299,19 +291,19 @@ export default function AdminActivityLogs() {
                             <ModuleIcon module={l.module} />
                             <div>
                               <p className="text-sm font-medium">{l.user_name || l.user_id.slice(0, 8)}</p>
-                              {l.actor_role && <p className="text-[10px] text-black">{l.actor_role}</p>}
+                              {l.actor_role && <p className="text-[10px] text-muted-foreground">{l.actor_role}</p>}
                             </div>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge className={`text-[11px] ${ACTION_COLORS[l.action_type || l.action] || "bg-muted text-black"}`}>
+                          <Badge className={`text-[11px] ${ACTION_COLORS[l.action_type || l.action] || "bg-muted text-muted-foreground"}`}>
                             {l.action_type || l.action}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm text-black capitalize">{l.module || "—"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground capitalize">{l.module || "—"}</TableCell>
                         <TableCell className="text-sm max-w-[250px] truncate">{l.details || l.action}</TableCell>
                         <TableCell>
-                          <Badge className={`text-[10px] ${STATUS_COLORS[l.status] || "bg-muted text-black"}`}>
+                          <Badge className={`text-[10px] ${STATUS_COLORS[l.status] || "bg-muted text-muted-foreground"}`}>
                             {l.status}
                           </Badge>
                         </TableCell>
@@ -320,7 +312,7 @@ export default function AdminActivityLogs() {
                             {RISK_LABELS[l.risk_level] || l.risk_level}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-[11px] text-black whitespace-nowrap">
+                        <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap">
                           {new Date(l.created_at).toLocaleString()}
                         </TableCell>
                         <TableCell>
@@ -338,12 +330,12 @@ export default function AdminActivityLogs() {
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between">
-                <p className="text-sm text-black">
+                <p className="text-sm text-muted-foreground">
                   Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalCount)} of {totalCount}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>Previous</Button>
-                  <span className="text-sm text-black">Page {page + 1} / {totalPages}</span>
+                  <span className="text-sm text-muted-foreground">Page {page + 1} / {totalPages}</span>
                   <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>Next</Button>
                 </div>
               </div>

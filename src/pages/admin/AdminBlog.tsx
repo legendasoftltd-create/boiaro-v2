@@ -94,14 +94,15 @@ export default function AdminBlog() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-serif text-black">Blog / Articles</h1>
+          <h1 className="text-2xl font-bold font-serif text-primary">Blog / Articles</h1>
+          <p className="text-sm text-muted-foreground">Manage blog posts</p>
         </div>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />New Article</Button>
       </div>
 
       <div className="flex gap-3">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -114,7 +115,7 @@ export default function AdminBlog() {
         </Select>
       </div>
 
-      <div className="">
+      <div className="rounded-lg border border-border/40 bg-card/60">
         <Table>
           <TableHeader>
             <TableRow>
@@ -130,14 +131,14 @@ export default function AdminBlog() {
             {isLoading ? (
               <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-black">No articles found</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No articles found</TableCell></TableRow>
             ) : filtered.map(p => (
               <TableRow key={p.id}>
                 <TableCell className="font-medium flex items-center gap-2"><BookOpen className="h-4 w-4 text-primary" />{p.title}</TableCell>
-                <TableCell className="text-black">{p.category || "—"}</TableCell>
+                <TableCell className="text-muted-foreground">{p.category || "—"}</TableCell>
                 <TableCell><Badge variant={p.status === "published" ? "default" : "secondary"}>{p.status === "published" ? "Published" : "Draft"}</Badge></TableCell>
                 <TableCell>{p.is_featured ? <Badge className="bg-primary/20 text-primary">Featured</Badge> : "—"}</TableCell>
-                <TableCell className="text-black text-xs">{p.publish_date ? new Date(p.publish_date).toLocaleDateString() : "—"}</TableCell>
+                <TableCell className="text-muted-foreground text-xs">{p.publish_date ? new Date(p.publish_date).toLocaleDateString() : "—"}</TableCell>
                 <TableCell className="flex gap-1">
                   <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" className="text-destructive" onClick={() => { if (confirm("Delete this article?")) deleteMutation.mutate(p.id); }}><Trash2 className="h-4 w-4" /></Button>
