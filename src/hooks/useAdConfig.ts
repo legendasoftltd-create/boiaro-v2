@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 
 export interface AdConfig {
   systemEnabled: boolean;
@@ -21,22 +20,12 @@ export interface AdConfig {
 }
 
 export function useAdConfig() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["ad-config"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("platform_settings")
-        .select("key, value")
-        .like("key", "ad_%");
-      if (error) throw error;
-      const map: Record<string, string> = {};
-      (data || []).forEach((d) => { map[d.key] = d.value; });
-      return map;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
+  const query = trpc.admin.adConfig.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
 
-  const get = (key: string, fallback = "") => data?.[key] ?? fallback;
+  const map: Record<string, string> = {};
+  ((query.data as any[]) || []).forEach((d: any) => { map[d.key] = d.value; });
+
+  const get = (key: string, fallback = "") => map[key] ?? fallback;
 
   const config: AdConfig = {
     systemEnabled: get("ad_system_enabled") === "true",
@@ -52,12 +41,12 @@ export function useAdConfig() {
     premiumHideAds: get("ad_premium_hide_ads", "true") === "true",
     freeShowAds: get("ad_free_show_ads", "true") === "true",
     countryTargeting: get("ad_country_targeting")
-      ? get("ad_country_targeting").split(",").map(s => s.trim()).filter(Boolean)
+      ? get("ad_country_targeting").split(",").map((s) => s.trim()).filter(Boolean)
       : [],
     rewardedCoins: parseInt(get("ad_rewarded_coins", "5"), 10),
     maxPerDay: parseInt(get("ad_max_per_day", "10"), 10),
     cooldownMinutes: parseInt(get("ad_cooldown_minutes", "5"), 10),
   };
 
-  return { config, isLoading };
+  return { config, isLoading: query.isLoading };
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ interface EditUserDialogProps {
 }
 
 export function EditUserDialog({ open, onOpenChange, user, onSaved }: EditUserDialogProps) {
+  const { user: authUser } = useAuth();
   const [saving, setSaving] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -115,7 +117,7 @@ export function EditUserDialog({ open, onOpenChange, user, onSaved }: EditUserDi
 
       if (changes.length) {
         await supabase.from("admin_activity_logs").insert({
-          user_id: (await supabase.auth.getUser()).data.user?.id || "",
+          user_id: authUser?.id || "",
           action: "User edited",
           details: changes.join("; "),
           target_type: "user",

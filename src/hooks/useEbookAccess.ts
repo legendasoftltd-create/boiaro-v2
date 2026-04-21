@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccessQuery } from "@/hooks/useAccessQuery";
+import { trpc } from "@/lib/trpc";
 
 /**
  * ╔══════════════════════════════════════════════════════════════════╗
@@ -59,57 +59,16 @@ export function useEbookAccess(
     refetch,
   } = useAccessQuery(bookId, "ebook", isFree, user?.id);
 
-  // Fetch preview_percentage fresh from DB + realtime subscription
-  const [dbPreviewPct, setDbPreviewPct] = useState<number | null>(previewPercentage ?? null);
+  const formatsQuery = trpc.books.formatsByBookId.useQuery(
+    { bookId: bookId! },
+    { enabled: !!bookId, staleTime: 60_000, refetchInterval: 60_000 }
+  );
 
-  useEffect(() => {
-    if (!bookId) return;
-    let cancelled = false;
-
-    const fetchPreviewPct = async () => {
-      const { data } = await supabase
-        .from("book_formats")
-        .select("preview_percentage")
-        .eq("book_id", bookId)
-        .eq("format", "ebook")
-        .maybeSingle();
-
-      if (!cancelled && data) {
-        setDbPreviewPct(data.preview_percentage ?? null);
-      }
-    };
-
-    fetchPreviewPct();
-
-    // Realtime subscription: instant update when admin changes preview_percentage
-    const channel = supabase
-      .channel(`ebook-preview-pct-${bookId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "book_formats",
-          filter: `book_id=eq.${bookId}`,
-        },
-        (payload) => {
-          const row = payload.new as any;
-          if (row?.format === "ebook") {
-            const newPct = row.preview_percentage ?? null;
-            if (import.meta.env.DEV) {
-              console.debug("[useEbookAccess] realtime preview_percentage update", { newPct });
-            }
-            setDbPreviewPct(newPct);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, [bookId]);
+  const ebookFormat = ((formatsQuery.data as any[]) || []).find(
+    (f: any) => f.format === "ebook"
+  );
+  const dbPreviewPct: number | null =
+    previewPercentage ?? ebookFormat?.preview_chapters ?? null;
 
   const effectivePreview = (dbPreviewPct != null && dbPreviewPct >= 0 && dbPreviewPct <= 100)
     ? dbPreviewPct

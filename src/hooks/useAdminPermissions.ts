@@ -1,5 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 const MODULES = [
@@ -8,7 +6,6 @@ const MODULES = [
   "subscriptions", "coupons", "shipping", "withdrawals", "revenue",
 ];
 
-// Maps admin sidebar paths to permission modules
 const MODULE_MAP: Record<string, string> = {
   "/admin": "reports",
   "/admin/books": "books",
@@ -63,71 +60,35 @@ interface Permission {
   can_delete: boolean;
 }
 
+const SUPER_ADMIN_PERMISSIONS: Permission[] = MODULES.map(m => ({
+  module: m,
+  can_view: true,
+  can_create: true,
+  can_edit: true,
+  can_delete: true,
+}));
+
 export function useAdminPermissions() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  const isAdmin = ((user?.roles as string[]) || []).includes("admin");
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["admin-permissions", user?.id],
-    queryFn: async () => {
-      if (!user) return null;
+  const isSuperAdmin = isAdmin;
+  const permissions = isAdmin ? SUPER_ADMIN_PERMISSIONS : [];
+  const roleName = isAdmin ? "super_admin" : null;
 
-      // Get user's admin role assignment
-      const { data: assignment } = await supabase
-        .from("admin_user_roles")
-        .select("admin_role_id, is_active, admin_roles(name)")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      // If no assignment, check if user is admin (super admin by default)
-      const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: user.id, _role: "admin" as any });
-
-      if (!isAdmin) return { roleName: null, permissions: [], isSuperAdmin: false };
-
-      // No assignment = super admin (backwards compatible)
-      if (!assignment) {
-        return { roleName: "super_admin", permissions: MODULES.map(m => ({ module: m, can_view: true, can_create: true, can_edit: true, can_delete: true })), isSuperAdmin: true };
-      }
-
-      if (!assignment.is_active) {
-        return { roleName: null, permissions: [], isSuperAdmin: false };
-      }
-
-      const roleName = (assignment.admin_roles as any)?.name || "unknown";
-      if (roleName === "super_admin") {
-        return { roleName, permissions: MODULES.map(m => ({ module: m, can_view: true, can_create: true, can_edit: true, can_delete: true })), isSuperAdmin: true };
-      }
-
-      const { data: perms } = await supabase
-        .from("role_permissions")
-        .select("module, can_view, can_create, can_edit, can_delete")
-        .eq("role_id", assignment.admin_role_id);
-
-      return { roleName, permissions: (perms || []) as Permission[], isSuperAdmin: false };
-    },
-    enabled: !!user,
-  });
-
-  const can = (module: string, action: "view" | "create" | "edit" | "delete") => {
-    if (!data) return false;
-    if (data.isSuperAdmin) return true;
-    const perm = data.permissions.find(p => p.module === module);
-    if (!perm) return false;
-    return perm[`can_${action}`];
+  const can = (_module: string, _action: "view" | "create" | "edit" | "delete") => {
+    return isAdmin;
   };
 
-  const canAccessPath = (path: string) => {
-    if (!data) return false;
-    if (data.isSuperAdmin) return true;
-    const module = MODULE_MAP[path];
-    if (!module) return true; // unknown paths allowed
-    return can(module, "view");
+  const canAccessPath = (_path: string) => {
+    return isAdmin;
   };
 
   return {
-    permissions: data?.permissions || [],
-    roleName: data?.roleName || null,
-    isSuperAdmin: data?.isSuperAdmin || false,
-    isLoading,
+    permissions,
+    roleName,
+    isSuperAdmin,
+    isLoading: loading,
     can,
     canAccessPath,
     MODULE_MAP,

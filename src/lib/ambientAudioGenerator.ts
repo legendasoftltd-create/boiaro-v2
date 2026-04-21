@@ -56,11 +56,8 @@ export function isAudioUnlocked(): boolean {
 /* ── Storage URL helper ────────────────────────────────────────── */
 
 function getSupabaseUrl(): string {
-  try {
-    return (import.meta.env?.VITE_SUPABASE_URL as string) || "";
-  } catch {
-    return "";
-  }
+  // Background music storage not configured — falls back to oscillator
+  return "";
 }
 
 function getMusicFileUrl(genre: AmbientGenre): string {

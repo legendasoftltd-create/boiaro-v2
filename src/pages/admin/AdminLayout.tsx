@@ -10,8 +10,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 
 interface NavItem {
   label: string;
@@ -33,6 +31,9 @@ const navGroups: NavGroup[] = [
       { label: "Overview", path: "/admin", icon: LayoutDashboard },
       { label: "Weekly Report", path: "/admin/weekly-report", icon: BarChart3 },
       { label: "Analytics", path: "/admin/analytics", icon: BarChart3 },
+      { label: "User Analytics", path: "/admin/user-analytics", icon: Users },
+      { label: "Revenue Dashboard", path: "/admin/revenue-dashboard", icon: DollarSign },
+      { label: "Performance", path: "/admin/performance", icon: Activity },
       { label: "Live Monitoring", path: "/admin/live-monitoring", icon: Activity },
       { label: "R2 CDN Rollout", path: "/admin/r2-dashboard", icon: MonitorPlay },
       { label: "DB Health", path: "/admin/db-health", icon: Activity },
@@ -251,18 +252,7 @@ export default function AdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const { data: unresolvedCount = 0 } = useQuery({
-    queryKey: ["admin-unresolved-alerts-count"],
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from("system_alerts")
-        .select("id", { count: "exact", head: true })
-        .eq("is_resolved", false);
-      if (error) return 0;
-      return count ?? 0;
-    },
-    refetchInterval: 30_000,
-  });
+  const unresolvedCount = 0;
 
   const activeGroupIndices = navGroups
     .map((g, i) => (g.items.some((item) => location.pathname === item.path) ? i : -1))
