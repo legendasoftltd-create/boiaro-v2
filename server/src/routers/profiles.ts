@@ -51,6 +51,22 @@ export const profilesRouter = router({
     })
   ),
 
+  readingProgressByBook: protectedProcedure
+    .input(z.object({ bookId: z.string() }))
+    .query(({ ctx, input }) =>
+      prisma.readingProgress.findUnique({
+        where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
+      })
+    ),
+
+  listeningProgress: protectedProcedure.query(({ ctx }) =>
+    prisma.listeningProgress.findMany({
+      where: { user_id: ctx.userId },
+      orderBy: { last_listened_at: "desc" },
+      take: 10,
+    })
+  ),
+
   updateReadingProgress: protectedProcedure
     .input(
       z.object({
@@ -115,6 +131,18 @@ export const profilesRouter = router({
           percentage,
           last_listened_at: new Date(),
         },
+      });
+    }),
+
+  submitRoleApplication: protectedProcedure
+    .input(z.object({ role: z.string(), message: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.roleApplication.findFirst({
+        where: { user_id: ctx.userId, applied_role: input.role as any, status: "pending" },
+      });
+      if (existing) return existing;
+      return prisma.roleApplication.create({
+        data: { user_id: ctx.userId, applied_role: input.role as any, status: "pending" } as any,
       });
     }),
 

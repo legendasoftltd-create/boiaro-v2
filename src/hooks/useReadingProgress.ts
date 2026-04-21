@@ -13,7 +13,7 @@ export function useReadingProgress(bookId: string | undefined) {
   const { user } = useAuth();
   const [localProgress, setLocalProgress] = useState<ReadingProgressData | null>(null);
 
-  const query = trpc.profiles.readingProgress.useQuery(
+  const query = trpc.profiles.readingProgressByBook.useQuery(
     { bookId: bookId! },
     { enabled: !!user && !!bookId }
   );

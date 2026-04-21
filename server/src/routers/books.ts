@@ -219,33 +219,48 @@ export const booksRouter = router({
   ),
 
   reviews: publicProcedure
-    .input(z.object({ bookId: z.string(), limit: z.number().default(20) }))
-    .query(({ input }) =>
-      prisma.review.findMany({
+    .input(z.object({ bookId: z.string(), limit: z.number().default(50) }))
+    .query(async ({ input }) => {
+      const reviews = await prisma.review.findMany({
         where: { book_id: input.bookId, status: "approved" },
         orderBy: { created_at: "desc" },
         take: input.limit,
-      })
-    ),
+      });
+      const userIds = [...new Set(reviews.map(r => r.user_id))];
+      const profiles = userIds.length > 0
+        ? await prisma.profile.findMany({
+            where: { user_id: { in: userIds } },
+            select: { user_id: true, display_name: true },
+          })
+        : [];
+      const profileMap = new Map(profiles.map(p => [p.user_id, p.display_name]));
+      return reviews.map(r => ({ ...r, display_name: profileMap.get(r.user_id) ?? null }));
+    }),
 
   postReview: protectedProcedure
     .input(z.object({ bookId: z.string(), rating: z.number().min(1).max(5), comment: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      return prisma.review.upsert({
-        where: { id: `${ctx.userId}_${input.bookId}` },
-        create: {
-          book_id: input.bookId,
-          user_id: ctx.userId,
-          rating: input.rating,
-          comment: input.comment,
-          status: "pending",
-        },
-        update: {
-          rating: input.rating,
-          comment: input.comment,
-          status: "pending",
-        },
+      const existing = await prisma.review.findFirst({
+        where: { book_id: input.bookId, user_id: ctx.userId },
       });
+      if (existing) {
+        return prisma.review.update({
+          where: { id: existing.id },
+          data: { rating: input.rating, comment: input.comment, status: "pending" },
+        });
+      }
+      return prisma.review.create({
+        data: { book_id: input.bookId, user_id: ctx.userId, rating: input.rating, comment: input.comment, status: "pending" },
+      });
+    }),
+
+  deleteReview: protectedProcedure
+    .input(z.object({ reviewId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await prisma.review.deleteMany({
+        where: { id: input.reviewId, user_id: ctx.userId },
+      });
+      return { success: true };
     }),
 
   bookmark: protectedProcedure
@@ -438,16 +453,26 @@ export const booksRouter = router({
 
   comments: publicProcedure
     .input(z.object({ bookId: z.string() }))
-    .query(({ input }) =>
-      prisma.bookComment.findMany({
+    .query(async ({ input }) => {
+      const comments = await prisma.bookComment.findMany({
         where: { book_id: input.bookId, parent_id: null },
         orderBy: { created_at: "desc" },
-        include: {
-          replies: { orderBy: { created_at: "asc" } },
-          _count: { select: { likes: true } },
-        },
-      })
-    ),
+        include: { replies: { orderBy: { created_at: "asc" } }, _count: { select: { likes: true } } },
+      });
+      const userIds = [...new Set(comments.map(c => c.user_id))];
+      const profiles = userIds.length > 0
+        ? await prisma.profile.findMany({
+            where: { user_id: { in: userIds } },
+            select: { user_id: true, display_name: true, avatar_url: true },
+          })
+        : [];
+      const profileMap = new Map(profiles.map(p => [p.user_id, p]));
+      return comments.map(c => ({
+        ...c,
+        display_name: profileMap.get(c.user_id)?.display_name ?? null,
+        avatar_url: profileMap.get(c.user_id)?.avatar_url ?? null,
+      }));
+    }),
 
   postComment: protectedProcedure
     .input(z.object({ bookId: z.string(), content: z.string().min(1).max(2000), parentId: z.string().optional() }))
@@ -461,6 +486,18 @@ export const booksRouter = router({
         },
       })
     ),
+
+  deleteComment: protectedProcedure
+    .input(z.object({ commentId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const comment = await prisma.bookComment.findUnique({ where: { id: input.commentId } });
+      if (!comment) throw new TRPCError({ code: "NOT_FOUND" });
+      const profile = await prisma.profile.findUnique({ where: { user_id: ctx.userId }, select: { role: true } });
+      const isAdmin = profile?.role === "admin" || profile?.role === "moderator";
+      if (comment.user_id !== ctx.userId && !isAdmin) throw new TRPCError({ code: "FORBIDDEN" });
+      await prisma.bookComment.delete({ where: { id: input.commentId } });
+      return { success: true };
+    }),
 
   formatsByBookId: publicProcedure
     .input(z.object({ bookId: z.string() }))

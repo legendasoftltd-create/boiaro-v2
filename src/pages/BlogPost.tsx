@@ -1,6 +1,5 @@
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Badge } from "@/components/ui/badge";
@@ -10,20 +9,10 @@ import { Link } from "react-router-dom";
 export default function BlogPost() {
   const { slug } = useParams<{ slug: string }>();
 
-  const { data: post, isLoading } = useQuery({
-    queryKey: ["blog-post", slug],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("blog_posts")
-        .select("*")
-        .eq("slug", slug!)
-        .eq("status", "published")
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!slug,
-  });
+  const { data: post, isLoading } = trpc.books.blogPost.useQuery(
+    { slug: slug! },
+    { enabled: !!slug }
+  );
 
   return (
     <div className="min-h-screen bg-background">

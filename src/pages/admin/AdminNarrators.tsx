@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -16,97 +15,93 @@ import { AvatarUpload } from "@/components/admin/AvatarUpload";
 import { Switch } from "@/components/ui/switch";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { DeactivateModal } from "@/components/admin/DeactivateModal";
-import { CreatorAccountFields } from "@/components/admin/CreatorAccountFields";
 import { CreatorAccountCard } from "@/components/admin/CreatorAccountCard";
+import { CreatorAccountFields } from "@/components/admin/CreatorAccountFields";
 import { useCreatorAccount } from "@/hooks/useCreatorAccount";
 import { toast } from "sonner";
 
+const EMPTY_FORM = { name: "", name_en: "", bio: "", specialty: "", avatar_url: "", is_featured: false, is_trending: false, priority: 0, phone: "" };
+
 export default function AdminNarrators() {
   const navigate = useNavigate();
-  const { user: authUser } = useAuth();
-  const [items, setItems] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", name_en: "", bio: "", specialty: "", avatar_url: "", is_featured: false, is_trending: false, rating: 0, priority: 0, phone: "" });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deactivateTarget, setDeactivateTarget] = useState<any>(null);
-
   const [createAccount, setCreateAccount] = useState(false);
   const [accEmail, setAccEmail] = useState("");
   const [accPassword, setAccPassword] = useState("");
   const [accConfirm, setAccConfirm] = useState("");
-  const { createCreatorWithAccount, linkExistingProfile, saving } = useCreatorAccount();
+  const { createCreatorWithAccount, linkExistingProfile, saving: accountSaving } = useCreatorAccount();
 
-  const load = async () => {
-    const { data } = await supabase.rpc("admin_get_narrators" as any);
-    setItems((data as any[]) || []);
-  };
-  useEffect(() => { load(); }, []);
+  const utils = trpc.useUtils();
+  const { data: items = [], isLoading, error } = trpc.admin.listNarrators.useQuery({ search: search || undefined });
+  const createMutation = trpc.admin.createNarrator.useMutation({ onSuccess: () => utils.admin.listNarrators.invalidate() });
+  const updateMutation = trpc.admin.updateNarrator.useMutation({ onSuccess: () => utils.admin.listNarrators.invalidate() });
+  const deleteMutation = trpc.admin.deleteNarrator.useMutation({ onSuccess: () => utils.admin.listNarrators.invalidate() });
 
   const resetAccountFields = () => { setCreateAccount(false); setAccEmail(""); setAccPassword(""); setAccConfirm(""); };
-
-  const openNew = () => { setEdit(null); setForm({ name: "", name_en: "", bio: "", specialty: "", avatar_url: "", is_featured: false, is_trending: false, rating: 0, priority: 0, phone: "" }); resetAccountFields(); setOpen(true); };
-  const openEdit = (n: any) => { setEdit(n); setForm({ name: n.name, name_en: n.name_en || "", bio: n.bio || "", specialty: n.specialty || "", avatar_url: n.avatar_url || "", is_featured: n.is_featured || false, is_trending: n.is_trending || false, rating: n.rating || 0, priority: n.priority || 0, phone: n.phone || "" }); resetAccountFields(); setOpen(true); };
+  const openNew = () => { setEdit(null); setForm(EMPTY_FORM); resetAccountFields(); setOpen(true); };
+  const openEdit = (a: any) => {
+    setEdit(a);
+    setForm({ name: a.name, name_en: a.name_en || "", bio: a.bio || "", specialty: a.specialty || "", avatar_url: a.avatar_url || "", is_featured: a.is_featured || false, is_trending: a.is_trending || false, priority: a.priority || 0, phone: a.phone || "" });
+    resetAccountFields();
+    setOpen(true);
+  };
 
   const save = async () => {
-    const payload = { ...form, rating: Number(form.rating), priority: Number(form.priority) || 0 };
-
+    const payload = { ...form, priority: Number(form.priority) || 0 };
     if (edit) {
-      const { error } = await supabase.from("narrators").update(payload).eq("id", edit.id);
-      if (error) { toast.error(error.message); return; }
-
+      await updateMutation.mutateAsync({ id: edit.id, ...payload });
       if (createAccount && !edit.user_id && accEmail) {
         await linkExistingProfile({ email: accEmail, role: "narrator", profileTable: "narrators", profileId: edit.id });
       }
     } else {
       if (createAccount) {
-        const result = await createCreatorWithAccount({
-          email: accEmail, password: accPassword, confirmPassword: accConfirm,
-          role: "narrator", profileTable: "narrators", profileData: payload,
-        });
+        const result = await createCreatorWithAccount({ email: accEmail, password: accPassword, confirmPassword: accConfirm, role: "narrator", profileTable: "narrators", profileData: payload });
         if (!result) return;
       } else {
-        const { error } = await supabase.from("narrators").insert(payload);
-        if (error) { toast.error(error.message); return; }
+        await createMutation.mutateAsync(payload as any);
       }
     }
-
-    toast.success("Saved"); setOpen(false); load();
+    toast.success("Saved");
+    setOpen(false);
   };
 
-  const remove = async (id: string) => { if (!confirm("Delete?")) return; await supabase.from("narrators").delete().eq("id", id); toast.success("Deleted"); load(); };
-
-  const handleToggle = (n: any) => {
-    if (n.status === "active") { setDeactivateTarget(n); }
-    else { supabase.from("narrators").update({ status: "active" }).eq("id", n.id).then(() => { toast.success("Activated"); load(); }); }
+  const remove = async (id: string) => {
+    if (!confirm("Delete?")) return;
+    await deleteMutation.mutateAsync({ id });
+    toast.success("Deleted");
   };
 
-  const deactivateItem = async (item: any, reason: string, type: string) => {
-    await supabase.from("narrators").update({ status: "inactive" }).eq("id", item.id);
-    await supabase.from("admin_activity_logs").insert({
-      user_id: authUser?.id || "",
-      action: `Narrator deactivated (${type})`, details: reason || "No reason provided",
-      target_type: "narrator", target_id: item.id, module: "narrators",
-      risk_level: type === "permanent" ? "high" : "medium",
-    });
-    setDeactivateTarget(null); toast.success("Deactivated"); load();
+  const handleToggle = async (a: any) => {
+    if (a.status === "active") { setDeactivateTarget(a); }
+    else { await updateMutation.mutateAsync({ id: a.id, status: "active" }); toast.success("Activated"); }
   };
 
-  const toggleSelect = (id: string) => { const next = new Set(selected); if (next.has(id)) next.delete(id); else next.add(id); setSelected(next); };
+  const deactivateItem = async (item: any) => {
+    await updateMutation.mutateAsync({ id: item.id, status: "inactive" });
+    setDeactivateTarget(null);
+    toast.success("Deactivated");
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelected(next);
+  };
 
   const bulkSetStatus = async (status: string) => {
     const ids = Array.from(selected);
     if (!ids.length || !confirm(`${status === "active" ? "Activate" : "Deactivate"} ${ids.length} narrator(s)?`)) return;
-    for (const id of ids) await supabase.from("narrators").update({ status }).eq("id", id);
-    setSelected(new Set()); toast.success(`${ids.length} narrator(s) updated`); load();
+    for (const id of ids) await updateMutation.mutateAsync({ id, status });
+    setSelected(new Set());
+    toast.success(`${ids.length} narrator(s) updated`);
   };
 
-  const filtered = items.filter((n) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (n.name || "").toLowerCase().includes(q) || (n.name_en || "").toLowerCase().includes(q);
-  });
+  const saving = createMutation.isPending || updateMutation.isPending || accountSaving;
 
   return (
     <div>
@@ -131,7 +126,9 @@ export default function AdminNarrators() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selected.size === filtered.length} onCheckedChange={() => selected.size === filtered.length ? setSelected(new Set()) : setSelected(new Set(filtered.map(n => n.id)))} /></TableHead>
+              <TableHead className="w-10">
+                <Checkbox checked={items.length > 0 && selected.size === items.length} onCheckedChange={() => selected.size === items.length ? setSelected(new Set()) : setSelected(new Set(items.map((a: any) => a.id)))} />
+              </TableHead>
               <TableHead className="w-12"></TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Specialty</TableHead>
@@ -142,28 +139,36 @@ export default function AdminNarrators() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((n) => (
-              <TableRow key={n.id}>
-                <TableCell><Checkbox checked={selected.has(n.id)} onCheckedChange={() => toggleSelect(n.id)} /></TableCell>
-                <TableCell><Avatar className="h-8 w-8"><AvatarImage src={n.avatar_url || undefined} /><AvatarFallback className="bg-secondary text-muted-foreground text-xs"><User className="h-3.5 w-3.5" /></AvatarFallback></Avatar></TableCell>
-                <TableCell className="font-medium">{n.name}</TableCell>
-                <TableCell>{n.specialty || "—"}</TableCell>
-                <TableCell>{n.priority}</TableCell>
-                <TableCell><span className={`text-xs ${n.user_id ? "text-green-600" : "text-muted-foreground"}`}>{n.user_id ? "✓ Linked" : "—"}</span></TableCell>
+            {isLoading && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading…</TableCell></TableRow>}
+            {!isLoading && error && <TableRow><TableCell colSpan={8} className="text-center text-destructive py-8">Error: {error.message}</TableCell></TableRow>}
+            {!isLoading && !error && items.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No narrators</TableCell></TableRow>}
+            {items.map((a: any) => (
+              <TableRow key={a.id}>
+                <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} /></TableCell>
+                <TableCell><Avatar className="h-8 w-8"><AvatarImage src={a.avatar_url || undefined} /><AvatarFallback className="bg-secondary text-muted-foreground text-xs"><User className="h-3.5 w-3.5" /></AvatarFallback></Avatar></TableCell>
+                <TableCell className="font-medium">{a.name}</TableCell>
+                <TableCell>{a.specialty || "—"}</TableCell>
+                <TableCell>{a.priority}</TableCell>
+                <TableCell>
+                  {a.user_id ? (
+                    <span className="text-xs text-green-600 flex items-center gap-1">✓ Linked <span className="text-muted-foreground font-mono">{a.user_id.slice(0, 6)}..</span></span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <Switch checked={n.status === "active"} onCheckedChange={() => handleToggle(n)} />
-                    <StatusBadge status={n.status || "active"} />
+                    <Switch checked={a.status === "active"} onCheckedChange={() => handleToggle(a)} />
+                    <StatusBadge status={a.status || "active"} />
                   </div>
                 </TableCell>
                 <TableCell className="text-right space-x-1">
-                  <Button size="sm" variant="ghost" onClick={() => navigate(`/admin/user/narrator/${n.id}`)}><Eye className="h-3 w-3" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(n)}><Pencil className="h-3 w-3" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => remove(n.id)}><Trash2 className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => navigate(`/admin/user/narrator/${a.id}`)}><Eye className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(a)}><Pencil className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => remove(a.id)}><Trash2 className="h-3 w-3" /></Button>
                 </TableCell>
               </TableRow>
             ))}
-            {!items.length && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No narrators</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>
@@ -176,7 +181,6 @@ export default function AdminNarrators() {
             <div><Label>Name (Bengali)</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
             <div><Label>Name (English)</Label><Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} /></div>
             <div><Label>Specialty</Label><Input value={form.specialty} onChange={(e) => setForm({ ...form, specialty: e.target.value })} /></div>
-            <div><Label>Rating</Label><Input type="number" step="0.1" value={form.rating} onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })} /></div>
             <div><Label>Priority</Label><Input type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} /></div>
             <div><Label>Phone</Label><Input type="tel" placeholder="+880XXXXXXXXXX" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
             <div><Label>Bio</Label><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} rows={3} /></div>
@@ -184,37 +188,17 @@ export default function AdminNarrators() {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_trending} onChange={(e) => setForm({ ...form, is_trending: e.target.checked })} />Trending</label>
 
             {edit ? (
-              <CreatorAccountCard
-                profileId={edit.id}
-                profileName={edit.name}
-                profileTable="narrators"
-                creatorRole="narrator"
-                userId={edit.user_id}
-                onLinkChanged={() => load()}
-              />
+              <CreatorAccountCard profileId={edit.id} profileName={edit.name} profileTable="narrators" creatorRole="narrator" userId={edit.user_id} onLinkChanged={() => utils.admin.listNarrators.invalidate()} />
             ) : (
-              <CreatorAccountFields
-                isEdit={false}
-                hasExistingUserId={false}
-                createAccount={createAccount}
-                onCreateAccountChange={setCreateAccount}
-                email={accEmail}
-                onEmailChange={setAccEmail}
-                password={accPassword}
-                onPasswordChange={setAccPassword}
-                confirmPassword={accConfirm}
-                onConfirmPasswordChange={setAccConfirm}
-              />
+              <CreatorAccountFields isEdit={false} hasExistingUserId={false} createAccount={createAccount} onCreateAccountChange={setCreateAccount} email={accEmail} onEmailChange={setAccEmail} password={accPassword} onPasswordChange={setAccPassword} confirmPassword={accConfirm} onConfirmPasswordChange={setAccConfirm} />
             )}
 
-            <Button className="w-full" onClick={save} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
-            </Button>
+            <Button className="w-full" onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      <DeactivateModal open={!!deactivateTarget} onOpenChange={(o) => { if (!o) setDeactivateTarget(null); }} itemName={deactivateTarget?.name || "Narrator"} onConfirm={(reason, type) => deactivateTarget && deactivateItem(deactivateTarget, reason, type)} />
+      <DeactivateModal open={!!deactivateTarget} onOpenChange={(o) => { if (!o) setDeactivateTarget(null); }} itemName={deactivateTarget?.name || "Narrator"} onConfirm={() => deactivateTarget && deactivateItem(deactivateTarget)} />
     </div>
   );
 }
