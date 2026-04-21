@@ -135,21 +135,31 @@ export const gamificationRouter = router({
     return { success: true, reward: DAILY_REWARD };
   }),
 
+  adRewardStatus: protectedProcedure.query(async ({ ctx }) => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const MAX_PER_DAY = 10;
+    const todayCount = await prisma.coinTransaction.count({
+      where: { user_id: ctx.userId, source: "ad_reward", created_at: { gte: todayStart } },
+    });
+    return { todayCount, dailyLimit: MAX_PER_DAY, coinPerAd: 1 };
+  }),
+
   claimAdReward: protectedProcedure
     .input(z.object({ placement: z.string().default("general") }))
     .mutation(async ({ ctx, input }) => {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      const MAX_PER_DAY = 5;
-      const AD_REWARD = 5;
+      const MAX_PER_DAY = 10;
+      const AD_REWARD = 1;
 
       const todayCount = await prisma.coinTransaction.count({
         where: { user_id: ctx.userId, source: "ad_reward", created_at: { gte: todayStart } },
       });
-      if (todayCount >= MAX_PER_DAY) return { success: false, reason: "daily_limit_reached" };
+      if (todayCount >= MAX_PER_DAY) return { success: false, reason: "daily_limit_reached", new_balance: 0 };
 
-      await prisma.$transaction([
+      const [, wallet] = await prisma.$transaction([
         prisma.coinTransaction.create({
           data: {
             user_id: ctx.userId,
@@ -166,6 +176,6 @@ export const gamificationRouter = router({
           update: { balance: { increment: AD_REWARD }, total_earned: { increment: AD_REWARD } },
         }),
       ]);
-      return { success: true, reward: AD_REWARD };
+      return { success: true, reward: AD_REWARD, new_balance: wallet.balance };
     }),
 });

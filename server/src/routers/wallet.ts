@@ -163,6 +163,42 @@ export const walletRouter = router({
       return { hasFullAccess: false, method: "none" };
     }),
 
+  coinSettings: protectedProcedure.query(async () => {
+    const settings = await prisma.platformSetting.findMany({
+      where: { key: { in: ["coin_system_enabled", "coin_unlock_enabled", "coin_conversion_ratio", "ads_per_quick_unlock", "bonus_coin_per_ad_session", "coin_ad_reward", "coin_daily_limit", "ad_cooldown_minutes"] } },
+    });
+    const map: Record<string, string> = {};
+    settings.forEach(s => { map[s.key] = s.value as string; });
+    return {
+      systemEnabled: map.coin_system_enabled !== "false",
+      unlockEnabled: map.coin_unlock_enabled !== "false",
+      conversionRatio: parseFloat(map.coin_conversion_ratio || "0.10"),
+      adsPerQuickUnlock: parseInt(map.ads_per_quick_unlock || "5", 10),
+      bonusPerSession: parseInt(map.bonus_coin_per_ad_session || "5", 10),
+      coinAdReward: parseInt(map.coin_ad_reward || "1", 10),
+      dailyLimit: parseInt(map.coin_daily_limit || "10", 10),
+    };
+  }),
+
+  hasSubscription: protectedProcedure
+    .input(z.object({ format: z.enum(["ebook", "audiobook"]).optional() }))
+    .query(async ({ ctx, input }) => {
+      const sub = await prisma.userSubscription.findFirst({
+        where: {
+          user_id: ctx.userId,
+          status: "active",
+          OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+        },
+        include: { plan: { select: { access_type: true } } },
+      });
+      if (!sub) return { hasSub: false };
+      const at = (sub as any).plan?.access_type;
+      if (!input.format || at === "premium" || at === "both" || at === input.format) {
+        return { hasSub: true };
+      }
+      return { hasSub: false };
+    }),
+
   checkHybridAccess: protectedProcedure
     .input(z.object({ bookId: z.string(), format: z.enum(["ebook", "audiobook"]) }))
     .query(async ({ ctx, input }) => {

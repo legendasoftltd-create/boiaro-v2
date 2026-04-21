@@ -554,6 +554,29 @@ export const adminRouter = router({
     })
   ),
 
+  // ── User soft-delete / restore ───────────────────────────────────────────────
+  softDeleteUser: adminProcedure
+    .input(z.object({ userId: z.string(), reason: z.string().optional() }))
+    .mutation(({ input }) =>
+      prisma.profile.update({
+        where: { user_id: input.userId },
+        data: {
+          deleted_at: new Date(),
+          deleted_reason: input.reason || null,
+          is_active: false,
+        },
+      })
+    ),
+
+  restoreUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(({ input }) =>
+      prisma.profile.update({
+        where: { user_id: input.userId },
+        data: { deleted_at: null, deleted_reason: null, is_active: true },
+      })
+    ),
+
   // ── Admin Activity Log ──────────────────────────────────────────────────────
   logAction: adminProcedure
     .input(

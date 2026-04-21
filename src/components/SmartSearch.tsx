@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { useNavigate } from "react-router-dom";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
 
@@ -40,29 +40,31 @@ export function SmartSearch({ open, onOpenChange }: { open: boolean; onOpenChang
     }
   }, [open]);
 
+  const utils = trpc.useUtils();
+
   const doSearch = async (q: string) => {
     if (q.trim().length < 2) { setResults([]); setSearched(false); return; }
     setLoading(true);
     setSearched(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke("ai-search", {
-        body: { query: q.trim() },
-      });
-
-      if (error) throw error;
-      setResults(data?.results || []);
-      trackSearch(q.trim(), data?.results?.length || 0);
-    } catch (err) {
-      console.error("Search error:", err);
-      // Fallback to basic DB search
-      const { data } = await supabase
-        .from("books")
-        .select("id, title, title_en, slug, cover_url, rating, is_free, authors(name), categories(name)")
-        .eq("submission_status", "approved")
-        .or(`title.ilike.%${q.trim()}%,title_en.ilike.%${q.trim()}%`)
-        .limit(15);
-      setResults(data || []);
+      const data = await utils.books.list.fetch({ search: q.trim(), limit: 15 });
+      const books = (data?.books ?? []) as any[];
+      const mapped: SearchResult[] = books.map((b: any) => ({
+        id: b.id,
+        title: b.title,
+        title_en: b.title_en,
+        slug: b.slug,
+        cover_url: b.cover_url,
+        rating: b.rating ? Number(b.rating) : undefined,
+        is_free: b.is_free,
+        authors: b.author ? { name: b.author.name } : null,
+        categories: b.category ? { name: b.category.name } : null,
+      }));
+      setResults(mapped);
+      trackSearch(q.trim(), mapped.length);
+    } catch {
+      setResults([]);
     }
     setLoading(false);
   };
