@@ -1,7 +1,13 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { supabase } from "@/integrations/supabase/client"
-import type { User, Session } from "@supabase/supabase-js"
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react"
+import { trpc } from "@/lib/trpc"
 import { setSentryUser } from "@/lib/sentry"
+import { useQueryClient } from "@tanstack/react-query"
+
+export interface AuthUser {
+  id: string
+  email: string
+  roles?: string[]
+}
 
 interface Profile {
   user_id: string
@@ -10,12 +16,13 @@ interface Profile {
   bio: string | null
   preferred_language: string | null
   is_active: boolean
+  referral_code: string | null
   [key: string]: any
 }
 
 interface AuthContextType {
-  user: User | null
-  session: Session | null
+  user: AuthUser | null
+  session: null
   profile: Profile | null
   loading: boolean
   signUp: (email: string, password: string, displayName?: string) => Promise<{ error: Error | null }>
@@ -26,114 +33,93 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+function parseUserFromToken(token: string): AuthUser | null {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]))
+    return { id: payload.sub, email: payload.email }
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
+  const [user, setUser] = useState<AuthUser | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const utils = trpc.useUtils()
 
-  const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from("profiles")
-      .select("user_id, display_name, avatar_url, bio, preferred_language, is_active, full_name, genre, specialty, experience, referral_code, referred_by, website_url, facebook_url, instagram_url, youtube_url, portfolio_url, created_at, updated_at")
-      .eq("user_id", userId)
-      .single()
-    setProfile(data)
-  }
+  const signInMutation = trpc.auth.signIn.useMutation()
+  const signUpMutation = trpc.auth.signUp.useMutation()
+  const updateProfileMutation = trpc.auth.updateProfile.useMutation()
 
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session)
-        setUser(session?.user ?? null)
-        if (session?.user) {
-          setTimeout(() => fetchProfile(session.user.id), 0)
-        } else {
-          setProfile(null)
-        }
-        setLoading(false)
-      }
-    )
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      }
+  const loadUser = useCallback(async () => {
+    const token = localStorage.getItem("access_token")
+    if (!token) { setLoading(false); return }
+    const parsed = parseUserFromToken(token)
+    if (!parsed) { setLoading(false); return }
+    setUser(parsed)
+    try {
+      const me = await utils.auth.me.fetch()
+      setUser({ id: me.id, email: me.email, roles: me.roles })
+      setProfile(me.profile as Profile)
+      setSentryUser({ id: me.id, email: me.email })
+    } catch {
+      localStorage.removeItem("access_token")
+      localStorage.removeItem("refresh_token")
+      setUser(null)
+    } finally {
       setLoading(false)
-    })
+    }
+  }, [utils])
 
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const signUp = async (email: string, password: string, displayName?: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: displayName },
-        emailRedirectTo: window.location.origin,
-      },
-    })
-    return { error: error as Error | null }
-  }
+  useEffect(() => { loadUser() }, [loadUser])
 
   const signIn = async (email: string, password: string) => {
-    const { error, data } = await supabase.auth.signInWithPassword({ email, password })
-    if (!error && data?.user) {
-      // Check if user is active or soft-deleted
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("is_active, deleted_at")
-        .eq("user_id", data.user.id)
-        .single()
+    try {
+      const result = await signInMutation.mutateAsync({ email, password })
+      localStorage.setItem("access_token", result.accessToken)
+      localStorage.setItem("refresh_token", result.refreshToken)
+      const u = { id: result.user.id, email: result.user.email, roles: result.user.roles }
+      setUser(u)
+      setProfile(result.user.profile as Profile)
+      setSentryUser({ id: u.id, email: u.email })
 
-      if (profileData && (profileData as any).deleted_at) {
-        await supabase.auth.signOut()
-        return { error: new Error("This account has been deleted. Please contact support to restore it.") as Error }
-      }
-
-      if (profileData && (profileData as any).is_active === false) {
-        await supabase.auth.signOut()
-        return { error: new Error("Your account has been deactivated. Please contact support.") as Error }
-      }
-
-      // Process pending referral
       const pendingRef = localStorage.getItem("pending_referral_code")
-      if (pendingRef) {
-        localStorage.removeItem("pending_referral_code")
-        supabase.functions.invoke("process-referral", {
-          body: { action: "complete_referral", referral_code: pendingRef, source: "signup" },
-        }).catch(() => {})
-      }
+      if (pendingRef) localStorage.removeItem("pending_referral_code")
+
+      return { error: null }
+    } catch (err: any) {
+      return { error: new Error(err?.message || "Login failed") }
     }
-    return { error: error as Error | null }
   }
 
-  // Sync Sentry user context
-  useEffect(() => {
-    if (user) {
-      setSentryUser({ id: user.id, email: user.email });
-    } else {
-      setSentryUser(null);
+  const signUp = async (email: string, password: string, displayName?: string) => {
+    try {
+      await signUpMutation.mutateAsync({ email, password, displayName })
+      return { error: null }
+    } catch (err: any) {
+      return { error: new Error(err?.message || "Signup failed") }
     }
-  }, [user]);
+  }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    setSentryUser(null)
+    localStorage.removeItem("access_token")
+    localStorage.removeItem("refresh_token")
+    setUser(null)
     setProfile(null)
+    setSentryUser(null)
+    queryClient.clear()
   }
 
   const updateProfile = async (updates: Partial<Profile>) => {
     if (!user) return
-    await supabase.from("profiles").update(updates).eq("user_id", user.id)
-    await fetchProfile(user.id)
+    await updateProfileMutation.mutateAsync(updates as any)
+    setProfile(prev => prev ? { ...prev, ...updates } : null)
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, profile, loading, signUp, signIn, signOut, updateProfile }}>
+    <AuthContext.Provider value={{ user, session: null, profile, loading, signIn, signUp, signOut, updateProfile }}>
       {children}
     </AuthContext.Provider>
   )

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 
 type ActivityType = "browsing" | "reading" | "listening";
 
@@ -18,31 +18,31 @@ export function usePresence() {
   const userRef = useRef(user);
   userRef.current = user;
 
+  const presenceMutation = trpc.profiles.presence.useMutation();
+
   const doUpsert = useCallback(async () => {
     const u = userRef.current;
     if (!u) return;
     lastUpsertTime.current = Date.now();
     const { page, bookId, type } = currentActivity.current;
+
+    let sid = sessionStorage.getItem("presence_sid");
+    if (!sid) {
+      sid = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      sessionStorage.setItem("presence_sid", sid);
+    }
+
     try {
-      await supabase.from("user_presence" as any).upsert(
-        {
-          user_id: u.id,
-          last_seen: new Date().toISOString(),
-          current_page: page || window.location.pathname,
-          current_book_id: bookId || null,
-          activity_type: type,
-          session_id: sessionStorage.getItem("presence_sid") || (() => {
-            const sid = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            sessionStorage.setItem("presence_sid", sid);
-            return sid;
-          })(),
-        },
-        { onConflict: "user_id" } as any
-      );
+      await presenceMutation.mutateAsync({
+        page: page || window.location.pathname,
+        bookId: bookId,
+        activityType: type,
+        sessionId: sid,
+      });
     } catch {
       // Silently ignore
     }
-  }, []);
+  }, [presenceMutation]);
 
   const debouncedUpsert = useCallback(() => {
     const elapsed = Date.now() - lastUpsertTime.current;
@@ -81,10 +81,13 @@ export function usePresence() {
     };
   }, [user, doUpsert, restartInterval]);
 
-  const setActivity = useCallback((type: ActivityType, bookId?: string) => {
-    currentActivity.current = { type, bookId, page: window.location.pathname };
-    debouncedUpsert();
-  }, [debouncedUpsert]);
+  const setActivity = useCallback(
+    (type: ActivityType, bookId?: string) => {
+      currentActivity.current = { type, bookId, page: window.location.pathname };
+      debouncedUpsert();
+    },
+    [debouncedUpsert]
+  );
 
   return { setActivity };
 }

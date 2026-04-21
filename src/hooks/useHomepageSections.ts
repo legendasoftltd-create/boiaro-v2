@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 
 export interface HomepageSection {
   id: string;
@@ -12,17 +11,7 @@ export interface HomepageSection {
 }
 
 export function useHomepageSections() {
-  return useQuery({
-    queryKey: ["homepage-sections"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("homepage_sections")
-        .select("*")
-        .eq("is_enabled", true)
-        .order("sort_order", { ascending: true });
-      if (error) throw error;
-      return (data || []) as HomepageSection[];
-    },
+  return trpc.books.homepageSections.useQuery(undefined, {
     staleTime: 5 * 60 * 1000,
   });
 }

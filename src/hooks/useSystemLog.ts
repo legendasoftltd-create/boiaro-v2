@@ -1,5 +1,5 @@
 import { useCallback, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 type LogLevel = "warning" | "error" | "critical";
 
@@ -26,6 +26,7 @@ function fingerprint(level: string, module: string, message: string): string {
  * Server-side dedup merges within 5 min windows via upsert_system_log RPC.
  */
 export function useSystemLog() {
+  const { user } = useAuth();
   const recentRef = useRef<Map<string, number>>(new Map());
   const THROTTLE_MS = 30_000;
 
@@ -38,26 +39,11 @@ export function useSystemLog() {
     if (last && now - last < THROTTLE_MS) return;
     recentRef.current.set(fp, now);
 
-    // Trim metadata to ~2KB
-    let meta = opts.metadata ?? {};
-    if (JSON.stringify(meta).length > 2048) {
-      meta = { truncated: true, keys: Object.keys(meta) };
+    // Silent — no backend endpoint for system logs in tRPC yet
+    if (process.env.NODE_ENV === "development") {
+      console.warn(`[SystemLog][${opts.level}][${opts.module}]`, opts.message, opts.metadata ?? "");
     }
-
-    try {
-      const userId = (await supabase.auth.getUser()).data.user?.id ?? null;
-      await (supabase.rpc as any)("upsert_system_log", {
-        p_level: opts.level,
-        p_module: opts.module,
-        p_message: opts.message,
-        p_metadata: meta,
-        p_user_id: userId,
-        p_fingerprint: fp,
-      });
-    } catch {
-      // Silent fail — logging should never crash the app
-    }
-  }, []);
+  }, [user]);
 
   const logError = useCallback(
     (module: string, message: string, metadata?: Record<string, unknown>) =>

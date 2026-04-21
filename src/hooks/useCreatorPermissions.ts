@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserRole } from "@/hooks/useUserRole";
+import { trpc } from "@/lib/trpc";
 
 export type FormatPermission = "add_ebook" | "add_audiobook" | "add_hardcopy" | "edit_all_content" | "delete_content" | "publish_directly" | "manage_revenue";
 
@@ -15,34 +14,27 @@ const ROLE_DEFAULTS: Record<string, FormatPermission[]> = {
 export function useCreatorPermissions() {
   const { user } = useAuth();
   const { roles, loading: rolesLoading } = useUserRole();
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (rolesLoading || !user) { setLoading(false); return; }
+  const overridesQuery = trpc.profiles.permissionOverrides.useQuery(undefined, {
+    enabled: !!user,
+  });
 
-    supabase
-      .from("user_permission_overrides")
-      .select("permission_key, is_allowed")
-      .eq("user_id", user.id)
-      .then(({ data }) => {
-        const map: Record<string, boolean> = {};
-        (data || []).forEach(o => { map[o.permission_key] = o.is_allowed; });
-        setOverrides(map);
-        setLoading(false);
-      });
-  }, [user, rolesLoading]);
+  const overrides: Record<string, boolean> = {};
+  ((overridesQuery.data as any[]) || []).forEach((o: any) => {
+    overrides[o.permission_key] = o.is_allowed;
+  });
 
   const hasPermission = (perm: FormatPermission): boolean => {
-    // Override takes priority
     if (perm in overrides) return overrides[perm];
-    // Fallback to role defaults
-    return roles.some(role => (ROLE_DEFAULTS[role] || []).includes(perm));
+    return roles.some((role) => (ROLE_DEFAULTS[role] || []).includes(perm));
   };
 
-  const canAddFormat = (format: "ebook" | "audiobook" | "hardcopy") => {
-    return hasPermission(`add_${format}` as FormatPermission);
-  };
+  const canAddFormat = (format: "ebook" | "audiobook" | "hardcopy") =>
+    hasPermission(`add_${format}` as FormatPermission);
 
-  return { hasPermission, canAddFormat, loading: loading || rolesLoading };
+  return {
+    hasPermission,
+    canAddFormat,
+    loading: rolesLoading || overridesQuery.isLoading,
+  };
 }

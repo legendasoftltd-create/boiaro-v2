@@ -28,7 +28,13 @@ export function BlogSection() {
     scrollRef.current?.scrollBy({ left: dir === "left" ? -320 : 320, behavior: "smooth" })
   }
 
-  if (isLoading || posts.length === 0) return null
+  // if (isLoading || posts.length === 0) return null
+
+  if (isLoading) return <p>Loading...</p>
+
+  if (!posts || posts.length === 0) {
+    return <p>No posts found</p>
+  }
 
   return (
     <section className="section-container">

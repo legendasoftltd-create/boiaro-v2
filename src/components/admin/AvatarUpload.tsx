@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -9,7 +8,9 @@ import { toast } from "sonner";
 import { resizeAndCropAvatar } from "@/lib/imageResize";
 
 const ACCEPTED = ".jpg,.jpeg,.png,.webp";
-const MAX_INPUT_SIZE = 5 * 1024 * 1024; // 5MB input limit (will be compressed)
+const MAX_INPUT_SIZE = 5 * 1024 * 1024;
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 interface AvatarUploadProps {
   currentUrl: string;
@@ -22,22 +23,17 @@ interface AvatarUploadProps {
 export function AvatarUpload({
   currentUrl,
   onUrlChange,
-  bucket = "avatars",
-  folder = "creators",
   label = "Profile Photo",
 }: AvatarUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Show local preview first, then the saved URL
   const displayUrl = localPreview || currentUrl || undefined;
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Reset input so the same file can be re-selected
     if (fileRef.current) fileRef.current.value = "";
 
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
@@ -51,30 +47,29 @@ export function AvatarUpload({
 
     setUploading(true);
     try {
-      // Auto resize/crop to 512×512 JPEG
       const processed = await resizeAndCropAvatar(file);
-
-      // Instant local preview from the processed file
       const previewUrl = URL.createObjectURL(processed);
       setLocalPreview(previewUrl);
 
-      const path = `${folder}/${crypto.randomUUID()}.jpg`;
+      const formData = new FormData();
+      formData.append("file", processed, "avatar.jpg");
 
-      const { error } = await supabase.storage.from(bucket).upload(path, processed, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: "image/jpeg",
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`${API_BASE}/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
       });
 
-      if (error) {
-        toast.error("Upload failed: " + error.message);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error("Upload failed: " + (err.error || res.statusText));
         setLocalPreview(null);
         return;
       }
 
-      const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
-      onUrlChange(urlData.publicUrl);
-      // Clear local preview once remote URL is set
+      const { url } = await res.json();
+      onUrlChange(url);
       setLocalPreview(null);
       URL.revokeObjectURL(previewUrl);
       toast.success("Photo uploaded (512×512)");
@@ -113,13 +108,7 @@ export function AvatarUpload({
         </div>
         <div className="flex flex-col gap-1.5">
           <div className="flex gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={uploading}
-              onClick={() => fileRef.current?.click()}
-            >
+            <Button type="button" size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
               <Upload className="h-3.5 w-3.5 mr-1.5" />
               {uploading ? "Uploading…" : (currentUrl || localPreview) ? "Change" : "Upload"}
             </Button>
@@ -132,14 +121,7 @@ export function AvatarUpload({
           <p className="text-[10px] text-muted-foreground">JPG, PNG, WebP · Auto-cropped to 512×512</p>
         </div>
       </div>
-      <input
-        ref={fileRef}
-        type="file"
-        accept={ACCEPTED}
-        className="hidden"
-        onChange={handleUpload}
-      />
-      {/* Fallback manual URL input */}
+      <input ref={fileRef} type="file" accept={ACCEPTED} className="hidden" onChange={handleUpload} />
       <div className="mt-2">
         <Input
           placeholder="Or paste image URL…"

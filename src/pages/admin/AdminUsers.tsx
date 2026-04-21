@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,7 @@ interface UserRow {
 
 export default function AdminUsers() {
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -189,7 +191,7 @@ export default function AdminUsers() {
     });
     if (error) { toast.error(error.message); return; }
     await supabase.from("admin_activity_logs").insert({
-      user_id: (await supabase.auth.getUser()).data.user?.id || "",
+      user_id: authUser?.id || "",
       action: `User deactivated (${type})`,
       details: reason || "No reason provided",
       target_type: "user",
@@ -213,7 +215,7 @@ export default function AdminUsers() {
       if (error) throw new Error(error.message);
 
       await supabase.from("admin_activity_logs").insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id || "",
+        user_id: authUser?.id || "",
         action: "User soft-deleted",
         details: deleteReason.trim() || "No reason provided",
         target_type: "user",
@@ -241,7 +243,7 @@ export default function AdminUsers() {
       if (error) throw new Error(error.message);
 
       await supabase.from("admin_activity_logs").insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id || "",
+        user_id: authUser?.id || "",
         action: "User restored",
         details: `Restored from soft-delete`,
         target_type: "user",
@@ -279,7 +281,7 @@ export default function AdminUsers() {
       await supabase.rpc("admin_update_profile" as any, { p_user_id: id, p_is_active: active });
     }
     await supabase.from("admin_activity_logs").insert({
-      user_id: (await supabase.auth.getUser()).data.user?.id || "",
+      user_id: authUser?.id || "",
       action: `Bulk ${active ? "activate" : "deactivate"} ${ids.length} users`,
       module: "users",
       risk_level: "high",

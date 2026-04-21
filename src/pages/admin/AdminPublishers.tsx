@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,6 +23,7 @@ import { toast } from "sonner";
 
 export default function AdminPublishers() {
   const navigate = useNavigate();
+  const { user: authUser } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
@@ -83,7 +85,7 @@ export default function AdminPublishers() {
   const deactivateItem = async (item: any, reason: string, type: string) => {
     await supabase.from("publishers").update({ status: "inactive" }).eq("id", item.id);
     await supabase.from("admin_activity_logs").insert({
-      user_id: (await supabase.auth.getUser()).data.user?.id || "",
+      user_id: authUser?.id || "",
       action: `Publisher deactivated (${type})`, details: reason || "No reason provided",
       target_type: "publisher", target_id: item.id, module: "publishers",
       risk_level: type === "permanent" ? "high" : "medium",
