@@ -8,7 +8,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSecureContent } from "@/hooks/useSecureContent";
 import { useDrmProtection } from "@/hooks/useDrmProtection";
 import { useEbookAccess } from "@/hooks/useEbookAccess";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { PaywallModal } from "@/components/ebook-reader/PaywallModal";
 
@@ -27,6 +26,7 @@ import { useBackgroundMusic, detectMusicGenre, type MusicGenre } from "@/hooks/u
 import { useMediaSession } from "@/hooks/useMediaSession";
 import { usePresence } from "@/hooks/usePresence";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
+import { trpc } from "@/lib/trpc";
 
 type FileType = "pdf" | "epub";
 
@@ -130,6 +130,16 @@ export default function EbookReader() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { progress, saveProgress } = useReadingProgress(bookId || undefined);
+
+  const utils = trpc.useUtils();
+  const { data: bookmarkData, refetch: refetchBookmark } = trpc.books.isBookmarked.useQuery(
+    { bookId: bookId! },
+    { enabled: !!user && !!bookId }
+  );
+  const bookmarkMutation = trpc.books.bookmark.useMutation({ onSuccess: () => refetchBookmark() });
+  useEffect(() => {
+    if (bookmarkData !== undefined) setIsBookmarked(bookmarkData.bookmarked);
+  }, [bookmarkData]);
 
   // TTS completion handler: auto-advance to next page
   const ttsAdvanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -372,26 +382,17 @@ export default function EbookReader() {
       setLoading(true);
       setError(null);
 
-      const { data: dbBook, error: bookErr } = await supabase
-        .from("books")
-        .select("id, title, slug, is_free, cover_url, tags, categories(name)")
-        .eq("slug", slug)
-        .single();
+      const dbBook = await utils.books.detail.fetch({ slug }).catch(() => null);
 
-      if (bookErr || !dbBook) {
+      if (!dbBook) {
         if (!cancelled) { setError("Book not found"); setLoading(false); }
         return;
       }
 
-      const { data: formats } = await supabase
-        .from("book_formats")
-        .select("id, file_size, pages, price, is_available, submission_status, preview_percentage")
-        .eq("book_id", dbBook.id)
-        .eq("format", "ebook");
-
-      const ebookFmt = formats?.find(
-        (f) => f.is_available !== false && f.submission_status === "approved"
-      ) || formats?.[0];
+      const formats: any[] = (dbBook as any).formats || [];
+      const ebookFmt = formats.find(
+        (f: any) => f.format === "ebook" && f.is_available !== false && f.submission_status === "approved"
+      ) || formats.find((f: any) => f.format === "ebook");
 
       if (!ebookFmt) {
         if (!cancelled) {
@@ -444,10 +445,10 @@ export default function EbookReader() {
             if (saved.genre) {
               setMusicGenreRaw(saved.genre); // Use saved preference, don't overwrite
             } else {
-              setMusicGenre(detectMusicGenre((dbBook as any).categories?.name, dbBook.tags));
+              setMusicGenre(detectMusicGenre((dbBook as any).category?.name, (dbBook as any).tags));
             }
           } catch {
-            setMusicGenre(detectMusicGenre((dbBook as any).categories?.name, dbBook.tags));
+            setMusicGenre(detectMusicGenre((dbBook as any).category?.name, (dbBook as any).tags));
           }
         }
         setActivity("reading", dbBook.id);
@@ -479,17 +480,7 @@ export default function EbookReader() {
     return () => { cancelled = true; };
   }, [slug, user]);
 
-  // ──────── Bookmark state ────────
-  useEffect(() => {
-    if (!user || !bookId) return;
-    supabase
-      .from("bookmarks")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("book_id", bookId)
-      .single()
-      .then(({ data }) => setIsBookmarked(!!data));
-  }, [user, bookId]);
+  // Bookmark state is synced via trpc.books.isBookmarked query above
 
   // ──────── Resume progress ────────
   useEffect(() => {
@@ -605,17 +596,14 @@ export default function EbookReader() {
     resetControlsTimer();
   };
 
-  const toggleBookmark = async () => {
+  const toggleBookmark = () => {
     if (!user || !bookId) { toast.error("Sign in to bookmark"); return; }
-    if (isBookmarked) {
-      await supabase.from("bookmarks").delete().eq("user_id", user.id).eq("book_id", bookId);
-      setIsBookmarked(false);
-      toast.success("Bookmark removed");
-    } else {
-      await supabase.from("bookmarks").insert({ user_id: user.id, book_id: bookId });
-      setIsBookmarked(true);
-      toast.success("Bookmarked!");
-    }
+    bookmarkMutation.mutate({ bookId }, {
+      onSuccess: (data) => {
+        setIsBookmarked(data.bookmarked);
+        toast.success(data.bookmarked ? "Bookmarked!" : "Bookmark removed");
+      },
+    });
   };
 
   const handleFullscreen = () => {

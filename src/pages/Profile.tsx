@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "@/contexts/AuthContext"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { Navbar } from "@/components/Navbar"
 import { Footer } from "@/components/Footer"
 import { Button } from "@/components/ui/button"
@@ -18,17 +18,6 @@ import {
 import { useNavigate, Link } from "react-router-dom"
 import { useToast } from "@/hooks/use-toast"
 
-interface LibraryItem {
-  book_id: string
-  percentage: number
-  current_page?: number
-  total_pages?: number
-  current_track?: number
-  last_read_at?: string
-  last_listened_at?: string
-  books: { title: string; slug: string; cover_url: string | null; authors: { name: string } | null } | null
-}
-
 export default function Profile() {
   const { user, profile, signOut, updateProfile } = useAuth()
   const navigate = useNavigate()
@@ -37,12 +26,6 @@ export default function Profile() {
   const [bio, setBio] = useState("")
   const [saving, setSaving] = useState(false)
 
-  const [reading, setReading] = useState<LibraryItem[]>([])
-  const [listening, setListening] = useState<LibraryItem[]>([])
-  const [bookmarks, setBookmarks] = useState<any[]>([])
-  const [orders, setOrders] = useState<any[]>([])
-  const [loadingData, setLoadingData] = useState(true)
-
   useEffect(() => {
     if (profile) {
       setDisplayName(profile.display_name || "")
@@ -50,39 +33,17 @@ export default function Profile() {
     }
   }, [profile])
 
-  useEffect(() => {
-    if (!user) return
-    const load = async () => {
-      const [r, l, b, o] = await Promise.all([
-        supabase
-          .from("reading_progress")
-          .select("book_id, percentage, current_page, total_pages, last_read_at, books(title, slug, cover_url, authors(name))")
-          .eq("user_id", user.id)
-          .order("last_read_at", { ascending: false }),
-        supabase
-          .from("listening_progress")
-          .select("book_id, percentage, current_track, last_listened_at, books(title, slug, cover_url, authors(name))")
-          .eq("user_id", user.id)
-          .order("last_listened_at", { ascending: false }),
-        supabase
-          .from("bookmarks")
-          .select("id, book_id, created_at, books(title, slug, cover_url, authors(name))")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("orders")
-          .select("id, created_at, total_amount, status, order_items(id, quantity, format, unit_price, books(title, cover_url))")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false }),
-      ])
-      setReading((r.data as any) || [])
-      setListening((l.data as any) || [])
-      setBookmarks(b.data || [])
-      setOrders(o.data || [])
-      setLoadingData(false)
-    }
-    load()
-  }, [user])
+  const utils = trpc.useUtils()
+  const { data: reading = [], isLoading: readingLoading } = trpc.profiles.readingProgress.useQuery(undefined, { enabled: !!user })
+  const { data: listening = [], isLoading: listeningLoading } = trpc.profiles.listeningProgress.useQuery(undefined, { enabled: !!user })
+  const { data: bookmarks = [], isLoading: bookmarksLoading } = trpc.books.userBookmarks.useQuery(undefined, { enabled: !!user })
+  const { data: orders = [], isLoading: ordersLoading } = trpc.profiles.userOrders.useQuery(undefined, { enabled: !!user })
+
+  const bookmarkMutation = trpc.books.bookmark.useMutation({
+    onSuccess: () => utils.books.userBookmarks.invalidate(),
+  })
+
+  const loadingData = readingLoading || listeningLoading || bookmarksLoading || ordersLoading
 
   if (!user) {
     navigate("/auth")
@@ -101,9 +62,8 @@ export default function Profile() {
     navigate("/")
   }
 
-  const removeBookmark = async (id: string) => {
-    await supabase.from("bookmarks").delete().eq("id", id)
-    setBookmarks((prev) => prev.filter((b) => b.id !== id))
+  const removeBookmark = (bookId: string) => {
+    bookmarkMutation.mutate({ bookId })
     toast({ title: "Bookmark removed" })
   }
 
@@ -118,7 +78,7 @@ export default function Profile() {
   }
 
   const BookCard = ({ item, type }: { item: any; type: "read" | "listen" | "bookmark" }) => {
-    const book = item.books
+    const book = item.book || item.books
     if (!book) return null
     const pct = item.percentage || 0
 
@@ -139,7 +99,7 @@ export default function Profile() {
               <Link to={`/book/${book.slug}`} className="font-medium text-[13px] leading-tight line-clamp-2 hover:text-primary transition-colors">
                 {book.title}
               </Link>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{book.authors?.name || ""}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{book.author?.name || ""}</p>
             </div>
             {type !== "bookmark" && (
               <div className="mt-1.5">
@@ -165,7 +125,7 @@ export default function Profile() {
                   <Button size="sm" variant="outline" className="h-6 text-[11px] gap-1 rounded-lg" asChild>
                     <Link to={`/book/${book.slug}`}><Eye className="w-3 h-3" /> View</Link>
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-6 text-[11px] rounded-lg" onClick={() => removeBookmark(item.id)}>
+                  <Button size="sm" variant="ghost" className="h-6 text-[11px] rounded-lg" onClick={() => removeBookmark(item.book_id)}>
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
@@ -219,11 +179,11 @@ export default function Profile() {
               <Card className="border-border/30 bg-card/60">
                 <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><BookOpen className="w-4 h-4 text-primary" /> Continue Reading</CardTitle></CardHeader>
                 <CardContent>
-                  {loadingData ? (
+                  {readingLoading ? (
                     <p className="text-muted-foreground animate-pulse text-[13px]">Loading...</p>
                   ) : reading.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {reading.map((r) => <BookCard key={r.book_id} item={r} type="read" />)}
+                      {(reading as any[]).map((r: any) => <BookCard key={r.book_id} item={r} type="read" />)}
                     </div>
                   ) : (
                     <EmptyState icon={BookOpen} text="No books in progress. Start reading!" />
@@ -236,11 +196,11 @@ export default function Profile() {
               <Card className="border-border/30 bg-card/60">
                 <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Headphones className="w-4 h-4 text-primary" /> Continue Listening</CardTitle></CardHeader>
                 <CardContent>
-                  {loadingData ? (
+                  {listeningLoading ? (
                     <p className="text-muted-foreground animate-pulse text-[13px]">Loading...</p>
                   ) : listening.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {listening.map((l) => <BookCard key={l.book_id} item={l} type="listen" />)}
+                      {(listening as any[]).map((l: any) => <BookCard key={l.book_id} item={l} type="listen" />)}
                     </div>
                   ) : (
                     <EmptyState icon={Headphones} text="No audiobooks in progress. Start listening!" />
@@ -253,11 +213,11 @@ export default function Profile() {
               <Card className="border-border/30 bg-card/60">
                 <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Bookmark className="w-4 h-4 text-primary" /> Bookmarked Books</CardTitle></CardHeader>
                 <CardContent>
-                  {loadingData ? (
+                  {bookmarksLoading ? (
                     <p className="text-muted-foreground animate-pulse text-[13px]">Loading...</p>
                   ) : bookmarks.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {bookmarks.map((b) => <BookCard key={b.id} item={b} type="bookmark" />)}
+                      {(bookmarks as any[]).map((b: any) => <BookCard key={b.id} item={b} type="bookmark" />)}
                     </div>
                   ) : (
                     <EmptyState icon={Bookmark} text="No bookmarked books yet." />
@@ -270,11 +230,11 @@ export default function Profile() {
               <Card className="border-border/30 bg-card/60">
                 <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><ShoppingBag className="w-4 h-4 text-primary" /> Order History</CardTitle></CardHeader>
                 <CardContent>
-                  {loadingData ? (
+                  {ordersLoading ? (
                     <p className="text-muted-foreground animate-pulse text-[13px]">Loading...</p>
                   ) : orders.length > 0 ? (
                     <div className="space-y-3">
-                      {orders.map((o) => (
+                      {(orders as any[]).map((o: any) => (
                         <Card key={o.id} className="border-border/20 bg-secondary/20">
                           <CardContent className="p-3.5">
                             <div className="flex items-center justify-between mb-2.5">
@@ -286,17 +246,20 @@ export default function Profile() {
                               <span className="font-bold text-[13px]">৳{o.total_amount}</span>
                             </div>
                             <div className="flex gap-2.5 overflow-x-auto pb-0.5">
-                              {(o.order_items || []).map((item: any) => (
-                                <div key={item.id} className="flex items-center gap-1.5 shrink-0 text-[13px]">
-                                  <div className="w-7 h-10 bg-muted rounded overflow-hidden shrink-0">
-                                    {item.books?.cover_url && <img src={item.books.cover_url} alt="" className="w-full h-full object-cover" />}
+                              {(o.items || []).map((item: any) => {
+                                const book = item.book_format?.book
+                                return (
+                                  <div key={item.id} className="flex items-center gap-1.5 shrink-0 text-[13px]">
+                                    <div className="w-7 h-10 bg-muted rounded overflow-hidden shrink-0">
+                                      {book?.cover_url && <img src={book.cover_url} alt="" className="w-full h-full object-cover" />}
+                                    </div>
+                                    <div>
+                                      <p className="text-[11px] line-clamp-1">{book?.title || "Book"}</p>
+                                      <p className="text-[11px] text-muted-foreground">×{item.quantity} · ৳{item.price}</p>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <p className="text-[11px] line-clamp-1">{item.books?.title || "Book"}</p>
-                                    <p className="text-[11px] text-muted-foreground">×{item.quantity} · ৳{item.unit_price}</p>
-                                  </div>
-                                </div>
-                              ))}
+                                )
+                              })}
                             </div>
                           </CardContent>
                         </Card>

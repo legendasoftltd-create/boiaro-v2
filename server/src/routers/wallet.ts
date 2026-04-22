@@ -1,9 +1,36 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "../trpc.js";
+import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 
 export const walletRouter = router({
+  coinPackages: publicProcedure.query(() =>
+    prisma.coinPackage.findMany({
+      where: { is_active: true },
+      orderBy: { sort_order: "asc" },
+    })
+  ),
+
+  initiateCoinPurchase: protectedProcedure
+    .input(z.object({ packageId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const pkg = await prisma.coinPackage.findUnique({ where: { id: input.packageId } });
+      if (!pkg) throw new TRPCError({ code: "NOT_FOUND", message: "Package not found" });
+      // Payment gateway integration placeholder — returns a pending purchase record
+      // The actual gateway_url will be generated once SSLCommerz/bKash is integrated
+      const purchase = await prisma.coinPurchase.create({
+        data: {
+          user_id: ctx.userId,
+          package_id: pkg.id,
+          coins_amount: pkg.coins + pkg.bonus_coins,
+          amount_paid: pkg.price,
+          status: "pending",
+          gateway: "pending",
+        } as any,
+      });
+      return { success: true, purchase_id: purchase.id, gateway_url: null };
+    }),
+
   balance: protectedProcedure.query(async ({ ctx }) => {
     const [wallet, transactions] = await Promise.all([
       prisma.userCoin.findUnique({ where: { user_id: ctx.userId } }),
@@ -180,23 +207,26 @@ export const walletRouter = router({
     };
   }),
 
+  userUnlocksWithBooks: protectedProcedure.query(({ ctx }) =>
+    prisma.contentUnlock.findMany({
+      where: { user_id: ctx.userId, status: "active" },
+      include: { book: { select: { title: true, slug: true, cover_url: true } } },
+      orderBy: { created_at: "desc" },
+      take: 20,
+    })
+  ),
+
   hasSubscription: protectedProcedure
     .input(z.object({ format: z.enum(["ebook", "audiobook"]).optional() }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ ctx }) => {
       const sub = await prisma.userSubscription.findFirst({
         where: {
           user_id: ctx.userId,
           status: "active",
           OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
         },
-        include: { plan: { select: { access_type: true } } },
       });
-      if (!sub) return { hasSub: false };
-      const at = (sub as any).plan?.access_type;
-      if (!input.format || at === "premium" || at === "both" || at === input.format) {
-        return { hasSub: true };
-      }
-      return { hasSub: false };
+      return { hasSub: !!sub };
     }),
 
   checkHybridAccess: protectedProcedure
@@ -224,5 +254,62 @@ export const walletRouter = router({
       if (purchase) return { granted: true, method: "purchase" };
 
       return { granted: false, method: "none" };
+    }),
+
+  subscriptionPlans: publicProcedure.query(() =>
+    prisma.subscriptionPlan.findMany({
+      where: { is_active: true },
+      orderBy: { sort_order: "asc" },
+    })
+  ),
+
+  activeSubscription: protectedProcedure.query(({ ctx }) =>
+    prisma.userSubscription.findFirst({
+      where: { user_id: ctx.userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
+      include: { plan: { select: { name: true } } },
+      orderBy: { created_at: "desc" },
+    })
+  ),
+
+  subscribe: protectedProcedure
+    .input(z.object({
+      planId: z.string(),
+      couponCode: z.string().optional(),
+      couponDiscount: z.number().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const plan = await prisma.subscriptionPlan.findUnique({ where: { id: input.planId } });
+      if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Plan not found" });
+
+      const now = new Date();
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + (plan.duration_days || 30));
+
+      const finalAmount = Math.max(0, plan.price - (input.couponDiscount || 0));
+
+      const sub = await prisma.userSubscription.create({
+        data: {
+          user_id: ctx.userId,
+          plan_id: input.planId,
+          start_date: now,
+          end_date: endDate,
+          status: "active",
+          coupon_code: input.couponCode || null,
+          discount_amount: input.couponDiscount || null,
+          amount_paid: finalAmount,
+        },
+      });
+
+      if (input.couponCode && input.couponDiscount) {
+        const coupon = await prisma.coupon.findFirst({ where: { code: input.couponCode.toUpperCase(), status: "active" } });
+        if (coupon) {
+          await prisma.couponUsage.create({
+            data: { coupon_id: coupon.id, user_id: ctx.userId, subscription_id: sub.id, discount_amount: input.couponDiscount },
+          });
+          await prisma.coupon.update({ where: { id: coupon.id }, data: { used_count: { increment: 1 } } });
+        }
+      }
+
+      return sub;
     }),
 });

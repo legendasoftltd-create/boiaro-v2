@@ -25,8 +25,9 @@ export interface RjProfile {
 }
 
 export function useRjProfile() {
-  // RJ profile lookups are not yet a dedicated tRPC endpoint; return empty.
-  return { profile: null, loading: false };
+  const { user } = useAuth();
+  const query = trpc.rj.myProfile.useQuery(undefined, { enabled: !!user });
+  return { profile: query.data as RjProfile | null | undefined, loading: query.isLoading };
 }
 
 export function useCurrentLiveSession() {
@@ -61,12 +62,12 @@ export function useMyLiveSession() {
   const currentSession = currentQuery.data as LiveSession | null | undefined;
   const mySession = currentSession?.rj_user_id === user?.id ? currentSession : null;
 
-  const goLive = async (stationId: string) => {
-    const result = await startMutation.mutateAsync({ stationId });
+  const goLive = async (streamUrl: string, showTitle?: string) => {
+    const result = await startMutation.mutateAsync({ streamUrl, showTitle });
     return result;
   };
 
-  const endLive = async (reason?: string) => {
+  const endLive = async (_reason?: string) => {
     if (!mySession) return;
     await endMutation.mutateAsync({ sessionId: mySession.id });
   };

@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react"
-import { useAuth } from "@/contexts/AuthContext"
+import { useState } from "react"
 import { useRjProfile, useMyLiveSession } from "@/hooks/useLiveSession"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,7 +39,7 @@ export default function RjDashboard() {
   const handleEndLive = async () => {
     setIsEnding(true)
     try {
-      await endLive("manual_end")
+      await endLive()
       toast.success("Live session ended")
     } catch {
       toast.error("Failed to end session")
@@ -165,30 +164,14 @@ export default function RjDashboard() {
 }
 
 function RecentSessionsList() {
-  const { user } = useAuth()
-  const [sessions, setSessions] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: sessions = [], isLoading } = trpc.rj.mySessions.useQuery()
 
-  useEffect(() => {
-    if (!user) { setLoading(false); return }
-    supabase
-      .from("live_sessions")
-      .select("*")
-      .eq("rj_user_id", user.id)
-      .order("started_at", { ascending: false })
-      .limit(10)
-      .then(({ data }) => {
-        setSessions(data || [])
-        setLoading(false)
-      })
-  }, [user])
-
-  if (loading) return <p className="text-sm text-muted-foreground">Loading...</p>
+  if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>
   if (!sessions.length) return <p className="text-sm text-muted-foreground">No sessions yet. Go live to start!</p>
 
   return (
     <div className="space-y-2">
-      {sessions.map((s: any) => (
+      {sessions.map((s) => (
         <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 text-sm">
           <div>
             <p className="font-medium">{s.show_title || "Untitled Show"}</p>

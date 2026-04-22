@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,30 +17,20 @@ const roleOptions = [
   { value: "rj", label: "Radio Jockey", icon: Radio, desc: "Go live & broadcast shows" },
 ] as const;
 
+type RoleValue = typeof roleOptions[number]["value"];
+
 export default function CreatorApply() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<string | null>(null);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [selectedRole, setSelectedRole] = useState<RoleValue | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const [form, setForm] = useState({
-    full_name: "",
-    display_name: "",
-    email: user?.email || "",
-    phone: "",
-    bio: "",
-    experience: "",
-    message: "",
-    facebook_url: "",
-    instagram_url: "",
-    youtube_url: "",
-    website_url: "",
-    portfolio_url: "",
+    display_name: "", bio: "", experience: "", message: "",
+    facebook_url: "", instagram_url: "", youtube_url: "", website_url: "", portfolio_url: "",
   });
 
   const set = (key: string, val: string) => setForm((p) => ({ ...p, [key]: val }));
@@ -52,92 +42,38 @@ export default function CreatorApply() {
       toast({ title: "File too large", description: "Max 5MB", variant: "destructive" });
       return;
     }
-    setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
   };
 
+  const applyMutation = trpc.profiles.applyForRole.useMutation({
+    onSuccess: () => {
+      toast({ title: "Application submitted!", description: "We'll review your application soon." });
+      navigate("/profile");
+    },
+    onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRole) {
-      toast({ title: "Select a role", variant: "destructive" });
-      return;
-    }
+    if (!selectedRole) { toast({ title: "Select a role", variant: "destructive" }); return; }
     if (!user) {
-      // Not logged in — store intent and redirect to auth
-      localStorage.setItem(
-        "pending_role_application",
-        JSON.stringify({ role: selectedRole, ...form })
-      );
+      localStorage.setItem("pending_role_application", JSON.stringify({ role: selectedRole, ...form }));
       toast({ title: "Please sign in first", description: "Create an account or log in, then your application will be submitted." });
       navigate("/auth");
       return;
     }
-
-    setIsLoading(true);
-    try {
-      let avatar_url: string | null = null;
-
-      // Upload avatar if provided
-      if (avatarFile) {
-        const ext = avatarFile.name.split(".").pop();
-        const path = `applications/${user.id}_${Date.now()}.${ext}`;
-        const { error: uploadErr } = await supabase.storage
-          .from("avatars")
-          .upload(path, avatarFile, { upsert: true });
-        if (!uploadErr) {
-          const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-          avatar_url = urlData.publicUrl;
-        }
-      }
-
-      // Check for existing pending application
-      const { data: existing } = await supabase
-        .from("role_applications")
-        .select("id")
-        .eq("user_id", user.id)
-        .eq("requested_role", selectedRole as any)
-        .eq("status", "pending")
-        .maybeSingle();
-
-      if (existing) {
-        toast({ title: "Already applied", description: "You already have a pending application for this role.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-      }
-
-      const { error } = await supabase.from("role_applications").insert({
-        user_id: user.id,
-        requested_role: selectedRole as any,
-        full_name: form.full_name || null,
-        display_name: form.display_name || null,
-        email: form.email || null,
-        phone: form.phone || null,
-        avatar_url,
-        bio: form.bio || null,
-        experience: form.experience || null,
-        message: form.message || null,
-        facebook_url: form.facebook_url || null,
-        instagram_url: form.instagram_url || null,
-        youtube_url: form.youtube_url || null,
-        website_url: form.website_url || null,
-        portfolio_url: form.portfolio_url || null,
-      } as any);
-
-      if (error) throw error;
-
-      toast({ title: "Application submitted!", description: "We'll review your application soon." });
-      navigate("/profile");
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
+    const notes = [form.bio, form.experience, form.message].filter(Boolean).join("\n\n");
+    applyMutation.mutate({
+      role: selectedRole,
+      displayName: form.display_name || undefined,
+      notes: notes || undefined,
+      portfolioUrl: form.portfolio_url || undefined,
+    });
   };
 
   return (
     <div className="min-h-[100svh] bg-background">
       <div className="max-w-2xl mx-auto px-4 py-8">
-        {/* Header */}
         <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground text-sm mb-6 transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
@@ -178,7 +114,7 @@ export default function CreatorApply() {
                 </div>
               </div>
 
-              {/* Profile Image */}
+              {/* Profile Image (preview only — upload is Phase 5) */}
               <div className="space-y-2">
                 <Label className="text-[13px] font-medium">Profile Image</Label>
                 <div className="flex items-center gap-4">
@@ -200,27 +136,10 @@ export default function CreatorApply() {
                 </div>
               </div>
 
-              {/* Personal Info */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-[13px]">Full Name *</Label>
-                  <Input value={form.full_name} onChange={(e) => set("full_name", e.target.value)} required placeholder="আপনার পুরো নাম" className="h-10 rounded-xl bg-secondary/40 border-border/40" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[13px]">Display Name *</Label>
-                  <Input value={form.display_name} onChange={(e) => set("display_name", e.target.value)} required placeholder="প্রদর্শন নাম" className="h-10 rounded-xl bg-secondary/40 border-border/40" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <Label className="text-[13px]">Email *</Label>
-                  <Input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} required placeholder="you@example.com" className="h-10 rounded-xl bg-secondary/40 border-border/40" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[13px]">Phone</Label>
-                  <Input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+880 1XXXXXXXXX" className="h-10 rounded-xl bg-secondary/40 border-border/40" />
-                </div>
+              {/* Display Name */}
+              <div className="space-y-1.5">
+                <Label className="text-[13px]">Display Name *</Label>
+                <Input value={form.display_name} onChange={(e) => set("display_name", e.target.value)} required placeholder="প্রদর্শন নাম" className="h-10 rounded-xl bg-secondary/40 border-border/40" />
               </div>
 
               {/* Bio & Experience */}
@@ -275,15 +194,17 @@ export default function CreatorApply() {
                     <Input value={form.website_url} onChange={(e) => set("website_url", e.target.value)} placeholder="Website URL" className="h-10 pl-10 rounded-xl bg-secondary/40 border-border/40" />
                   </div>
                 </div>
-                <div className="relative">
-                  <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input value={form.portfolio_url} onChange={(e) => set("portfolio_url", e.target.value)} placeholder="Portfolio / Sample Work URL" className="h-10 pl-10 rounded-xl bg-secondary/40 border-border/40" />
-                </div>
+                {selectedRole !== "rj" && (
+                  <div className="relative">
+                    <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input value={form.portfolio_url} onChange={(e) => set("portfolio_url", e.target.value)} placeholder="Portfolio / Sample Work URL" className="h-10 pl-10 rounded-xl bg-secondary/40 border-border/40" />
+                  </div>
+                )}
               </div>
 
               {/* Submit */}
-              <Button type="submit" className="w-full btn-gold h-11 text-[13px] font-medium" disabled={isLoading || !selectedRole}>
-                {isLoading ? "Submitting..." : "Submit Application"}
+              <Button type="submit" className="w-full btn-gold h-11 text-[13px] font-medium" disabled={applyMutation.isPending || !selectedRole}>
+                {applyMutation.isPending ? "Submitting..." : "Submit Application"}
               </Button>
 
               {!user && (

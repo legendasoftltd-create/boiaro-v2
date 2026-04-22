@@ -1,55 +1,21 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, DollarSign, Headphones, Package, Wallet, Clock } from "lucide-react";
 
 export default function WriterDashboard() {
-  const { user, profile } = useAuth();
-  const [stats, setStats] = useState({
-    books: 0, ebookSales: 0, audioSales: 0, hardcopySales: 0,
-    totalEarnings: 0, availableBalance: 0, pendingPayout: 0, withdrawn: 0,
-  });
-
-  useEffect(() => {
-    if (!user) return;
-    const load = async () => {
-      const [contribs, earnings, withdrawals] = await Promise.all([
-        supabase.from("book_contributors").select("book_id").eq("user_id", user.id).eq("role", "writer"),
-        supabase.from("contributor_earnings").select("*").eq("user_id", user.id).eq("role", "writer"),
-        supabase.from("withdrawal_requests").select("*").eq("user_id", user.id),
-      ]);
-      const bookIds = [...new Set((contribs.data || []).map(c => c.book_id))];
-      const allEarnings = earnings.data || [];
-      const allWithdrawals = withdrawals.data || [];
-      const totalEarnings = allEarnings.reduce((s, e) => s + Number(e.earned_amount), 0);
-      const confirmed = allEarnings.filter(e => e.status === "confirmed").reduce((s, e) => s + Number(e.earned_amount), 0);
-      const withdrawn = allWithdrawals.filter(w => w.status === "paid").reduce((s, w) => s + Number(w.amount), 0);
-      const pendingW = allWithdrawals.filter(w => w.status === "pending" || w.status === "approved").reduce((s, w) => s + Number(w.amount), 0);
-
-      setStats({
-        books: bookIds.length,
-        ebookSales: allEarnings.filter(e => e.format === "ebook").length,
-        audioSales: allEarnings.filter(e => e.format === "audiobook").length,
-        hardcopySales: allEarnings.filter(e => e.format === "hardcopy").length,
-        totalEarnings,
-        availableBalance: Math.max(0, confirmed - withdrawn - pendingW),
-        pendingPayout: pendingW,
-        withdrawn,
-      });
-    };
-    load();
-  }, [user]);
+  const { profile } = useAuth();
+  const { data: stats } = trpc.profiles.creatorStats.useQuery({ role: "writer" });
 
   const cards = [
-    { label: "Total Books", value: stats.books, icon: BookOpen, color: "text-primary" },
-    { label: "eBook Sales", value: stats.ebookSales, icon: BookOpen, color: "text-blue-400" },
-    { label: "Audiobook Sales", value: stats.audioSales, icon: Headphones, color: "text-purple-400" },
-    { label: "Hardcopy Sales", value: stats.hardcopySales, icon: Package, color: "text-orange-400" },
-    { label: "Total Earnings", value: `৳${stats.totalEarnings.toFixed(0)}`, icon: DollarSign, color: "text-emerald-400" },
-    { label: "Available Balance", value: `৳${stats.availableBalance.toFixed(0)}`, icon: Wallet, color: "text-emerald-400" },
-    { label: "Pending Payout", value: `৳${stats.pendingPayout.toFixed(0)}`, icon: Clock, color: "text-yellow-400" },
-    { label: "Withdrawn", value: `৳${stats.withdrawn.toFixed(0)}`, icon: DollarSign, color: "text-blue-400" },
+    { label: "Total Books", value: stats?.bookCount ?? 0, icon: BookOpen, color: "text-primary" },
+    { label: "eBook Sales", value: stats?.salesByFormat.ebook ?? 0, icon: BookOpen, color: "text-blue-400" },
+    { label: "Audiobook Sales", value: stats?.salesByFormat.audiobook ?? 0, icon: Headphones, color: "text-purple-400" },
+    { label: "Hardcopy Sales", value: stats?.salesByFormat.hardcopy ?? 0, icon: Package, color: "text-orange-400" },
+    { label: "Total Earnings", value: `৳${(stats?.totalEarnings ?? 0).toFixed(0)}`, icon: DollarSign, color: "text-emerald-400" },
+    { label: "Available Balance", value: `৳${(stats?.availableBalance ?? 0).toFixed(0)}`, icon: Wallet, color: "text-emerald-400" },
+    { label: "Pending Payout", value: `৳${(stats?.pendingPayout ?? 0).toFixed(0)}`, icon: Clock, color: "text-yellow-400" },
+    { label: "Withdrawn", value: `৳${(stats?.withdrawn ?? 0).toFixed(0)}`, icon: DollarSign, color: "text-blue-400" },
   ];
 
   return (

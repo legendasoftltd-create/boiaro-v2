@@ -74,10 +74,39 @@ export const gamificationRouter = router({
 
   goals: protectedProcedure.query(({ ctx }) =>
     prisma.userGoal.findMany({
-      where: { user_id: ctx.userId },
+      where: { user_id: ctx.userId, status: "active" },
       orderBy: { created_at: "desc" },
     })
   ),
+
+  addGoal: protectedProcedure
+    .input(z.object({ goalType: z.string(), targetValue: z.number().int().min(1), period: z.string().default("daily") }))
+    .mutation(({ ctx, input }) =>
+      prisma.userGoal.create({
+        data: { user_id: ctx.userId, goal_type: input.goalType, target_value: input.targetValue, period: input.period, status: "active" },
+      })
+    ),
+
+  leaderboard: protectedProcedure.query(async () => {
+    const results = await prisma.gamificationPoint.groupBy({
+      by: ["user_id"],
+      _sum: { points: true },
+      orderBy: { _sum: { points: "desc" } },
+      take: 50,
+    });
+    if (results.length === 0) return [];
+    const userIds = results.map((r) => r.user_id);
+    const profiles = await prisma.profile.findMany({
+      where: { user_id: { in: userIds } },
+      select: { user_id: true, display_name: true },
+    });
+    const pMap = new Map(profiles.map((p) => [p.user_id, p.display_name]));
+    return results.map((r) => ({
+      user_id: r.user_id,
+      total: r._sum.points ?? 0,
+      display_name: pMap.get(r.user_id) ?? null,
+    })).slice(0, 20);
+  }),
 
   logActivity: protectedProcedure
     .input(

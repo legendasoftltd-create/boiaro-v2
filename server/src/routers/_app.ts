@@ -10,6 +10,7 @@ import { adminRouter } from "./admin.js";
 import { followsRouter } from "./follows.js";
 import { shippingRouter } from "./shipping.js";
 import { rjRouter } from "./rj.js";
+import { contentRouter } from "./content.js";
 
 export const appRouter = router({
   auth: authRouter,
@@ -23,6 +24,7 @@ export const appRouter = router({
   follows: followsRouter,
   shipping: shippingRouter,
   rj: rjRouter,
+  content: contentRouter,
 });
 
 export type AppRouter = typeof appRouter;

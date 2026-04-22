@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -9,36 +9,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Wallet, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
-import { useAdminLogger } from "@/hooks/useAdminLogger";
 
 export default function AdminWithdrawals() {
-  const [requests, setRequests] = useState<any[]>([]);
+  const utils = trpc.useUtils();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [notes, setNotes] = useState("");
-  const { log } = useAdminLogger();
 
-  useEffect(() => { load(); }, []);
+  const { data: requests = [] } = trpc.admin.listWithdrawals.useQuery();
 
-  const load = async () => {
-    // profiles join may fail if no FK, so fetch separately
-    const { data: wData } = await supabase.from("withdrawal_requests").select("*").order("created_at", { ascending: false });
-    if (wData) {
-      const userIds = [...new Set(wData.map(w => w.user_id))];
-      const { data: profiles } = await supabase.from("profiles").select("user_id, display_name").in("user_id", userIds);
-      const profileMap = Object.fromEntries((profiles || []).map(p => [p.user_id, p.display_name]));
-      setRequests(wData.map(w => ({ ...w, display_name: profileMap[w.user_id] || "Unknown" })));
-    }
-  };
+  const updateMutation = trpc.admin.updateWithdrawal.useMutation({
+    onSuccess: (_data, vars) => {
+      utils.admin.listWithdrawals.invalidate();
+      toast.success(`Request ${vars.status}`);
+      setReviewOpen(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
-  const updateStatus = async (id: string, status: string) => {
-    const req = requests.find(r => r.id === id);
-    const { error } = await supabase.from("withdrawal_requests").update({ status, admin_notes: notes }).eq("id", id);
-    if (error) toast.error(error.message);
-    else {
-      await log({ module: "withdrawals", action: `Withdrawal ${status}`, actionType: status === "approved" ? "approve" : status === "rejected" ? "reject" : "update", targetType: "withdrawal", targetId: id, details: `Withdrawal ৳${req?.amount || 0} ${status}`, riskLevel: "high" });
-      toast.success(`Request ${status}`); setReviewOpen(false); load();
-    }
+  const updateStatus = (id: string, status: string) => {
+    updateMutation.mutate({ id, status: status as any, notes: notes || undefined });
   };
 
   const statusBadge = (status: string) => {
@@ -59,10 +49,10 @@ export default function AdminWithdrawals() {
 
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
         {[
-          { label: "Pending", count: requests.filter(r => r.status === "pending").length, icon: Clock, color: "text-yellow-400" },
-          { label: "Approved", count: requests.filter(r => r.status === "approved").length, icon: CheckCircle2, color: "text-blue-400" },
-          { label: "Paid", count: requests.filter(r => r.status === "paid").length, icon: CheckCircle2, color: "text-emerald-400" },
-          { label: "Rejected", count: requests.filter(r => r.status === "rejected").length, icon: XCircle, color: "text-destructive" },
+          { label: "Pending", count: (requests as any[]).filter(r => r.status === "pending").length, icon: Clock, color: "text-yellow-400" },
+          { label: "Approved", count: (requests as any[]).filter(r => r.status === "approved").length, icon: CheckCircle2, color: "text-blue-400" },
+          { label: "Paid", count: (requests as any[]).filter(r => r.status === "paid").length, icon: CheckCircle2, color: "text-emerald-400" },
+          { label: "Rejected", count: (requests as any[]).filter(r => r.status === "rejected").length, icon: XCircle, color: "text-destructive" },
         ].map(s => (
           <Card key={s.label} className="bg-card/60 border-border/30">
             <CardContent className="p-4 flex items-center gap-3">
@@ -91,7 +81,7 @@ export default function AdminWithdrawals() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {requests.map(r => (
+              {(requests as any[]).map(r => (
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.display_name}</TableCell>
                   <TableCell className="font-semibold text-emerald-400">৳{r.amount}</TableCell>
@@ -106,7 +96,7 @@ export default function AdminWithdrawals() {
                   </TableCell>
                 </TableRow>
               ))}
-              {!requests.length && (
+              {!(requests as any[]).length && (
                 <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No withdrawal requests yet</TableCell></TableRow>
               )}
             </TableBody>
@@ -130,13 +120,13 @@ export default function AdminWithdrawals() {
                 <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add notes..." rows={3} />
               </div>
               <div className="flex gap-2">
-                <Button className="flex-1" onClick={() => updateStatus(selected.id, "approved")}>
+                <Button className="flex-1" onClick={() => updateStatus(selected.id, "approved")} disabled={updateMutation.isPending}>
                   <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
                 </Button>
-                <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => updateStatus(selected.id, "paid")}>
+                <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => updateStatus(selected.id, "paid")} disabled={updateMutation.isPending}>
                   <Wallet className="h-4 w-4 mr-1" /> Mark Paid
                 </Button>
-                <Button variant="destructive" className="flex-1" onClick={() => updateStatus(selected.id, "rejected")}>
+                <Button variant="destructive" className="flex-1" onClick={() => updateStatus(selected.id, "rejected")} disabled={updateMutation.isPending}>
                   <XCircle className="h-4 w-4 mr-1" /> Reject
                 </Button>
               </div>

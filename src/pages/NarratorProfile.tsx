@@ -1,72 +1,16 @@
 import { useParams, Link } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Badge } from "@/components/ui/badge";
 import { Star, Headphones } from "lucide-react";
 import { FollowButton } from "@/components/FollowButton";
-
-interface NarratorBook {
-  id: string;
-  title: string;
-  title_en: string | null;
-  slug: string;
-  cover_url: string | null;
-  rating: number | null;
-}
+import { trpc } from "@/lib/trpc";
 
 const NarratorProfile = () => {
   const { id } = useParams<{ id: string }>();
-  const [narrator, setNarrator] = useState<any>(null);
-  const [books, setBooks] = useState<NarratorBook[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: narrator, isLoading } = trpc.books.narratorById.useQuery({ id: id! }, { enabled: !!id });
 
-  useEffect(() => {
-    if (!id) return;
-    const load = async () => {
-      setLoading(true);
-
-      // Fetch narrator info and their audiobooks in parallel
-      const [narratorRes, formatsRes] = await Promise.all([
-        supabase.from("narrators").select("id, name, name_en, avatar_url, bio, specialty, rating, is_featured, is_trending, priority, status, user_id, created_at, updated_at").eq("id", id).single(),
-        supabase
-          .from("book_formats")
-          .select("book_id, books!inner(id, title, title_en, slug, cover_url, rating, submission_status)")
-          .eq("narrator_id", id)
-          .eq("format", "audiobook")
-          .eq("is_available", true)
-          .eq("submission_status", "approved"),
-      ]);
-
-      setNarrator(narratorRes.data);
-
-      if (formatsRes.data) {
-        const seen = new Set<string>();
-        const narratorBooks: NarratorBook[] = [];
-        for (const f of formatsRes.data) {
-          const b = f.books as any;
-          if (b && b.submission_status === "approved" && !seen.has(b.id)) {
-            seen.add(b.id);
-            narratorBooks.push({
-              id: b.id,
-              title: b.title,
-              title_en: b.title_en,
-              slug: b.slug,
-              cover_url: b.cover_url,
-              rating: b.rating,
-            });
-          }
-        }
-        setBooks(narratorBooks);
-      }
-
-      setLoading(false);
-    };
-    load();
-  }, [id]);
-
-  if (loading) return (
+  if (isLoading) return (
     <main className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-20 text-center text-muted-foreground">Loading...</div>
@@ -80,6 +24,8 @@ const NarratorProfile = () => {
       <Footer />
     </main>
   );
+
+  const books = narrator.books || [];
 
   return (
     <main className="min-h-screen bg-background">
