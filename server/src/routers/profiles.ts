@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "../trpc.js";
+import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 
 export const profilesRouter = router({
@@ -62,10 +62,25 @@ export const profilesRouter = router({
   listeningProgress: protectedProcedure.query(({ ctx }) =>
     prisma.listeningProgress.findMany({
       where: { user_id: ctx.userId },
+      include: {
+        book: {
+          include: {
+            author: { select: { id: true, name: true } },
+          },
+        },
+      },
       orderBy: { last_listened_at: "desc" },
       take: 10,
     })
   ),
+
+  listeningProgressByBook: protectedProcedure
+    .input(z.object({ bookId: z.string() }))
+    .query(({ ctx, input }) =>
+      prisma.listeningProgress.findUnique({
+        where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
+      })
+    ),
 
   updateReadingProgress: protectedProcedure
     .input(
@@ -166,6 +181,24 @@ export const profilesRouter = router({
     })
   ),
 
+  userOrders: protectedProcedure.query(({ ctx }) =>
+    prisma.order.findMany({
+      where: { user_id: ctx.userId },
+      include: {
+        items: {
+          include: {
+            book_format: {
+              include: {
+                book: { select: { id: true, title: true, slug: true, cover_url: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { created_at: "desc" },
+    })
+  ),
+
   presence: protectedProcedure
     .input(
       z.object({
@@ -195,4 +228,209 @@ export const profilesRouter = router({
         },
       })
     ),
+
+  applyForRole: protectedProcedure
+    .input(z.object({
+      role: z.enum(["writer", "publisher", "narrator", "rj"]),
+      displayName: z.string().optional(),
+      notes: z.string().optional(),
+      portfolioUrl: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.roleApplication.findFirst({
+        where: { user_id: ctx.userId, applied_role: input.role, status: "pending" },
+      });
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "You already have a pending application for this role" });
+      return prisma.roleApplication.create({
+        data: {
+          user_id: ctx.userId,
+          applied_role: input.role,
+          display_name: input.displayName || null,
+          notes: input.notes || null,
+          portfolio_url: input.portfolioUrl || null,
+          status: "pending",
+        },
+      });
+    }),
+
+  createTicket: protectedProcedure
+    .input(z.object({
+      subject: z.string().min(1),
+      description: z.string().min(1),
+      category: z.string().optional(),
+    }))
+    .mutation(({ ctx, input }) =>
+      prisma.supportTicket.create({
+        data: {
+          user_id: ctx.userId,
+          subject: input.subject,
+          description: input.description,
+          category: input.category || "general",
+          status: "open",
+        },
+      })
+    ),
+
+  creatorStats: protectedProcedure
+    .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
+    .query(async ({ ctx, input }) => {
+      const [contributors, earnings, withdrawals] = await Promise.all([
+        prisma.bookContributor.findMany({ where: { user_id: ctx.userId, role: input.role }, select: { book_id: true } }),
+        prisma.contributorEarning.findMany({ where: { user_id: ctx.userId, role: input.role } }),
+        prisma.withdrawalRequest.findMany({ where: { user_id: ctx.userId } }),
+      ]);
+
+      const bookCount = new Set(contributors.map(c => c.book_id)).size;
+      const totalEarnings = earnings.reduce((s, e) => s + e.earned_amount, 0);
+      const confirmed = earnings.filter(e => e.status === "confirmed").reduce((s, e) => s + e.earned_amount, 0);
+      const withdrawn = withdrawals.filter(w => w.status === "paid").reduce((s, w) => s + w.amount, 0);
+      const pendingPayout = withdrawals
+        .filter(w => w.status === "pending" || w.status === "approved")
+        .reduce((s, w) => s + w.amount, 0);
+
+      return {
+        bookCount,
+        totalEarnings,
+        availableBalance: Math.max(0, confirmed - withdrawn - pendingPayout),
+        pendingPayout,
+        withdrawn,
+        salesByFormat: {
+          ebook: earnings.filter(e => e.format === "ebook").length,
+          audiobook: earnings.filter(e => e.format === "audiobook").length,
+          hardcopy: earnings.filter(e => e.format === "hardcopy").length,
+        },
+        revenueByFormat: {
+          ebook: earnings.filter(e => e.format === "ebook").reduce((s, e) => s + e.earned_amount, 0),
+          audiobook: earnings.filter(e => e.format === "audiobook").reduce((s, e) => s + e.earned_amount, 0),
+          hardcopy: earnings.filter(e => e.format === "hardcopy").reduce((s, e) => s + e.earned_amount, 0),
+        },
+      };
+    }),
+
+  mySubmittedBooks: protectedProcedure.query(({ ctx }) =>
+    prisma.book.findMany({
+      where: { submitted_by: ctx.userId },
+      select: { id: true, title: true, cover_url: true, submission_status: true, created_at: true },
+      orderBy: { created_at: "desc" },
+    })
+  ),
+
+  myEarnings: protectedProcedure
+    .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
+    .query(async ({ ctx, input }) => {
+      const earnings = await prisma.contributorEarning.findMany({
+        where: { user_id: ctx.userId, role: input.role },
+        orderBy: { created_at: "desc" },
+      });
+      const bookIds = [...new Set(earnings.map(e => e.book_id))];
+      const books = await prisma.book.findMany({
+        where: { id: { in: bookIds } },
+        select: { id: true, title: true },
+      });
+      const bookMap = Object.fromEntries(books.map(b => [b.id, b.title]));
+      return earnings.map(e => ({ ...e, book_title: bookMap[e.book_id] || null }));
+    }),
+
+  myWithdrawals: protectedProcedure.query(({ ctx }) =>
+    prisma.withdrawalRequest.findMany({
+      where: { user_id: ctx.userId },
+      orderBy: { created_at: "desc" },
+    })
+  ),
+
+  requestWithdrawal: protectedProcedure
+    .input(z.object({
+      amount: z.number().positive(),
+      method: z.enum(["bkash", "nagad", "bank"]),
+      accountInfo: z.string().min(1),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const mobileMethod = input.method === "bkash" || input.method === "nagad";
+      return prisma.withdrawalRequest.create({
+        data: {
+          user_id: ctx.userId,
+          amount: input.amount,
+          method: input.method,
+          mobile_number: mobileMethod ? input.accountInfo : null,
+          bank_account: !mobileMethod ? input.accountInfo : null,
+          status: "pending",
+        },
+      });
+    }),
+
+  platformSetting: protectedProcedure
+    .input(z.object({ key: z.string() }))
+    .query(async ({ input }) => {
+      const setting = await prisma.platformSetting.findUnique({ where: { key: input.key } });
+      return setting?.value ?? null;
+    }),
+
+  referralInfo: protectedProcedure.query(async ({ ctx }) => {
+    const profile = await prisma.profile.findUnique({
+      where: { user_id: ctx.userId },
+      select: { referral_code: true },
+    });
+    const referrals = await prisma.referral.findMany({
+      where: { referrer_id: ctx.userId },
+      orderBy: { created_at: "desc" },
+    });
+    const totalEarned = referrals
+      .filter(r => r.reward_status === "paid")
+      .reduce((sum, r) => sum + r.reward_amount, 0);
+    return {
+      referral_code: profile?.referral_code || null,
+      total_referrals: referrals.length,
+      total_earned: totalEarned,
+      pending_referrals: referrals.filter(r => r.status === "pending").length,
+      referrals: referrals.map(r => ({
+        id: r.id,
+        referred_user_id: r.referred_user_id,
+        status: r.status,
+        reward_amount: r.reward_amount,
+        reward_status: r.reward_status,
+        created_at: r.created_at.toISOString(),
+      })),
+    };
+  }),
+
+  revenuePreview: publicProcedure
+    .input(z.object({ bookId: z.string(), format: z.enum(["ebook", "audiobook", "hardcopy"]) }))
+    .query(async ({ input }) => {
+      const [override, defaultRule, bookFormat] = await Promise.all([
+        prisma.formatRevenueSplit.findFirst({
+          where: { book_id: input.bookId, format: input.format },
+        }),
+        prisma.defaultRevenueRule.findFirst({
+          where: { format: input.format },
+        }),
+        prisma.bookFormat.findFirst({
+          where: { book_id: input.bookId, format: input.format as any },
+          select: { original_price: true, discount: true },
+        }),
+      ]);
+
+      const rule = override
+        ? {
+            writer_percentage: override.writer_pct,
+            publisher_percentage: override.publisher_pct,
+            narrator_percentage: override.narrator_pct,
+            platform_percentage: override.platform_pct,
+            fulfillment_cost_percentage: override.fulfillment_cost_pct,
+          }
+        : defaultRule
+        ? {
+            writer_percentage: defaultRule.writer_percentage,
+            publisher_percentage: defaultRule.publisher_percentage,
+            narrator_percentage: defaultRule.narrator_percentage,
+            platform_percentage: defaultRule.platform_percentage,
+            fulfillment_cost_percentage: defaultRule.fulfillment_cost_percentage,
+          }
+        : null;
+
+      return {
+        rule,
+        original_price: bookFormat?.original_price ?? null,
+        discount: bookFormat?.discount ?? null,
+      };
+    }),
 });

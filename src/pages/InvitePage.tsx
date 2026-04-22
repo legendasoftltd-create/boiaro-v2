@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Copy, Share2, Gift, Users, Coins, Clock, Check, ChevronLeft, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,50 +7,20 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
-
-interface ReferralInfo {
-  referral_code: string;
-  total_referrals: number;
-  total_earned: number;
-  pending_referrals: number;
-  referrals: Array<{
-    id: string;
-    referred_user_id: string;
-    status: string;
-    reward_amount: number;
-    reward_status: string;
-    created_at: string;
-  }>;
-}
+import { trpc } from "@/lib/trpc";
 
 export default function InvitePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { get } = useSiteSettings();
   const brandName = get("brand_name", "BoiAro");
-  const [info, setInfo] = useState<ReferralInfo | null>(null);
-  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (user) loadInfo();
-  }, [user]);
-
-  const loadInfo = async () => {
-    setLoading(true);
-    const { data, error } = await supabase.functions.invoke("process-referral", {
-      body: { action: "get_info" },
-    });
-    if (!error && data && !data.error) {
-      setInfo(data);
-    }
-    setLoading(false);
-  };
+  const { data: info, isLoading } = trpc.profiles.referralInfo.useQuery(undefined, { enabled: !!user });
 
   const referralLink = info?.referral_code
     ? `${window.location.origin}/auth?ref=${info.referral_code}`
@@ -83,7 +53,7 @@ export default function InvitePage() {
     );
   };
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
@@ -107,9 +77,7 @@ export default function InvitePage() {
             <Gift className="w-8 h-8 text-primary" />
           </div>
           <h1 className="text-2xl font-serif font-bold text-foreground">Invite & Earn</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Share your code, earn coins when friends join!
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Share your code, earn coins when friends join!</p>
         </div>
 
         {/* Stats */}
@@ -223,10 +191,7 @@ export default function InvitePage() {
                         {new Date(r.created_at).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={r.status === "completed" ? "default" : "secondary"}
-                          className="text-xs"
-                        >
+                        <Badge variant={r.status === "completed" ? "default" : "secondary"} className="text-xs">
                           {r.status}
                         </Badge>
                       </TableCell>

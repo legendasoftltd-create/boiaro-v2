@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,16 +8,8 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Plus, Pencil, Search, Trash2, BookOpen } from "lucide-react";
-
-interface BlogPost {
-  id: string; title: string; slug: string; cover_image: string | null; excerpt: string | null;
-  content: string; author_name: string | null; category: string | null; tags: string[] | null;
-  publish_date: string | null; status: string; is_featured: boolean | null;
-  seo_title: string | null; seo_description: string | null; seo_keywords: string | null;
-  created_at: string; updated_at: string;
-}
 
 const emptyForm = {
   title: "", slug: "", cover_image: "", excerpt: "", content: "", author_name: "", category: "",
@@ -27,64 +18,59 @@ const emptyForm = {
 };
 
 export default function AdminBlog() {
-  const qc = useQueryClient();
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [editing, setEditing] = useState<BlogPost | null>(null);
+  const [editId, setEditId] = useState<string | undefined>(undefined);
   const [isOpen, setIsOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
-  const { data: posts = [], isLoading } = useQuery({
-    queryKey: ["blog-posts"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("blog_posts").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as BlogPost[];
-    },
+  const { data: posts = [], isLoading } = trpc.admin.listBlogPosts.useQuery({});
+
+  const saveMutation = trpc.admin.updateBlogPost.useMutation({
+    onSuccess: () => { utils.admin.listBlogPosts.invalidate(); setIsOpen(false); toast.success("Article saved"); },
+    onError: (e) => toast.error(e.message),
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async (f: typeof form & { id?: string }) => {
-      const payload = {
-        title: f.title, slug: f.slug, content: f.content, status: f.status, is_featured: f.is_featured,
-        cover_image: f.cover_image || null, excerpt: f.excerpt || null, author_name: f.author_name || null,
-        category: f.category || null, tags: f.tags ? f.tags.split(",").map(t => t.trim()) : [],
-        publish_date: f.publish_date || null,
-        seo_title: f.seo_title || null, seo_description: f.seo_description || null, seo_keywords: f.seo_keywords || null,
-      };
-      if (f.id) {
-        const { error } = await supabase.from("blog_posts").update(payload).eq("id", f.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("blog_posts").insert(payload);
-        if (error) throw error;
-      }
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["blog-posts"] }); setIsOpen(false); toast({ title: "Article saved" }); },
+  const createMutation = trpc.admin.createBlogPost.useMutation({
+    onSuccess: () => { utils.admin.listBlogPosts.invalidate(); setIsOpen(false); toast.success("Article saved"); },
+    onError: (e) => toast.error(e.message),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("blog_posts").delete().eq("id", id);
-      if (error) throw error;
-    },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["blog-posts"] }); toast({ title: "Deleted" }); },
+  const deleteMutation = trpc.admin.deleteBlogPost.useMutation({
+    onSuccess: () => { utils.admin.listBlogPosts.invalidate(); toast.success("Deleted"); },
+    onError: (e) => toast.error(e.message),
   });
 
-  const openNew = () => { setEditing(null); setForm(emptyForm); setIsOpen(true); };
-  const openEdit = (p: BlogPost) => {
-    setEditing(p);
+  const openNew = () => { setEditId(undefined); setForm(emptyForm); setIsOpen(true); };
+  const openEdit = (p: any) => {
+    setEditId(p.id);
     setForm({
       title: p.title, slug: p.slug, cover_image: p.cover_image || "", excerpt: p.excerpt || "",
       content: p.content, author_name: p.author_name || "", category: p.category || "",
-      tags: (p.tags || []).join(", "), publish_date: p.publish_date?.split("T")[0] || "",
+      tags: (p.tags || []).join(", "), publish_date: p.publish_date ? new Date(p.publish_date).toISOString().split("T")[0] : "",
       status: p.status, is_featured: p.is_featured || false,
       seo_title: p.seo_title || "", seo_description: p.seo_description || "", seo_keywords: p.seo_keywords || "",
     });
     setIsOpen(true);
   };
 
-  const filtered = posts.filter(p => {
+  const handleSave = () => {
+    const payload = {
+      title: form.title, slug: form.slug, content: form.content, status: form.status, is_featured: form.is_featured,
+      cover_image: form.cover_image || undefined, excerpt: form.excerpt || undefined, author_name: form.author_name || undefined,
+      category: form.category || undefined, tags: form.tags ? form.tags.split(",").map(t => t.trim()) : [],
+      publish_date: form.publish_date || undefined,
+      seo_title: form.seo_title || undefined, seo_description: form.seo_description || undefined, seo_keywords: form.seo_keywords || undefined,
+    };
+    if (editId) {
+      saveMutation.mutate({ id: editId, ...payload });
+    } else {
+      createMutation.mutate(payload);
+    }
+  };
+
+  const filtered = (posts as any[]).filter(p => {
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
     if (search && !p.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -132,7 +118,7 @@ export default function AdminBlog() {
               <TableRow><TableCell colSpan={6} className="text-center py-8">Loading...</TableCell></TableRow>
             ) : filtered.length === 0 ? (
               <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">No articles found</TableCell></TableRow>
-            ) : filtered.map(p => (
+            ) : filtered.map((p: any) => (
               <TableRow key={p.id}>
                 <TableCell className="font-medium flex items-center gap-2"><BookOpen className="h-4 w-4 text-primary" />{p.title}</TableCell>
                 <TableCell className="text-muted-foreground">{p.category || "—"}</TableCell>
@@ -141,7 +127,7 @@ export default function AdminBlog() {
                 <TableCell className="text-muted-foreground text-xs">{p.publish_date ? new Date(p.publish_date).toLocaleDateString() : "—"}</TableCell>
                 <TableCell className="flex gap-1">
                   <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" className="text-destructive" onClick={() => { if (confirm("Delete this article?")) deleteMutation.mutate(p.id); }}><Trash2 className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className="text-destructive" onClick={() => { if (confirm("Delete this article?")) deleteMutation.mutate({ id: p.id }); }}><Trash2 className="h-4 w-4" /></Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -151,7 +137,7 @@ export default function AdminBlog() {
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? "Edit Article" : "New Article"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editId ? "Edit Article" : "New Article"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div><label className="text-sm font-medium">Title</label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
@@ -192,8 +178,8 @@ export default function AdminBlog() {
                 <div><label className="text-sm font-medium">Keywords</label><Input value={form.seo_keywords} onChange={e => setForm(f => ({ ...f, seo_keywords: e.target.value }))} /></div>
               </div>
             </div>
-            <Button className="w-full" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate({ ...form, id: editing?.id })}>
-              {saveMutation.isPending ? "Saving..." : "Save"}
+            <Button className="w-full" disabled={saveMutation.isPending || createMutation.isPending} onClick={handleSave}>
+              {(saveMutation.isPending || createMutation.isPending) ? "Saving..." : "Save"}
             </Button>
           </div>
         </DialogContent>

@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 import { useWallet } from "@/hooks/useWallet";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -11,73 +11,39 @@ import { Coins, Sparkles, ShieldCheck, Zap, Loader2, Crown, Gift, TrendingUp } f
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 
-interface CoinPackage {
-  id: string;
-  name: string;
-  coins: number;
-  price: number;
-  bonus_coins: number;
-  is_featured: boolean;
-  sort_order: number;
-}
-
 export default function CoinStore() {
   const { user } = useAuth();
   const { wallet } = useWallet();
-  const [packages, setPackages] = useState<CoinPackage[]>([]);
-  const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState<string | null>(null);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from("coin_packages")
-        .select("*")
-        .eq("is_active", true)
-        .order("sort_order");
-      setPackages((data as CoinPackage[]) || []);
-      setLoading(false);
-    };
-    load();
-  }, []);
+  const { data: packages = [], isLoading } = trpc.wallet.coinPackages.useQuery();
+  const initiatePurchaseMutation = trpc.wallet.initiateCoinPurchase.useMutation();
 
-  const handlePurchase = async (pkg: CoinPackage) => {
-    if (!user) {
-      toast.error("Please sign in first");
-      return;
-    }
-
+  const handlePurchase = async (pkg: any) => {
+    if (!user) { toast.error("Please sign in first"); return; }
     setPurchasing(pkg.id);
     try {
-      const { data, error } = await supabase.functions.invoke("coin-purchase-initiate", {
-        body: { package_id: pkg.id },
-      });
-
-      if (error) throw new Error(error.message);
-      if (!data?.success || !data?.gateway_url) {
-        throw new Error(data?.error || "Could not create payment session");
+      const result = await initiatePurchaseMutation.mutateAsync({ packageId: pkg.id });
+      if (result.gateway_url) {
+        window.location.href = result.gateway_url;
+      } else {
+        toast.info("Payment gateway integration coming soon. Purchase recorded.");
       }
-
-      window.location.href = data.gateway_url;
     } catch (err: any) {
       toast.error(err.message || "Could not initiate payment");
-      setPurchasing(null);
     }
+    setPurchasing(null);
   };
 
-  const totalCoins = (pkg: CoinPackage) => pkg.coins + pkg.bonus_coins;
-  const perCoinCost = (pkg: CoinPackage) => (pkg.price / totalCoins(pkg)).toFixed(3);
+  const totalCoins = (pkg: any) => pkg.coins + pkg.bonus_coins;
+  const perCoinCost = (pkg: any) => (pkg.price / totalCoins(pkg)).toFixed(3);
 
-  // Calculate savings % relative to the cheapest (first) package
-  const baseCostPerCoin = packages.length > 0 ? packages[0].price / totalCoins(packages[0]) : 0;
-  const savingsPercent = (pkg: CoinPackage) => {
+  const baseCostPerCoin = (packages as any[]).length > 0 ? (packages as any[])[0].price / totalCoins((packages as any[])[0]) : 0;
+  const savingsPercent = (pkg: any) => {
     if (!baseCostPerCoin) return 0;
     const thisCost = pkg.price / totalCoins(pkg);
     return Math.round(((baseCostPerCoin - thisCost) / baseCostPerCoin) * 100);
   };
-
-  // Determine "Best Value" = package named "Best Value"
-  const isBestValue = (pkg: CoinPackage) => pkg.name === "Best Value";
 
   return (
     <div className="min-h-screen bg-background">
@@ -99,11 +65,11 @@ export default function CoinStore() {
         </div>
 
         {/* Packages */}
-        {loading ? (
+        {isLoading ? (
           <div className="flex justify-center py-16">
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
-        ) : packages.length === 0 ? (
+        ) : (packages as any[]).length === 0 ? (
           <Card className="border-border/30">
             <CardContent className="p-12 text-center text-muted-foreground">
               No packages available
@@ -111,9 +77,9 @@ export default function CoinStore() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-            {packages.map((pkg) => {
+            {(packages as any[]).map((pkg: any) => {
               const savings = savingsPercent(pkg);
-              const bestValue = isBestValue(pkg);
+              const bestValue = pkg.name === "Best Value";
               const featured = pkg.is_featured;
 
               return (
@@ -160,16 +126,12 @@ export default function CoinStore() {
 
                     {savings > 0 && (
                       <div className="mb-3">
-                        <Badge variant="secondary" className="text-xs">
-                          Save {savings}%
-                        </Badge>
+                        <Badge variant="secondary" className="text-xs">Save {savings}%</Badge>
                       </div>
                     )}
 
                     <div className="text-3xl font-bold mb-1">৳{pkg.price}</div>
-                    <p className="text-xs text-muted-foreground mb-4">
-                      ৳{perCoinCost(pkg)} per coin
-                    </p>
+                    <p className="text-xs text-muted-foreground mb-4">৳{perCoinCost(pkg)} per coin</p>
 
                     <Button
                       className="w-full gap-2"
@@ -208,7 +170,6 @@ export default function CoinStore() {
           ))}
         </div>
 
-        {/* CTA to wallet */}
         <div className="text-center mt-8">
           <Link to="/wallet">
             <Button variant="ghost" className="gap-2 text-muted-foreground">

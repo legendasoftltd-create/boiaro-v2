@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,58 +20,48 @@ interface EarningsDashboardProps {
 }
 
 export function EarningsDashboard({ role }: EarningsDashboardProps) {
-  const { user } = useAuth();
-  const [earnings, setEarnings] = useState<any[]>([]);
-  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const utils = trpc.useUtils();
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawForm, setWithdrawForm] = useState({ amount: "", method: "bkash", account_info: "" });
-  const [minWithdrawal, setMinWithdrawal] = useState(500);
 
-  useEffect(() => {
-    if (!user) return;
-    load();
-  }, [user]);
+  const { data: earnings = [] } = trpc.profiles.myEarnings.useQuery({ role });
+  const { data: withdrawals = [] } = trpc.profiles.myWithdrawals.useQuery();
+  const { data: minWithdrawalStr } = trpc.profiles.platformSetting.useQuery({ key: "minimum_withdrawal_amount" });
+  const minWithdrawal = Number(minWithdrawalStr) || 500;
 
-  const load = async () => {
-    if (!user) return;
-    const [e, w, s] = await Promise.all([
-      supabase.from("contributor_earnings").select("*, books(title)").eq("user_id", user.id).eq("role", role).order("created_at", { ascending: false }),
-      supabase.from("withdrawal_requests").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
-      supabase.from("platform_settings").select("value").eq("key", "minimum_withdrawal_amount").single(),
-    ]);
-    setEarnings(e.data || []);
-    setWithdrawals(w.data || []);
-    if (s.data) setMinWithdrawal(Number(s.data.value) || 500);
-  };
+  const requestMutation = trpc.profiles.requestWithdrawal.useMutation({
+    onSuccess: () => {
+      utils.profiles.myWithdrawals.invalidate();
+      toast.success("Withdrawal request submitted");
+      setWithdrawOpen(false);
+      setWithdrawForm({ amount: "", method: "bkash", account_info: "" });
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
-  const totalEarned = earnings.reduce((sum, e) => sum + Number(e.earned_amount), 0);
-  const pendingEarnings = earnings.filter(e => e.status === "pending").reduce((sum, e) => sum + Number(e.earned_amount), 0);
-  const confirmedEarnings = earnings.filter(e => e.status === "confirmed").reduce((sum, e) => sum + Number(e.earned_amount), 0);
-  const totalWithdrawn = withdrawals.filter(w => w.status === "paid").reduce((sum, w) => sum + Number(w.amount), 0);
-  const pendingWithdrawals = withdrawals.filter(w => w.status === "pending" || w.status === "approved").reduce((sum, w) => sum + Number(w.amount), 0);
+  const totalEarned = earnings.reduce((sum, e) => sum + e.earned_amount, 0);
+  const pendingEarnings = earnings.filter(e => e.status === "pending").reduce((sum, e) => sum + e.earned_amount, 0);
+  const confirmedEarnings = earnings.filter(e => e.status === "confirmed").reduce((sum, e) => sum + e.earned_amount, 0);
+  const totalWithdrawn = withdrawals.filter(w => w.status === "paid").reduce((sum, w) => sum + w.amount, 0);
+  const pendingWithdrawals = withdrawals
+    .filter(w => w.status === "pending" || w.status === "approved")
+    .reduce((sum, w) => sum + w.amount, 0);
   const availableBalance = confirmedEarnings - totalWithdrawn - pendingWithdrawals;
 
-  // Format-wise breakdown
-  const ebookEarnings = earnings.filter(e => e.format === "ebook").reduce((s, e) => s + Number(e.earned_amount), 0);
-  const audioEarnings = earnings.filter(e => e.format === "audiobook").reduce((s, e) => s + Number(e.earned_amount), 0);
-  const hardcopyEarnings = earnings.filter(e => e.format === "hardcopy").reduce((s, e) => s + Number(e.earned_amount), 0);
+  const ebookEarnings = earnings.filter(e => e.format === "ebook").reduce((s, e) => s + e.earned_amount, 0);
+  const audioEarnings = earnings.filter(e => e.format === "audiobook").reduce((s, e) => s + e.earned_amount, 0);
+  const hardcopyEarnings = earnings.filter(e => e.format === "hardcopy").reduce((s, e) => s + e.earned_amount, 0);
   const ebookSales = earnings.filter(e => e.format === "ebook").length;
   const audioSales = earnings.filter(e => e.format === "audiobook").length;
   const hardcopySales = earnings.filter(e => e.format === "hardcopy").length;
 
-  const submitWithdrawal = async () => {
-    if (!user) return;
+  const submitWithdrawal = () => {
     const amount = Number(withdrawForm.amount);
     if (!amount || amount <= 0) { toast.error("Enter a valid amount"); return; }
     if (amount < minWithdrawal) { toast.error(`Minimum withdrawal is ৳${minWithdrawal}`); return; }
     if (amount > availableBalance) { toast.error("Insufficient balance"); return; }
     if (!withdrawForm.account_info.trim()) { toast.error("Enter account info"); return; }
-
-    const { error } = await supabase.from("withdrawal_requests").insert({
-      user_id: user.id, amount, method: withdrawForm.method, account_info: withdrawForm.account_info,
-    });
-    if (error) toast.error(error.message);
-    else { toast.success("Withdrawal request submitted"); setWithdrawOpen(false); setWithdrawForm({ amount: "", method: "bkash", account_info: "" }); load(); }
+    requestMutation.mutate({ amount, method: withdrawForm.method as "bkash" | "nagad" | "bank", accountInfo: withdrawForm.account_info });
   };
 
   const statusBadge = (status: string) => {
@@ -185,7 +174,7 @@ export function EarningsDashboard({ role }: EarningsDashboardProps) {
               <TableBody>
                 {earnings.map(e => (
                   <TableRow key={e.id}>
-                    <TableCell className="font-medium max-w-[120px] truncate">{e.books?.title || "—"}</TableCell>
+                    <TableCell className="font-medium max-w-[120px] truncate">{e.book_title || "—"}</TableCell>
                     <TableCell><Badge variant="outline" className="text-[10px] capitalize">{e.format}</Badge></TableCell>
                     <TableCell>৳{e.sale_amount}</TableCell>
                     <TableCell>{e.percentage}%</TableCell>
@@ -227,7 +216,7 @@ export function EarningsDashboard({ role }: EarningsDashboardProps) {
                     <TableCell className="capitalize">{w.method}</TableCell>
                     <TableCell>{statusBadge(w.status)}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-xs max-w-[150px] truncate">{w.admin_notes || "—"}</TableCell>
+                    <TableCell className="text-xs max-w-[150px] truncate">{w.notes || "—"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -264,11 +253,13 @@ export function EarningsDashboard({ role }: EarningsDashboardProps) {
               </Select>
             </div>
             <div>
-              <Label>Account Info</Label>
+              <Label>Account / Number</Label>
               <Textarea value={withdrawForm.account_info} onChange={(e) => setWithdrawForm({ ...withdrawForm, account_info: e.target.value })}
                 placeholder="bKash/Nagad number or bank account details" rows={2} />
             </div>
-            <Button className="w-full" onClick={submitWithdrawal}>Submit Payout Request</Button>
+            <Button className="w-full" onClick={submitWithdrawal} disabled={requestMutation.isPending}>
+              {requestMutation.isPending ? "Submitting..." : "Submit Payout Request"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

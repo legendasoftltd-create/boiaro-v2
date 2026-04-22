@@ -1,41 +1,21 @@
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { CalendarDays } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 export default function CmsPage() {
   const { slug } = useParams<{ slug: string }>();
 
-  // Scroll to top on slug change
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [slug]);
 
-  const { data: page, isLoading } = useQuery({
-    queryKey: ["cms-page", slug],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("cms_pages")
-        .select("*")
-        .eq("slug", slug!)
-        .eq("status", "published")
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!slug,
-  });
+  const { data: page, isLoading } = trpc.books.cmsPage.useQuery({ slug: slug! }, { enabled: !!slug });
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
+  const formatDate = (dateStr: string) =>
+    new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,7 +41,7 @@ export default function CmsPage() {
               </h1>
               <div className="flex items-center gap-2 mt-4 text-muted-foreground text-sm">
                 <CalendarDays className="h-4 w-4" />
-                <span>Last updated: {formatDate(page.updated_at)}</span>
+                <span>Last updated: {formatDate(page.updated_at.toISOString())}</span>
               </div>
             </header>
 

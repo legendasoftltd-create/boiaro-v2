@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useRjProfile } from "@/hooks/useLiveSession"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,12 +11,12 @@ import { toast } from "sonner"
 
 export default function RjProfile() {
   const { profile, loading } = useRjProfile()
+  const utils = trpc.useUtils()
   const [form, setForm] = useState({
     stage_name: "",
     bio: "",
     specialty: "",
   })
-  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (profile) {
@@ -28,29 +28,25 @@ export default function RjProfile() {
     }
   }, [profile])
 
-  const handleSave = async () => {
+  const updateMutation = trpc.rj.updateProfile.useMutation({
+    onSuccess: () => {
+      utils.rj.myProfile.invalidate()
+      toast.success("Profile updated!")
+    },
+    onError: () => toast.error("Failed to update profile"),
+  })
+
+  const handleSave = () => {
     if (!profile) return
     if (!form.stage_name.trim()) {
       toast.error("Stage name is required")
       return
     }
-    setSaving(true)
-    const { error } = await supabase
-      .from("rj_profiles")
-      .update({
-        stage_name: form.stage_name.trim(),
-        bio: form.bio.trim() || null,
-        specialty: form.specialty.trim() || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", profile.id)
-
-    setSaving(false)
-    if (error) {
-      toast.error("Failed to update profile")
-    } else {
-      toast.success("Profile updated!")
-    }
+    updateMutation.mutate({
+      stageName: form.stage_name.trim(),
+      bio: form.bio.trim() || undefined,
+      specialty: form.specialty.trim() || undefined,
+    })
   }
 
   if (loading) {
@@ -111,8 +107,8 @@ export default function RjProfile() {
             {profile.is_approved ? "Approved" : "Pending Approval"}
           </div>
 
-          <Button onClick={handleSave} disabled={saving} className="w-full">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+          <Button onClick={handleSave} disabled={updateMutation.isPending} className="w-full">
+            {updateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
             Save Profile
           </Button>
         </CardContent>
