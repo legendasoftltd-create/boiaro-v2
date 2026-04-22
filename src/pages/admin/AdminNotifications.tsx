@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,10 +58,7 @@ const PRIORITIES = [
 ];
 
 export default function AdminNotifications() {
-  const { user } = useAuth();
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [loading, setLoading] = useState(true);
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterStatus] = useState("all");
@@ -75,17 +71,17 @@ export default function AdminNotifications() {
   const [tplForm, setTplForm] = useState({ name: "", title: "", message: "", type: "system", channel: "in_app", cta_text: "", cta_link: "" });
   const [form, setForm] = useState({ title: "", message: "", type: "system", audience: "all", target_user_id: "", priority: "normal", link: "", channel: "in_app", scheduled_at: "" });
 
-  const load = async () => {
-    const [{ data: n }, { data: t }] = await Promise.all([
-      supabase.from("notifications" as any).select("*").order("created_at", { ascending: false }),
-      supabase.from("notification_templates" as any).select("*").order("created_at", { ascending: false }),
-    ]);
-    setNotifications((n as any) || []);
-    setTemplates((t as any) || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { load(); }, []);
+  const { data: notificationsRaw = [], isLoading: loading } = trpc.admin.listNotifications.useQuery();
+  const { data: templatesRaw = [] } = trpc.admin.listNotificationTemplates.useQuery();
+  const notifications = notificationsRaw as Notification[];
+  const templates = templatesRaw as Template[];
+  const createNotificationMutation = trpc.admin.createNotification.useMutation();
+  const updateNotificationMutation = trpc.admin.updateNotification.useMutation();
+  const sendNotificationMutation = trpc.admin.sendNotification.useMutation();
+  const deleteNotificationMutation = trpc.admin.deleteNotification.useMutation();
+  const createTemplateMutation = trpc.admin.createNotificationTemplate.useMutation();
+  const updateTemplateMutation = trpc.admin.updateNotificationTemplate.useMutation();
+  const deleteTemplateMutation = trpc.admin.deleteNotificationTemplate.useMutation();
 
   const resetForm = () => { setForm({ title: "", message: "", type: "system", audience: "all", target_user_id: "", priority: "normal", link: "", channel: "in_app", scheduled_at: "" }); setEditing(null); };
   const openCreate = () => { resetForm(); setDialogOpen(true); };
@@ -101,59 +97,80 @@ export default function AdminNotifications() {
 
   const saveNotification = async () => {
     if (!form.title || !form.message) return toast.error("Title and message are required");
-    const payload: any = {
-      title: form.title, message: form.message, type: form.type, audience: form.audience, priority: form.priority,
-      link: form.link || null, channel: form.channel,
-      scheduled_at: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
-      target_user_id: form.audience === "specific" ? form.target_user_id || null : null,
-      created_by: user?.id || null, status: form.scheduled_at ? "scheduled" : "draft",
+    const payload = {
+      title: form.title,
+      message: form.message,
+      type: form.type,
+      audience: form.audience,
+      priority: form.priority,
+      link: form.link || null,
+      channel: form.channel,
+      scheduledAt: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
+      targetUserId: form.audience === "specific" ? form.target_user_id || null : null,
     };
-    if (editing) {
-      const { error } = await supabase.from("notifications" as any).update(payload).eq("id", editing.id);
-      if (error) return toast.error(error.message);
-      toast.success("Notification updated");
-    } else {
-      const { error } = await supabase.from("notifications" as any).insert(payload);
-      if (error) return toast.error(error.message);
-      toast.success("Notification created");
+    try {
+      if (editing) {
+        await updateNotificationMutation.mutateAsync({ id: editing.id, ...payload });
+        toast.success("Notification updated");
+      } else {
+        await createNotificationMutation.mutateAsync(payload);
+        toast.success("Notification created");
+      }
+      await Promise.all([
+        utils.admin.listNotifications.invalidate(),
+        utils.admin.listNotificationTemplates.invalidate(),
+      ]);
+      setDialogOpen(false);
+      resetForm();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to save notification");
     }
-    setDialogOpen(false); resetForm(); load();
   };
 
   const sendNotification = async (n: Notification) => {
-    let userIds: string[] = [];
-    if (n.audience === "specific" && n.target_user_id) {
-      userIds = [n.target_user_id];
-    } else {
-      let query = supabase.from("user_roles").select("user_id") as any;
-      if (n.audience !== "all") query = query.eq("role", n.audience);
-      const { data } = await query;
-      userIds = Array.from(new Set((data || []).map((r: any) => r.user_id as string)));
+    try {
+      const result = await sendNotificationMutation.mutateAsync({ id: n.id });
+      toast.success(`Notification sent to ${result.sent} user(s)`);
+      await utils.admin.listNotifications.invalidate();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send notification");
     }
-    if (userIds.length === 0) return toast.error("No recipients found");
-    const records = userIds.map((uid) => ({ user_id: uid, notification_id: n.id }));
-    const { error: insertError } = await supabase.from("user_notifications" as any).insert(records);
-    if (insertError) return toast.error(insertError.message);
-    await supabase.from("notifications" as any).update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", n.id);
-    toast.success(`Notification sent to ${userIds.length} user(s)`);
-    load();
   };
 
   const deleteNotification = async (id: string) => {
-    await supabase.from("notifications" as any).delete().eq("id", id);
-    toast.success("Deleted"); load();
+    await deleteNotificationMutation.mutateAsync({ id });
+    toast.success("Deleted");
+    await utils.admin.listNotifications.invalidate();
   };
 
   const openCreateTpl = () => { setTplForm({ name: "", title: "", message: "", type: "system", channel: "in_app", cta_text: "", cta_link: "" }); setEditingTpl(null); setTplDialog(true); };
   const openEditTpl = (t: Template) => { setEditingTpl(t); setTplForm({ name: t.name, title: t.title, message: t.message, type: t.type, channel: t.channel, cta_text: t.cta_text || "", cta_link: t.cta_link || "" }); setTplDialog(true); };
   const saveTpl = async () => {
     if (!tplForm.name || !tplForm.title) return toast.error("Name and title are required");
-    const payload: any = { ...tplForm, cta_text: tplForm.cta_text || null, cta_link: tplForm.cta_link || null };
-    if (editingTpl) { await supabase.from("notification_templates" as any).update(payload).eq("id", editingTpl.id); toast.success("Template updated"); }
-    else { await supabase.from("notification_templates" as any).insert(payload); toast.success("Template created"); }
-    setTplDialog(false); load();
+    const payload = {
+      name: tplForm.name,
+      title: tplForm.title,
+      message: tplForm.message,
+      type: tplForm.type,
+      channel: tplForm.channel,
+      ctaText: tplForm.cta_text || null,
+      ctaLink: tplForm.cta_link || null,
+    };
+    if (editingTpl) {
+      await updateTemplateMutation.mutateAsync({ id: editingTpl.id, ...payload });
+      toast.success("Template updated");
+    } else {
+      await createTemplateMutation.mutateAsync(payload);
+      toast.success("Template created");
+    }
+    setTplDialog(false);
+    await utils.admin.listNotificationTemplates.invalidate();
   };
-  const deleteTpl = async (id: string) => { await supabase.from("notification_templates" as any).delete().eq("id", id); toast.success("Deleted"); load(); };
+  const deleteTpl = async (id: string) => {
+    await deleteTemplateMutation.mutateAsync({ id });
+    toast.success("Deleted");
+    await utils.admin.listNotificationTemplates.invalidate();
+  };
 
   const filtered = notifications.filter((n) => {
     if (tab === "scheduled" && !n.scheduled_at) return false;

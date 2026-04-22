@@ -792,6 +792,184 @@ export const adminRouter = router({
       })
     ),
 
+  // ── Notifications ─────────────────────────────────────────────────────────────
+  listNotifications: adminProcedure.query(() =>
+    prisma.notification.findMany({
+      orderBy: { created_at: "desc" },
+    })
+  ),
+
+  createNotification: adminProcedure
+    .input(
+      z.object({
+        title: z.string().min(1),
+        message: z.string().min(1),
+        type: z.string().default("system"),
+        audience: z.string().default("all"),
+        targetUserId: z.string().nullable().optional(),
+        priority: z.string().default("normal"),
+        link: z.string().nullable().optional(),
+        channel: z.string().default("in_app"),
+        scheduledAt: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      prisma.notification.create({
+        data: {
+          title: input.title,
+          message: input.message,
+          type: input.type,
+          audience: input.audience,
+          target_user_id: input.audience === "specific" ? input.targetUserId ?? null : null,
+          priority: input.priority,
+          link: input.link ?? null,
+          channel: input.channel,
+          scheduled_at: input.scheduledAt ? new Date(input.scheduledAt) : null,
+          created_by: ctx.userId,
+          status: input.scheduledAt ? "scheduled" : "draft",
+        },
+      })
+    ),
+
+  updateNotification: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        title: z.string().min(1),
+        message: z.string().min(1),
+        type: z.string().default("system"),
+        audience: z.string().default("all"),
+        targetUserId: z.string().nullable().optional(),
+        priority: z.string().default("normal"),
+        link: z.string().nullable().optional(),
+        channel: z.string().default("in_app"),
+        scheduledAt: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.notification.update({
+        where: { id: input.id },
+        data: {
+          title: input.title,
+          message: input.message,
+          type: input.type,
+          audience: input.audience,
+          target_user_id: input.audience === "specific" ? input.targetUserId ?? null : null,
+          priority: input.priority,
+          link: input.link ?? null,
+          channel: input.channel,
+          scheduled_at: input.scheduledAt ? new Date(input.scheduledAt) : null,
+          status: input.scheduledAt ? "scheduled" : "draft",
+        },
+      })
+    ),
+
+  deleteNotification: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.notification.delete({ where: { id: input.id } })),
+
+  sendNotification: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const notification = await prisma.notification.findUnique({ where: { id: input.id } });
+      if (!notification) throw new TRPCError({ code: "NOT_FOUND" });
+
+      let userIds: string[] = [];
+      if (notification.audience === "specific" && notification.target_user_id) {
+        userIds = [notification.target_user_id];
+      } else if (notification.audience === "all") {
+        const users = await prisma.user.findMany({ select: { id: true } });
+        userIds = users.map((user) => user.id);
+      } else {
+        const roles = await prisma.userRole.findMany({
+          where: { role: notification.audience as any },
+          select: { user_id: true },
+        });
+        userIds = [...new Set(roles.map((role) => role.user_id))];
+      }
+
+      if (!userIds.length) return { sent: 0 };
+
+      await prisma.userNotification.createMany({
+        data: userIds.map((userId) => ({
+          user_id: userId,
+          notification_id: notification.id,
+        })),
+      });
+
+      await prisma.notification.update({
+        where: { id: notification.id },
+        data: { status: "sent", sent_at: new Date() },
+      });
+
+      return { sent: userIds.length };
+    }),
+
+  // ── Notification Templates ───────────────────────────────────────────────────
+  listNotificationTemplates: adminProcedure.query(() =>
+    prisma.notificationTemplate.findMany({
+      orderBy: { created_at: "desc" },
+    })
+  ),
+
+  createNotificationTemplate: adminProcedure
+    .input(
+      z.object({
+        name: z.string().min(1),
+        title: z.string().min(1),
+        message: z.string().default(""),
+        type: z.string().default("system"),
+        channel: z.string().default("in_app"),
+        ctaText: z.string().nullable().optional(),
+        ctaLink: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.notificationTemplate.create({
+        data: {
+          name: input.name,
+          title: input.title,
+          message: input.message,
+          type: input.type,
+          channel: input.channel,
+          cta_text: input.ctaText ?? null,
+          cta_link: input.ctaLink ?? null,
+        },
+      })
+    ),
+
+  updateNotificationTemplate: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1),
+        title: z.string().min(1),
+        message: z.string().default(""),
+        type: z.string().default("system"),
+        channel: z.string().default("in_app"),
+        ctaText: z.string().nullable().optional(),
+        ctaLink: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.notificationTemplate.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          title: input.title,
+          message: input.message,
+          type: input.type,
+          channel: input.channel,
+          cta_text: input.ctaText ?? null,
+          cta_link: input.ctaLink ?? null,
+        },
+      })
+    ),
+
+  deleteNotificationTemplate: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.notificationTemplate.delete({ where: { id: input.id } })),
+
   // ── User detail + role update ─────────────────────────────────────────────────
   getUserDetail: adminProcedure
     .input(z.object({ id: z.string() }))
@@ -944,6 +1122,488 @@ export const adminRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.heroBanner.delete({ where: { id: input.id } })),
 
+  // ── Coin Packages ───────────────────────────────────────────────────────────
+  listCoinPackages: adminProcedure.query(() =>
+    prisma.coinPackage.findMany({ orderBy: [{ sort_order: "asc" }, { created_at: "desc" }] })
+  ),
+
+  listCoinPurchases: adminProcedure
+    .input(z.object({ status: z.string().optional(), limit: z.number().optional() }).optional())
+    .query(({ input }) =>
+      prisma.coinPurchase.findMany({
+        where: input?.status ? { payment_status: input.status } : undefined,
+        orderBy: { created_at: "desc" },
+        take: input?.limit ?? 50,
+      })
+    ),
+
+  updateCoinPackage: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        name: z.string().min(1),
+        coins: z.number().int().nonnegative(),
+        price: z.number().nonnegative(),
+        bonus_coins: z.number().int().nonnegative().default(0),
+        sort_order: z.number().int().default(0),
+        is_featured: z.boolean().default(false),
+        is_active: z.boolean().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      if (input.id) {
+        return prisma.coinPackage.update({
+          where: { id: input.id },
+          data: {
+            name: input.name,
+            coins: input.coins,
+            price: input.price,
+            bonus_coins: input.bonus_coins,
+            sort_order: input.sort_order,
+            is_featured: input.is_featured,
+            ...(typeof input.is_active === "boolean" ? { is_active: input.is_active } : {}),
+          },
+        });
+      }
+      return prisma.coinPackage.create({
+        data: {
+          name: input.name,
+          coins: input.coins,
+          price: input.price,
+          bonus_coins: input.bonus_coins,
+          sort_order: input.sort_order,
+          is_featured: input.is_featured,
+          is_active: input.is_active ?? true,
+        },
+      });
+    }),
+
+  deleteCoinPackage: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.coinPackage.delete({ where: { id: input.id } })),
+
+  // ── Coupons ─────────────────────────────────────────────────────────────────
+  listCoupons: adminProcedure.query(() =>
+    prisma.coupon.findMany({ orderBy: { created_at: "desc" } })
+  ),
+
+  createCoupon: adminProcedure
+    .input(
+      z.object({
+        code: z.string().min(1),
+        description: z.string().nullable().optional(),
+        discount_type: z.string().default("percentage"),
+        discount_value: z.number().nonnegative(),
+        applies_to: z.string().default("all"),
+        min_order_amount: z.number().nullable().optional(),
+        usage_limit: z.number().int().nullable().optional(),
+        per_user_limit: z.number().int().nullable().optional(),
+        start_date: z.string().optional(),
+        end_date: z.string().nullable().optional(),
+        status: z.string().default("active"),
+        first_order_only: z.boolean().default(false),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.coupon.create({
+        data: {
+          code: input.code.toUpperCase(),
+          description: input.description ?? null,
+          discount_type: input.discount_type,
+          discount_value: input.discount_value,
+          applies_to: input.applies_to,
+          min_order_amount: input.min_order_amount ?? null,
+          usage_limit: input.usage_limit ?? null,
+          per_user_limit: input.per_user_limit ?? null,
+          start_date: input.start_date ? new Date(input.start_date) : new Date(),
+          end_date: input.end_date ? new Date(input.end_date) : null,
+          status: input.status,
+          first_order_only: input.first_order_only,
+        },
+      })
+    ),
+
+  updateCoupon: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        code: z.string().min(1),
+        description: z.string().nullable().optional(),
+        discount_type: z.string().default("percentage"),
+        discount_value: z.number().nonnegative(),
+        applies_to: z.string().default("all"),
+        min_order_amount: z.number().nullable().optional(),
+        usage_limit: z.number().int().nullable().optional(),
+        per_user_limit: z.number().int().nullable().optional(),
+        start_date: z.string().optional(),
+        end_date: z.string().nullable().optional(),
+        status: z.string().default("active"),
+        first_order_only: z.boolean().default(false),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.coupon.update({
+        where: { id: input.id },
+        data: {
+          code: input.code.toUpperCase(),
+          description: input.description ?? null,
+          discount_type: input.discount_type,
+          discount_value: input.discount_value,
+          applies_to: input.applies_to,
+          min_order_amount: input.min_order_amount ?? null,
+          usage_limit: input.usage_limit ?? null,
+          per_user_limit: input.per_user_limit ?? null,
+          start_date: input.start_date ? new Date(input.start_date) : new Date(),
+          end_date: input.end_date ? new Date(input.end_date) : null,
+          status: input.status,
+          first_order_only: input.first_order_only,
+        },
+      })
+    ),
+
+  deleteCoupon: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.coupon.delete({ where: { id: input.id } })),
+
+  // ── Subscription Plans ──────────────────────────────────────────────────────
+  listSubscriptionPlans: adminProcedure.query(() =>
+    prisma.subscriptionPlan.findMany({ orderBy: [{ sort_order: "asc" }, { created_at: "desc" }] })
+  ),
+
+  createPlan: adminProcedure
+    .input(
+      z.object({
+        name: z.string().min(1),
+        description: z.string().nullable().optional(),
+        price: z.number().nonnegative(),
+        duration_days: z.number().int().positive().default(30),
+        sort_order: z.number().int().default(0),
+        is_featured: z.boolean().default(false),
+        is_active: z.boolean().default(true),
+        features: z.array(z.string()).default([]),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.subscriptionPlan.create({
+        data: {
+          name: input.name,
+          description: input.description ?? null,
+          price: input.price,
+          duration_days: input.duration_days,
+          sort_order: input.sort_order,
+          is_featured: input.is_featured,
+          is_active: input.is_active,
+          features: input.features,
+        },
+      })
+    ),
+
+  updatePlan: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1),
+        description: z.string().nullable().optional(),
+        price: z.number().nonnegative(),
+        duration_days: z.number().int().positive().default(30),
+        sort_order: z.number().int().default(0),
+        is_featured: z.boolean().default(false),
+        is_active: z.boolean().default(true),
+        features: z.array(z.string()).default([]),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.subscriptionPlan.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          description: input.description ?? null,
+          price: input.price,
+          duration_days: input.duration_days,
+          sort_order: input.sort_order,
+          is_featured: input.is_featured,
+          is_active: input.is_active,
+          features: input.features,
+        },
+      })
+    ),
+
+  deletePlan: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.subscriptionPlan.delete({ where: { id: input.id } })),
+
+  // ── Ad Banners ──────────────────────────────────────────────────────────────
+  listAdBanners: adminProcedure.query(() =>
+    prisma.adBanner.findMany({ orderBy: [{ display_order: "asc" }, { created_at: "desc" }] })
+  ),
+
+  updateAdBanner: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        title: z.string().nullable().optional(),
+        image_url: z.string().nullable().optional(),
+        destination_url: z.string().nullable().optional(),
+        placement_key: z.string().min(1),
+        start_date: z.string().nullable().optional(),
+        end_date: z.string().nullable().optional(),
+        status: z.string().default("active"),
+        display_order: z.number().int().default(0),
+        device: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const data = {
+        title: input.title ?? null,
+        image_url: input.image_url ?? null,
+        destination_url: input.destination_url ?? null,
+        placement_key: input.placement_key,
+        start_date: input.start_date ? new Date(input.start_date) : null,
+        end_date: input.end_date ? new Date(input.end_date) : null,
+        status: input.status,
+        display_order: input.display_order,
+        device: input.device ?? null,
+      };
+      if (input.id) return prisma.adBanner.update({ where: { id: input.id }, data });
+      return prisma.adBanner.create({ data });
+    }),
+
+  deleteAdBanner: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.adBanner.delete({ where: { id: input.id } })),
+
+  // ── Ad Campaigns ────────────────────────────────────────────────────────────
+  listAdCampaigns: adminProcedure.query(() =>
+    prisma.adCampaign.findMany({ orderBy: { created_at: "desc" } })
+  ),
+
+  updateAdCampaign: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        name: z.string().min(1),
+        ad_type: z.string().default("banner"),
+        placement_key: z.string().nullable().optional(),
+        start_date: z.string().nullable().optional(),
+        end_date: z.string().nullable().optional(),
+        status: z.string().default("active"),
+        target_page: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const data = {
+        name: input.name,
+        ad_type: input.ad_type,
+        placement_key: input.placement_key ?? null,
+        start_date: input.start_date ? new Date(input.start_date) : null,
+        end_date: input.end_date ? new Date(input.end_date) : null,
+        status: input.status,
+        target_page: input.target_page ?? null,
+        notes: input.notes ?? null,
+      };
+      if (input.id) return prisma.adCampaign.update({ where: { id: input.id }, data });
+      return prisma.adCampaign.create({ data });
+    }),
+
+  deleteAdCampaign: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.adCampaign.delete({ where: { id: input.id } })),
+
+  // ── Ad Placements ───────────────────────────────────────────────────────────
+  listAdPlacements: adminProcedure.query(() =>
+    prisma.adPlacement.findMany({ orderBy: [{ display_priority: "asc" }, { placement_key: "asc" }] })
+  ),
+
+  updateAdPlacement: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        ad_type: z.string().optional(),
+        frequency: z.string().nullable().optional(),
+        device_visibility: z.string().nullable().optional(),
+        display_priority: z.number().int().nullable().optional(),
+        notes: z.string().nullable().optional(),
+        is_enabled: z.boolean().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      return prisma.adPlacement.update({ where: { id }, data });
+    }),
+
+  adReportSummary: adminProcedure.query(async () => {
+    const [banners, rewardedLogs] = await Promise.all([
+      prisma.adBanner.findMany({
+        orderBy: { impressions: "desc" },
+        take: 20,
+      }),
+      prisma.rewardedAdLog.findMany({
+        select: { coins_rewarded: true },
+      }),
+    ]);
+
+    const totalImpressions = banners.reduce((sum, banner) => sum + Number(banner.impressions || 0), 0);
+    const totalClicks = banners.reduce((sum, banner) => sum + Number(banner.clicks || 0), 0);
+    const rewardedCount = rewardedLogs.length;
+    const totalCoinsGiven = rewardedLogs.reduce((sum, log) => sum + Number(log.coins_rewarded || 0), 0);
+
+    return {
+      banners,
+      totalImpressions,
+      totalClicks,
+      rewardedCount,
+      totalCoinsGiven,
+    };
+  }),
+
+  analyticsReportData: adminProcedure.query(async () => {
+    const [orders, orderItems, earnings, categories, authors, profiles] = await Promise.all([
+      prisma.order.findMany({
+        select: {
+          id: true,
+          user_id: true,
+          total_amount: true,
+          status: true,
+          created_at: true,
+          coupon_code: true,
+          discount_amount: true,
+          shipping_cost: true,
+          payment_method: true,
+          cod_payment_status: true,
+        },
+      }),
+      prisma.orderItem.findMany({
+        select: {
+          order_id: true,
+          format: true,
+          price: true,
+          quantity: true,
+          book_id: true,
+        },
+      }),
+      prisma.contributorEarning.findMany({
+        select: {
+          user_id: true,
+          role: true,
+          earned_amount: true,
+          status: true,
+          book_id: true,
+          format: true,
+        },
+      }),
+      prisma.category.findMany({ select: { id: true, name: true, name_bn: true } }),
+      prisma.author.findMany({ select: { id: true, name: true } }),
+      prisma.profile.findMany({ select: { user_id: true, display_name: true } }),
+    ]);
+
+    const bookIds = [...new Set(orderItems.map((item) => item.book_id).filter(Boolean) as string[])];
+    const books = bookIds.length
+      ? await prisma.book.findMany({
+          where: { id: { in: bookIds } },
+          select: { id: true, title: true, author_id: true, publisher_id: true, category_id: true },
+        })
+      : [];
+    const bookMap = Object.fromEntries(books.map((book) => [book.id, book]));
+
+    return {
+      orders,
+      orderItems: orderItems.map((item) => ({
+        order_id: item.order_id,
+        format: item.format,
+        unit_price: item.price,
+        quantity: item.quantity,
+        book_id: item.book_id,
+        books: item.book_id ? bookMap[item.book_id] ?? null : null,
+      })),
+      earnings,
+      categories,
+      authors,
+      profiles,
+    };
+  }),
+
+  userEngagementAnalytics: adminProcedure.query(async () => {
+    const now = Date.now();
+    const last30Date = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    const last7Date = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    const fiveMinDate = new Date(now - 5 * 60 * 1000);
+
+    const [consumption, onlineCount, totalUsers, reads] = await Promise.all([
+      prisma.contentConsumptionTime.findMany({
+        where: { created_at: { gte: last30Date } },
+        select: { user_id: true, format: true, seconds: true, created_at: true },
+      }),
+      prisma.userPresence.count({ where: { last_seen: { gte: fiveMinDate } } }),
+      prisma.profile.count(),
+      prisma.bookRead.findMany({
+        where: { created_at: { gte: last7Date } },
+        select: { created_at: true },
+      }),
+    ]);
+
+    const dauMap: Record<string, Set<string>> = {};
+    const formatMap: Record<string, number> = {};
+    for (const row of consumption) {
+      const date = row.created_at.toISOString().slice(0, 10);
+      if (!dauMap[date]) dauMap[date] = new Set();
+      dauMap[date].add(row.user_id);
+      formatMap[row.format] = (formatMap[row.format] || 0) + Number(row.seconds || 0);
+    }
+
+    const dauData = Object.entries(dauMap)
+      .map(([date, users]) => ({ date, users: users.size }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const formatData = Object.entries(formatMap).map(([name, value]) => ({
+      name,
+      value: Math.round(value / 3600),
+    }));
+
+    const readsMap: Record<string, number> = {};
+    for (const row of reads) {
+      const date = row.created_at.toISOString().slice(0, 10);
+      readsMap[date] = (readsMap[date] || 0) + 1;
+    }
+    const readsData = Object.entries(readsMap)
+      .map(([date, count]) => ({ date: date.slice(5), reads: count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return { dauData, formatData, onlineCount, totalUsers, readsData };
+  }),
+
+  readingAnalyticsData: adminProcedure.query(async () => {
+    const [logs, books, bookReads, presenceData, settings] = await Promise.all([
+      prisma.userActivityLog.findMany({
+        select: { action: true, book_id: true, user_id: true, created_at: true, metadata: true },
+        orderBy: { created_at: "desc" },
+        take: 5000,
+      }),
+      prisma.book.findMany({ select: { id: true, title: true, total_reads: true, cover_url: true } }),
+      prisma.bookRead.findMany({ select: { book_id: true, user_id: true, created_at: true } }),
+      prisma.userPresence.findMany(),
+      prisma.platformSetting.findMany({
+        where: { key: "rec_trending_period_days" },
+        select: { key: true, value: true },
+        take: 1,
+      }),
+    ]);
+
+    return {
+      logs: logs.map((row) => ({
+        event_type: row.action,
+        book_id: row.book_id,
+        user_id: row.user_id,
+        created_at: row.created_at,
+        metadata: row.metadata,
+      })),
+      books,
+      bookReads,
+      presenceData,
+      trendingPeriod: settings[0]?.value ?? "7",
+    };
+  }),
+
   // ── Withdrawal Requests ────────────────────────────────────────────────────
   listWithdrawals: adminProcedure.query(async () => {
     const withdrawals = await prisma.withdrawalRequest.findMany({ orderBy: { created_at: "desc" } });
@@ -958,7 +1618,7 @@ export const adminRouter = router({
     }));
   }),
 
-  updateWithdrawal: adminProcedure
+  processWithdrawal: adminProcedure
     .input(z.object({ id: z.string(), status: z.string(), adminNotes: z.string().optional() }))
     .mutation(({ input }) =>
       prisma.withdrawalRequest.update({
@@ -1191,6 +1851,24 @@ export const adminRouter = router({
       const { id, ...data } = input;
       if (id) return prisma.shippingMethod.update({ where: { id }, data });
       return prisma.shippingMethod.create({ data: data as any });
+    }),
+
+  updateShippingMethod: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1).optional(),
+        description: z.string().nullable().optional(),
+        base_cost: z.number().optional(),
+        per_kg_cost: z.number().optional(),
+        zone: z.string().nullable().optional(),
+        delivery_days: z.string().nullable().optional(),
+        is_active: z.boolean().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      return prisma.shippingMethod.update({ where: { id }, data });
     }),
 
   deleteShippingMethod: adminProcedure

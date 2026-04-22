@@ -18,7 +18,7 @@ export default function AdminWithdrawals() {
 
   const { data: requests = [] } = trpc.admin.listWithdrawals.useQuery();
 
-  const updateMutation = trpc.admin.updateWithdrawal.useMutation({
+  const updateMutation = trpc.admin.processWithdrawal.useMutation({
     onSuccess: (_data, vars) => {
       utils.admin.listWithdrawals.invalidate();
       toast.success(`Request ${vars.status}`);
@@ -28,7 +28,7 @@ export default function AdminWithdrawals() {
   });
 
   const updateStatus = (id: string, status: string) => {
-    updateMutation.mutate({ id, status: status as any, notes: notes || undefined });
+    updateMutation.mutate({ id, status: status as any, adminNotes: notes || undefined });
   };
 
   const statusBadge = (status: string) => {

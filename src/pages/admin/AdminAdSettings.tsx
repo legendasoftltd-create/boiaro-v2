@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,38 +32,26 @@ const PROVIDER_CONFIG = [
 ];
 
 export default function AdminAdSettings() {
+  const utils = trpc.useUtils();
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const allKeys = [...BEHAVIOR_CONFIG, ...PROVIDER_CONFIG].map(c => c.key);
+  const { data: loadedSettings = {}, isLoading: loading } = trpc.admin.getPlatformSettings.useQuery({ keys: allKeys });
+  const saveMutation = trpc.admin.bulkSetPlatformSettings.useMutation({
+    onSuccess: async () => {
+      await utils.admin.getPlatformSettings.invalidate({ keys: allKeys });
+      toast.success("Ad settings saved");
+    },
+    onError: () => toast.error("Failed to save ad settings"),
+  });
 
   useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase.from("platform_settings").select("*").like("key", "ad_%");
-      const map: Record<string, string> = {};
-      (data || []).forEach((d: any) => { map[d.key] = d.value; });
-      setSettings(map);
-      setLoading(false);
-    };
-    load();
-  }, []);
+    setSettings(loadedSettings as Record<string, string>);
+  }, [loadedSettings]);
 
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      const allKeys = [...BEHAVIOR_CONFIG, ...PROVIDER_CONFIG].map(c => c.key);
-      for (const key of allKeys) {
-        const value = settings[key] ?? "";
-        await supabase.from("platform_settings").upsert(
-          { key, value, updated_at: new Date().toISOString() },
-          { onConflict: "key" }
-        );
-      }
-      toast.success("Ad settings saved");
-    } catch {
-      toast.error("Failed to save ad settings");
-    } finally {
-      setSaving(false);
-    }
+    await saveMutation.mutateAsync(
+      allKeys.map((key) => ({ key, value: settings[key] ?? "" }))
+    );
   };
 
   const set = (key: string, value: string) => setSettings(p => ({ ...p, [key]: value }));
@@ -213,9 +201,9 @@ export default function AdminAdSettings() {
         </CardContent>
       </Card>
 
-      <Button onClick={handleSave} disabled={saving} className="w-full" size="lg">
+      <Button onClick={handleSave} disabled={saveMutation.isPending} className="w-full" size="lg">
         <Save className="w-4 h-4 mr-2" />
-        {saving ? "Saving..." : "Save All Ad Settings"}
+        {saveMutation.isPending ? "Saving..." : "Save All Ad Settings"}
       </Button>
     </div>
   );

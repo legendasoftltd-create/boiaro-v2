@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { LiveUsersModal, type LiveUserFilter } from "@/components/admin/LiveUsersModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ interface BookInfo {
 }
 
 export default function AdminReadingAnalytics() {
+  const { data, isLoading } = trpc.admin.readingAnalyticsData.useQuery();
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [books, setBooks] = useState<BookInfo[]>([]);
   const [bookReads, setBookReads] = useState<{ book_id: string; user_id: string; created_at: string }[]>([]);
@@ -57,26 +58,22 @@ export default function AdminReadingAnalytics() {
   const [liveFilter, setLiveFilter] = useState<LiveUserFilter>(null);
 
   useEffect(() => {
-    const load = async () => {
-      const [logsRes, booksRes, readsRes, presenceRes, settingsRes] = await Promise.all([
-        supabase.from("user_activity_logs" as any).select("event_type, book_id, user_id, created_at, metadata").order("created_at", { ascending: false }).limit(5000),
-        supabase.from("books").select("id, title, total_reads, cover_url"),
-        supabase.from("book_reads").select("book_id, user_id, created_at"),
-        supabase.from("user_presence" as any).select("*"),
-        supabase.from("platform_settings").select("key, value").eq("key", "rec_trending_period_days"),
-      ]);
-      setLogs((logsRes.data as any[]) || []);
-      setBooks((booksRes.data as any[]) || []);
-      setBookReads((readsRes.data as any[]) || []);
-      setPresenceData((presenceRes.data as any[]) || []);
-
-      const period = (settingsRes.data || [])[0]?.value;
-      if (period) setTrendingPeriod(period);
-
-      setLoading(false);
-    };
-    load();
-  }, []);
+    if (!data) {
+      setLoading(isLoading);
+      return;
+    }
+    setLogs((data.logs as any[]) || []);
+    setBooks((data.books as any[]) || []);
+    setBookReads(
+      ((data.bookReads as any[]) || []).map((row: any) => ({
+        ...row,
+        created_at: new Date(row.created_at).toISOString(),
+      }))
+    );
+    setPresenceData((data.presenceData as any[]) || []);
+    if (data.trendingPeriod) setTrendingPeriod(data.trendingPeriod);
+    setLoading(false);
+  }, [data, isLoading]);
 
   const bookMap = useMemo(() => {
     const m: Record<string, BookInfo> = {};
