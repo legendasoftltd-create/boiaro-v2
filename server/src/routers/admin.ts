@@ -74,9 +74,55 @@ export const adminRouter = router({
           roles: true,
         },
       });
+      const userIds = users.map((user) => user.id);
+      const [orderCounts, activeSubscriptions] = await Promise.all([
+        userIds.length > 0
+          ? prisma.order.groupBy({
+              by: ["user_id"],
+              where: { user_id: { in: userIds } },
+              _count: { user_id: true },
+            })
+          : [],
+        userIds.length > 0
+          ? prisma.userSubscription.findMany({
+              where: { user_id: { in: userIds }, status: "active" },
+              select: { user_id: true },
+            })
+          : [],
+      ]);
+      const orderCountByUserId = Object.fromEntries(
+        orderCounts.map((item) => [item.user_id, item._count.user_id])
+      );
+      const activeSubscriptionUserIds = new Set(activeSubscriptions.map((item) => item.user_id));
+
+      const usersWithStats = users.map((user) => ({
+        ...user,
+        order_count: orderCountByUserId[user.id] ?? 0,
+        has_active_sub: activeSubscriptionUserIds.has(user.id),
+      }));
+
       let nextCursor: string | undefined;
-      if (users.length > input.limit) nextCursor = users.pop()!.id;
-      return { users, nextCursor };
+      if (usersWithStats.length > input.limit) nextCursor = usersWithStats.pop()!.id;
+      return { users: usersWithStats, nextCursor };
+    }),
+
+  updateUserBasic: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        displayName: z.string().min(1),
+        email: z.string().email(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await prisma.user.update({
+        where: { id: input.userId },
+        data: { email: input.email },
+      });
+      return prisma.profile.update({
+        where: { user_id: input.userId },
+        data: { display_name: input.displayName },
+      });
     }),
 
   updateUserStatus: adminProcedure
@@ -97,11 +143,118 @@ export const adminRouter = router({
         cursor: input.cursor ? { id: input.cursor } : undefined,
         where: input.status ? { status: input.status } : undefined,
         orderBy: { created_at: "desc" },
-        include: { items: true },
+        include: {
+          items: {
+            select: {
+              id: true,
+              order_id: true,
+              format: true,
+              price: true,
+              quantity: true,
+              book_id: true,
+            },
+          },
+          payments: {
+            orderBy: { created_at: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              method: true,
+              transaction_id: true,
+              created_at: true,
+            },
+          },
+        },
       });
+      const missingNameUserIds = [
+        ...new Set(orders.filter((order) => !order.shipping_name && !!order.user_id).map((order) => order.user_id)),
+      ];
+      const profiles = missingNameUserIds.length
+        ? await prisma.profile.findMany({
+            where: { user_id: { in: missingNameUserIds } },
+            select: { user_id: true, display_name: true, phone: true },
+          })
+        : [];
+      const profileMap = Object.fromEntries(
+        profiles.map((profile) => [
+          profile.user_id,
+          {
+            display_name: profile.display_name ?? null,
+            phone: profile.phone ?? null,
+          },
+        ])
+      );
+      const enrichedOrders = orders.map((order) => ({
+        ...order,
+        _customerName:
+          order.shipping_name || profileMap[order.user_id]?.display_name || order.user_id?.slice(0, 8) || "Unknown",
+        _customerPhone: order.shipping_phone || profileMap[order.user_id]?.phone || null,
+        _payment: order.payments?.[0] ?? null,
+      }));
       let nextCursor: string | undefined;
-      if (orders.length > input.limit) nextCursor = orders.pop()!.id;
-      return { orders, nextCursor };
+      if (enrichedOrders.length > input.limit) nextCursor = enrichedOrders.pop()!.id;
+      return { orders: enrichedOrders, nextCursor };
+    }),
+
+  orderDetail: adminProcedure
+    .input(z.object({ orderId: z.string() }))
+    .query(async ({ input }) => {
+      const order = await prisma.order.findUnique({
+        where: { id: input.orderId },
+        include: {
+          items: true,
+          payments: {
+            orderBy: { created_at: "desc" },
+            take: 1,
+            select: { status: true, method: true, transaction_id: true },
+          },
+          status_history: {
+            orderBy: { created_at: "desc" },
+            select: { id: true, old_status: true, new_status: true, created_at: true, note: true, changed_by: true },
+          },
+        },
+      });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const shipment = await prisma.shipment.findFirst({
+        where: { order_id: input.orderId },
+        orderBy: { created_at: "desc" },
+      });
+      const shipmentEvents = shipment
+        ? await prisma.shipmentEvent.findMany({
+            where: { shipment_id: shipment.id },
+            orderBy: { created_at: "desc" },
+          })
+        : [];
+      const bookIds = [...new Set(order.items.map((item) => item.book_id).filter(Boolean) as string[])];
+      const books = bookIds.length
+        ? await prisma.book.findMany({
+            where: { id: { in: bookIds } },
+            select: { id: true, title: true, cover_url: true },
+          })
+        : [];
+      const bookMap = Object.fromEntries(books.map((book) => [book.id, book]));
+
+      return {
+        order,
+        items: order.items.map((item) => ({
+          ...item,
+          books: item.book_id ? bookMap[item.book_id] ?? null : null,
+        })),
+        payment: order.payments[0] ?? null,
+        statusHistory: order.status_history,
+        shipment: shipment
+          ? {
+              ...shipment,
+              courier_name: shipment.carrier,
+              tracking_code: shipment.tracking_number,
+              provider_code: shipment.carrier || "manual",
+              parcel_id: shipment.id,
+            }
+          : null,
+        shipmentEvents,
+      };
     }),
 
   updateOrderStatus: adminProcedure
@@ -122,6 +275,151 @@ export const adminRouter = router({
           },
         }),
       ]);
+    }),
+
+  updateCodPaymentStatus: adminProcedure
+    .input(z.object({ orderId: z.string(), codPaymentStatus: z.string() }))
+    .mutation(async ({ input }) => {
+      return prisma.order.update({
+        where: { id: input.orderId },
+        data: { cod_payment_status: input.codPaymentStatus },
+      });
+    }),
+
+  markCodPaid: adminProcedure
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const order = await prisma.order.findUnique({ where: { id: input.orderId } });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND" });
+      return prisma.$transaction([
+        prisma.payment.updateMany({
+          where: { order_id: input.orderId, method: "cod" },
+          data: {
+            status: "paid",
+            transaction_id: `COD-MANUAL-${input.orderId.slice(0, 8).toUpperCase()}`,
+          },
+        }),
+        prisma.order.update({
+          where: { id: input.orderId },
+          data: { cod_payment_status: "settled_to_merchant" },
+        }),
+        prisma.paymentEvent.create({
+          data: {
+            order_id: input.orderId,
+            event_type: "cod_manual_settle",
+            status: "paid",
+            raw_response: { settled_by: ctx.userId } as any,
+          },
+        }),
+      ]);
+    }),
+
+  markOrderPurchased: adminProcedure
+    .input(
+      z.object({
+        orderId: z.string(),
+        purchaseCostPerUnit: z.number().nonnegative(),
+        packagingCost: z.number().nonnegative().default(0),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const order = await prisma.order.findUnique({ where: { id: input.orderId } });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND" });
+      const orderItems = await prisma.orderItem.findMany({
+        where: { order_id: input.orderId, format: "hardcopy" },
+        select: { quantity: true, book_id: true },
+      });
+      const totalQty = orderItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
+      const totalCogs = totalQty * input.purchaseCostPerUnit;
+      const bookIds = [...new Set(orderItems.map((item) => item.book_id).filter(Boolean) as string[])];
+      const books = bookIds.length
+        ? await prisma.book.findMany({
+            where: { id: { in: bookIds } },
+            select: { title: true },
+          })
+        : [];
+      const description = `Order-based purchase: ${
+        books.map((book) => book.title).join(", ") || "Book"
+      } — ${totalQty} × ৳${input.purchaseCostPerUnit} (Order #${order.order_number || input.orderId.slice(0, 8)})`;
+
+      return prisma.$transaction([
+        prisma.order.update({
+          where: { id: input.orderId },
+          data: {
+            purchase_cost_per_unit: input.purchaseCostPerUnit,
+            packaging_cost: input.packagingCost,
+            is_purchased: true,
+          },
+        }),
+        prisma.accountingLedger.create({
+          data: {
+            type: "expense",
+            category: "cost_of_goods_sold",
+            description,
+            amount: totalCogs,
+            entry_date: new Date(),
+            order_id: input.orderId,
+            reference_type: "order",
+            reference_id: input.orderId,
+            created_by: ctx.userId,
+          },
+        }),
+      ]);
+    }),
+
+  createShipment: adminProcedure
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ input }) => {
+      const existing = await prisma.shipment.findFirst({ where: { order_id: input.orderId } });
+      if (existing) return existing;
+      return prisma.shipment.create({
+        data: {
+          order_id: input.orderId,
+          status: "created",
+        },
+      });
+    }),
+
+  updateShipment: adminProcedure
+    .input(
+      z.object({
+        orderId: z.string(),
+        shipmentId: z.string(),
+        status: z.string(),
+        courierName: z.string().nullable().optional(),
+        trackingCode: z.string().nullable().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const old = await prisma.shipment.findUnique({ where: { id: input.shipmentId } });
+      if (!old) throw new TRPCError({ code: "NOT_FOUND" });
+      const updated = await prisma.shipment.update({
+        where: { id: input.shipmentId },
+        data: {
+          status: input.status,
+          carrier: input.courierName ?? old.carrier,
+          tracking_number: input.trackingCode ?? old.tracking_number,
+        },
+      });
+      await prisma.shipmentEvent.create({
+        data: {
+          shipment_id: input.shipmentId,
+          status: input.status,
+          description: `Manual update: ${old.status} → ${input.status}`,
+        },
+      });
+      const shipToOrder: Record<string, string> = {
+        picked_up: "pickup_received",
+        in_transit: "in_transit",
+        delivered: "delivered",
+      };
+      if (shipToOrder[input.status]) {
+        await prisma.order.update({
+          where: { id: input.orderId },
+          data: { status: shipToOrder[input.status] },
+        });
+      }
+      return updated;
     }),
 
   // ── Role Applications ───────────────────────────────────────────────────────

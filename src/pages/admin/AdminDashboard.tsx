@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,8 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { approveCreatorApplication, rejectCreatorApplication } from "@/lib/approveCreator";
 import { useCountUp } from "@/hooks/useCountUp";
-import { isVerifiedRevenueOrder, calculateTotalProfit, calculateOrderProfit, getItemBuyingCost, type RevenueOrder, type OrderItemWithCost } from "@/hooks/useUnifiedRevenue";
 
 const COLORS = ["hsl(var(--primary))", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6"];
 
@@ -90,294 +87,67 @@ export default function AdminDashboard() {
   const [chartsVisible, setChartsVisible] = useState(false);
   const [activeAlerts, setActiveAlerts] = useState(0);
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { toast } = useToast();
+  const { data: dashboardData, isLoading } = trpc.admin.fullDashboard.useQuery();
+  const { data: pendingApps = [] } = trpc.admin.listRoleApplications.useQuery({ status: "pending" });
+  const approveMutation = trpc.admin.approveApplication.useMutation();
+  const rejectMutation = trpc.admin.rejectApplication.useMutation();
+  const utils = trpc.useUtils();
 
   const handleApproval = async (app: any, action: "approved" | "rejected") => {
     try {
       if (action === "approved") {
-        await approveCreatorApplication({ applicationId: app.fullId, userId: app.userId, role: app.role, reviewerId: user?.id });
+        await approveMutation.mutateAsync({
+          applicationId: app.fullId,
+          userId: app.userId,
+          role: app.role,
+        });
       } else {
-        await rejectCreatorApplication({ applicationId: app.fullId, reviewerId: user?.id });
+        await rejectMutation.mutateAsync({ applicationId: app.fullId });
       }
       toast({ title: action === "approved" ? "Approved!" : "Rejected." });
-      setStats(null);
-      load();
+      await Promise.all([
+        utils.admin.fullDashboard.invalidate(),
+        utils.admin.listRoleApplications.invalidate(),
+      ]);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
   };
 
-  const load = async () => {
-    const today = new Date().toISOString().split("T")[0];
-
-    const [
-      books, formats, authors, narrators, orders, profiles, topBooks,
-      recentOrders, applications, reviews, orderItems, bookFormatCosts, ledgerData,
-      coinData, earnings, topRated, bookReads, hardcopyFormats, todayLedger,
-      recentLedgerRows, paidOrderUsers, presenceRes, codOrdersRes,
-    ] = await Promise.all([
-      supabase.from("books").select("id", { count: "exact", head: true }),
-      supabase.from("book_formats").select("format, price"),
-      supabase.from("authors").select("id", { count: "exact", head: true }),
-      supabase.from("narrators").select("id", { count: "exact", head: true }),
-      supabase.from("orders").select("total_amount, status, created_at, id, packaging_cost, fulfillment_cost, shipping_cost, payment_method, cod_payment_status, purchase_cost_per_unit, is_purchased"),
-      supabase.from("profiles").select("user_id", { count: "exact", head: true }),
-      supabase.from("books").select("title, total_reads").order("total_reads", { ascending: false }).limit(5),
-      supabase.from("orders").select("id, total_amount, status, created_at").order("created_at", { ascending: false }).limit(6),
-      supabase.from("role_applications").select("id, requested_role, user_id, created_at, status, full_name, display_name, email, phone, avatar_url, bio, experience, facebook_url, instagram_url, youtube_url, website_url, portfolio_url, message").eq("status", "pending").order("created_at", { ascending: false }).limit(5),
-      supabase.from("reviews").select("id, rating, created_at, book_id, books(title)").order("created_at", { ascending: false }).limit(5),
-      supabase.from("order_items").select("format, unit_price, quantity, book_id, order_id, books(title)"),
-      supabase.from("book_formats").select("book_id, format, unit_cost, original_price, publisher_commission_percent"),
-      supabase.from("accounting_ledger" as any).select("type, amount, entry_date"),
-      supabase.from("coin_transactions").select("type, amount"),
-      supabase.from("contributor_earnings").select("role, earned_amount, sale_amount, format, book_id, status, books(title)"),
-      supabase.from("books").select("title, rating, reviews_count").order("rating", { ascending: false }).limit(5),
-      supabase.from("book_reads").select("id", { count: "exact", head: true }),
-      supabase.from("book_formats").select("book_id, stock_count, format, books(title)").eq("format", "hardcopy"),
-      supabase.from("accounting_ledger" as any).select("type, amount").gte("entry_date", today),
-      supabase.from("accounting_ledger" as any).select("description, amount, type, entry_date").order("created_at", { ascending: false }).limit(5),
-      supabase.from("orders").select("user_id").not("status", "eq", "cancelled"),
-      supabase.from("user_presence" as any).select("activity_type, last_seen"),
-      supabase.from("orders").select("total_amount, payment_method, cod_payment_status, status").eq("payment_method", "cod"),
-    ]);
-
-    const fmts = formats.data || [];
-    const allOrders = orders.data || [];
-    const ledgerEntries = (ledgerData.data as any[]) || [];
-    const coins = coinData.data || [];
-    const earningsData = earnings.data || [];
-
-    // Build format cost lookup: book_id+format → cost data
-    const formatCostMap: Record<string, { unit_cost: number; original_price: number; publisher_commission_percent: number }> = {};
-    (bookFormatCosts.data || []).forEach((f: any) => {
-      formatCostMap[`${f.book_id}_${f.format}`] = {
-        unit_cost: f.unit_cost || 0,
-        original_price: f.original_price || 0,
-        publisher_commission_percent: f.publisher_commission_percent || 0,
-      };
-    });
-
-    const ebookCount = fmts.filter(f => f.format === "ebook").length;
-    const audioCount = fmts.filter(f => f.format === "audiobook").length;
-    const hardCount = fmts.filter(f => f.format === "hardcopy").length;
-
-    const validOrders = allOrders.filter(o => isVerifiedRevenueOrder(o as RevenueOrder));
-    const paidOrderIds = new Set(validOrders.map(o => o.id));
-
-    // Enrich order items with cost data
-    const enrichedItems: OrderItemWithCost[] = (orderItems.data || [])
-      .filter((i: any) => paidOrderIds.has(i.order_id))
-      .map((i: any) => {
-        const fc = formatCostMap[`${i.book_id}_${i.format}`] || { unit_cost: 0, original_price: 0, publisher_commission_percent: 0 };
-        return {
-          order_id: i.order_id,
-          book_id: i.book_id,
-          format: i.format,
-          unit_price: i.unit_price || 0,
-          quantity: i.quantity || 1,
-          unit_cost: fc.unit_cost,
-          original_price: fc.original_price,
-          publisher_commission_percent: fc.publisher_commission_percent,
-        };
-      });
-
-    // Real profit using unit_cost
-    const realNetProfit = calculateTotalProfit(validOrders as RevenueOrder[], enrichedItems);
-
-    // Build items-by-order map for profit calc
-    const itemsByOrder: Record<string, OrderItemWithCost[]> = {};
-    enrichedItems.forEach(i => {
-      if (!itemsByOrder[i.order_id]) itemsByOrder[i.order_id] = [];
-      itemsByOrder[i.order_id].push(i);
-    });
-
-    const monthMap: Record<string, { revenue: number; cost: number; profit: number }> = {};
-    validOrders.forEach(o => {
-      const d = new Date(o.created_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      if (!monthMap[key]) monthMap[key] = { revenue: 0, cost: 0, profit: 0 };
-      monthMap[key].revenue += o.total_amount || 0;
-      monthMap[key].profit += calculateOrderProfit(o as RevenueOrder, itemsByOrder[o.id] || []);
-    });
-    ledgerEntries.forEach((e: any) => {
-      const key = e.entry_date?.slice(0, 7);
-      if (!key) return;
-      if (!monthMap[key]) monthMap[key] = { revenue: 0, cost: 0, profit: 0 };
-      if (e.type === "expense") monthMap[key].cost += Number(e.amount);
-    });
-    const revenueByMonth = Object.entries(monthMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-6)
-      .map(([month, d]) => ({ month, revenue: d.revenue, cost: d.cost, profit: d.profit }));
-
-    const totalIncome = ledgerEntries.filter((e: any) => e.type === "income").reduce((s: number, e: any) => s + Number(e.amount), 0);
-    const totalExpense = ledgerEntries.filter((e: any) => e.type === "expense").reduce((s: number, e: any) => s + Number(e.amount), 0);
-    const todayEntries = (todayLedger.data as any[]) || [];
-    const todayIncome = todayEntries.filter((e: any) => e.type === "income").reduce((s: number, e: any) => s + Number(e.amount), 0);
-    const todayExpense = todayEntries.filter((e: any) => e.type === "expense").reduce((s: number, e: any) => s + Number(e.amount), 0);
-
-    const totalCoinsEarned = coins.filter(c => c.type === "earn" || c.type === "bonus").reduce((s, c) => s + Math.abs(c.amount), 0);
-    const totalCoinsSpent = coins.filter(c => c.type === "spend").reduce((s, c) => s + Math.abs(c.amount), 0);
-
-    const statusMap: Record<string, number> = {};
-    allOrders.forEach(o => { statusMap[o.status || "pending"] = (statusMap[o.status || "pending"] || 0) + 1; });
-    const ordersByStatus = Object.entries(statusMap).map(([name, value]) => ({ name, value }));
-
-    const hcFormats = (hardcopyFormats.data as any[]) || [];
-    const totalStock = hcFormats.reduce((s: number, f: any) => s + (f.stock_count || 0), 0);
-    const outOfStockCount = hcFormats.filter((f: any) => (f.stock_count || 0) <= 0).length;
-    const lowStockCount = hcFormats.filter((f: any) => { const s = f.stock_count || 0; return s > 0 && s <= 5; }).length;
-    const lowStockBooks = hcFormats
-      .filter((f: any) => (f.stock_count || 0) <= 5)
-      .map((f: any) => ({ title: f.books?.title || "Unknown", stock: f.stock_count || 0 }))
-      .sort((a: any, b: any) => a.stock - b.stock)
-      .slice(0, 8);
-
-    const bookSales: Record<string, { title: string; sales: number; revenue: number }> = {};
-    (orderItems.data || []).filter((item: any) => paidOrderIds.has(item.order_id)).forEach((item: any) => {
-      const key = item.book_id;
-      if (!key) return;
-      if (!bookSales[key]) bookSales[key] = { title: item.books?.title || "Unknown", sales: 0, revenue: 0 };
-      bookSales[key].sales += item.quantity || 1;
-      bookSales[key].revenue += (item.unit_price || 0) * (item.quantity || 1);
-    });
-    const topSellingBooks = Object.values(bookSales).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
-
-    const activeEarnings = earningsData.filter((e: any) => e.status !== "reversed");
-    const writerEarnings = activeEarnings.filter((e: any) => e.role === "writer").reduce((s: number, e: any) => s + Number(e.earned_amount), 0);
-    const narratorEarnings = activeEarnings.filter((e: any) => e.role === "narrator").reduce((s: number, e: any) => s + Number(e.earned_amount), 0);
-    const publisherEarnings = activeEarnings.filter((e: any) => e.role === "publisher").reduce((s: number, e: any) => s + Number(e.earned_amount), 0);
-    const totalSaleAmount = activeEarnings.reduce((s: number, e: any) => s + Number(e.sale_amount), 0);
-    const totalEarnedByCreators = writerEarnings + narratorEarnings + publisherEarnings;
-    const platformEarnings = totalSaleAmount - totalEarnedByCreators;
-
-    const paidUserIds = new Set((paidOrderUsers.data || []).map((o: any) => o.user_id));
-
-    const totalViews = 0; // Real view tracking not yet implemented
-    const totalReads = bookReads.count || 0;
-    const totalPurchases = validOrders.length;
-
-    // Presence metrics
-    const presenceRows = (presenceRes.data as any[]) || [];
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const onlineNow = presenceRows.filter((p: any) => p.last_seen >= fiveMinAgo).length;
-    const readingNow = presenceRows.filter((p: any) => p.last_seen >= fiveMinAgo && p.activity_type === "reading").length;
-    const listeningNow = presenceRows.filter((p: any) => p.last_seen >= fiveMinAgo && p.activity_type === "listening").length;
-
-    // Format-wise profit using unit_cost
-    const fmtProfitMap: Record<string, { format: string; revenue: number; buyingCost: number; profit: number }> = {};
-    enrichedItems.forEach((item) => {
-      const fmt = item.format;
-      if (!fmtProfitMap[fmt]) fmtProfitMap[fmt] = { format: fmt === "ebook" ? "eBook" : fmt === "audiobook" ? "Audiobook" : "Hard Copy", revenue: 0, buyingCost: 0, profit: 0 };
-      fmtProfitMap[fmt].revenue += item.unit_price * item.quantity;
-      fmtProfitMap[fmt].buyingCost += getItemBuyingCost(item) * item.quantity;
-    });
-    // For digital formats, subtract creator earnings; for hardcopy, use unit_cost
-    activeEarnings.filter((e: any) => e.role !== "platform" && e.format !== "hardcopy").forEach((e: any) => {
-      if (fmtProfitMap[e.format]) fmtProfitMap[e.format].buyingCost += Number(e.earned_amount);
-    });
-    Object.values(fmtProfitMap).forEach(f => { f.profit = f.revenue - f.buyingCost; });
-    const formatProfit = Object.values(fmtProfitMap).filter(f => f.revenue > 0);
-
-    // Top earning books with unit_cost-based profit
-    const bookEarnMap: Record<string, { title: string; revenue: number; buyingCost: number }> = {};
-    enrichedItems.forEach((item) => {
-      if (!item.book_id) return;
-      const title = (orderItems.data || []).find((i: any) => i.book_id === item.book_id)?.books?.title || "Unknown";
-      if (!bookEarnMap[item.book_id]) bookEarnMap[item.book_id] = { title, revenue: 0, buyingCost: 0 };
-      bookEarnMap[item.book_id].revenue += item.unit_price * item.quantity;
-      bookEarnMap[item.book_id].buyingCost += getItemBuyingCost(item) * item.quantity;
-    });
-    const topEarningBooks = Object.values(bookEarnMap)
-      .map(b => ({ title: b.title, revenue: b.revenue, profit: b.revenue - b.buyingCost }))
-      .sort((a, b) => b.profit - a.profit).slice(0, 5);
-
-    // COD tracking
-    const codRows = (codOrdersRes.data as any[]) || [];
-    const codPending = codRows.filter(o => ["unpaid", "cod_pending_collection"].includes(o.cod_payment_status)).reduce((s: number, o: any) => s + (o.total_amount || 0), 0);
-    const codCollected = codRows.filter(o => o.cod_payment_status === "collected_by_courier").reduce((s: number, o: any) => s + (o.total_amount || 0), 0);
-    const codSettled = codRows.filter(o => ["settled_to_merchant", "paid"].includes(o.cod_payment_status)).reduce((s: number, o: any) => s + (o.total_amount || 0), 0);
-
-    const appUserIds = (applications.data || []).map(a => a.user_id);
-    let appProfiles: Record<string, string> = {};
-    if (appUserIds.length > 0) {
-      const { data: profs } = await supabase.from("profiles").select("user_id, display_name").in("user_id", appUserIds);
-      (profs || []).forEach(p => { appProfiles[p.user_id] = p.display_name || p.user_id.slice(0, 8); });
-    }
+  useEffect(() => {
+    if (!dashboardData) return;
+    const pendingApplications = (pendingApps as any[]).map((a) => ({
+      id: a.id.slice(0, 8),
+      fullId: a.id,
+      userId: a.user_id,
+      role: a.applied_role,
+      user: a.display_name || a.full_name || a.user_id?.slice(0, 8) || "Unknown",
+      date: new Date(a.created_at).toLocaleDateString(),
+      avatar_url: a.avatar_url,
+      full_name: a.full_name,
+      display_name: a.display_name,
+      email: a.email,
+      phone: a.phone,
+      bio: a.bio,
+      experience: a.experience,
+      facebook_url: a.facebook_url,
+      instagram_url: a.instagram_url,
+      youtube_url: a.youtube_url,
+      website_url: a.website_url,
+      portfolio_url: a.portfolio_url,
+      message: a.message,
+    }));
 
     setStats({
-      totalBooks: books.count || 0,
-      totalEbooks: ebookCount,
-      totalAudiobooks: audioCount,
-      totalHardcopies: hardCount,
-      totalAuthors: authors.count || 0,
-      totalNarrators: narrators.count || 0,
-      totalUsers: profiles.count || 0,
-      totalOrders: allOrders.length,
-      totalRevenue: validOrders.reduce((s, o) => s + ((o.total_amount || 0) - (o.shipping_cost || 0)), 0),
-      totalIncome, totalExpense, netProfit: totalIncome - totalExpense,
-      todayIncome, todayExpense, todayProfit: todayIncome - todayExpense,
-      recentLedger: ((recentLedgerRows.data as any[]) || []).map((r: any) => ({
-        description: r.description || "—", amount: Number(r.amount), type: r.type,
-        date: new Date(r.entry_date).toLocaleDateString(),
-      })),
-      totalCoinsEarned, totalCoinsSpent,
-      ordersByStatus,
-      totalStock, lowStockCount, outOfStockCount, lowStockBooks,
-      revenueByMonth,
-      formatDistribution: [
-        { name: "eBook", value: ebookCount },
-        { name: "Audiobook", value: audioCount },
-        { name: "Hard Copy", value: hardCount },
-      ].filter(f => f.value > 0),
-      topBooks: (topBooks.data || []).map(b => ({ title: b.title, reads: b.total_reads || 0 })),
-      topSellingBooks,
-      topRatedBooks: (topRated.data || []).filter((b: any) => b.rating > 0).map((b: any) => ({
-        title: b.title, rating: Number(b.rating), reviews: b.reviews_count || 0,
-      })),
-      writerEarnings, narratorEarnings, publisherEarnings, platformEarnings: Math.max(0, platformEarnings),
-      totalViews, totalReads, totalPurchases,
-      paidUsers: paidUserIds.size,
-      pendingApplications: (applications.data || []).map(a => ({
-        id: a.id.slice(0, 8), fullId: a.id, userId: a.user_id, role: a.requested_role,
-        user: appProfiles[a.user_id] || a.display_name || a.full_name || a.user_id.slice(0, 8),
-        date: new Date(a.created_at).toLocaleDateString(),
-        avatar_url: a.avatar_url, full_name: a.full_name, display_name: a.display_name,
-        email: a.email, phone: a.phone, bio: a.bio, experience: a.experience,
-        facebook_url: a.facebook_url, instagram_url: a.instagram_url, youtube_url: a.youtube_url,
-        website_url: a.website_url, portfolio_url: a.portfolio_url, message: a.message,
-      })),
-      pendingReviews: (reviews.data || []).map((r: any) => ({
-        id: r.id.slice(0, 8), book: r.books?.title || "Unknown",
-        rating: r.rating, date: new Date(r.created_at).toLocaleDateString(),
-      })),
-      recentOrders: (recentOrders.data || []).map(o => ({
-        id: o.id.slice(0, 8), total: o.total_amount || 0,
-        status: o.status || "pending", created: new Date(o.created_at).toLocaleDateString(),
-      })),
-      onlineNow,
-      readingNow,
-      listeningNow,
-      formatProfit,
-      topEarningBooks,
-      codPending,
-      codCollected,
-      codSettled,
-      realNetProfit,
+      ...(dashboardData as any),
+      pendingApplications,
     });
-    // Trigger chart animations after data loads
+    setActiveAlerts(0);
     setTimeout(() => setChartsVisible(true), 150);
-  };
+  }, [dashboardData, pendingApps]);
 
-  useEffect(() => { load(); }, []);
-
-  useEffect(() => {
-    supabase.from("system_alerts").select("id", { count: "exact", head: true }).eq("is_resolved", false)
-      .then(({ count }) => setActiveAlerts(count ?? 0));
-  }, []);
-
-  if (!stats) return (
+  if (isLoading || !stats) return (
     <div className="space-y-6 animate-pulse">
       <div className="h-8 w-48 bg-muted rounded" />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

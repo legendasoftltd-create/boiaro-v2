@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -137,6 +137,7 @@ function getStatusOptionsForFormat(format: OrderFormat): Record<string, string> 
 // ─── Component ───
 
 export default function AdminOrders() {
+  const utils = trpc.useUtils();
   const [orders, setOrders] = useState<any[]>([]);
   const [orderItemsMap, setOrderItemsMap] = useState<Record<string, any[]>>({});
   const [paymentsMap, setPaymentsMap] = useState<Record<string, any>>({});
@@ -156,50 +157,33 @@ export default function AdminOrders() {
   const [orderPackagingCost, setOrderPackagingCost] = useState<string>("");
   const [markingPurchased, setMarkingPurchased] = useState(false);
   const { log, logOrderStatusChange } = useAdminLogger();
+  const { data: ordersData, refetch } = trpc.admin.listOrders.useQuery({ limit: 500 });
+  const updateOrderStatusMutation = trpc.admin.updateOrderStatus.useMutation();
+  const createShipmentMutation = trpc.admin.createShipment.useMutation();
+  const updateCodMutation = trpc.admin.updateCodPaymentStatus.useMutation();
+  const markCodPaidMutation = trpc.admin.markCodPaid.useMutation();
+  const markPurchasedMutation = trpc.admin.markOrderPurchased.useMutation();
+  const updateShipmentMutation = trpc.admin.updateShipment.useMutation();
 
   const load = async () => {
-    const [ordersRes, itemsRes, paymentsRes] = await Promise.all([
-      supabase.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
-      supabase.from("order_items").select("order_id, format").limit(5000),
-      supabase.from("payments").select("order_id, status, method, transaction_id").limit(5000),
-    ]);
-
-    const rawOrders = ordersRes.data || [];
-
-    // Fetch profile fallbacks for orders missing shipping_name
-    const missingIds = [...new Set(rawOrders.filter(o => !o.shipping_name && o.user_id).map(o => o.user_id))];
-    let profileMap: Record<string, { display_name: string | null; phone: string | null }> = {};
-    if (missingIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, display_name, phone")
-        .in("user_id", missingIds);
-      (profiles || []).forEach(p => { profileMap[p.user_id] = p; });
-    }
-
-    setOrders(rawOrders.map(o => ({
-      ...o,
-      _customerName: o.shipping_name || profileMap[o.user_id]?.display_name || o.user_id?.slice(0, 8) || "Unknown",
-      _customerPhone: o.shipping_phone || profileMap[o.user_id]?.phone || null,
-    })));
-
-    // Build items map: orderId -> items[]
-    const iMap: Record<string, any[]> = {};
-    (itemsRes.data || []).forEach((item: any) => {
-      if (!iMap[item.order_id]) iMap[item.order_id] = [];
-      iMap[item.order_id].push(item);
-    });
-    setOrderItemsMap(iMap);
-
-    // Build payments map: orderId -> latest payment
-    const pMap: Record<string, any> = {};
-    (paymentsRes.data || []).forEach((p: any) => {
-      pMap[p.order_id] = p;
-    });
-    setPaymentsMap(pMap);
+    await refetch();
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const rows = ordersData?.orders ?? [];
+    setOrders(rows as any[]);
+    const iMap: Record<string, any[]> = {};
+    const pMap: Record<string, any> = {};
+    rows.forEach((order: any) => {
+      iMap[order.id] = (order.items || []).map((item: any) => ({
+        ...item,
+        unit_price: item.price,
+      }));
+      pMap[order.id] = order._payment || null;
+    });
+    setOrderItemsMap(iMap);
+    setPaymentsMap(pMap);
+  }, [ordersData]);
 
   const updateOrderStatus = async (id: string, newStatus: string) => {
     const order = orders.find(o => o.id === id);
@@ -208,21 +192,13 @@ export default function AdminOrders() {
 
     toast.loading("Updating order...", { id: "order-update" });
     try {
-      const { data, error } = await supabase.functions.invoke("admin-update-order-status", {
-        body: { order_id: id, new_status: newStatus },
+      await updateOrderStatusMutation.mutateAsync({
+        orderId: id,
+        status: newStatus,
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
 
       toast.dismiss("order-update");
-      const details = [];
-      if (data?.content_unlocked > 0) details.push(`${data.content_unlocked} items unlocked`);
-      if (data?.earnings?.earnings_created > 0) details.push(`${data.earnings.earnings_created} earnings created`);
-      if (data?.skipped) {
-        toast.info("No change — status already set");
-      } else {
-        toast.success(`Order → ${allOrderStatusLabels[newStatus] || newStatus}${details.length ? ` (${details.join(", ")})` : ""}`);
-      }
+      toast.success(`Order → ${allOrderStatusLabels[newStatus] || newStatus}`);
       await logOrderStatusChange(id, order?.order_number, oldStatus, newStatus);
     } catch (err: any) {
       toast.dismiss("order-update");
@@ -238,45 +214,17 @@ export default function AdminOrders() {
     setStatusHistory([]);
     setPurchaseCost(order.purchase_cost_per_unit ?? "");
     setOrderPackagingCost(order.packaging_cost ?? "");
-    const [itemsRes, shipRes, historyRes] = await Promise.all([
-      supabase.from("order_items").select("*, books(title, cover_url)").eq("order_id", order.id),
-      supabase.from("shipments").select("*").eq("order_id", order.id).maybeSingle(),
-      supabase.from("order_status_history").select("*").eq("order_id", order.id).order("created_at", { ascending: false }),
-    ]);
-    setItems(itemsRes.data || []);
-    setStatusHistory(historyRes.data || []);
-
-    const hardcopyItems = (itemsRes.data || []).filter((i: any) => i.format === "hardcopy");
-    if (hardcopyItems.length > 0) {
-      const bookIds = [...new Set(hardcopyItems.map((i: any) => i.book_id))];
-      const { data: fmts } = await supabase.from("book_formats").select("book_id, unit_cost, default_packaging_cost").in("book_id", bookIds).eq("format", "hardcopy");
-      if (fmts?.length) {
-        // Auto-fill purchase cost if not already set on order
-        if (!order.purchase_cost_per_unit) {
-          const uc = fmts[0]?.unit_cost;
-          if (uc) setPurchaseCost(String(uc));
-        }
-        // Auto-fill packaging cost if not already set on order
-        if (!order.packaging_cost) {
-          const pkg = fmts[0]?.default_packaging_cost;
-          setOrderPackagingCost(String(pkg && Number(pkg) > 0 ? pkg : 10));
-        }
-      }
-    }
-
-    if (shipRes.data) {
-      setShipment(shipRes.data);
-      const { data: events } = await supabase.from("shipment_events").select("*").eq("shipment_id", (shipRes.data as any).id).order("event_time", { ascending: false });
-      setShipmentEvents(events || []);
-    }
+    const data = await utils.admin.orderDetail.fetch({ orderId: order.id });
+    setItems(data.items || []);
+    setStatusHistory(data.statusHistory || []);
+    setShipment(data.shipment || null);
+    setShipmentEvents(data.shipmentEvents || []);
   };
 
   const createParcel = async (orderId: string) => {
     setCreatingParcel(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-parcel", { body: { order_id: orderId } });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      await createShipmentMutation.mutateAsync({ orderId });
       toast.success("Parcel created successfully!");
       if (detail) viewDetail(detail);
       load();
@@ -288,10 +236,7 @@ export default function AdminOrders() {
   const trackParcel = async (shipmentId: string) => {
     setTrackingLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("track-parcel", { body: { shipment_id: shipmentId } });
-      if (error) throw error;
-      if (data?.shipment) setShipment(data.shipment);
-      if (data?.events) setShipmentEvents(data.events);
+      if (detail) await viewDetail(detail);
       toast.success("Tracking updated");
     } catch (err: any) {
       toast.error(err?.message || "Tracking failed");
@@ -429,10 +374,13 @@ export default function AdminOrders() {
                           className="gap-1 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
                           onClick={async () => {
                             toast.loading("Marking as paid...", { id: "cod-pay" });
-                            const { error } = await supabase.from("payments").update({ status: "paid", transaction_id: "COD-MANUAL-" + o.id.slice(0, 8).toUpperCase() }).eq("order_id", o.id).eq("method", "cod");
-                            if (error) { toast.dismiss("cod-pay"); toast.error(error.message); return; }
-                            await supabase.from("orders").update({ cod_payment_status: "settled_to_merchant" }).eq("id", o.id);
-                            await supabase.from("payment_events").insert({ order_id: o.id, event_type: "cod_manual_settle", status: "paid", metadata: { settled_by: "admin_manual" } });
+                            try {
+                              await markCodPaidMutation.mutateAsync({ orderId: o.id });
+                            } catch (err: any) {
+                              toast.dismiss("cod-pay");
+                              toast.error(err.message || "Failed to mark COD paid");
+                              return;
+                            }
                             await log({ module: "orders", action: `COD payment manually marked as paid`, actionType: "payment_settle", targetType: "order", targetId: o.id, details: `Order ${o.order_number || o.id.slice(0, 8)} COD payment settled manually`, riskLevel: "high" });
                             toast.dismiss("cod-pay");
                             toast.success("COD payment marked as Paid ✅");
@@ -511,8 +459,12 @@ export default function AdminOrders() {
                           value={detail.cod_payment_status || "unpaid"}
                           onValueChange={async (v) => {
                             const oldCod = detail.cod_payment_status || "unpaid";
-                            const { error } = await supabase.from("orders").update({ cod_payment_status: v }).eq("id", detail.id);
-                            if (error) { toast.error(error.message); return; }
+                            try {
+                              await updateCodMutation.mutateAsync({ orderId: detail.id, codPaymentStatus: v });
+                            } catch (err: any) {
+                              toast.error(err.message || "Failed to update COD status");
+                              return;
+                            }
                             toast.success(`COD Payment → ${codPaymentStatusLabels[v] || v}`);
                             await log({
                               module: "orders",
@@ -688,25 +640,17 @@ export default function AdminOrders() {
                         const pkg = Number(orderPackagingCost) || 0;
                         const totalQty = items.filter((i: any) => i.format === "hardcopy").reduce((s: number, i: any) => s + (i.quantity || 1), 0);
 
-                        const { error } = await supabase.from("orders").update({
-                          purchase_cost_per_unit: uc,
-                          packaging_cost: pkg,
-                          is_purchased: true,
-                        } as any).eq("id", detail.id);
-
-                        if (error) { toast.error(error.message); setMarkingPurchased(false); return; }
-
-                        const bookTitles = items.filter((i: any) => i.format === "hardcopy").map((i: any) => i.books?.title || "Book").join(", ");
-                        await supabase.from("accounting_ledger" as any).insert({
-                          type: "expense",
-                          category: "cost_of_goods_sold",
-                          description: `Order-based purchase: ${bookTitles} — ${totalQty} × ৳${uc} (Order #${detail.order_number || detail.id.slice(0, 8)})`,
-                          amount: uc * totalQty,
-                          entry_date: new Date().toISOString().split("T")[0],
-                          order_id: detail.id,
-                          reference_type: "order",
-                          reference_id: detail.id,
-                        } as any);
+                        try {
+                          await markPurchasedMutation.mutateAsync({
+                            orderId: detail.id,
+                            purchaseCostPerUnit: uc,
+                            packagingCost: pkg,
+                          });
+                        } catch (err: any) {
+                          toast.error(err.message || "Failed to mark purchased");
+                          setMarkingPurchased(false);
+                          return;
+                        }
 
                         await log({
                           module: "orders",
@@ -812,25 +756,17 @@ export default function AdminOrders() {
                                 const trackingEl = document.getElementById(`tracking-code-${shipment.id}`) as HTMLInputElement;
                                 const courierName = courierNameEl?.value?.trim() || shipment.courier_name || null;
                                 const trackingCode = trackingEl?.value?.trim() || shipment.tracking_code || null;
-
-                                const { error } = await supabase.from("shipments").update({
-                                  status: newStatus,
-                                  courier_name: courierName,
-                                  tracking_code: trackingCode,
-                                } as any).eq("id", shipment.id);
-                                if (error) { toast.error(error.message); return; }
-
-                                await supabase.from("shipment_events").insert({
-                                  shipment_id: shipment.id,
-                                  status: newStatus,
-                                  message: `Manual update: ${shipment.status} → ${newStatus}`,
-                                } as any);
-
-                                const shipToOrder: Record<string, string> = {
-                                  picked_up: "pickup_received", in_transit: "in_transit", delivered: "delivered",
-                                };
-                                if (shipToOrder[newStatus]) {
-                                  await supabase.from("orders").update({ status: shipToOrder[newStatus] }).eq("id", detail.id);
+                                try {
+                                  await updateShipmentMutation.mutateAsync({
+                                    orderId: detail.id,
+                                    shipmentId: shipment.id,
+                                    status: newStatus,
+                                    courierName,
+                                    trackingCode,
+                                  });
+                                } catch (err: any) {
+                                  toast.error(err.message || "Failed to update shipment");
+                                  return;
                                 }
 
                                 await log({
@@ -865,12 +801,18 @@ export default function AdminOrders() {
                               const trackingEl = document.getElementById(`tracking-code-${shipment.id}`) as HTMLInputElement;
                               const courierName = courierNameEl?.value?.trim() || null;
                               const trackingCode = trackingEl?.value?.trim() || null;
-
-                              const { error } = await supabase.from("shipments").update({
-                                courier_name: courierName,
-                                tracking_code: trackingCode,
-                              } as any).eq("id", shipment.id);
-                              if (error) { toast.error(error.message); return; }
+                              try {
+                                await updateShipmentMutation.mutateAsync({
+                                  orderId: detail.id,
+                                  shipmentId: shipment.id,
+                                  status: shipment.status,
+                                  courierName,
+                                  trackingCode,
+                                });
+                              } catch (err: any) {
+                                toast.error(err.message || "Failed to save courier info");
+                                return;
+                              }
                               toast.success("Courier info saved");
                               viewDetail(detail);
                             }}
