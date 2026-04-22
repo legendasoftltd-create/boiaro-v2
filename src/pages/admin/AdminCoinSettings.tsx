@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,33 +32,26 @@ const SETTINGS_CONFIG: Omit<CoinSetting, "value">[] = [
 ];
 
 export default function AdminCoinSettings() {
+  const utils = trpc.useUtils();
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const settingKeys = SETTINGS_CONFIG.map((s) => s.key);
+  const { data: loadedSettings = {}, isLoading: loading } = trpc.admin.getPlatformSettings.useQuery({ keys: settingKeys });
+  const saveMutation = trpc.admin.bulkSetPlatformSettings.useMutation({
+    onSuccess: async () => {
+      await utils.admin.getPlatformSettings.invalidate({ keys: settingKeys });
+      toast.success("Coin settings saved");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from("platform_settings")
-        .select("*")
-        .like("key", "coin_%");
-      const map: Record<string, string> = {};
-      (data || []).forEach((d: any) => { map[d.key] = d.value; });
-      setSettings(map);
-      setLoading(false);
-    };
-    load();
-  }, []);
+    setSettings(loadedSettings as Record<string, string>);
+  }, [loadedSettings]);
 
   const handleSave = async () => {
-    setSaving(true);
-    for (const [key, value] of Object.entries(settings)) {
-      await supabase
-        .from("platform_settings")
-        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
-    }
-    toast.success("Coin settings saved");
-    setSaving(false);
+    await saveMutation.mutateAsync(
+      Object.entries(settings).map(([key, value]) => ({ key, value: String(value ?? "") }))
+    );
   };
 
   if (loading) return <div className="flex justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>;
@@ -122,8 +115,8 @@ export default function AdminCoinSettings() {
         </CardContent>
       </Card>
 
-      <Button onClick={handleSave} disabled={saving} className="w-full">
-        <Save className="w-4 h-4 mr-2" /> {saving ? "Saving..." : "Save Settings"}
+      <Button onClick={handleSave} disabled={saveMutation.isPending} className="w-full">
+        <Save className="w-4 h-4 mr-2" /> {saveMutation.isPending ? "Saving..." : "Save Settings"}
       </Button>
     </div>
   );

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,26 +25,35 @@ interface Campaign {
 }
 
 export default function AdminAdCampaigns() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<Partial<Campaign>>({});
   const [editId, setEditId] = useState<string | null>(null);
-
-  const fetchData = async () => {
-    const { data } = await supabase.from("ad_campaigns" as any).select("*").order("created_at", { ascending: false });
-    setCampaigns((data as any[]) || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchData(); }, []);
+  const { data: campaignsRaw = [], isLoading: loading } = trpc.admin.listAdCampaigns.useQuery();
+  const campaigns = campaignsRaw as Campaign[];
+  const upsertMutation = trpc.admin.updateAdCampaign.useMutation({
+    onSuccess: async () => {
+      await utils.admin.listAdCampaigns.invalidate();
+      toast.success(editId ? "Campaign updated" : "Campaign created");
+      setFormOpen(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMutation = trpc.admin.deleteAdCampaign.useMutation({
+    onSuccess: async () => {
+      await utils.admin.listAdCampaigns.invalidate();
+      toast.success("Campaign deleted");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const openNew = () => { setEditId(null); setForm({ status: "active", ad_type: "banner" }); setFormOpen(true); };
   const openEdit = (c: Campaign) => { setEditId(c.id); setForm({ ...c }); setFormOpen(true); };
 
   const save = async () => {
-    const payload = {
+    upsertMutation.mutate({
+      id: editId || undefined,
       name: form.name || "Untitled",
       ad_type: form.ad_type || "banner",
       placement_key: form.placement_key || null,
@@ -53,26 +62,17 @@ export default function AdminAdCampaigns() {
       notes: form.notes || null,
       start_date: form.start_date || new Date().toISOString(),
       end_date: form.end_date || null,
-      updated_at: new Date().toISOString(),
-    };
-    if (editId) {
-      await supabase.from("ad_campaigns" as any).update(payload).eq("id", editId);
-      toast.success("Campaign updated");
-    } else {
-      await supabase.from("ad_campaigns" as any).insert(payload);
-      toast.success("Campaign created");
-    }
-    setFormOpen(false);
-    fetchData();
+    });
   };
 
   const del = async (id: string) => {
-    await supabase.from("ad_campaigns" as any).delete().eq("id", id);
-    toast.success("Campaign deleted");
-    fetchData();
+    deleteMutation.mutate({ id });
   };
 
-  const filtered = campaigns.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = useMemo(
+    () => campaigns.filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase())),
+    [campaigns, search]
+  );
 
   const statusBadge = (s: string) => {
     const c: Record<string, string> = { active: "bg-emerald-500/20 text-emerald-400", inactive: "bg-secondary text-muted-foreground", scheduled: "bg-blue-500/20 text-blue-400", expired: "bg-red-500/20 text-red-400" };
@@ -151,7 +151,7 @@ export default function AdminAdCampaigns() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button onClick={save}>Save</Button>
+            <Button onClick={save} disabled={upsertMutation.isPending}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

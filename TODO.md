@@ -68,15 +68,15 @@
 - [ ] `admin.softDeleteUser(userId, reason)` — mark profile deleted_at
 - [ ] `admin.restoreUser(userId)` — clear deleted_at
 - [ ] `admin.listSubmissions(status?)` — book format submissions
-- [ ] `admin.listNotifications` / `admin.sendNotification`
-- [ ] `admin.listWithdrawals` / `admin.processWithdrawal(id, status)`
-- [ ] `admin.listCoinPackages` / `admin.updateCoinPackage`
-- [ ] `admin.listCoupons` / `admin.createCoupon` / `admin.updateCoupon`
-- [ ] `admin.listSubscriptionPlans` / `admin.createPlan` / `admin.updatePlan`
+- [x] `admin.listNotifications` / `admin.sendNotification` ✅
+- [x] `admin.listWithdrawals` / `admin.processWithdrawal(id, status)` ✅
+- [x] `admin.listCoinPackages` / `admin.updateCoinPackage` ✅
+- [x] `admin.listCoupons` / `admin.createCoupon` / `admin.updateCoupon` ✅
+- [x] `admin.listSubscriptionPlans` / `admin.createPlan` / `admin.updatePlan` ✅
 - [ ] `admin.listCmsPages` / `admin.createCmsPage` / `admin.updateCmsPage`
 - [ ] `admin.listBanners` / `admin.createBanner` / `admin.updateBanner` / `admin.deleteBanner`
-- [ ] `admin.listAdBanners` / `admin.updateAdBanner`
-- [ ] `admin.listShippingMethods` / `admin.updateShippingMethod`
+- [x] `admin.listAdBanners` / `admin.updateAdBanner` ✅
+- [x] `admin.listShippingMethods` / `admin.updateShippingMethod` ✅
 - [ ] `admin.financialReport(period)` — revenue/cost breakdown
 - [ ] `admin.weeklyReport` — weekly KPIs
 - [ ] `admin.dbHealth` — Prisma health check
@@ -95,11 +95,11 @@
 ## 🟠 Phase 3 — Migrate User-Facing Pages & Components
 
 ### High priority (user-facing, broken without hooks)
-- [ ] `src/pages/BookDetail.tsx`
+- [x] `src/pages/BookDetail.tsx` ✅
 - [ ] `src/pages/EbookReader.tsx`
-- [ ] `src/pages/WalletPage.tsx`
-- [ ] `src/pages/Profile.tsx`
-- [ ] `src/pages/UserDashboard.tsx`
+- [x] `src/pages/WalletPage.tsx` ✅
+- [x] `src/pages/Profile.tsx` ✅
+- [x] `src/pages/UserDashboard.tsx` ✅
 - [ ] `src/pages/GamificationPage.tsx`
 - [ ] `src/pages/RewardCenter.tsx`
 - [ ] `src/pages/CoinStore.tsx`
@@ -181,13 +181,19 @@
 ### Need new endpoints first
 - [ ] `AdminBanners.tsx`, `AdminCmsPages.tsx` → need banner/CMS endpoints
 - [ ] `AdminSubmissions.tsx` → need `admin.listSubmissions`
-- [ ] `AdminNotifications.tsx` → need `admin.listNotifications` / `admin.sendNotification`
-- [ ] `AdminWithdrawals.tsx` → need `admin.listWithdrawals`
-- [ ] `AdminCoinPackages.tsx`, `AdminCoinSettings.tsx` → need coin package endpoints
-- [ ] `AdminCoupons.tsx`, `AdminSubscriptionPlans.tsx` → need coupon/subscription endpoints
-- [ ] `AdminShippingMethods.tsx` → need `admin.listShippingMethods`
-- [ ] `AdminAdBanners.tsx`, `AdminAdCampaigns.tsx`, `AdminAdPlacements.tsx`, `AdminAdSettings.tsx`, `AdminAdReports.tsx` → ad endpoints
-- [ ] `AdminAnalytics.tsx`, `AdminUserAnalytics.tsx`, `AdminReadingAnalytics.tsx` → analytics endpoints
+- [x] `AdminNotifications.tsx` ✅
+- [x] `AdminWithdrawals.tsx` ✅
+- [x] `AdminCoinPackages.tsx`, `AdminCoinSettings.tsx` ✅
+- [x] `AdminCoupons.tsx`, `AdminSubscriptionPlans.tsx` ✅
+- [x] `AdminShippingMethods.tsx` ✅
+- [x] `AdminAdBanners.tsx` ✅
+- [x] `AdminAdCampaigns.tsx` ✅
+- [x] `AdminAdPlacements.tsx` ✅
+- [x] `AdminAdSettings.tsx` ✅
+- [x] `AdminAdReports.tsx` ✅
+- [x] `AdminAnalytics.tsx` ✅
+- [x] `AdminUserAnalytics.tsx` ✅
+- [x] `AdminReadingAnalytics.tsx` ✅
 - [ ] `AdminRevenueDashboard.tsx`, `AdminRevenueAudit.tsx`, `AdminRevenueSplits.tsx` → revenue endpoints
 - [ ] `AdminEarnings.tsx`, `AdminAccounting.tsx`, `AdminFinancialReports.tsx` → financial endpoints
 - [ ] `AdminPayments.tsx`, `AdminPaymentGateways.tsx`, `AdminWallets.tsx` → payment endpoints

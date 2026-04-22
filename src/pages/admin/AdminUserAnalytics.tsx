@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Users, BookOpen, Headphones, RefreshCw, TrendingUp } from "lucide-react";
@@ -8,85 +7,16 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 const COLORS = ["hsl(var(--primary))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
 
 export default function AdminUserAnalytics() {
-  // DAU — unique users with activity per day (last 30 days)
-  const { data: dauData = [], refetch: refetchDau } = useQuery({
-    queryKey: ["admin-dau"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("content_consumption_time")
-        .select("user_id, session_date")
-        .gte("session_date", new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
-      if (!data) return [];
-      const byDate: Record<string, Set<string>> = {};
-      data.forEach(r => {
-        if (!byDate[r.session_date]) byDate[r.session_date] = new Set();
-        byDate[r.session_date].add(r.user_id);
-      });
-      return Object.entries(byDate).map(([date, users]) => ({ date, users: users.size })).sort((a, b) => a.date.localeCompare(b.date));
-    },
-    staleTime: 60_000,
-  });
-
-  // Format breakdown
-  const { data: formatData = [] } = useQuery({
-    queryKey: ["admin-format-usage"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("content_consumption_time")
-        .select("format, duration_seconds")
-        .gte("session_date", new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10));
-      if (!data) return [];
-      const byFormat: Record<string, number> = {};
-      data.forEach(r => {
-        byFormat[r.format] = (byFormat[r.format] || 0) + r.duration_seconds;
-      });
-      return Object.entries(byFormat).map(([name, value]) => ({ name, value: Math.round(value / 3600) }));
-    },
-    staleTime: 60_000,
-  });
-
-  // Online users (from user_presence)
-  const { data: onlineCount = 0 } = useQuery({
-    queryKey: ["admin-online-users"],
-    queryFn: async () => {
-      const fiveMinAgo = new Date(Date.now() - 5 * 60000).toISOString();
-      const { count } = await supabase
-        .from("user_presence")
-        .select("*", { count: "exact", head: true })
-        .gte("last_seen", fiveMinAgo);
-      return count || 0;
-    },
+  const utils = trpc.useUtils();
+  const { data } = trpc.admin.userEngagementAnalytics.useQuery(undefined, {
     refetchInterval: 30_000,
   });
-
-  // Total registered users
-  const { data: totalUsers = 0 } = useQuery({
-    queryKey: ["admin-total-users"],
-    queryFn: async () => {
-      const { count } = await supabase.from("profiles").select("*", { count: "exact", head: true });
-      return count || 0;
-    },
-    staleTime: 120_000,
-  });
-
-  // Reads last 7 days
-  const { data: readsData = [] } = useQuery({
-    queryKey: ["admin-reads-7d"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("book_reads")
-        .select("created_at")
-        .gte("created_at", new Date(Date.now() - 7 * 86400000).toISOString());
-      if (!data) return [];
-      const byDate: Record<string, number> = {};
-      data.forEach(r => {
-        const d = r.created_at.slice(0, 10);
-        byDate[d] = (byDate[d] || 0) + 1;
-      });
-      return Object.entries(byDate).map(([date, count]) => ({ date: date.slice(5), reads: count })).sort((a, b) => a.date.localeCompare(b.date));
-    },
-    staleTime: 60_000,
-  });
+  const dauData = data?.dauData || [];
+  const formatData = data?.formatData || [];
+  const onlineCount = data?.onlineCount || 0;
+  const totalUsers = data?.totalUsers || 0;
+  const readsData = data?.readsData || [];
+  const refetchDau = () => utils.admin.userEngagementAnalytics.invalidate();
 
   const todayDau = dauData.length > 0 ? dauData[dauData.length - 1]?.users ?? 0 : 0;
 
