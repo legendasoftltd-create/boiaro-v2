@@ -166,17 +166,17 @@
 ## 🔵 Phase 4 — Migrate Admin Pages
 
 ### Ready to migrate (endpoints exist)
-- [ ] `AdminUsers.tsx` → `admin.listUsers`, `admin.updateUserStatus`, softDelete/restore (need endpoints)
+- [x] `AdminUsers.tsx` ✅
 - [x] `AdminNarrators.tsx` ✅
 - [x] `AdminPublishers.tsx` ✅
-- [ ] `AdminOrders.tsx` → `admin.listOrders`, `admin.updateOrderStatus`
+- [x] `AdminOrders.tsx` ✅
 - [x] `AdminRoleApplications.tsx` ✅
 - [x] `AdminActivityLogs.tsx` ✅
-- [ ] `AdminCategories.tsx` → `admin.listCategories`, `createCategory`, `updateCategory`, `deleteCategory`
-- [ ] `AdminHomepageSections.tsx` → `admin.listHomepageSections`, `updateHomepageSection`
-- [ ] `AdminReviews.tsx` → `admin.listReviews`, `approveReview`, `rejectReview`
-- [ ] `AdminDashboard.tsx` → `admin.dashboard`
-- [ ] `AdminBlog.tsx` → `admin.listBlogPosts`, `createBlogPost`, `updateBlogPost`, `deleteBlogPost`
+- [x] `AdminCategories.tsx` ✅
+- [x] `AdminHomepageSections.tsx` ✅
+- [x] `AdminReviews.tsx` ✅
+- [x] `AdminDashboard.tsx` ✅
+- [x] `AdminBlog.tsx` ✅
 
 ### Need new endpoints first
 - [ ] `AdminBanners.tsx`, `AdminCmsPages.tsx` → need banner/CMS endpoints
@@ -206,7 +206,7 @@
 - [ ] `AdminFreeShipping.tsx` → `shipping.*` endpoints
 
 ### Admin components
-- [ ] `EditUserDialog.tsx`
+- [x] `EditUserDialog.tsx` ✅
 - [ ] `AdminUserProfileModal.tsx`
 - [ ] `AuthorAccountCard.tsx`, `CreatorAccountCard.tsx`, `CreatorLinkSummary.tsx`
 - [ ] `BookContributors.tsx`, `BookRevenueSplit.tsx`

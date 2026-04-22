@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo } from "react";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -8,28 +8,39 @@ import { Trash2, Star, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 export default function AdminReviews() {
-  const [reviews, setReviews] = useState<any[]>([]);
-
-  const load = async () => {
-    const { data } = await supabase.from("reviews").select("*, books(title)").order("created_at", { ascending: false });
-    setReviews(data || []);
-  };
-  useEffect(() => { load(); }, []);
+  const utils = trpc.useUtils();
+  const { data: reviews = [] } = trpc.admin.listReviews.useQuery({});
+  const approveMutation = trpc.admin.approveReview.useMutation({
+    onSuccess: () => utils.admin.listReviews.invalidate(),
+    onError: (err) => toast.error(err.message),
+  });
+  const rejectMutation = trpc.admin.rejectReview.useMutation({
+    onSuccess: () => utils.admin.listReviews.invalidate(),
+    onError: (err) => toast.error(err.message),
+  });
 
   const remove = async (id: string) => {
-    if (!confirm("Remove this review?")) return;
-    const { error } = await supabase.from("reviews").delete().eq("id", id);
-    if (error) { toast.error(error.message); return; }
-    toast.success("Removed"); load();
+    if (!confirm("Hide this review?")) return;
+    await rejectMutation.mutateAsync({ id });
+    toast.success("Review hidden");
   };
 
   const toggleStatus = async (r: any) => {
-    const newStatus = (r.status || "approved") === "approved" ? "hidden" : "approved";
-    const { error } = await supabase.from("reviews").update({ status: newStatus } as any).eq("id", r.id);
-    if (error) { toast.error(error.message); return; }
-    setReviews(prev => prev.map(x => x.id === r.id ? { ...x, status: newStatus } : x));
-    toast.success(newStatus === "approved" ? "Review visible" : "Review hidden");
+    const current = r.status || "approved";
+    if (current === "approved") {
+      await rejectMutation.mutateAsync({ id: r.id });
+      toast.success("Review hidden");
+      return;
+    }
+    await approveMutation.mutateAsync({ id: r.id });
+    toast.success("Review visible");
   };
+
+  const stats = useMemo(() => {
+    const visible = reviews.filter((r: any) => (r.status || "approved") === "approved").length;
+    const hidden = reviews.filter((r: any) => (r.status || "approved") !== "approved").length;
+    return { visible, hidden };
+  }, [reviews]);
 
   return (
     <div>
@@ -39,8 +50,8 @@ export default function AdminReviews() {
           <p className="text-sm text-muted-foreground">Moderate user reviews</p>
         </div>
         <div className="flex gap-2 text-sm">
-          <Badge variant="outline">{reviews.filter(r => (r.status || "approved") === "approved").length} Visible</Badge>
-          <Badge variant="outline" className="text-muted-foreground">{reviews.filter(r => r.status === "hidden").length} Hidden</Badge>
+          <Badge variant="outline">{stats.visible} Visible</Badge>
+          <Badge variant="outline" className="text-muted-foreground">{stats.hidden} Hidden</Badge>
         </div>
       </div>
       <div className="rounded-lg border">
@@ -56,9 +67,9 @@ export default function AdminReviews() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {reviews.map((r) => (
-              <TableRow key={r.id} className={(r.status === "hidden") ? "opacity-50" : ""}>
-                <TableCell className="font-medium">{r.books?.title || "—"}</TableCell>
+            {reviews.map((r: any) => (
+              <TableRow key={r.id} className={((r.status || "approved") !== "approved") ? "opacity-50" : ""}>
+                <TableCell className="font-medium">{r.book?.title || "—"}</TableCell>
                 <TableCell><div className="flex items-center gap-1"><Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />{r.rating}</div></TableCell>
                 <TableCell className="max-w-xs truncate">{r.comment || "—"}</TableCell>
                 <TableCell>
