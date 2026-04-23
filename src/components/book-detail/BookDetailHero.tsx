@@ -3,8 +3,7 @@ import { Star, BookOpen, Headphones, Package, BookmarkCheck, Share2, Eye, Heart 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/contexts/AuthContext"
-import { supabase } from "@/integrations/supabase/client"
-import { useState, useEffect } from "react"
+import { trpc } from "@/lib/trpc"
 import { toast } from "sonner"
 import { FollowButton } from "@/components/FollowButton"
 import type { MasterBook } from "@/lib/types"
@@ -18,38 +17,28 @@ interface Props {
 
 export function BookDetailHero({ book, liveRating, liveReviewsCount, liveReads }: Props) {
   const { user } = useAuth()
-  const [bookmarked, setBookmarked] = useState(false)
-  const [bookmarkId, setBookmarkId] = useState<string | null>(null)
 
   const hasEbook = book.formats.ebook?.available
   const hasAudiobook = book.formats.audiobook?.available
   const hasHardcopy = book.formats.hardcopy?.available
 
-  useEffect(() => {
-    if (!user) return
-    supabase
-      .from("bookmarks")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("book_id", book.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) { setBookmarked(true); setBookmarkId(data.id) }
-      })
-  }, [user, book.id])
+  const utils = trpc.useUtils()
+  const { data: bookmarkData } = trpc.books.isBookmarked.useQuery(
+    { bookId: book.id },
+    { enabled: !!user }
+  )
+  const bookmarked = bookmarkData?.bookmarked ?? false
 
-  const toggleBookmark = async () => {
+  const bookmarkMutation = trpc.books.bookmark.useMutation({
+    onSuccess: (data) => {
+      utils.books.isBookmarked.invalidate({ bookId: book.id })
+      toast.success(data.bookmarked ? "Added to wishlist ❤️" : "Removed from wishlist")
+    },
+  })
+
+  const toggleBookmark = () => {
     if (!user) { toast.error("Please sign in"); return }
-    if (bookmarked && bookmarkId) {
-      await supabase.from("bookmarks").delete().eq("id", bookmarkId)
-      setBookmarked(false)
-      setBookmarkId(null)
-      toast.success("Removed from wishlist")
-    } else {
-      const { data } = await supabase.from("bookmarks").insert({ user_id: user.id, book_id: book.id }).select("id").single()
-      if (data) { setBookmarked(true); setBookmarkId(data.id) }
-      toast.success("Added to wishlist ❤️")
-    }
+    bookmarkMutation.mutate({ bookId: book.id })
   }
 
   const share = () => {

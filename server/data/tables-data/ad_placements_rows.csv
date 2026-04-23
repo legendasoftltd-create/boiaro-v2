@@ -1,0 +1,8 @@
+id,placement_key,label,is_enabled,ad_type,frequency,device_visibility,display_priority,notes,created_at,updated_at
+179f233f-dccc-400e-8bb7-84f076fabd30,before_audiobook,Before Audiobook Play,true,rewarded,always,both,0,,2026-03-25 04:35:56.85448+00,2026-03-25 04:35:56.85448+00
+25e6c11e-5edc-4f86-8e30-4fefb03a7a56,homepage_banner,Home Page Banner,false,banner,always,both,0,,2026-03-25 04:35:56.85448+00,2026-03-25 04:35:56.85448+00
+4eff7ee9-1f67-496e-a5b1-c60e208e7685,book_details,Book Details Page,false,banner,always,both,0,,2026-03-25 04:35:56.85448+00,2026-03-25 04:35:56.85448+00
+924915f7-0e00-44b8-964c-7e3cdd6b8cf6,wallet_page,Wallet Page,false,banner,always,both,0,,2026-03-25 04:35:56.85448+00,2026-03-25 04:35:56.85448+00
+b3ab4f99-dedf-42d6-8f66-b7a48d563a3a,before_reading,Before Reading Ebook,true,rewarded,always,both,0,,2026-03-25 04:35:56.85448+00,2026-03-25 04:35:56.85448+00
+bc39ed99-4047-4542-a112-26443f49bff1,dashboard,User Dashboard,false,banner,always,both,0,,2026-03-25 04:35:56.85448+00,2026-03-25 04:35:56.85448+00
+d3a83baa-2023-48dc-8eb1-cdd42c72f53c,reward_center,Reward Center,false,rewarded,always,both,0,,2026-03-25 04:35:56.85448+00,2026-03-25 04:35:56.85448+00

@@ -1,10 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Save, AlertTriangle, GripVertical, Eye, EyeOff, ArrowUp, ArrowDown } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
 
@@ -14,22 +13,15 @@ interface Section {
 }
 
 export default function AdminHomepageSections() {
-  const qc = useQueryClient();
+  const utils = trpc.useUtils();
   const [sections, setSections] = useState<Section[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const dragNode = useRef<HTMLTableRowElement | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["homepage-sections"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("homepage_sections").select("*").order("sort_order");
-      if (error) throw error;
-      return data as Section[];
-    },
-  });
+  const { data, isLoading } = trpc.admin.listHomepageSections.useQuery();
 
-  useEffect(() => { if (data) setSections(data); }, [data]);
+  useEffect(() => { if (data) setSections(data as Section[]); }, [data]);
 
   const duplicates = useMemo(() => {
     const counts: Record<number, number> = {};
@@ -41,16 +33,16 @@ export default function AdminHomepageSections() {
     setSections(prev => prev.map((s, i) => ({ ...s, sort_order: i + 1 })));
   };
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      for (const s of sections) {
-        const { error } = await supabase.from("homepage_sections").update({
-          title: s.title, subtitle: s.subtitle, is_enabled: s.is_enabled, sort_order: s.sort_order,
-        }).eq("id", s.id);
-        if (error) throw error;
-      }
+  const saveMutation = trpc.admin.bulkUpdateHomepageSections.useMutation({
+    onSuccess: () => { utils.admin.listHomepageSections.invalidate(); toast.success("Sections saved"); },
+    onError: (e) => toast.error(e.message),
+  });
+  const resetMutation = trpc.admin.resetHomepageSections.useMutation({
+    onSuccess: () => {
+      utils.admin.listHomepageSections.invalidate();
+      toast.success("Default homepage sections restored");
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["homepage-sections"] }); toast({ title: "Sections saved" }); },
+    onError: (e) => toast.error(e.message),
   });
 
   const updateField = (idx: number, field: keyof Section, value: any) => {
@@ -99,19 +91,26 @@ export default function AdminHomepageSections() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold font-serif text-primary">Homepage Sections</h1>
           <p className="text-sm text-muted-foreground">Drag rows or use arrows to reorder · Toggle visibility per section</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => resetMutation.mutate({ hardReset: false })}
+            disabled={resetMutation.isPending}
+          >
+            {resetMutation.isPending ? "Restoring..." : "Restore Defaults"}
+          </Button>
           {duplicates.size > 0 && (
             <Button variant="outline" size="sm" onClick={autoFixOrder} className="border-destructive/40 text-destructive">
               <AlertTriangle className="h-4 w-4 mr-1.5" />Fix Duplicates
             </Button>
           )}
-          <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+          <Button size="sm" onClick={() => saveMutation.mutate(sections.map(s => ({ id: s.id, title: s.title, subtitle: s.subtitle, is_enabled: s.is_enabled, sort_order: s.sort_order })))} disabled={saveMutation.isPending}>
             <Save className="h-4 w-4 mr-1.5" />{saveMutation.isPending ? "Saving..." : "Save Changes"}
           </Button>
         </div>
@@ -124,7 +123,6 @@ export default function AdminHomepageSections() {
         </div>
       )}
 
-      {/* Table */}
       <div className="rounded-lg border border-border/50 bg-card/80 overflow-hidden">
         <Table>
           <TableHeader>
@@ -156,12 +154,9 @@ export default function AdminHomepageSections() {
                   overIdx === i ? "bg-primary/5 border-primary/20" : ""
                 } ${!s.is_enabled ? "opacity-50" : ""}`}
               >
-                {/* Drag handle */}
                 <TableCell className="px-2 py-2">
                   <GripVertical className="h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
                 </TableCell>
-
-                {/* Order badge */}
                 <TableCell className="py-2 text-center">
                   <span className={`inline-flex items-center justify-center h-6 w-6 rounded text-xs font-bold ${
                     duplicates.has(s.sort_order)
@@ -171,13 +166,9 @@ export default function AdminHomepageSections() {
                     {s.sort_order}
                   </span>
                 </TableCell>
-
-                {/* Section name */}
                 <TableCell className="py-2">
                   <span className="font-medium text-sm truncate block">{formatKey(s.section_key)}</span>
                 </TableCell>
-
-                {/* Editable title */}
                 <TableCell className="py-2 pr-2">
                   <Input
                     value={s.title}
@@ -186,8 +177,6 @@ export default function AdminHomepageSections() {
                     className="h-7 text-xs border-border/40 bg-background/50 focus:bg-background"
                   />
                 </TableCell>
-
-                {/* Editable subtitle */}
                 <TableCell className="py-2 pr-2">
                   <Input
                     value={s.subtitle || ""}
@@ -196,8 +185,6 @@ export default function AdminHomepageSections() {
                     className="h-7 text-xs border-border/40 bg-background/50 focus:bg-background"
                   />
                 </TableCell>
-
-                {/* Status badge */}
                 <TableCell className="py-2 text-center">
                   <Badge
                     variant={s.is_enabled ? "default" : "secondary"}
@@ -210,8 +197,6 @@ export default function AdminHomepageSections() {
                     {s.is_enabled ? "Active" : "Inactive"}
                   </Badge>
                 </TableCell>
-
-                {/* Eye toggle */}
                 <TableCell className="py-2 text-center">
                   <button
                     onClick={() => updateField(i, "is_enabled", !s.is_enabled)}
@@ -225,28 +210,12 @@ export default function AdminHomepageSections() {
                     )}
                   </button>
                 </TableCell>
-
-                {/* Reorder arrows */}
                 <TableCell className="py-2 text-center">
                   <div className="inline-flex gap-0.5">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      disabled={i === 0}
-                      onClick={() => moveRow(i, "up")}
-                      title="Move up"
-                    >
+                    <Button size="icon" variant="ghost" className="h-7 w-7" disabled={i === 0} onClick={() => moveRow(i, "up")} title="Move up">
                       <ArrowUp className="h-3.5 w-3.5" />
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      disabled={i === sections.length - 1}
-                      onClick={() => moveRow(i, "down")}
-                      title="Move down"
-                    >
+                    <Button size="icon" variant="ghost" className="h-7 w-7" disabled={i === sections.length - 1} onClick={() => moveRow(i, "down")} title="Move down">
                       <ArrowDown className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -257,7 +226,6 @@ export default function AdminHomepageSections() {
         </Table>
       </div>
 
-      {/* Footer hint */}
       <p className="text-xs text-muted-foreground text-center">
         {sections.length} section{sections.length !== 1 ? "s" : ""} · Changes are saved when you click "Save Changes"
       </p>

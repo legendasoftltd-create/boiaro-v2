@@ -1,6 +1,5 @@
-import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mic2, Plus, Upload, Loader2, Pencil, Image, Music, Send, Link2, Lock } from "lucide-react";
+import { Mic2, Plus, Loader2, Pencil, Image, Music, Send, Link2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AttachToExistingBook } from "@/components/book-submission/AttachToExistingBook";
@@ -17,218 +16,100 @@ import { VendorEarningsPreview } from "@/components/vendor/VendorEarningsPreview
 import { AudiobookEpisodeManager } from "@/components/narrator/AudiobookEpisodeManager";
 import { useContentEditRequest } from "@/hooks/useContentEditRequest";
 
+const emptyForm = () => ({
+  title: "", title_en: "", description: "", category_id: "", cover_url: "",
+  language: "bn", price: "", duration: "", audio_quality: "standard",
+});
+
 export default function NarratorAudiobooks() {
-  const { user } = useAuth();
   const { submitEditRequest } = useContentEditRequest();
-  const [books, setBooks] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const utils = trpc.useUtils();
   const [filter, setFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [tracksOpen, setTracksOpen] = useState(false);
   const [editBook, setEditBook] = useState<any>(null);
   const [selectedFormatId, setSelectedFormatId] = useState<string | null>(null);
   const [selectedBookTitle, setSelectedBookTitle] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [uploadingCover, setUploadingCover] = useState(false);
-  const coverRef = useRef<HTMLInputElement>(null);
-  // Attach flow
   const [mode, setMode] = useState<"choose" | "create" | "attach" | "attach-form">("choose");
   const [attachedBook, setAttachedBook] = useState<{ id: string; title: string; cover_url: string | null } | null>(null);
-  const [form, setForm] = useState({
-    title: "", title_en: "", description: "", category_id: "", cover_url: "",
-    language: "bn", price: "", duration: "", audio_quality: "standard",
+  const [form, setForm] = useState(emptyForm());
+
+  const { data: books = [], isLoading } = trpc.books.myCreatorBooks.useQuery({ role: "narrator" });
+  const { data: categories = [] } = trpc.books.categories.useQuery();
+
+  const submitMutation = trpc.books.submitBook.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("Submitted for review"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const updateMutation = trpc.books.updateBook.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("Updated"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const attachMutation = trpc.books.attachBookFormat.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("Audiobook format attached and submitted for review"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const submitForReviewMutation = trpc.books.submitBookForReview.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); toast.success("Submitted for review"); },
+    onError: (err) => toast.error(err.message),
   });
 
-  const load = async () => {
-    if (!user) return;
-    const { data: ownBooks } = await supabase
-      .from("books")
-      .select("*, categories(name, name_bn), book_formats(id, format, price, duration, audio_quality, submitted_by)")
-      .eq("submitted_by", user.id)
-      .order("created_at", { ascending: false });
-
-    const { data: contribData } = await supabase
-      .from("book_contributors")
-      .select("book_id")
-      .eq("user_id", user.id)
-      .eq("role", "narrator");
-
-    const contribBookIds = (contribData || []).map(c => c.book_id);
-    const ownBookIds = (ownBooks || []).map(b => b.id);
-    const extraIds = contribBookIds.filter(id => !ownBookIds.includes(id));
-
-    let allBooks = ownBooks || [];
-    if (extraIds.length > 0) {
-      const { data: extraBooks } = await supabase
-        .from("books")
-        .select("*, categories(name, name_bn), book_formats(id, format, price, duration, audio_quality, submitted_by)")
-        .in("id", extraIds);
-      allBooks = [...allBooks, ...(extraBooks || [])];
-    }
-
-    setBooks(allBooks);
-    const { data: cats } = await supabase.from("categories").select("id, name, name_bn");
-    setCategories(cats || []);
-  };
-
-  useEffect(() => { load(); }, [user]);
-
-  const filteredBooks = filter === "all" ? books : books.filter(b => b.submission_status === filter);
-
-  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingCover(true);
-    const ext = file.name.split(".").pop();
-    const path = `covers/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("book-covers").upload(path, file);
-    if (error) { toast.error(error.message); setUploadingCover(false); return; }
-    const { data: { publicUrl } } = supabase.storage.from("book-covers").getPublicUrl(path);
-    setForm(f => ({ ...f, cover_url: publicUrl }));
-    setUploadingCover(false);
-  };
-
+  const isPending = submitMutation.isPending || updateMutation.isPending || attachMutation.isPending;
 
   const openNew = () => {
-    setEditBook(null);
-    setAttachedBook(null);
-    setMode("choose");
-    setForm({ title: "", title_en: "", description: "", category_id: "", cover_url: "", language: "bn", price: "", duration: "", audio_quality: "standard" });
-    setOpen(true);
+    setEditBook(null); setAttachedBook(null); setMode("choose"); setForm(emptyForm()); setOpen(true);
   };
-
   const openEdit = (book: any) => {
-    setEditBook(book);
-    setAttachedBook(null);
-    setMode("create");
-    const fmt = (book.book_formats || []).find((f: any) => f.format === "audiobook");
-    setForm({
-      title: book.title || "", title_en: book.title_en || "",
-      description: book.description || "", category_id: book.category_id || "",
-      cover_url: book.cover_url || "", language: book.language || "bn",
-      price: fmt?.price?.toString() || "", duration: fmt?.duration || "",
-      audio_quality: fmt?.audio_quality || "standard",
-    });
+    setEditBook(book); setAttachedBook(null); setMode("create");
+    const fmt = (book.formats || []).find((f: any) => f.format === "audiobook");
+    setForm({ ...emptyForm(), title: book.title || "", description: book.description || "", price: fmt?.price?.toString() || "", duration: fmt?.duration || "", audio_quality: fmt?.audio_quality || "standard" });
     setOpen(true);
-  };
-
-  const handleAttachSelect = (book: { id: string; title: string; cover_url: string | null }) => {
-    setAttachedBook(book);
-    setMode("attach-form");
-    setForm(f => ({ ...f, price: "", duration: "", audio_quality: "standard" }));
-  };
-
-  const saveAttachFormat = async () => {
-    if (!user || !attachedBook) return;
-    setUploading(true);
-
-    const formatPayload = {
-      book_id: attachedBook.id,
-      format: "audiobook" as const,
-      price: form.price ? Number(form.price) : 0,
-      duration: form.duration || null,
-      audio_quality: (form.audio_quality || "standard") as "standard" | "hd",
-      submission_status: "pending",
-      submitted_by: user.id,
-    };
-
-    const { error: fmtError } = await supabase.from("book_formats").insert(formatPayload);
-    if (fmtError) {
-      if (fmtError.message.includes("duplicate") || fmtError.message.includes("unique")) {
-        toast.error("This book already has an audiobook format");
-      } else {
-        toast.error(fmtError.message);
-      }
-      setUploading(false);
-      return;
-    }
-
-    await supabase.from("book_contributors").insert({
-      book_id: attachedBook.id, user_id: user.id, role: "narrator", format: "audiobook",
-    });
-
-    setUploading(false);
-    setOpen(false);
-    toast.success("Audiobook format attached and submitted for review");
-    load();
   };
 
   const save = async (asDraft = false) => {
-    if (!user || !form.title) { toast.error("Title is required"); return; }
-    setUploading(true);
-    const slug = form.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0980-\u09FF-]/g, "");
-
-    const bookPayload = {
-      title: form.title, title_en: form.title_en || null, slug,
-      description: form.description || null, category_id: form.category_id || null,
-      cover_url: form.cover_url || null, language: form.language,
-      submission_status: asDraft ? "draft" : "pending", submitted_by: user.id,
-    };
-
-    let bookId: string;
+    if (!form.title) { toast.error("Title is required"); return; }
     if (editBook) {
-      // If content is approved/pending → submit edit request
-      if (editBook.submission_status && editBook.submission_status !== "draft") {
-        const audioFmt = (editBook.book_formats || []).find((f: any) => f.format === "audiobook");
-        const success = await submitEditRequest({
-          contentType: "book",
-          contentId: editBook.id,
-          submittedBy: user.id,
-          proposedChanges: {
-            book: bookPayload,
-            format: {
-              price: form.price ? Number(form.price) : 0,
-              duration: form.duration || null,
-              audio_quality: (form.audio_quality || "standard"),
-              format_id: audioFmt?.id,
-            },
-          },
-        });
-        setUploading(false);
-        if (success) setOpen(false);
-        return;
+      if (editBook.submission_status !== "draft") {
+        const fmt = (editBook.formats || []).find((f: any) => f.format === "audiobook");
+        await submitEditRequest({ contentType: "book", contentId: editBook.id, submittedBy: "", proposedChanges: { book: form, format: { price: Number(form.price), duration: form.duration, audio_quality: form.audio_quality, format_id: fmt?.id } } });
+        setOpen(false); return;
       }
-      const { error } = await supabase.from("books").update(bookPayload).eq("id", editBook.id);
-      if (error) { toast.error(error.message); setUploading(false); return; }
-      bookId = editBook.id;
+      updateMutation.mutate({
+        bookId: editBook.id, formatId: (editBook.formats || []).find((f: any) => f.format === "audiobook")?.id,
+        title: form.title, titleEn: form.title_en || undefined, description: form.description || undefined,
+        categoryId: form.category_id || undefined, coverUrl: form.cover_url || undefined,
+        language: form.language, asDraft, format: "audiobook",
+        price: form.price ? Number(form.price) : 0,
+        duration: form.duration || undefined,
+        audioQuality: (form.audio_quality || "standard") as "standard" | "hd",
+      });
     } else {
-      const { data, error } = await supabase.from("books").insert(bookPayload).select("id").single();
-      if (error) { toast.error(error.message); setUploading(false); return; }
-      bookId = data.id;
-      await supabase.from("book_contributors").insert({ book_id: bookId, user_id: user.id, role: "narrator", format: "audiobook" });
+      submitMutation.mutate({
+        title: form.title, titleEn: form.title_en || undefined, description: form.description || undefined,
+        categoryId: form.category_id || undefined, coverUrl: form.cover_url || undefined,
+        language: form.language, asDraft, format: "audiobook", role: "narrator",
+        price: form.price ? Number(form.price) : 0,
+        duration: form.duration || undefined,
+        audioQuality: (form.audio_quality || "standard") as "standard" | "hd",
+      });
     }
-
-    const existingFmt = editBook?.book_formats?.find((f: any) => f.format === "audiobook");
-    const formatPayload = {
-      book_id: bookId, format: "audiobook" as const,
-      price: form.price ? Number(form.price) : 0,
-      duration: form.duration || null, audio_quality: (form.audio_quality || "standard") as "standard" | "hd",
-    };
-
-    if (existingFmt) {
-      await supabase.from("book_formats").update(formatPayload).eq("id", existingFmt.id);
-    } else {
-      await supabase.from("book_formats").insert(formatPayload);
-    }
-
-    setUploading(false);
-    setOpen(false);
-    toast.success(asDraft ? "Saved as draft" : editBook ? "Updated" : "Submitted for review");
-    load();
-  };
-
-  const submitForReview = async (book: any) => {
-    await supabase.from("books").update({ submission_status: "pending" }).eq("id", book.id);
-    toast.success("Submitted for review");
-    load();
   };
 
   const openTrackManager = (book: any) => {
-    const fmt = (book.book_formats || []).find((f: any) => f.format === "audiobook");
+    const fmt = (book.formats || []).find((f: any) => f.format === "audiobook");
     if (!fmt) { toast.error("Save audiobook format first"); return; }
     setSelectedFormatId(fmt.id);
     setSelectedBookTitle(book.title);
     setTracksOpen(true);
+  };
+
+  const filteredBooks = filter === "all" ? books : (books as any[]).filter((b: any) => b.submission_status === filter);
+  const statusCounts = {
+    all: books.length,
+    draft: (books as any[]).filter((b: any) => b.submission_status === "draft").length,
+    pending: (books as any[]).filter((b: any) => b.submission_status === "pending").length,
+    approved: (books as any[]).filter((b: any) => b.submission_status === "approved").length,
+    rejected: (books as any[]).filter((b: any) => b.submission_status === "rejected").length,
   };
 
   const statusBadge = (status: string) => {
@@ -240,14 +121,6 @@ export default function NarratorAudiobooks() {
     };
     const c = config[status] || config.pending;
     return <Badge variant="outline" className={`text-[10px] ${c.cls}`}>{c.label}</Badge>;
-  };
-
-  const statusCounts = {
-    all: books.length,
-    draft: books.filter(b => b.submission_status === "draft").length,
-    pending: books.filter(b => b.submission_status === "pending").length,
-    approved: books.filter(b => b.submission_status === "approved").length,
-    rejected: books.filter(b => b.submission_status === "rejected").length,
   };
 
   return (
@@ -267,9 +140,11 @@ export default function NarratorAudiobooks() {
         </TabsList>
       </Tabs>
 
-      {filteredBooks.length > 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : (filteredBooks as any[]).length > 0 ? (
         <div className="grid gap-3">
-          {filteredBooks.map(book => (
+          {(filteredBooks as any[]).map((book: any) => (
             <Card key={book.id} className="border-border/30 bg-card/60">
               <CardContent className="p-4 flex gap-4">
                 {book.cover_url ? (
@@ -284,11 +159,11 @@ export default function NarratorAudiobooks() {
                     <h3 className="font-semibold truncate">{book.title}</h3>
                     {statusBadge(book.submission_status || "pending")}
                   </div>
-                  <p className="text-xs text-muted-foreground">{book.categories?.name_bn || book.categories?.name || "No category"}</p>
-                  {book.book_formats?.find((f: any) => f.format === "audiobook") && (
+                  <p className="text-xs text-muted-foreground">{book.category?.name_bn || book.category?.name || "No category"}</p>
+                  {(book.formats || []).find((f: any) => f.format === "audiobook") && (
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      ৳{book.book_formats.find((f: any) => f.format === "audiobook")?.price || 0}
-                      {book.book_formats.find((f: any) => f.format === "audiobook")?.duration && ` • ${book.book_formats.find((f: any) => f.format === "audiobook").duration}`}
+                      ৳{(book.formats || []).find((f: any) => f.format === "audiobook")?.price || 0}
+                      {(book.formats || []).find((f: any) => f.format === "audiobook")?.duration && ` • ${(book.formats || []).find((f: any) => f.format === "audiobook").duration}`}
                     </p>
                   )}
                   <p className="text-[10px] text-muted-foreground mt-1">{new Date(book.created_at).toLocaleDateString()}</p>
@@ -303,7 +178,7 @@ export default function NarratorAudiobooks() {
                     </Button>
                   )}
                   {book.submission_status === "draft" && (
-                    <Button size="sm" onClick={() => submitForReview(book)} className="gap-1 text-xs h-8 bg-primary">
+                    <Button size="sm" onClick={() => submitForReviewMutation.mutate({ bookId: book.id })} disabled={submitForReviewMutation.isPending} className="gap-1 text-xs h-8 bg-primary">
                       <Send className="h-3 w-3" />Submit
                     </Button>
                   )}
@@ -332,16 +207,14 @@ export default function NarratorAudiobooks() {
         </Card>
       )}
 
-      {/* Submit/Edit Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editBook ? "Edit Audiobook" : mode === "attach" ? "Attach to Existing Book" : mode === "attach-form" ? "Attach Audiobook Format" : mode === "create" ? "New Audiobook" : "New Audiobook"}
+              {editBook ? "Edit Audiobook" : mode === "attach" ? "Attach to Existing Book" : mode === "attach-form" ? "Attach Audiobook Format" : "New Audiobook"}
             </DialogTitle>
           </DialogHeader>
 
-          {/* Choose mode */}
           {mode === "choose" && !editBook && (
             <div className="space-y-4 py-4">
               <p className="text-sm text-muted-foreground text-center">How would you like to add your audiobook?</p>
@@ -364,10 +237,8 @@ export default function NarratorAudiobooks() {
             </div>
           )}
 
-          {/* Attach search */}
-          {mode === "attach" && <AttachToExistingBook format="audiobook" onSelect={handleAttachSelect} onCancel={() => setMode("choose")} />}
+          {mode === "attach" && <AttachToExistingBook format="audiobook" onSelect={(b) => { setAttachedBook(b); setMode("attach-form"); }} onCancel={() => setMode("choose")} />}
 
-          {/* Attach format form */}
           {mode === "attach-form" && (
             <div className="space-y-4">
               <div className="flex items-center gap-3 p-3 rounded-lg bg-accent/30 border border-border/30">
@@ -394,68 +265,61 @@ export default function NarratorAudiobooks() {
               {attachedBook && form.price && Number(form.price) > 0 && (
                 <VendorEarningsPreview bookId={attachedBook.id} format="audiobook" basePrice={Number(form.price)} role="narrator" />
               )}
-              <Button className="w-full" onClick={saveAttachFormat} disabled={uploading}>
-                {uploading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Attaching...</> : "Attach & Submit for Review"}
+              <Button className="w-full" onClick={() => {
+                if (!attachedBook) return;
+                attachMutation.mutate({ bookId: attachedBook.id, format: "audiobook", role: "narrator", price: form.price ? Number(form.price) : 0, duration: form.duration || undefined, audioQuality: (form.audio_quality || "standard") as "standard" | "hd" });
+              }} disabled={isPending}>
+                {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Attaching...</> : "Attach & Submit for Review"}
               </Button>
             </div>
           )}
 
-          {/* Create / Edit form */}
           {mode === "create" && (
             <>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <Label>Cover Image</Label>
-              <div className="flex items-center gap-4 mt-1.5">
-                {form.cover_url && <img src={form.cover_url} alt="" className="w-16 h-24 object-cover rounded-lg border border-border/30" />}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <Label>Cover Image</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Cover upload available in Phase 5 (storage provider pending)</p>
+                </div>
+                <div className="col-span-2"><Label>Title *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
+                <div><Label>Title (English)</Label><Input value={form.title_en} onChange={e => setForm(f => ({ ...f, title_en: e.target.value }))} /></div>
                 <div>
-                  <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
-                  <Button type="button" variant="outline" size="sm" onClick={() => coverRef.current?.click()} disabled={uploadingCover}>
-                    {uploadingCover ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Uploading...</> : <><Upload className="h-3 w-3 mr-1.5" />Upload Cover</>}
-                  </Button>
+                  <Label>Category</Label>
+                  <Select value={form.category_id} onValueChange={v => setForm(f => ({ ...f, category_id: v }))}>
+                    <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                    <SelectContent>{(categories as any[]).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name_bn || c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
+                <div><Label>Original Price (৳)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} /></div>
+                <div><Label>Total Duration</Label><Input value={form.duration} onChange={e => setForm(f => ({ ...f, duration: e.target.value }))} placeholder="e.g. 3h 45m" /></div>
+                <div>
+                  <Label>Audio Quality</Label>
+                  <Select value={form.audio_quality} onValueChange={v => setForm(f => ({ ...f, audio_quality: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="standard">Standard</SelectItem>
+                      <SelectItem value="hd">HD</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
-            </div>
-            <div className="col-span-2"><Label>Title *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
-            <div><Label>Title (English)</Label><Input value={form.title_en} onChange={e => setForm(f => ({ ...f, title_en: e.target.value }))} /></div>
-            <div>
-              <Label>Category</Label>
-              <Select value={form.category_id} onValueChange={v => setForm(f => ({ ...f, category_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name_bn || c.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
-            <div><Label>Original Price (৳)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} /></div>
-            <div><Label>Total Duration</Label><Input value={form.duration} onChange={e => setForm(f => ({ ...f, duration: e.target.value }))} placeholder="e.g. 3h 45m" /></div>
-            <div>
-              <Label>Audio Quality</Label>
-              <Select value={form.audio_quality} onValueChange={v => setForm(f => ({ ...f, audio_quality: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="standard">Standard</SelectItem>
-                  <SelectItem value="hd">HD</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {editBook && form.price && Number(form.price) > 0 && (
-            <VendorEarningsPreview bookId={editBook.id} format="audiobook" basePrice={Number(form.price)} role="narrator" />
-          )}
-          <div className="flex gap-3 mt-4">
-            <Button variant="outline" className="flex-1" onClick={() => save(true)} disabled={uploading}>
-              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Draft"}
-            </Button>
-            <Button className="flex-1" onClick={() => save(false)} disabled={uploading}>
-              {uploading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : editBook ? "Update & Submit" : "Submit for Review"}
-            </Button>
-          </div>
+              {editBook && form.price && Number(form.price) > 0 && (
+                <VendorEarningsPreview bookId={editBook.id} format="audiobook" basePrice={Number(form.price)} role="narrator" />
+              )}
+              <div className="flex gap-3 mt-4">
+                <Button variant="outline" className="flex-1" onClick={() => save(true)} disabled={isPending}>
+                  {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Draft"}
+                </Button>
+                <Button className="flex-1" onClick={() => save(false)} disabled={isPending}>
+                  {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : editBook ? "Update & Submit" : "Submit for Review"}
+                </Button>
+              </div>
             </>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Episodes Manager */}
       {selectedFormatId && (
         <AudiobookEpisodeManager
           bookFormatId={selectedFormatId}

@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation, Navigate } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { useUserRole } from "@/hooks/useUserRole"
 import { useRjProfile } from "@/hooks/useLiveSession"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { Radio, LayoutDashboard, User, LogOut, Calendar, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -45,17 +45,16 @@ export default function RjLayout() {
   const { profile, loading: profileLoading } = useRjProfile()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const utils = trpc.useUtils()
 
-  // Auto-create rj_profile if user has rj role but no profile yet
+  const createProfileMutation = trpc.rj.createProfile.useMutation({
+    onSuccess: () => utils.rj.myProfile.invalidate(),
+  })
+
   useEffect(() => {
-    if (!profileLoading && !profile && user && hasRole("rj")) {
+    if (!profileLoading && profile === null && user && hasRole("rj") && !createProfileMutation.isPending) {
       const displayName = (user.user_metadata as any)?.display_name || user.email?.split("@")[0] || "New RJ"
-      supabase
-        .from("rj_profiles")
-        .insert({ user_id: user.id, stage_name: displayName })
-        .then(({ error }) => {
-          if (!error) window.location.reload()
-        })
+      createProfileMutation.mutate({ stageName: displayName })
     }
   }, [profileLoading, profile, user])
 

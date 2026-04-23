@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +21,13 @@ interface EditUserDialogProps {
     roles: string[];
     is_active: boolean;
   } | null;
-  onSaved: () => void;
+  onSaved: (payload: {
+    userId: string;
+    displayName: string;
+    email: string;
+    isActive: boolean;
+    roles: string[];
+  }) => Promise<void>;
 }
 
 export function EditUserDialog({ open, onOpenChange, user, onSaved }: EditUserDialogProps) {
@@ -65,68 +70,14 @@ export function EditUserDialog({ open, onOpenChange, user, onSaved }: EditUserDi
 
     setSaving(true);
     try {
-      // 1. Update profile via admin RPC (bypasses CLS restrictions)
-      const { error: profileErr } = await supabase.rpc("admin_update_profile" as any, {
-        p_user_id: user.user_id,
-        p_display_name: displayName.trim(),
-        p_is_active: isActive,
+      await onSaved({
+        userId: user.user_id,
+        displayName: displayName.trim(),
+        email: email.trim(),
+        isActive,
+        roles: [...selectedRoles],
       });
-      if (profileErr) throw new Error(profileErr.message);
-
-      // 2. Update email via edge function if changed
-      if (email.trim() !== user.email) {
-        const res = await supabase.functions.invoke("admin-manage-user", {
-          body: { action: "update_email", userId: user.user_id, newEmail: email.trim() },
-        });
-        if (res.error) {
-          // Try to parse the error body for a message
-          let msg = "Failed to update email";
-          try {
-            const body = typeof res.error === "object" && "context" in res.error
-              ? await (res.error as any).context?.json?.()
-              : null;
-            if (body?.error) msg = body.error;
-          } catch {}
-          throw new Error(msg);
-        }
-        if (res.data?.error) throw new Error(res.data.error);
-      }
-
-      // 3. Sync roles — delete removed, insert added
-      const currentRoles = new Set(user.roles);
-      const newRoles = selectedRoles;
-
-      const toRemove = [...currentRoles].filter(r => !newRoles.has(r));
-      const toAdd = [...newRoles].filter(r => !currentRoles.has(r));
-
-      for (const role of toRemove) {
-        await supabase.from("user_roles").delete().eq("user_id", user.user_id).eq("role", role as any);
-      }
-      for (const role of toAdd) {
-        await supabase.from("user_roles").insert({ user_id: user.user_id, role: role as any });
-      }
-
-      // 4. Audit log
-      const changes: string[] = [];
-      if (displayName.trim() !== (user.display_name || "")) changes.push(`name → ${displayName.trim()}`);
-      if (email.trim() !== user.email) changes.push(`email → ${email.trim()}`);
-      if (isActive !== user.is_active) changes.push(`status → ${isActive ? "active" : "inactive"}`);
-      if (toAdd.length || toRemove.length) changes.push(`roles: +${toAdd.join(",")} -${toRemove.join(",")}`);
-
-      if (changes.length) {
-        await supabase.from("admin_activity_logs").insert({
-          user_id: (await supabase.auth.getUser()).data.user?.id || "",
-          action: "User edited",
-          details: changes.join("; "),
-          target_type: "user",
-          target_id: user.user_id,
-          module: "users",
-          risk_level: toAdd.includes("admin") || toRemove.includes("admin") ? "high" : "medium",
-        });
-      }
-
       toast.success("User updated successfully");
-      onSaved();
       onOpenChange(false);
     } catch (err: any) {
       toast.error(err.message || "Failed to save");

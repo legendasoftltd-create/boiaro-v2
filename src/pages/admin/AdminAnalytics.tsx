@@ -1,5 +1,5 @@
-import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useMemo } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -50,42 +50,18 @@ function exportCSV(rows: Record<string, any>[], filename: string) {
 }
 
 export default function AdminAnalytics() {
-  const [orders, setOrders] = useState<any[]>([]);
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
-  const [earnings, setEarnings] = useState<EarningRow[]>([]);
-  const [categories, setCategories] = useState<{ id: string; name: string; name_bn?: string }[]>([]);
-  const [_authors, setAuthors] = useState<{ id: string; name: string }[]>([]);
-  const [profiles, setProfiles] = useState<{ user_id: string; display_name: string | null }[]>([]);
-  const [loading, setLoading] = useState(true);
-
   // Filters
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [formatFilter, setFormatFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    const [ordersRes, itemsRes, earningsRes, catsRes, authorsRes, profilesRes] = await Promise.all([
-      supabase.from("orders").select("id, user_id, total_amount, status, created_at, coupon_code, discount_amount, shipping_cost, payment_method, cod_payment_status"),
-      supabase.from("order_items").select("order_id, format, unit_price, quantity, book_id, books(title, author_id, publisher_id, category_id)"),
-      supabase.from("contributor_earnings").select("user_id, role, earned_amount, status, book_id, format"),
-      supabase.from("categories").select("id, name, name_bn"),
-      supabase.from("authors").select("id, name"),
-      supabase.from("profiles").select("user_id, display_name"),
-    ]);
-    setOrders(ordersRes.data || []);
-    setOrderItems((itemsRes.data || []) as unknown as OrderItem[]);
-    setEarnings((earningsRes.data || []) as unknown as EarningRow[]);
-    setCategories(catsRes.data || []);
-    setAuthors(authorsRes.data || []);
-    setProfiles(profilesRes.data || []);
-    setLoading(false);
-  };
+  const { data, isLoading: loading } = trpc.admin.analyticsReportData.useQuery();
+  const orders = (data?.orders || []) as any[];
+  const orderItems = (data?.orderItems || []) as OrderItem[];
+  const earnings = (data?.earnings || []) as EarningRow[];
+  const categories = (data?.categories || []) as { id: string; name: string; name_bn?: string }[];
+  const profiles = (data?.profiles || []) as { user_id: string; display_name: string | null }[];
 
   // Filtered orders — unified revenue logic: only verified revenue orders
   const filteredOrders = useMemo(() => {

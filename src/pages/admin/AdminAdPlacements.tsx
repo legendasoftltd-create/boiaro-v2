@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -26,40 +26,36 @@ interface Placement {
 }
 
 export default function AdminAdPlacements() {
-  const [placements, setPlacements] = useState<Placement[]>([]);
-  const [loading, setLoading] = useState(true);
+  const utils = trpc.useUtils();
   const [editOpen, setEditOpen] = useState(false);
   const [current, setCurrent] = useState<Placement | null>(null);
 
-  const fetch = async () => {
-    const { data } = await supabase.from("ad_placements" as any).select("*").order("display_priority");
-    setPlacements((data as any[]) || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetch(); }, []);
+  const { data: placements = [], isLoading: loading } = trpc.admin.listAdPlacements.useQuery();
+  const updateMutation = trpc.admin.updateAdPlacement.useMutation({
+    onSuccess: async () => {
+      await utils.admin.listAdPlacements.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const toggleEnabled = async (p: Placement) => {
-    await supabase.from("ad_placements" as any).update({ is_enabled: !p.is_enabled }).eq("id", p.id);
-    fetch();
+    updateMutation.mutate({ id: p.id, is_enabled: !p.is_enabled });
   };
 
   const openEdit = (p: Placement) => { setCurrent({ ...p }); setEditOpen(true); };
 
   const save = async () => {
     if (!current) return;
-    const { error } = await supabase.from("ad_placements" as any).update({
+    updateMutation.mutate({
+      id: current.id,
       ad_type: current.ad_type,
       frequency: current.frequency,
       device_visibility: current.device_visibility,
       display_priority: current.display_priority,
       notes: current.notes,
-      updated_at: new Date().toISOString(),
-    }).eq("id", current.id);
-    if (error) { toast.error(error.message); return; }
+    });
     toast.success("Placement updated");
     setEditOpen(false);
-    fetch();
   };
 
   return (
@@ -84,7 +80,7 @@ export default function AdminAdPlacements() {
           <TableBody>
             {loading ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
-            ) : placements.map(p => (
+            ) : (placements as Placement[]).map(p => (
               <TableRow key={p.id}>
                 <TableCell>
                   <p className="font-medium text-sm">{p.label}</p>
@@ -154,7 +150,7 @@ export default function AdminAdPlacements() {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={save}><Save className="w-4 h-4 mr-1.5" />Save</Button>
+            <Button onClick={save} disabled={updateMutation.isPending}><Save className="w-4 h-4 mr-1.5" />Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

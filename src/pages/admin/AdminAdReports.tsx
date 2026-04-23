@@ -1,36 +1,16 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Eye, MousePointerClick, Coins, TrendingUp, BarChart3, Gift } from "lucide-react";
 
 export default function AdminAdReports() {
-  const [bannerStats, setBannerStats] = useState<any[]>([]);
-  const [rewardedCount, setRewardedCount] = useState(0);
-  const [totalCoinsGiven, setTotalCoinsGiven] = useState(0);
-  const [totalImpressions, setTotalImpressions] = useState(0);
-  const [totalClicks, setTotalClicks] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const load = async () => {
-      const [bannerRes, rewardedRes] = await Promise.all([
-        supabase.from("ad_banners" as any).select("*").order("impressions", { ascending: false }).limit(20),
-        supabase.from("rewarded_ad_logs" as any).select("*"),
-      ]);
-      const banners = (bannerRes.data as any[]) || [];
-      const rewards = (rewardedRes.data as any[]) || [];
-
-      setBannerStats(banners);
-      setTotalImpressions(banners.reduce((s: number, b: any) => s + (b.impressions || 0), 0));
-      setTotalClicks(banners.reduce((s: number, b: any) => s + (b.clicks || 0), 0));
-      setRewardedCount(rewards.length);
-      setTotalCoinsGiven(rewards.reduce((s: number, r: any) => s + (r.coins_rewarded || 0), 0));
-      setLoading(false);
-    };
-    load();
-  }, []);
+  const { data, isLoading: loading } = trpc.admin.adReportSummary.useQuery();
+  const bannerStats = (data?.banners as any[]) || [];
+  const rewardedCount = data?.rewardedCount || 0;
+  const totalCoinsGiven = data?.totalCoinsGiven || 0;
+  const totalImpressions = data?.totalImpressions || 0;
+  const totalClicks = data?.totalClicks || 0;
 
   const overallCtr = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(1) + "%" : "0%";
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,7 +42,6 @@ interface UserRow {
 export default function AdminUsers() {
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserRow[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("all");
   const [filterSub, setFilterSub] = useState("all");
@@ -53,78 +52,39 @@ export default function AdminUsers() {
   const [deleteReason, setDeleteReason] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [tab, setTab] = useState("active");
+  const utils = trpc.useUtils();
 
-  useEffect(() => { loadUsers(); }, []);
+  const { data, isLoading: loading } = trpc.admin.listUsers.useQuery({
+    limit: 500,
+    search: search || undefined,
+  });
+  const updateUserStatusMutation = trpc.admin.updateUserStatus.useMutation();
+  const softDeleteUserMutation = trpc.admin.softDeleteUser.useMutation();
+  const restoreUserMutation = trpc.admin.restoreUser.useMutation();
+  const updateUserBasicMutation = trpc.admin.updateUserBasic.useMutation();
+  const updateUserRoleMutation = trpc.admin.updateUserRole.useMutation();
+  const logActionMutation = trpc.admin.logAction.useMutation();
 
   useEffect(() => {
-    const channel = supabase
-      .channel('admin-profiles-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => { loadUsers(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_roles' }, () => { loadUsers(); })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
-
-  const loadUsers = async () => {
-    setLoading(true);
-    const { data: profiles, error: profilesError } = await supabase.rpc("admin_get_all_profiles");
-    if (profilesError) {
-      console.error("Failed to load profiles:", profilesError.message);
-      toast.error("Failed to load users: " + profilesError.message);
-      setLoading(false);
-      return;
-    }
-
-    if (!profiles?.length) { setUsers([]); setLoading(false); return; }
-    const userIds = profiles.map((p: any) => p.user_id);
-
-    const [rolesRes, ordersRes, subsRes, authRes] = await Promise.all([
-      supabase.from("user_roles").select("user_id, role"),
-      supabase.from("orders").select("user_id", { count: "exact" }),
-      supabase.from("user_subscriptions" as any).select("user_id, status").eq("status", "active"),
-      supabase.functions.invoke("admin-manage-user", {
-        body: { action: "list_users_meta", userIds },
-      }),
-    ]);
-
-    const roleMap: Record<string, string[]> = {};
-    (rolesRes.data || []).forEach((r: any) => {
-      if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
-      roleMap[r.user_id].push(r.role);
-    });
-    const orderMap: Record<string, number> = {};
-    (ordersRes.data || []).forEach((o: any) => {
-      orderMap[o.user_id] = (orderMap[o.user_id] || 0) + 1;
-    });
-    const subSet = new Set<string>();
-    ((subsRes.data as any[]) || []).forEach((s: any) => subSet.add(s.user_id));
-    const authMap: Record<string, any> = {};
-    if (authRes.data?.users) {
-      authRes.data.users.forEach((u: any) => { authMap[u.id] = u; });
-    }
-
-    const rows: UserRow[] = profiles.map((p: any) => ({
-      user_id: p.user_id,
-      display_name: p.display_name,
-      full_name: p.full_name,
-      avatar_url: p.avatar_url,
-      phone: p.phone,
-      bio: p.bio,
-      created_at: p.created_at,
-      is_active: p.is_active !== false,
-      deleted_at: p.deleted_at || null,
-      deleted_reason: p.deleted_reason || null,
-      email: authMap[p.user_id]?.email || "",
-      roles: roleMap[p.user_id] || ["user"],
-      order_count: orderMap[p.user_id] || 0,
-      has_active_sub: subSet.has(p.user_id),
-      last_sign_in_at: authMap[p.user_id]?.last_sign_in_at,
-      email_confirmed_at: authMap[p.user_id]?.email_confirmed_at,
+    const rows: UserRow[] = (data?.users ?? []).map((user: any) => ({
+      user_id: user.id,
+      display_name: user.profile?.display_name ?? null,
+      full_name: null,
+      avatar_url: user.profile?.avatar_url ?? null,
+      phone: null,
+      bio: null,
+      created_at: user.created_at,
+      is_active: user.profile?.is_active !== false,
+      deleted_at: user.profile?.deleted_at ?? null,
+      deleted_reason: null,
+      email: user.email ?? "",
+      roles: user.roles?.map((role: any) => role.role) ?? ["user"],
+      order_count: user.order_count ?? 0,
+      has_active_sub: !!user.has_active_sub,
+      email_confirmed_at: user.email_verified ? user.created_at : undefined,
     }));
-
     setUsers(rows);
-    setLoading(false);
-  };
+  }, [data]);
 
   const activeUsers = users.filter(u => !u.deleted_at);
   const deletedUsers = users.filter(u => !!u.deleted_at);
@@ -173,30 +133,39 @@ export default function AdminUsers() {
   };
 
   const activateUser = async (u: UserRow) => {
-    const { error } = await supabase.rpc("admin_update_profile" as any, {
-      p_user_id: u.user_id,
-      p_is_active: true,
-    });
-    if (error) { toast.error(error.message); return; }
+    try {
+      await updateUserStatusMutation.mutateAsync({ userId: u.user_id, isActive: true });
+      await logActionMutation.mutateAsync({
+        action: "User activated",
+        details: `Activated ${u.display_name || u.email || u.user_id}`,
+        targetType: "user",
+        targetId: u.user_id,
+        module: "users",
+        riskLevel: "medium",
+      });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to activate user");
+      return;
+    }
     setUsers(prev => prev.map(x => x.user_id === u.user_id ? { ...x, is_active: true } : x));
     toast.success("User activated");
   };
 
   const deactivateUser = async (u: UserRow, reason: string, type: string) => {
-    const { error } = await supabase.rpc("admin_update_profile" as any, {
-      p_user_id: u.user_id,
-      p_is_active: false,
-    });
-    if (error) { toast.error(error.message); return; }
-    await supabase.from("admin_activity_logs").insert({
-      user_id: (await supabase.auth.getUser()).data.user?.id || "",
-      action: `User deactivated (${type})`,
-      details: reason || "No reason provided",
-      target_type: "user",
-      target_id: u.user_id,
-      module: "users",
-      risk_level: type === "permanent" ? "high" : "medium",
-    });
+    try {
+      await updateUserStatusMutation.mutateAsync({ userId: u.user_id, isActive: false });
+      await logActionMutation.mutateAsync({
+        action: `User deactivated (${type})`,
+        details: reason || "No reason provided",
+        targetType: "user",
+        targetId: u.user_id,
+        module: "users",
+        riskLevel: type === "permanent" ? "high" : "medium",
+      });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to deactivate user");
+      return;
+    }
     setUsers(prev => prev.map(x => x.user_id === u.user_id ? { ...x, is_active: false } : x));
     setDeactivateTarget(null);
     toast.success("User deactivated");
@@ -206,26 +175,24 @@ export default function AdminUsers() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const { error } = await supabase.rpc("admin_soft_delete_user" as any, {
-        p_user_id: deleteTarget.user_id,
-        p_reason: deleteReason.trim() || null,
+      await softDeleteUserMutation.mutateAsync({
+        userId: deleteTarget.user_id,
+        reason: deleteReason.trim() || undefined,
       });
-      if (error) throw new Error(error.message);
 
-      await supabase.from("admin_activity_logs").insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id || "",
+      await logActionMutation.mutateAsync({
         action: "User soft-deleted",
         details: deleteReason.trim() || "No reason provided",
-        target_type: "user",
-        target_id: deleteTarget.user_id,
+        targetType: "user",
+        targetId: deleteTarget.user_id,
         module: "users",
-        risk_level: "high",
+        riskLevel: "high",
       });
 
       toast.success("User moved to deleted list");
       setDeleteTarget(null);
       setDeleteReason("");
-      loadUsers();
+      await utils.admin.listUsers.invalidate();
     } catch (err: any) {
       toast.error(err.message || "Failed to delete user");
     }
@@ -235,23 +202,18 @@ export default function AdminUsers() {
   const handleRestore = async (u: UserRow) => {
     if (!confirm(`Restore ${u.display_name || u.full_name || "this user"}?`)) return;
     try {
-      const { error } = await supabase.rpc("admin_restore_user" as any, {
-        p_user_id: u.user_id,
-      });
-      if (error) throw new Error(error.message);
-
-      await supabase.from("admin_activity_logs").insert({
-        user_id: (await supabase.auth.getUser()).data.user?.id || "",
+      await restoreUserMutation.mutateAsync({ userId: u.user_id });
+      await logActionMutation.mutateAsync({
         action: "User restored",
         details: `Restored from soft-delete`,
-        target_type: "user",
-        target_id: u.user_id,
+        targetType: "user",
+        targetId: u.user_id,
         module: "users",
-        risk_level: "high",
+        riskLevel: "high",
       });
 
       toast.success("User restored successfully");
-      loadUsers();
+      await utils.admin.listUsers.invalidate();
     } catch (err: any) {
       toast.error(err.message || "Failed to restore user");
     }
@@ -275,14 +237,11 @@ export default function AdminUsers() {
     const ids = Array.from(selected);
     if (!ids.length) return;
     if (!confirm(`${active ? "Activate" : "Deactivate"} ${ids.length} user(s)?`)) return;
-    for (const id of ids) {
-      await supabase.rpc("admin_update_profile" as any, { p_user_id: id, p_is_active: active });
-    }
-    await supabase.from("admin_activity_logs").insert({
-      user_id: (await supabase.auth.getUser()).data.user?.id || "",
+    for (const id of ids) await updateUserStatusMutation.mutateAsync({ userId: id, isActive: active });
+    await logActionMutation.mutateAsync({
       action: `Bulk ${active ? "activate" : "deactivate"} ${ids.length} users`,
       module: "users",
-      risk_level: "high",
+      riskLevel: "high",
     });
     setUsers(prev => prev.map(x => ids.includes(x.user_id) ? { ...x, is_active: active } : x));
     setSelected(new Set());
@@ -507,7 +466,32 @@ export default function AdminUsers() {
         open={!!editTarget}
         onOpenChange={(o) => { if (!o) setEditTarget(null); }}
         user={editTarget}
-        onSaved={loadUsers}
+        onSaved={async ({ userId, displayName, email, isActive, roles }) => {
+          if (!editTarget) return;
+          const previousRoleSet = new Set(editTarget.roles);
+          const nextRoleSet = new Set(roles);
+          const toRemove = [...previousRoleSet].filter((role) => !nextRoleSet.has(role) && role !== "user");
+          const toAdd = [...nextRoleSet].filter((role) => !previousRoleSet.has(role));
+
+          await updateUserBasicMutation.mutateAsync({ userId, displayName, email });
+          await updateUserStatusMutation.mutateAsync({ userId, isActive });
+          for (const role of toRemove) {
+            await updateUserRoleMutation.mutateAsync({ userId, role, action: "remove" });
+          }
+          for (const role of toAdd) {
+            await updateUserRoleMutation.mutateAsync({ userId, role, action: "add" });
+          }
+
+          await logActionMutation.mutateAsync({
+            action: "User edited",
+            details: `Edited user ${displayName}`,
+            targetType: "user",
+            targetId: userId,
+            module: "users",
+            riskLevel: toAdd.includes("admin") || toRemove.includes("admin") ? "high" : "medium",
+          });
+          await utils.admin.listUsers.invalidate();
+        }}
       />
 
       {/* Soft Delete Confirmation Dialog */}

@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -42,32 +41,28 @@ interface SystemLog {
 }
 
 export default function AdminSystemLogs() {
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [levelFilter, setLevelFilter] = useState("all");
   const [moduleFilter, setModuleFilter] = useState("");
   const [page, setPage] = useState(0);
   const [detail, setDetail] = useState<SystemLog | null>(null);
 
-  const { data: pageData, isLoading, refetch } = useQuery({
-    queryKey: ["system-logs", page, levelFilter, moduleFilter, search],
-    queryFn: async () => {
-      let q = supabase
-        .from("system_logs")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false });
+  const { data: pageData, isLoading, refetch } = trpc.admin.systemLogs.useQuery({
+    page,
+    pageSize: PAGE_SIZE,
+    level: levelFilter,
+    module: moduleFilter || undefined,
+    search: search || undefined,
+  });
 
-      if (levelFilter !== "all") q = q.eq("level", levelFilter);
-      if (moduleFilter) q = q.eq("module", moduleFilter);
-      if (search) {
-        q = q.or(`message.ilike.%${search}%,module.ilike.%${search}%`);
-      }
-
-      const from = page * PAGE_SIZE;
-      q = q.range(from, from + PAGE_SIZE - 1);
-
-      const { data, error, count } = await q;
-      if (error) throw error;
-      return { logs: (data || []) as SystemLog[], total: count || 0 };
+  const cleanupMutation = trpc.admin.cleanupSystemLogs.useMutation({
+    onSuccess: (res) => {
+      toast.success(`Cleaned up ${res.deleted} old log entries`);
+      utils.admin.systemLogs.invalidate();
+    },
+    onError: () => {
+      toast.error("Cleanup failed");
     },
   });
 
@@ -76,14 +71,7 @@ export default function AdminSystemLogs() {
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const handleCleanup = async () => {
-    try {
-      const { data, error } = await supabase.rpc("cleanup_old_system_logs");
-      if (error) throw error;
-      toast.success(`Cleaned up ${data} old log entries`);
-      refetch();
-    } catch {
-      toast.error("Cleanup failed");
-    }
+    await cleanupMutation.mutateAsync({ olderThanDays: 90 }).catch(() => {});
   };
 
   const criticalCount = logs.filter(l => l.level === "critical").length;

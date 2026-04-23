@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 import { Bell, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -10,67 +10,32 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNavigate } from "react-router-dom";
 
-interface UserNotification {
-  id: string;
-  is_read: boolean;
-  created_at: string;
-  notification_id: string;
-  notifications: {
-    title: string;
-    message: string;
-    type: string;
-    link: string | null;
-    priority: string;
-  } | null;
-}
-
 export function NotificationBell() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [items, setItems] = useState<UserNotification[]>([]);
   const [open, setOpen] = useState(false);
+
+  const utils = trpc.useUtils();
+  const { data: items = [] } = trpc.notifications.list.useQuery(
+    { limit: 20 },
+    { enabled: !!user, refetchInterval: 30_000 }
+  );
+
+  const markReadMutation = trpc.notifications.markRead.useMutation({
+    onSuccess: () => utils.notifications.list.invalidate(),
+  });
+  const markAllReadMutation = trpc.notifications.markAllRead.useMutation({
+    onSuccess: () => utils.notifications.list.invalidate(),
+  });
 
   const unreadCount = items.filter((i) => !i.is_read).length;
 
-  const load = async () => {
-    if (!user) return;
-    const { data } = await supabase
-      .from("user_notifications" as any)
-      .select("id, is_read, created_at, notification_id, notifications(title, message, type, link, priority)")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    setItems((data as any) || []);
-  };
+  const markRead = (id: string) => markReadMutation.mutate({ id });
+  const markAllRead = () => markAllReadMutation.mutate();
 
-  useEffect(() => {
-    load();
-    if (!user) return;
-    const channel = supabase
-      .channel("user-notifs")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "user_notifications", filter: `user_id=eq.${user.id}` }, () => load())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
-
-  const markRead = async (id: string) => {
-    await supabase.from("user_notifications" as any).update({ is_read: true, read_at: new Date().toISOString() }).eq("id", id);
-    setItems((prev) => prev.map((i) => i.id === id ? { ...i, is_read: true } : i));
-  };
-
-  const markAllRead = async () => {
-    if (!user) return;
-    const unread = items.filter((i) => !i.is_read).map((i) => i.id);
-    if (unread.length === 0) return;
-    for (const id of unread) {
-      await supabase.from("user_notifications" as any).update({ is_read: true, read_at: new Date().toISOString() }).eq("id", id);
-    }
-    setItems((prev) => prev.map((i) => ({ ...i, is_read: true })));
-  };
-
-  const handleClick = (item: UserNotification) => {
+  const handleClick = (item: (typeof items)[0]) => {
     markRead(item.id);
-    const link = item.notifications?.link;
+    const link = (item.notification as any)?.link;
     if (link) {
       setOpen(false);
       navigate(link);
@@ -130,15 +95,15 @@ export function NotificationBell() {
                 className={`w-full text-left px-4 py-3 border-b border-border/20 hover:bg-secondary/40 transition-colors ${!item.is_read ? "bg-primary/5" : ""}`}
               >
                 <div className="flex gap-2.5">
-                  <span className="text-base mt-0.5">{typeIcon[item.notifications?.type || "system"] || "🔔"}</span>
+                  <span className="text-base mt-0.5">{typeIcon[(item.notification as any)?.type || "system"] || "🔔"}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className={`text-[13px] font-medium truncate ${!item.is_read ? "text-foreground" : "text-muted-foreground"}`}>
-                        {item.notifications?.title}
+                        {(item.notification as any)?.title}
                       </p>
                       {!item.is_read && <div className="w-2 h-2 rounded-full bg-primary shrink-0" />}
                     </div>
-                    <p className="text-[12px] text-muted-foreground line-clamp-2 mt-0.5">{item.notifications?.message}</p>
+                    <p className="text-[12px] text-muted-foreground line-clamp-2 mt-0.5">{(item.notification as any)?.message}</p>
                     <p className="text-[11px] text-muted-foreground/60 mt-1">{timeAgo(item.created_at)}</p>
                   </div>
                 </div>

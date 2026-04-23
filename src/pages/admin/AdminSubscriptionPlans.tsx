@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,20 +16,14 @@ import { Crown, Plus, Pencil, Trash2, Star, Search } from "lucide-react";
 interface Plan {
   id: string;
   name: string;
-  code: string;
   description: string | null;
   price: number;
-  billing_type: string;
-  access_type: string;
-  status: string;
+  duration_days: number;
+  features: string[];
+  is_active: boolean;
   sort_order: number;
   is_featured: boolean;
-  trial_days: number;
-  benefits: string[];
 }
-
-const billingLabels: Record<string, string> = { monthly: "Monthly", yearly: "Yearly", lifetime: "Lifetime" };
-const accessLabels: Record<string, string> = { ebook: "eBook Only", audiobook: "Audiobook Only", both: "eBook + Audiobook", premium: "Premium All Access" };
 
 const defaultBenefits = [
   "Unlimited eBook reading",
@@ -42,36 +35,59 @@ const defaultBenefits = [
 ];
 
 const emptyForm = {
-  name: "", code: "", description: "", price: 0, billing_type: "monthly",
-  access_type: "both", status: "active", sort_order: 0, is_featured: false,
-  trial_days: 0, benefits: [] as string[],
+  name: "", description: "", price: 0, duration_days: 30,
+  sort_order: 0, is_featured: false, is_active: true, features: [] as string[],
 };
 
 export default function AdminSubscriptionPlans() {
-  const [plans, setPlans] = useState<Plan[]>([]);
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Plan | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [showDialog, setShowDialog] = useState(false);
 
-  const load = async () => {
-    const { data } = await supabase.from("subscription_plans" as any).select("*").order("sort_order");
-    setPlans((data as any[] || []) as Plan[]);
-  };
-  useEffect(() => { load(); }, []);
+  const { data: plansRaw = [] } = trpc.admin.listSubscriptionPlans.useQuery();
+  const plans = plansRaw as Plan[];
+  const createMutation = trpc.admin.createPlan.useMutation({
+    onSuccess: async () => {
+      toast.success("Created");
+      setShowDialog(false);
+      await utils.admin.listSubscriptionPlans.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const updateMutation = trpc.admin.updatePlan.useMutation({
+    onSuccess: async () => {
+      toast.success("Updated");
+      setShowDialog(false);
+      await utils.admin.listSubscriptionPlans.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMutation = trpc.admin.deletePlan.useMutation({
+    onSuccess: async () => {
+      toast.success("Deleted");
+      await utils.admin.listSubscriptionPlans.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
-  const filtered = plans.filter(p =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.code.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = useMemo(() => plans.filter(p =>
+    !search || p.name.toLowerCase().includes(search.toLowerCase())
+  ), [plans, search]);
 
   const openNew = () => { setEditing(null); setForm({ ...emptyForm }); setShowDialog(true); };
   const openEdit = (p: Plan) => {
     setEditing(p);
     setForm({
-      name: p.name, code: p.code, description: p.description || "", price: p.price,
-      billing_type: p.billing_type, access_type: p.access_type, status: p.status,
-      sort_order: p.sort_order, is_featured: p.is_featured, trial_days: p.trial_days,
-      benefits: Array.isArray(p.benefits) ? p.benefits : [],
+      name: p.name,
+      description: p.description || "",
+      price: p.price,
+      duration_days: p.duration_days,
+      sort_order: p.sort_order,
+      is_featured: p.is_featured,
+      is_active: p.is_active,
+      features: Array.isArray(p.features) ? p.features : [],
     });
     setShowDialog(true);
   };
@@ -79,42 +95,49 @@ export default function AdminSubscriptionPlans() {
   const toggleBenefit = (b: string) => {
     setForm(f => ({
       ...f,
-      benefits: f.benefits.includes(b) ? f.benefits.filter(x => x !== b) : [...f.benefits, b],
+      features: f.features.includes(b) ? f.features.filter(x => x !== b) : [...f.features, b],
     }));
   };
 
   const save = async () => {
-    if (!form.name || !form.code) { toast.error("Name and code required"); return; }
+    if (!form.name) { toast.error("Name required"); return; }
     const payload = {
-      name: form.name, code: form.code, description: form.description || null,
-      price: Number(form.price), billing_type: form.billing_type, access_type: form.access_type,
-      status: form.status, sort_order: Number(form.sort_order), is_featured: form.is_featured,
-      trial_days: Number(form.trial_days), benefits: form.benefits,
+      name: form.name,
+      description: form.description || null,
+      price: Number(form.price),
+      duration_days: Number(form.duration_days),
+      sort_order: Number(form.sort_order),
+      is_featured: form.is_featured,
+      is_active: form.is_active,
+      features: form.features,
     };
     if (editing) {
-      const { error } = await supabase.from("subscription_plans" as any).update(payload as any).eq("id", editing.id);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Updated");
+      updateMutation.mutate({ id: editing.id, ...payload });
     } else {
-      const { error } = await supabase.from("subscription_plans" as any).insert(payload as any);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Created");
+      createMutation.mutate(payload);
     }
-    setShowDialog(false); load();
   };
 
   const remove = async (p: Plan) => {
     if (!confirm(`Delete "${p.name}"?`)) return;
-    await supabase.from("subscription_plans" as any).delete().eq("id", p.id);
-    toast.success("Deleted"); load();
+    deleteMutation.mutate({ id: p.id });
   };
 
   const toggleStatus = async (p: Plan) => {
-    await supabase.from("subscription_plans" as any).update({ status: p.status === "active" ? "inactive" : "active" } as any).eq("id", p.id);
-    load();
+    updateMutation.mutate({
+      id: p.id,
+      name: p.name,
+      description: p.description || null,
+      price: p.price,
+      duration_days: p.duration_days,
+      sort_order: p.sort_order,
+      is_featured: p.is_featured,
+      is_active: !p.is_active,
+      features: p.features || [],
+    });
   };
 
-  const active = plans.filter(p => p.status === "active").length;
+  const active = plans.filter(p => p.is_active).length;
   const featured = plans.filter(p => p.is_featured).length;
 
   return (
@@ -155,10 +178,9 @@ export default function AdminSubscriptionPlans() {
           <TableHeader>
             <TableRow>
               <TableHead>Plan</TableHead>
-              <TableHead>Billing</TableHead>
-              <TableHead>Access</TableHead>
+              <TableHead>Duration</TableHead>
               <TableHead>Price</TableHead>
-              <TableHead>Trial</TableHead>
+              <TableHead>Features</TableHead>
               <TableHead>Featured</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -170,15 +192,14 @@ export default function AdminSubscriptionPlans() {
                 <TableCell>
                   <div>
                     <p className="font-medium text-sm">{p.name}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{p.code}</p>
+                    {p.description && <p className="text-xs text-muted-foreground line-clamp-1">{p.description}</p>}
                   </div>
                 </TableCell>
-                <TableCell><Badge variant="outline" className="capitalize">{billingLabels[p.billing_type] || p.billing_type}</Badge></TableCell>
-                <TableCell className="text-sm">{accessLabels[p.access_type] || p.access_type}</TableCell>
+                <TableCell className="text-sm">{p.duration_days} days</TableCell>
                 <TableCell className="font-semibold">৳{p.price}</TableCell>
-                <TableCell className="text-sm">{p.trial_days > 0 ? `${p.trial_days} days` : "—"}</TableCell>
+                <TableCell className="text-sm">{p.features?.length || 0}</TableCell>
                 <TableCell>{p.is_featured && <Star className="w-4 h-4 text-amber-400 fill-amber-400" />}</TableCell>
-                <TableCell><Switch checked={p.status === "active"} onCheckedChange={() => toggleStatus(p)} /></TableCell>
+                <TableCell><Switch checked={p.is_active} onCheckedChange={() => toggleStatus(p)} /></TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
                     <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="w-4 h-4" /></Button>
@@ -198,41 +219,21 @@ export default function AdminSubscriptionPlans() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div><Label className="text-sm mb-1.5">Plan Name *</Label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="bg-secondary" /></div>
-              <div><Label className="text-sm mb-1.5">Code *</Label><Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase() }))} className="bg-secondary font-mono" /></div>
+              <div><Label className="text-sm mb-1.5">Duration (days)</Label><Input type="number" value={form.duration_days} onChange={e => setForm(f => ({ ...f, duration_days: Number(e.target.value) }))} className="bg-secondary" /></div>
             </div>
             <div><Label className="text-sm mb-1.5">Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="bg-secondary" rows={2} /></div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div><Label className="text-sm mb-1.5">Price (৳)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))} className="bg-secondary" /></div>
-              <div>
-                <Label className="text-sm mb-1.5">Billing</Label>
-                <Select value={form.billing_type} onValueChange={v => setForm(f => ({ ...f, billing_type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                    <SelectItem value="yearly">Yearly</SelectItem>
-                    <SelectItem value="lifetime">Lifetime</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-sm mb-1.5">Access</Label>
-                <Select value={form.access_type} onValueChange={v => setForm(f => ({ ...f, access_type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ebook">eBook Only</SelectItem>
-                    <SelectItem value="audiobook">Audiobook Only</SelectItem>
-                    <SelectItem value="both">Both</SelectItem>
-                    <SelectItem value="premium">Premium All</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div><Label className="text-sm mb-1.5">Trial Days</Label><Input type="number" value={form.trial_days} onChange={e => setForm(f => ({ ...f, trial_days: Number(e.target.value) }))} className="bg-secondary" /></div>
               <div><Label className="text-sm mb-1.5">Sort Order</Label><Input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))} className="bg-secondary" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="flex items-end gap-2 pb-1">
                 <Switch checked={form.is_featured} onCheckedChange={v => setForm(f => ({ ...f, is_featured: v }))} />
                 <Label className="text-sm">Featured</Label>
+              </div>
+              <div className="flex items-end gap-2 pb-1">
+                <Switch checked={form.is_active} onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))} />
+                <Label className="text-sm">Active</Label>
               </div>
             </div>
             <div>
@@ -240,13 +241,15 @@ export default function AdminSubscriptionPlans() {
               <div className="space-y-2">
                 {defaultBenefits.map(b => (
                   <div key={b} className="flex items-center gap-2">
-                    <Checkbox checked={form.benefits.includes(b)} onCheckedChange={() => toggleBenefit(b)} />
+                    <Checkbox checked={form.features.includes(b)} onCheckedChange={() => toggleBenefit(b)} />
                     <span className="text-sm">{b}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <Button className="w-full" onClick={save}>{editing ? "Update" : "Create"}</Button>
+            <Button className="w-full" onClick={save} disabled={createMutation.isPending || updateMutation.isPending}>
+              {editing ? "Update" : "Create"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

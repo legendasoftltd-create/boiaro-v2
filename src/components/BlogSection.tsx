@@ -1,34 +1,31 @@
-import { useQuery } from "@tanstack/react-query"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Newspaper, Calendar } from "lucide-react"
 import { useRef } from "react"
 import { format } from "date-fns"
+import { toMediaUrl } from "@/lib/mediaUrl"
 
 export function BlogSection() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const { data: posts = [], isLoading } = useQuery({
-    queryKey: ["blog-posts-homepage"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("blog_posts")
-        .select("id, title, slug, excerpt, cover_image, publish_date, category, author_name")
-        .eq("status", "published")
-        .order("publish_date", { ascending: false })
-        .limit(8)
-      if (error) throw error
-      return data
-    },
-    staleTime: 5 * 60 * 1000,
-  })
+  const { data: result, isLoading } = trpc.books.blogPosts.useQuery(
+    { limit: 8 },
+    { staleTime: 5 * 60 * 1000 }
+  )
+  const posts = result?.posts ?? []
 
   const scroll = (dir: "left" | "right") => {
     scrollRef.current?.scrollBy({ left: dir === "left" ? -320 : 320, behavior: "smooth" })
   }
 
-  if (isLoading || posts.length === 0) return null
+  // if (isLoading || posts.length === 0) return null
+
+  if (isLoading) return <p>Loading...</p>
+
+  if (!posts || posts.length === 0) {
+    return <p>No posts found</p>
+  }
 
   return (
     <section className="section-container">
@@ -65,7 +62,7 @@ export function BlogSection() {
               {post.cover_image && (
                 <div className="aspect-[16/9] overflow-hidden">
                   <img
-                    src={post.cover_image}
+                    src={toMediaUrl(post.cover_image)}
                     alt={post.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />

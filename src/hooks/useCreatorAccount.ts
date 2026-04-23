@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 interface CreateCreatorOpts {
@@ -21,6 +21,9 @@ interface LinkCreatorOpts {
 export function useCreatorAccount() {
   const [saving, setSaving] = useState(false);
 
+  const createMutation = trpc.admin.createCreator.useMutation();
+  const linkMutation = trpc.admin.linkCreatorProfile.useMutation();
+
   const createCreatorWithAccount = async (opts: CreateCreatorOpts) => {
     const { email, password, confirmPassword, role, profileTable, profileData } = opts;
 
@@ -30,24 +33,17 @@ export function useCreatorAccount() {
 
     setSaving(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-create-creator", {
-        body: {
-          action: "create_creator",
-          email: email.trim(),
-          password,
-          role,
-          profileTable,
-          profileData,
-        },
+      const result = await createMutation.mutateAsync({
+        email: email.trim(),
+        password,
+        role,
+        profileTable,
+        profileData,
       });
-
-      if (error) { toast.error(error.message || "Failed to create creator"); return null; }
-      if (data?.error) { toast.error(data.error); return null; }
-
-      toast.success(data.message || "Creator account created successfully");
-      return data;
+      toast.success("Creator account created successfully");
+      return result;
     } catch (err: any) {
-      toast.error(err.message || "Unexpected error");
+      toast.error(err.message || "Failed to create creator");
       return null;
     } finally {
       setSaving(false);
@@ -61,23 +57,16 @@ export function useCreatorAccount() {
 
     setSaving(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-create-creator", {
-        body: {
-          action: "link_existing",
-          email: email.trim(),
-          role,
-          profileTable,
-          profileId,
-        },
+      const result = await linkMutation.mutateAsync({
+        email: email.trim(),
+        role,
+        profileTable,
+        profileId,
       });
-
-      if (error) { toast.error(error.message || "Failed to link"); return null; }
-      if (data?.error) { toast.error(data.error); return null; }
-
-      toast.success(data.message || "Profile linked successfully");
-      return data;
+      toast.success("Profile linked successfully");
+      return result;
     } catch (err: any) {
-      toast.error(err.message || "Unexpected error");
+      toast.error(err.message || "Failed to link");
       return null;
     } finally {
       setSaving(false);

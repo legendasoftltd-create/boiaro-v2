@@ -1,6 +1,5 @@
-import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, Plus, Upload, Loader2, Pencil, Image, Link2, Layers, Lock } from "lucide-react";
+import { BookOpen, Plus, Loader2, Pencil, Image, Link2, Layers, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { EbookChapterManager } from "@/components/writer/EbookChapterManager";
 import { useCreatorPermissions } from "@/hooks/useCreatorPermissions";
@@ -17,235 +16,92 @@ import { AttachToExistingBook } from "@/components/book-submission/AttachToExist
 import { VendorEarningsPreview } from "@/components/vendor/VendorEarningsPreview";
 import { useContentEditRequest } from "@/hooks/useContentEditRequest";
 
+const emptyForm = () => ({
+  title: "", title_en: "", description: "", category_id: "", cover_url: "",
+  language: "bn", tags: "", price: "", pages: "", chapters_count: "", file_url: "", file_size: "",
+});
+
+type BookWithFormats = {
+  id: string; title: string; cover_url: string | null; submission_status: string;
+  description: string | null; category: { name: string; name_bn: string | null } | null;
+  formats: Array<{ id: string; format: string; price: number | null; chapters_count: number | null; file_url: string | null; file_size: string | null }>;
+};
+
 export default function WriterBooks() {
-  const { user } = useAuth();
   const { canAddFormat } = useCreatorPermissions();
   const { submitEditRequest } = useContentEditRequest();
-  const [books, setBooks] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
-  const [editBook, setEditBook] = useState<any>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadingCover, setUploadingCover] = useState(false);
-  const [uploadingFile, setUploadingFile] = useState(false);
-  const coverRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [editBook, setEditBook] = useState<BookWithFormats | null>(null);
   const [chaptersOpen, setChaptersOpen] = useState(false);
   const [selectedFormatId, setSelectedFormatId] = useState<string | null>(null);
   const [selectedBookTitle, setSelectedBookTitle] = useState("");
-
-  // Attach flow state
   const [mode, setMode] = useState<"choose" | "create" | "attach" | "attach-form">("choose");
   const [attachedBook, setAttachedBook] = useState<{ id: string; title: string; cover_url: string | null } | null>(null);
+  const [form, setForm] = useState(emptyForm());
 
-  const [form, setForm] = useState({
-    title: "", title_en: "", description: "", description_bn: "",
-    category_id: "", cover_url: "", language: "bn", tags: "",
-    price: "", pages: "", chapters_count: "", file_url: "", file_size: "",
+  const { data: books = [], isLoading } = trpc.books.myCreatorBooks.useQuery({ role: "writer" });
+  const { data: categories = [] } = trpc.books.categories.useQuery();
+
+  const submitMutation = trpc.books.submitBook.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("Submitted for review"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const updateMutation = trpc.books.updateBook.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("Book updated"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const attachMutation = trpc.books.attachBookFormat.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("eBook format attached and submitted for review"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const submitForReviewMutation = trpc.books.submitBookForReview.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); toast.success("Submitted for review"); },
+    onError: (err) => toast.error(err.message),
   });
 
-  const load = async () => {
-    if (!user) return;
-    // Load books submitted by this user AND books where they are a contributor
-    const { data: ownBooks } = await supabase
-      .from("books")
-      .select("*, categories(name, name_bn), book_formats(id, format, price, submitted_by)")
-      .eq("submitted_by", user.id)
-      .order("created_at", { ascending: false });
-
-    const { data: contribData } = await supabase
-      .from("book_contributors")
-      .select("book_id")
-      .eq("user_id", user.id)
-      .eq("role", "writer");
-
-    const contribBookIds = (contribData || []).map(c => c.book_id);
-    const ownBookIds = (ownBooks || []).map(b => b.id);
-    const extraIds = contribBookIds.filter(id => !ownBookIds.includes(id));
-
-    let allBooks = ownBooks || [];
-    if (extraIds.length > 0) {
-      const { data: extraBooks } = await supabase
-        .from("books")
-        .select("*, categories(name, name_bn), book_formats(id, format, price, submitted_by)")
-        .in("id", extraIds);
-      allBooks = [...allBooks, ...(extraBooks || [])];
-    }
-
-    setBooks(allBooks);
-    const { data: cats } = await supabase.from("categories").select("id, name, name_bn");
-    setCategories(cats || []);
-  };
-
-  useEffect(() => { load(); }, [user]);
-
-  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingCover(true);
-    const ext = file.name.split(".").pop();
-    const path = `covers/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("book-covers").upload(path, file);
-    if (error) { toast.error(error.message); setUploadingCover(false); return; }
-    const { data: { publicUrl } } = supabase.storage.from("book-covers").getPublicUrl(path);
-    setForm(f => ({ ...f, cover_url: publicUrl }));
-    setUploadingCover(false);
-    toast.success("Cover uploaded");
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, bookId?: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingFile(true);
-    const ext = file.name.split(".").pop();
-    const path = `${bookId || "new"}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("ebooks").upload(path, file);
-    if (error) { toast.error(error.message); setUploadingFile(false); return; }
-    setForm(f => ({ ...f, file_url: path, file_size: `${(file.size / 1024 / 1024).toFixed(1)} MB` }));
-    setUploadingFile(false);
-    toast.success("eBook file uploaded");
-  };
+  const isPending = submitMutation.isPending || updateMutation.isPending || attachMutation.isPending;
 
   const openNew = () => {
-    setEditBook(null);
-    setAttachedBook(null);
-    setMode("choose");
-    setForm({ title: "", title_en: "", description: "", description_bn: "", category_id: "", cover_url: "", language: "bn", tags: "", price: "", pages: "", chapters_count: "", file_url: "", file_size: "" });
+    setEditBook(null); setAttachedBook(null); setMode("choose"); setForm(emptyForm()); setOpen(true);
+  };
+  const openEdit = (book: BookWithFormats) => {
+    setEditBook(book); setAttachedBook(null); setMode("create");
+    const fmt = book.formats.find(f => f.format === "ebook");
+    setForm({ ...emptyForm(), title: book.title, description: book.description || "", price: fmt?.price?.toString() || "", file_url: fmt?.file_url || "", file_size: fmt?.file_size || "", chapters_count: fmt?.chapters_count?.toString() || "" });
     setOpen(true);
-  };
-
-  const openEdit = (book: any) => {
-    setEditBook(book);
-    setAttachedBook(null);
-    setMode("create"); // editing existing = direct form
-    const ebookFormat = (book.book_formats || []).find((f: any) => f.format === "ebook");
-    setForm({
-      title: book.title || "", title_en: book.title_en || "",
-      description: book.description || "", description_bn: book.description_bn || "",
-      category_id: book.category_id || "", cover_url: book.cover_url || "",
-      language: book.language || "bn", tags: (book.tags || []).join(", "),
-      price: ebookFormat?.price?.toString() || "", pages: "", chapters_count: "",
-      file_url: ebookFormat?.file_url || "", file_size: "",
-    });
-    setOpen(true);
-  };
-
-  const handleAttachSelect = (book: { id: string; title: string; cover_url: string | null }) => {
-    setAttachedBook(book);
-    setMode("attach-form");
-    setForm(f => ({ ...f, price: "", pages: "", chapters_count: "", file_url: "", file_size: "" }));
-  };
-
-  const saveAttachFormat = async () => {
-    if (!user || !attachedBook) return;
-    setUploading(true);
-
-    const formatPayload = {
-      book_id: attachedBook.id,
-      format: "ebook" as const,
-      price: form.price ? Number(form.price) : 0,
-      pages: form.pages ? Number(form.pages) : null,
-      chapters_count: form.chapters_count ? Number(form.chapters_count) : null,
-      file_url: form.file_url || null,
-      file_size: form.file_size || null,
-      submission_status: "pending",
-      submitted_by: user.id,
-    };
-
-    const { error: fmtError } = await supabase.from("book_formats").insert(formatPayload);
-    if (fmtError) {
-      if (fmtError.message.includes("duplicate") || fmtError.message.includes("unique")) {
-        toast.error("This book already has an ebook format");
-      } else {
-        toast.error(fmtError.message);
-      }
-      setUploading(false);
-      return;
-    }
-
-    await supabase.from("book_contributors").insert({
-      book_id: attachedBook.id, user_id: user.id, role: "writer", format: "ebook",
-    });
-
-    setUploading(false);
-    setOpen(false);
-    toast.success("eBook format attached and submitted for review");
-    load();
   };
 
   const save = async (asDraft = false) => {
-    if (!user || !form.title) { toast.error("Title is required"); return; }
-    setUploading(true);
-    const slug = form.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0980-\u09FF-]/g, "");
-
-    const bookPayload = {
-      title: form.title, title_en: form.title_en || null,
-      slug, description: form.description || null,
-      description_bn: form.description_bn || null,
-      category_id: form.category_id || null, cover_url: form.cover_url || null,
-      language: form.language, submission_status: asDraft ? "draft" : "pending", submitted_by: user.id,
-      tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : null,
-    };
-
-    let bookId: string;
+    if (!form.title) { toast.error("Title is required"); return; }
     if (editBook) {
-      // If content is approved/pending → submit edit request instead of direct update
-      if (editBook.submission_status && editBook.submission_status !== "draft") {
-        const ebookFormat = (editBook.book_formats || []).find((f: any) => f.format === "ebook");
-        const formatChanges = {
-          price: form.price ? Number(form.price) : 0,
-          pages: form.pages ? Number(form.pages) : null,
-          chapters_count: form.chapters_count ? Number(form.chapters_count) : null,
-          file_url: form.file_url || null, file_size: form.file_size || null,
-        };
-        const success = await submitEditRequest({
-          contentType: "book",
-          contentId: editBook.id,
-          submittedBy: user.id,
-          proposedChanges: {
-            book: bookPayload,
-            format: { ...formatChanges, format_id: ebookFormat?.id },
-          },
-        });
-        setUploading(false);
-        if (success) setOpen(false);
-        return;
+      if (editBook.submission_status !== "draft") {
+        const fmt = editBook.formats.find(f => f.format === "ebook");
+        await submitEditRequest({ contentType: "book", contentId: editBook.id, submittedBy: "", proposedChanges: { book: form, format: { price: Number(form.price), format_id: fmt?.id } } });
+        setOpen(false); return;
       }
-      const { error } = await supabase.from("books").update(bookPayload).eq("id", editBook.id);
-      if (error) { toast.error(error.message); setUploading(false); return; }
-      bookId = editBook.id;
+      updateMutation.mutate({
+        bookId: editBook.id,
+        formatId: editBook.formats.find(f => f.format === "ebook")?.id,
+        title: form.title, titleEn: form.title_en || undefined, description: form.description || undefined,
+        categoryId: form.category_id || undefined, coverUrl: form.cover_url || undefined,
+        language: form.language, tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+        asDraft, format: "ebook", price: form.price ? Number(form.price) : 0,
+        pages: form.pages ? Number(form.pages) : undefined,
+        chaptersCount: form.chapters_count ? Number(form.chapters_count) : undefined,
+        fileUrl: form.file_url || undefined, fileSize: form.file_size || undefined,
+      });
     } else {
-      const { data, error } = await supabase.from("books").insert(bookPayload).select("id").single();
-      if (error) { toast.error(error.message); setUploading(false); return; }
-      bookId = data.id;
-      await supabase.from("book_contributors").insert({ book_id: bookId, user_id: user.id, role: "writer", format: "ebook" });
+      submitMutation.mutate({
+        title: form.title, titleEn: form.title_en || undefined, description: form.description || undefined,
+        categoryId: form.category_id || undefined, coverUrl: form.cover_url || undefined,
+        language: form.language, tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [],
+        asDraft, format: "ebook", role: "writer", price: form.price ? Number(form.price) : 0,
+        pages: form.pages ? Number(form.pages) : undefined,
+        chaptersCount: form.chapters_count ? Number(form.chapters_count) : undefined,
+        fileUrl: form.file_url || undefined, fileSize: form.file_size || undefined,
+      });
     }
-
-    const existingFormat = editBook?.book_formats?.find((f: any) => f.format === "ebook");
-    const formatPayload = {
-      book_id: bookId, format: "ebook" as const,
-      price: form.price ? Number(form.price) : 0,
-      pages: form.pages ? Number(form.pages) : null,
-      chapters_count: form.chapters_count ? Number(form.chapters_count) : null,
-      file_url: form.file_url || null, file_size: form.file_size || null,
-    };
-
-    if (existingFormat) {
-      await supabase.from("book_formats").update(formatPayload).eq("id", existingFormat.id);
-    } else {
-      await supabase.from("book_formats").insert(formatPayload);
-    }
-
-    setUploading(false);
-    setOpen(false);
-    toast.success(asDraft ? "Saved as draft" : editBook ? "Book updated" : "Book submitted for review");
-    load();
-  };
-
-  const submitForReview = async (book: any) => {
-    await supabase.from("books").update({ submission_status: "pending" }).eq("id", book.id);
-    toast.success("Submitted for review");
-    load();
   };
 
   const statusBadge = (status: string) => {
@@ -294,21 +150,17 @@ export default function WriterBooks() {
         <div><Label>Original Price (৳)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} /></div>
         <div><Label>Pages</Label><Input type="number" value={form.pages} onChange={e => setForm(f => ({ ...f, pages: e.target.value }))} /></div>
         <div className="col-span-2">
-          <Label>Upload PDF/EPUB</Label>
-          <input ref={fileRef} type="file" accept=".pdf,.epub" className="hidden" onChange={e => handleFileUpload(e, attachedBook?.id)} />
-          <div className="flex items-center gap-3 mt-1.5">
-            <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploadingFile}>
-              {uploadingFile ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Uploading...</> : <><Upload className="h-3 w-3 mr-1.5" />Upload eBook File</>}
-            </Button>
-            {form.file_url && <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 text-xs">✓ File uploaded</Badge>}
-          </div>
+          <p className="text-xs text-muted-foreground">File upload available in Phase 5 (storage provider configuration pending)</p>
         </div>
       </div>
       {attachedBook && form.price && Number(form.price) > 0 && (
         <VendorEarningsPreview bookId={attachedBook.id} format="ebook" basePrice={Number(form.price)} role="writer" />
       )}
-      <Button className="w-full" onClick={saveAttachFormat} disabled={uploading}>
-        {uploading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Attaching...</> : "Attach & Submit for Review"}
+      <Button className="w-full" onClick={() => {
+        if (!attachedBook) return;
+        attachMutation.mutate({ bookId: attachedBook.id, format: "ebook", role: "writer", price: form.price ? Number(form.price) : 0, pages: form.pages ? Number(form.pages) : undefined });
+      }} disabled={isPending}>
+        {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Attaching...</> : "Attach & Submit for Review"}
       </Button>
     </div>
   );
@@ -318,15 +170,7 @@ export default function WriterBooks() {
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <Label>Cover Image</Label>
-          <div className="flex items-center gap-4 mt-1.5">
-            {form.cover_url && <img src={form.cover_url} alt="" className="w-16 h-24 object-cover rounded border" />}
-            <div>
-              <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
-              <Button type="button" variant="outline" size="sm" onClick={() => coverRef.current?.click()} disabled={uploadingCover}>
-                {uploadingCover ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Uploading...</> : <><Upload className="h-3 w-3 mr-1.5" />Upload Cover</>}
-              </Button>
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground mt-1">Cover upload available in Phase 5 (storage provider pending)</p>
         </div>
         <div className="col-span-2"><Label>Title (Bengali) *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
         <div><Label>Title (English)</Label><Input value={form.title_en} onChange={e => setForm(f => ({ ...f, title_en: e.target.value }))} /></div>
@@ -334,7 +178,7 @@ export default function WriterBooks() {
           <Label>Category</Label>
           <Select value={form.category_id} onValueChange={v => setForm(f => ({ ...f, category_id: v }))}>
             <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-            <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name_bn || c.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{(categories as any[]).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name_bn || c.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div className="col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
@@ -342,26 +186,16 @@ export default function WriterBooks() {
         <div><Label>Pages</Label><Input type="number" value={form.pages} onChange={e => setForm(f => ({ ...f, pages: e.target.value }))} /></div>
         <div><Label>Tags (comma separated)</Label><Input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} /></div>
         <div><Label>Language</Label><Input value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))} /></div>
-        <div className="col-span-2">
-          <Label>Upload PDF/EPUB</Label>
-          <input ref={fileRef} type="file" accept=".pdf,.epub" className="hidden" onChange={e => handleFileUpload(e, editBook?.id)} />
-          <div className="flex items-center gap-3 mt-1.5">
-            <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} disabled={uploadingFile}>
-              {uploadingFile ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Uploading...</> : <><Upload className="h-3 w-3 mr-1.5" />Upload eBook File</>}
-            </Button>
-            {form.file_url && <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 text-xs">✓ File uploaded</Badge>}
-          </div>
-        </div>
       </div>
       {editBook && form.price && Number(form.price) > 0 && (
         <VendorEarningsPreview bookId={editBook.id} format="ebook" basePrice={Number(form.price)} role="writer" />
       )}
       <div className="flex gap-3 mt-4">
-        <Button variant="outline" className="flex-1" onClick={() => save(true)} disabled={uploading}>
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Draft"}
+        <Button variant="outline" className="flex-1" onClick={() => save(true)} disabled={isPending}>
+          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Draft"}
         </Button>
-        <Button className="flex-1" onClick={() => save(false)} disabled={uploading}>
-          {uploading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : editBook ? "Update & Submit" : "Submit for Review"}
+        <Button className="flex-1" onClick={() => save(false)} disabled={isPending}>
+          {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : editBook ? "Update & Submit" : "Submit for Review"}
         </Button>
       </div>
     </>
@@ -374,9 +208,11 @@ export default function WriterBooks() {
         <Button onClick={openNew} className="gap-2" disabled={!canAddFormat("ebook")}><Plus className="h-4 w-4" />Submit eBook</Button>
       </div>
 
-      {books.length > 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : books.length > 0 ? (
         <div className="grid gap-4">
-          {books.map(book => (
+          {(books as any[]).map((book: any) => (
             <Card key={book.id} className="border-border/30 bg-card/60">
               <CardContent className="p-4 flex gap-4">
                 {book.cover_url ? (
@@ -391,13 +227,13 @@ export default function WriterBooks() {
                     <h3 className="font-semibold truncate">{book.title}</h3>
                     {statusBadge(book.submission_status || "pending")}
                   </div>
-                  <p className="text-xs text-muted-foreground mb-2">{book.categories?.name_bn || book.categories?.name || "No category"}</p>
+                  <p className="text-xs text-muted-foreground mb-2">{book.category?.name_bn || book.category?.name || "No category"}</p>
                   <p className="text-xs text-muted-foreground line-clamp-2">{book.description || "No description"}</p>
                 </div>
                 <div className="shrink-0 flex flex-col gap-1.5">
-                  {(book.book_formats || []).find((f: any) => f.format === "ebook") && (
+                  {(book.formats || []).find((f: any) => f.format === "ebook") && (
                     <Button size="sm" variant="outline" onClick={() => {
-                      const fmt = (book.book_formats || []).find((f: any) => f.format === "ebook");
+                      const fmt = (book.formats || []).find((f: any) => f.format === "ebook");
                       if (fmt) { setSelectedFormatId(fmt.id); setSelectedBookTitle(book.title); setChaptersOpen(true); }
                     }} className="gap-1 text-xs h-8">
                       <Layers className="h-3 w-3" />Chapters
@@ -409,8 +245,8 @@ export default function WriterBooks() {
                     </Button>
                   )}
                   {book.submission_status === "draft" && (
-                    <Button size="sm" onClick={() => submitForReview(book)} className="gap-1 text-xs h-8 bg-primary">
-                      <Upload className="h-3 w-3" />Submit
+                    <Button size="sm" onClick={() => submitForReviewMutation.mutate({ bookId: book.id })} disabled={submitForReviewMutation.isPending} className="gap-1 text-xs h-8 bg-primary">
+                      Submit
                     </Button>
                   )}
                   {book.submission_status && book.submission_status !== "draft" && (
@@ -446,7 +282,7 @@ export default function WriterBooks() {
             </DialogTitle>
           </DialogHeader>
           {mode === "choose" && !editBook && renderChooseMode()}
-          {mode === "attach" && <AttachToExistingBook format="ebook" onSelect={handleAttachSelect} onCancel={() => setMode("choose")} />}
+          {mode === "attach" && <AttachToExistingBook format="ebook" onSelect={(b) => { setAttachedBook(b); setMode("attach-form"); }} onCancel={() => setMode("choose")} />}
           {mode === "attach-form" && renderAttachForm()}
           {mode === "create" && renderCreateForm()}
         </DialogContent>

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,21 +37,41 @@ const emptyForm = {
 };
 
 export default function AdminCoupons() {
-  const [coupons, setCoupons] = useState<Coupon[]>([]);
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Coupon | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [showDialog, setShowDialog] = useState(false);
 
-  const load = async () => {
-    const { data } = await supabase.from("coupons" as any).select("*").order("created_at", { ascending: false });
-    setCoupons((data as any[] || []) as Coupon[]);
-  };
-  useEffect(() => { load(); }, []);
+  const { data: couponsRaw = [] } = trpc.admin.listCoupons.useQuery();
+  const coupons = couponsRaw as Coupon[];
+  const createMutation = trpc.admin.createCoupon.useMutation({
+    onSuccess: async () => {
+      toast.success("Created");
+      setShowDialog(false);
+      await utils.admin.listCoupons.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const updateMutation = trpc.admin.updateCoupon.useMutation({
+    onSuccess: async () => {
+      toast.success("Updated");
+      setShowDialog(false);
+      await utils.admin.listCoupons.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMutation = trpc.admin.deleteCoupon.useMutation({
+    onSuccess: async () => {
+      toast.success("Deleted");
+      await utils.admin.listCoupons.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
-  const filtered = coupons.filter(c =>
+  const filtered = useMemo(() => coupons.filter(c =>
     !search || c.code.toLowerCase().includes(search.toLowerCase()) || (c.description || "").toLowerCase().includes(search.toLowerCase())
-  );
+  ), [coupons, search]);
 
   const openNew = () => { setEditing(null); setForm({ ...emptyForm }); setShowDialog(true); };
   const openEdit = (c: Coupon) => {
@@ -69,7 +89,7 @@ export default function AdminCoupons() {
 
   const save = async () => {
     if (!form.code) { toast.error("Code required"); return; }
-    const payload: any = {
+    const payload = {
       code: form.code.toUpperCase(), description: form.description || null,
       discount_type: form.discount_type, discount_value: Number(form.discount_value),
       applies_to: form.applies_to, min_order_amount: Number(form.min_order_amount),
@@ -80,26 +100,33 @@ export default function AdminCoupons() {
       status: form.status, first_order_only: form.first_order_only,
     };
     if (editing) {
-      const { error } = await supabase.from("coupons" as any).update(payload).eq("id", editing.id);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Updated");
+      updateMutation.mutate({ id: editing.id, ...payload });
     } else {
-      const { error } = await supabase.from("coupons" as any).insert(payload);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Created");
+      createMutation.mutate(payload);
     }
-    setShowDialog(false); load();
   };
 
   const remove = async (c: Coupon) => {
     if (!confirm(`Delete coupon "${c.code}"?`)) return;
-    await supabase.from("coupons" as any).delete().eq("id", c.id);
-    toast.success("Deleted"); load();
+    deleteMutation.mutate({ id: c.id });
   };
 
   const toggleStatus = async (c: Coupon) => {
-    await supabase.from("coupons" as any).update({ status: c.status === "active" ? "inactive" : "active" } as any).eq("id", c.id);
-    load();
+    updateMutation.mutate({
+      id: c.id,
+      code: c.code,
+      description: c.description || null,
+      discount_type: c.discount_type,
+      discount_value: Number(c.discount_value),
+      applies_to: c.applies_to,
+      min_order_amount: Number(c.min_order_amount || 0),
+      usage_limit: c.usage_limit,
+      per_user_limit: c.per_user_limit ?? 1,
+      start_date: c.start_date,
+      end_date: c.end_date,
+      status: c.status === "active" ? "inactive" : "active",
+      first_order_only: (c as any).first_order_only || false,
+    });
   };
 
   const active = coupons.filter(c => c.status === "active").length;
@@ -226,7 +253,9 @@ export default function AdminCoupons() {
               <Switch checked={form.first_order_only} onCheckedChange={v => setForm(f => ({ ...f, first_order_only: v }))} />
               <Label className="text-sm">First order only</Label>
             </div>
-            <Button className="w-full" onClick={save}>{editing ? "Update" : "Create"}</Button>
+            <Button className="w-full" onClick={save} disabled={createMutation.isPending || updateMutation.isPending}>
+              {editing ? "Update" : "Create"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

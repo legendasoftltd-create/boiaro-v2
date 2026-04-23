@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import { Plus, Pencil, Search, FileText } from "lucide-react";
 
 interface CmsPage {
@@ -26,7 +25,7 @@ interface CmsPage {
 }
 
 export default function AdminCmsPages() {
-  const qc = useQueryClient();
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [editing, setEditing] = useState<CmsPage | null>(null);
@@ -36,31 +35,24 @@ export default function AdminCmsPages() {
     seo_title: "", seo_description: "", seo_keywords: "",
   });
 
-  const { data: pages = [], isLoading } = useQuery({
-    queryKey: ["cms-pages"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("cms_pages").select("*").order("updated_at", { ascending: false });
-      if (error) throw error;
-      return data as CmsPage[];
+  const { data: pages = [], isLoading } = trpc.admin.listCmsPages.useQuery();
+
+  const createMutation = trpc.admin.createCmsPage.useMutation({
+    onSuccess: () => {
+      utils.admin.listCmsPages.invalidate();
+      setIsOpen(false);
+      toast.success("Page saved");
     },
+    onError: (e) => toast.error(e.message),
   });
 
-  const saveMutation = useMutation({
-    mutationFn: async (f: typeof form & { id?: string }) => {
-      const payload = { ...f, featured_image: f.featured_image || null, seo_title: f.seo_title || null, seo_description: f.seo_description || null, seo_keywords: f.seo_keywords || null };
-      if (f.id) {
-        const { error } = await supabase.from("cms_pages").update(payload).eq("id", f.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("cms_pages").insert(payload);
-        if (error) throw error;
-      }
-    },
+  const updateMutation = trpc.admin.updateCmsPage.useMutation({
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["cms-pages"] });
+      utils.admin.listCmsPages.invalidate();
       setIsOpen(false);
-      toast({ title: "Page saved" });
+      toast.success("Page saved");
     },
+    onError: (e) => toast.error(e.message),
   });
 
   const openNew = () => {
@@ -168,8 +160,28 @@ export default function AdminCmsPages() {
                 <div><label className="text-sm font-medium">Keywords</label><Input value={form.seo_keywords} onChange={e => setForm(f => ({ ...f, seo_keywords: e.target.value }))} /></div>
               </div>
             </div>
-            <Button className="w-full" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate({ ...form, id: editing?.id })}>
-              {saveMutation.isPending ? "Saving..." : "Save"}
+            <Button
+              className="w-full"
+              disabled={createMutation.isPending || updateMutation.isPending}
+              onClick={() => {
+                const payload = {
+                  title: form.title,
+                  slug: form.slug,
+                  content: form.content,
+                  featured_image: form.featured_image || null,
+                  status: form.status,
+                  seo_title: form.seo_title || null,
+                  seo_description: form.seo_description || null,
+                  seo_keywords: form.seo_keywords || null,
+                };
+                if (editing?.id) {
+                  updateMutation.mutate({ id: editing.id, ...payload });
+                } else {
+                  createMutation.mutate(payload);
+                }
+              }}
+            >
+              {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save"}
             </Button>
           </div>
         </DialogContent>

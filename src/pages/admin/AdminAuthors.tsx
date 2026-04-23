@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,95 +20,96 @@ import { CreatorAccountCard } from "@/components/admin/CreatorAccountCard";
 import { useCreatorAccount } from "@/hooks/useCreatorAccount";
 import { toast } from "sonner";
 
+const EMPTY_FORM = { name: "", name_en: "", bio: "", genre: "", avatar_url: "", is_featured: false, is_trending: false, priority: 0, phone: "" };
+
 export default function AdminAuthors() {
   const navigate = useNavigate();
-  const [items, setItems] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<any>(null);
-  const [form, setForm] = useState({ name: "", name_en: "", bio: "", genre: "", avatar_url: "", is_featured: false, is_trending: false, priority: 0, phone: "" });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deactivateTarget, setDeactivateTarget] = useState<any>(null);
 
-  // Account creation fields
   const [createAccount, setCreateAccount] = useState(false);
   const [accEmail, setAccEmail] = useState("");
   const [accPassword, setAccPassword] = useState("");
   const [accConfirm, setAccConfirm] = useState("");
-  const { createCreatorWithAccount, linkExistingProfile, saving } = useCreatorAccount();
+  const { createCreatorWithAccount, linkExistingProfile, saving: accountSaving } = useCreatorAccount();
 
-  const load = async () => {
-    const { data } = await supabase.rpc("admin_get_authors" as any);
-    setItems((data as any[]) || []);
-  };
-  useEffect(() => { load(); }, []);
+  const utils = trpc.useUtils();
+  const { data: items = [], isLoading, error } = trpc.admin.listAuthors.useQuery({ search: search || undefined });
+  const createMutation = trpc.admin.createAuthor.useMutation({ onSuccess: () => utils.admin.listAuthors.invalidate() });
+  const updateMutation = trpc.admin.updateAuthor.useMutation({ onSuccess: () => utils.admin.listAuthors.invalidate() });
+  const deleteMutation = trpc.admin.deleteAuthor.useMutation({ onSuccess: () => utils.admin.listAuthors.invalidate() });
 
   const resetAccountFields = () => { setCreateAccount(false); setAccEmail(""); setAccPassword(""); setAccConfirm(""); };
 
-  const openNew = () => { setEdit(null); setForm({ name: "", name_en: "", bio: "", genre: "", avatar_url: "", is_featured: false, is_trending: false, priority: 0, phone: "" }); resetAccountFields(); setOpen(true); };
-  const openEdit = (a: any) => { setEdit(a); setForm({ name: a.name, name_en: a.name_en || "", bio: a.bio || "", genre: a.genre || "", avatar_url: a.avatar_url || "", is_featured: a.is_featured || false, is_trending: a.is_trending || false, priority: a.priority || 0, phone: a.phone || "" }); resetAccountFields(); setOpen(true); };
+  const openNew = () => { setEdit(null); setForm(EMPTY_FORM); resetAccountFields(); setOpen(true); };
+  const openEdit = (a: any) => {
+    setEdit(a);
+    setForm({ name: a.name, name_en: a.name_en || "", bio: a.bio || "", genre: a.genre || "", avatar_url: a.avatar_url || "", is_featured: a.is_featured || false, is_trending: a.is_trending || false, priority: a.priority || 0, phone: a.phone || "" });
+    resetAccountFields();
+    setOpen(true);
+  };
 
   const save = async () => {
     const payload = { ...form, priority: Number(form.priority) || 0 };
 
     if (edit) {
-      // Editing existing
-      const { error } = await supabase.from("authors").update(payload).eq("id", edit.id);
-      if (error) { toast.error(error.message); return; }
-
-      // Link account for existing unlinked profile
+      await updateMutation.mutateAsync({ id: edit.id, ...payload });
       if (createAccount && !edit.user_id && accEmail) {
         await linkExistingProfile({ email: accEmail, role: "writer", profileTable: "authors", profileId: edit.id });
       }
     } else {
-      // New entry
       if (createAccount) {
-        const result = await createCreatorWithAccount({
-          email: accEmail, password: accPassword, confirmPassword: accConfirm,
-          role: "writer", profileTable: "authors", profileData: payload,
-        });
+        const result = await createCreatorWithAccount({ email: accEmail, password: accPassword, confirmPassword: accConfirm, role: "writer", profileTable: "authors", profileData: payload });
         if (!result) return;
       } else {
-        const { error } = await supabase.from("authors").insert(payload);
-        if (error) { toast.error(error.message); return; }
+        await createMutation.mutateAsync(payload);
       }
     }
 
-    toast.success("Saved"); setOpen(false); load();
+    toast.success("Saved");
+    setOpen(false);
   };
 
-  const remove = async (id: string) => { if (!confirm("Delete?")) return; await supabase.from("authors").delete().eq("id", id); toast.success("Deleted"); load(); };
-
-  const handleToggle = (a: any) => {
-    if (a.status === "active") { setDeactivateTarget(a); }
-    else { supabase.from("authors").update({ status: "active" }).eq("id", a.id).then(() => { toast.success("Activated"); load(); }); }
+  const remove = async (id: string) => {
+    if (!confirm("Delete?")) return;
+    await deleteMutation.mutateAsync({ id });
+    toast.success("Deleted");
   };
 
-  const deactivateItem = async (item: any, reason: string, type: string) => {
-    await supabase.from("authors").update({ status: "inactive" }).eq("id", item.id);
-    await supabase.from("admin_activity_logs").insert({
-      user_id: (await supabase.auth.getUser()).data.user?.id || "",
-      action: `Author deactivated (${type})`, details: reason || "No reason provided",
-      target_type: "author", target_id: item.id, module: "authors",
-      risk_level: type === "permanent" ? "high" : "medium",
-    });
-    setDeactivateTarget(null); toast.success("Deactivated"); load();
+  const handleToggle = async (a: any) => {
+    if (a.status === "active") {
+      setDeactivateTarget(a);
+    } else {
+      await updateMutation.mutateAsync({ id: a.id, status: "active" });
+      toast.success("Activated");
+    }
   };
 
-  const toggleSelect = (id: string) => { const next = new Set(selected); if (next.has(id)) next.delete(id); else next.add(id); setSelected(next); };
+  const deactivateItem = async (item: any, _reason: string, _type: string) => {
+    await updateMutation.mutateAsync({ id: item.id, status: "inactive" });
+    setDeactivateTarget(null);
+    toast.success("Deactivated");
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelected(next);
+  };
 
   const bulkSetStatus = async (status: string) => {
     const ids = Array.from(selected);
     if (!ids.length || !confirm(`${status === "active" ? "Activate" : "Deactivate"} ${ids.length} author(s)?`)) return;
-    for (const id of ids) await supabase.from("authors").update({ status }).eq("id", id);
-    setSelected(new Set()); toast.success(`${ids.length} author(s) ${status === "active" ? "activated" : "deactivated"}`); load();
+    for (const id of ids) await updateMutation.mutateAsync({ id, status });
+    setSelected(new Set());
+    toast.success(`${ids.length} author(s) ${status === "active" ? "activated" : "deactivated"}`);
   };
 
-  const filtered = items.filter((a) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (a.name || "").toLowerCase().includes(q) || (a.name_en || "").toLowerCase().includes(q);
-  });
+  const saving = createMutation.isPending || updateMutation.isPending || accountSaving;
 
   return (
     <div>
@@ -133,7 +134,9 @@ export default function AdminAuthors() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10"><Checkbox checked={filtered.length > 0 && selected.size === filtered.length} onCheckedChange={() => selected.size === filtered.length ? setSelected(new Set()) : setSelected(new Set(filtered.map(a => a.id)))} /></TableHead>
+              <TableHead className="w-10">
+                <Checkbox checked={items.length > 0 && selected.size === items.length} onCheckedChange={() => selected.size === items.length ? setSelected(new Set()) : setSelected(new Set(items.map((a: any) => a.id)))} />
+              </TableHead>
               <TableHead className="w-12"></TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Genre</TableHead>
@@ -144,7 +147,10 @@ export default function AdminAuthors() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((a) => (
+            {isLoading && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading…</TableCell></TableRow>}
+            {!isLoading && error && <TableRow><TableCell colSpan={8} className="text-center text-destructive py-8">Error: {error.message} — try signing out and back in</TableCell></TableRow>}
+            {!isLoading && !error && items.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No authors</TableCell></TableRow>}
+            {items.map((a: any) => (
               <TableRow key={a.id}>
                 <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} /></TableCell>
                 <TableCell><Avatar className="h-8 w-8"><AvatarImage src={a.avatar_url || undefined} /><AvatarFallback className="bg-secondary text-muted-foreground text-xs"><User className="h-3.5 w-3.5" /></AvatarFallback></Avatar></TableCell>
@@ -171,7 +177,6 @@ export default function AdminAuthors() {
                 </TableCell>
               </TableRow>
             ))}
-            {!items.length && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No authors</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>
@@ -191,27 +196,9 @@ export default function AdminAuthors() {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_trending} onChange={(e) => setForm({ ...form, is_trending: e.target.checked })} />Trending</label>
 
             {edit ? (
-              <CreatorAccountCard
-                profileId={edit.id}
-                profileName={edit.name}
-                profileTable="authors"
-                creatorRole="writer"
-                userId={edit.user_id}
-                onLinkChanged={() => load()}
-              />
+              <CreatorAccountCard profileId={edit.id} profileName={edit.name} profileTable="authors" creatorRole="writer" userId={edit.user_id} onLinkChanged={() => utils.admin.listAuthors.invalidate()} />
             ) : (
-              <CreatorAccountFields
-                isEdit={false}
-                hasExistingUserId={false}
-                createAccount={createAccount}
-                onCreateAccountChange={setCreateAccount}
-                email={accEmail}
-                onEmailChange={setAccEmail}
-                password={accPassword}
-                onPasswordChange={setAccPassword}
-                confirmPassword={accConfirm}
-                onConfirmPasswordChange={setAccConfirm}
-              />
+              <CreatorAccountFields isEdit={false} hasExistingUserId={false} createAccount={createAccount} onCreateAccountChange={setCreateAccount} email={accEmail} onEmailChange={setAccEmail} password={accPassword} onPasswordChange={setAccPassword} confirmPassword={accConfirm} onConfirmPasswordChange={setAccConfirm} />
             )}
 
             <Button className="w-full" onClick={save} disabled={saving}>

@@ -1,0 +1,1621 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum AppRole {
+  admin
+  moderator
+  user
+  writer
+  publisher
+  narrator
+  rj
+}
+
+enum AudioQuality {
+  standard
+  hd
+}
+
+enum BindingType {
+  paperback
+  hardcover
+}
+
+enum BookFormatType {
+  ebook
+  audiobook
+  hardcopy
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  password_hash  String
+  email_verified Boolean   @default(false)
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  profile   Profile?
+  roles     UserRole[]
+
+  @@map("users")
+}
+
+// ─── Tables ──────────────────────────────────────────────────────────────────
+
+model AccountingLedger {
+  id             String   @id @default(uuid())
+  amount         Float    @default(0)
+  book_id        String?
+  category       String   @default("general")
+  created_at     DateTime @default(now())
+  created_by     String?
+  description    String?
+  entry_date     DateTime @default(now())
+  order_id       String?
+  reference_id   String?
+  reference_type String?
+  source         String   @default("system")
+  type           String   @default("credit")
+  updated_at     DateTime @updatedAt
+
+  @@map("accounting_ledger")
+}
+
+model AdBanner {
+  id              String   @id @default(uuid())
+  clicks          Int?     @default(0)
+  created_at      DateTime @default(now())
+  destination_url String?
+  device          String?
+  display_order   Int?
+  end_date        DateTime?
+  image_url       String?
+  impressions     Int?     @default(0)
+  placement_key   String
+  start_date      DateTime?
+  status          String   @default("active")
+  title           String?
+  updated_at      DateTime @updatedAt
+
+  @@map("ad_banners")
+}
+
+model AdCampaign {
+  id            String   @id @default(uuid())
+  ad_type       String   @default("banner")
+  created_at    DateTime @default(now())
+  end_date      DateTime?
+  name          String
+  notes         String?
+  placement_key String?
+  start_date    DateTime?
+  status        String   @default("active")
+  target_page   String?
+  updated_at    DateTime @updatedAt
+
+  @@map("ad_campaigns")
+}
+
+model AdPlacement {
+  id                String   @id @default(uuid())
+  ad_type           String   @default("banner")
+  created_at        DateTime @default(now())
+  device_visibility String?
+  display_priority  Int?
+  frequency         String?
+  is_enabled        Boolean  @default(true)
+  label             String
+  notes             String?
+  placement_key     String   @unique
+  updated_at        DateTime @updatedAt
+
+  @@map("ad_placements")
+}
+
+model AdminActivityLog {
+  id          String   @id @default(uuid())
+  action      String
+  action_type String?
+  actor_role  String?
+  created_at  DateTime @default(now())
+  details     String?
+  ip_address  String?
+  module      String?
+  new_value   String?
+  old_value   String?
+  risk_level  String   @default("low")
+  status      String   @default("success")
+  target_id   String?
+  target_type String?
+  user_agent  String?
+  user_id     String
+  user_name   String?
+
+  @@map("admin_activity_logs")
+}
+
+model AdminRole {
+  id          String   @id @default(uuid())
+  created_at  DateTime @default(now())
+  description String?
+  is_system   Boolean  @default(false)
+  label       String
+  name        String   @unique
+  updated_at  DateTime @updatedAt
+
+  admin_user_roles AdminUserRole[]
+
+  @@map("admin_roles")
+}
+
+model AdminUserRole {
+  id            String    @id @default(uuid())
+  admin_role_id String
+  created_at    DateTime  @default(now())
+  is_active     Boolean   @default(true)
+  updated_at    DateTime  @updatedAt
+  user_id       String
+
+  admin_role AdminRole @relation(fields: [admin_role_id], references: [id])
+
+  @@map("admin_user_roles")
+}
+
+model AudiobookTrack {
+  id             String   @id @default(uuid())
+  audio_url      String?
+  book_format_id String
+  chapter_price  Float?
+  created_at     DateTime @default(now())
+  created_by     String?
+  duration       String?
+  is_preview     Boolean? @default(false)
+  media_type     String   @default("audio")
+  status         String   @default("active")
+  title          String
+  track_number   Int
+
+  book_format BookFormat @relation(fields: [book_format_id], references: [id])
+
+  @@map("audiobook_tracks")
+}
+
+model Author {
+  id          String   @id @default(uuid())
+  avatar_url  String?
+  bio         String?
+  created_at  DateTime @default(now())
+  email       String?
+  genre       String?
+  is_featured Boolean? @default(false)
+  is_trending Boolean? @default(false)
+  linked_at   DateTime?
+  name        String
+  name_en     String?
+  phone       String?
+  priority    Int      @default(0)
+  status      String   @default("active")
+  updated_at  DateTime @updatedAt
+  user_id     String?
+
+  books Book[]
+
+  @@map("authors")
+}
+
+model BadgeDefinition {
+  id              String   @id @default(uuid())
+  category        String   @default("reading")
+  coin_reward     Int?
+  condition_type  String   @default("count")
+  condition_value Int?
+  created_at      DateTime? @default(now())
+  description     String?
+  icon_url        String?
+  is_active       Boolean? @default(true)
+  key             String   @unique
+  sort_order      Int?
+  title           String
+  updated_at      DateTime? @updatedAt
+
+  user_badges UserBadge[]
+
+  @@map("badge_definitions")
+}
+
+model BlogPost {
+  id              String   @id @default(uuid())
+  author_name     String?
+  category        String?
+  content         String   @default("")
+  cover_image     String?
+  created_at      DateTime @default(now())
+  excerpt         String?
+  is_featured     Boolean? @default(false)
+  publish_date    DateTime?
+  seo_description String?
+  seo_keywords    String?
+  seo_title       String?
+  slug            String   @unique
+  status          String   @default("draft")
+  tags            String[]
+  title           String
+  updated_at      DateTime @updatedAt
+
+  @@map("blog_posts")
+}
+
+model BookComment {
+  id         String   @id @default(uuid())
+  book_id    String
+  comment    String
+  created_at DateTime @default(now())
+  parent_id  String?
+  updated_at DateTime @updatedAt
+  user_id    String
+
+  book    Book         @relation(fields: [book_id], references: [id])
+  parent  BookComment? @relation("CommentReplies", fields: [parent_id], references: [id])
+  replies BookComment[] @relation("CommentReplies")
+  likes   CommentLike[]
+
+  @@map("book_comments")
+}
+
+model BookContributor {
+  id         String   @id @default(uuid())
+  book_id    String
+  created_at DateTime @default(now())
+  format     String?
+  role       String
+  user_id    String
+
+  book Book @relation(fields: [book_id], references: [id])
+
+  @@map("book_contributors")
+}
+
+model BookFormat {
+  id                          String         @id @default(uuid())
+  audio_quality               AudioQuality?
+  binding                     BindingType?
+  book_id                     String
+  chapters_count              Int?
+  coin_price                  Int?
+  created_at                  DateTime       @default(now())
+  default_packaging_cost      Float?
+  delivery_days               Int?
+  dimensions                  String?
+  discount                    Float?
+  duration                    String?
+  file_size                   String?
+  file_url                    String?
+  format                      BookFormatType
+  in_stock                    Boolean?       @default(true)
+  is_available                Boolean?       @default(true)
+  isbn                        String?
+  narrator_id                 String?
+  original_price              Float?
+  pages                       Int?
+  payout_model                String         @default("standard")
+  preview_chapters            Int?
+  preview_percentage          Float?
+  price                       Float?
+  printing_cost               Float?
+  publisher_commission_percent Float?
+  publisher_id                String?
+  stock_count                 Int?
+  submission_status           String         @default("pending")
+  submitted_by                String?
+  unit_cost                   Float?
+  updated_at                  DateTime       @updatedAt
+  weight                      String?
+  weight_kg_per_copy          Float?
+
+  book            Book             @relation(fields: [book_id], references: [id])
+  narrator        Narrator?        @relation(fields: [narrator_id], references: [id])
+  publisher       Publisher?       @relation(fields: [publisher_id], references: [id])
+  audiobook_tracks AudiobookTrack[]
+  ebook_chapters  EbookChapter[]
+  order_items     OrderItem[]
+
+  @@map("book_formats")
+}
+
+model BookRead {
+  id         String   @id @default(uuid())
+  book_id    String
+  created_at DateTime @default(now())
+  user_id    String
+
+  book Book @relation(fields: [book_id], references: [id])
+
+  @@map("book_reads")
+}
+
+model Bookmark {
+  id         String   @id @default(uuid())
+  book_id    String
+  created_at DateTime @default(now())
+  user_id    String
+
+  book Book @relation(fields: [book_id], references: [id])
+
+  @@map("bookmarks")
+}
+
+model Book {
+  id                String   @id @default(uuid())
+  author_id         String?
+  category_id       String?
+  coin_price        Int?
+  cover_url         String?
+  created_at        DateTime @default(now())
+  description       String?
+  description_bn    String?
+  is_bestseller     Boolean? @default(false)
+  is_featured       Boolean? @default(false)
+  is_free           Boolean? @default(false)
+  is_new            Boolean? @default(false)
+  is_premium        Boolean? @default(false)
+  language          String?
+  published_date    DateTime?
+  publisher_id      String?
+  rating            Float?
+  reviews_count     Int?     @default(0)
+  slug              String   @unique
+  submission_status String   @default("pending")
+  submitted_by      String?
+  tags              String[]
+  title             String
+  title_en          String?
+  total_reads       Int?     @default(0)
+  updated_at        DateTime @updatedAt
+
+  author    Author?    @relation(fields: [author_id], references: [id])
+  category  Category?  @relation(fields: [category_id], references: [id])
+  publisher Publisher? @relation(fields: [publisher_id], references: [id])
+
+  formats           BookFormat[]
+  comments          BookComment[]
+  contributors      BookContributor[]
+  reads             BookRead[]
+  bookmarks         Bookmark[]
+  reviews           Review[]
+  reading_progress  ReadingProgress[]
+  listening_progress ListeningProgress[]
+  content_unlocks   ContentUnlock[]
+  daily_stats       DailyBookStat[]
+  user_presence     UserPresence[]
+
+  @@map("books")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  color       String?
+  created_at  DateTime @default(now())
+  icon        String?
+  is_featured Boolean? @default(false)
+  is_trending Boolean? @default(false)
+  name        String
+  name_bn     String?
+  name_en     String?
+  priority    Int      @default(0)
+  slug        String?
+  status      String   @default("active")
+
+  books Book[]
+
+  @@map("categories")
+}
+
+model CmsPage {
+  id              String   @id @default(uuid())
+  content         String   @default("")
+  created_at      DateTime @default(now())
+  featured_image  String?
+  seo_description String?
+  seo_keywords    String?
+  seo_title       String?
+  slug            String   @unique
+  status          String   @default("draft")
+  title           String
+  updated_at      DateTime @updatedAt
+
+  @@map("cms_pages")
+}
+
+model CoinPackage {
+  id          String   @id @default(uuid())
+  bonus_coins Int      @default(0)
+  coins       Int
+  created_at  DateTime @default(now())
+  is_active   Boolean  @default(true)
+  is_featured Boolean  @default(false)
+  name        String
+  price       Float
+  sort_order  Int      @default(0)
+  updated_at  DateTime @updatedAt
+
+  purchases CoinPurchase[]
+
+  @@map("coin_packages")
+}
+
+model CoinPurchase {
+  id             String   @id @default(uuid())
+  coins_amount   Int
+  created_at     DateTime @default(now())
+  package_id     String?
+  payment_method String   @default("card")
+  payment_status String   @default("pending")
+  price          Float
+  transaction_id String?
+  updated_at     DateTime @updatedAt
+  user_id        String
+
+  package CoinPackage? @relation(fields: [package_id], references: [id])
+
+  @@map("coin_purchases")
+}
+
+model CoinTransaction {
+  id           String   @id @default(uuid())
+  amount       Int
+  created_at   DateTime @default(now())
+  description  String?
+  expires_at   DateTime?
+  reference_id String?
+  source       String?
+  type         String   @default("earn")
+  user_id      String
+
+  @@map("coin_transactions")
+}
+
+model CommentLike {
+  id         String   @id @default(uuid())
+  comment_id String
+  created_at DateTime @default(now())
+  user_id    String
+
+  comment BookComment @relation(fields: [comment_id], references: [id])
+
+  @@map("comment_likes")
+}
+
+model ContentAccessLog {
+  id             String   @id @default(uuid())
+  access_granted Boolean  @default(false)
+  book_id        String
+  content_type   String
+  created_at     DateTime @default(now())
+  denial_reason  String?
+  ip_address     String?
+  user_agent     String?
+  user_id        String
+
+  @@map("content_access_logs")
+}
+
+model ContentAccessToken {
+  id         String   @id @default(uuid())
+  book_id    String
+  created_at DateTime @default(now())
+  expires_at DateTime
+  format     String
+  token      String   @unique
+  user_id    String
+
+  @@map("content_access_tokens")
+}
+
+model ContentConsumptionTime {
+  id         String   @id @default(uuid())
+  book_id    String
+  created_at DateTime @default(now())
+  format     String
+  seconds    Int      @default(0)
+  user_id    String
+
+  @@map("content_consumption_time")
+}
+
+model ContentEditRequest {
+  id          String   @id @default(uuid())
+  book_id     String
+  created_at  DateTime @default(now())
+  details     String?
+  format      String?
+  request_type String  @default("edit")
+  reviewer_id String?
+  status      String   @default("pending")
+  updated_at  DateTime @updatedAt
+  user_id     String
+
+  @@map("content_edit_requests")
+}
+
+model ContentUnlock {
+  id            String   @id @default(uuid())
+  book_id       String
+  coins_spent   Int?
+  created_at    DateTime @default(now())
+  format        String
+  status        String   @default("active")
+  unlock_method String   @default("coin")
+  user_id       String
+
+  book Book @relation(fields: [book_id], references: [id])
+
+  @@unique([user_id, book_id, format])
+  @@map("content_unlocks")
+}
+
+model ContributorEarning {
+  id                String   @id @default(uuid())
+  book_id           String
+  created_at        DateTime @default(now())
+  earned_amount     Float    @default(0)
+  format            String
+  fulfillment_amount Float   @default(0)
+  order_id          String
+  order_item_id     String
+  percentage        Float    @default(0)
+  role              String
+  sale_amount       Float    @default(0)
+  status            String   @default("pending")
+  user_id           String
+
+  order      Order     @relation(fields: [order_id], references: [id])
+  order_item OrderItem @relation(fields: [order_item_id], references: [id])
+
+  @@map("contributor_earnings")
+}
+
+model CouponUsage {
+  id              String   @id @default(uuid())
+  coupon_id       String
+  created_at      DateTime @default(now())
+  discount_amount Float    @default(0)
+  order_id        String?
+  subscription_id String?
+  user_id         String
+
+  coupon       Coupon            @relation(fields: [coupon_id], references: [id])
+  order        Order?            @relation(fields: [order_id], references: [id])
+  subscription UserSubscription? @relation(fields: [subscription_id], references: [id])
+
+  @@map("coupon_usage")
+}
+
+model Coupon {
+  id               String   @id @default(uuid())
+  applies_to       String   @default("all")
+  code             String   @unique
+  created_at       DateTime @default(now())
+  description      String?
+  discount_type    String   @default("percentage")
+  discount_value   Float    @default(0)
+  end_date         DateTime?
+  first_order_only Boolean  @default(false)
+  min_order_amount Float?
+  per_user_limit   Int?
+  start_date       DateTime @default(now())
+  status           String   @default("active")
+  updated_at       DateTime @updatedAt
+  usage_limit      Int?
+  used_count       Int      @default(0)
+
+  usages CouponUsage[]
+
+  @@map("coupons")
+}
+
+model DailyBookStat {
+  id             String   @id @default(uuid())
+  book_id        String
+  created_at     DateTime @default(now())
+  purchases      Int      @default(0)
+  reads          Int      @default(0)
+  stat_date      DateTime @default(now())
+  unique_readers Int      @default(0)
+  views          Int      @default(0)
+
+  book Book @relation(fields: [book_id], references: [id])
+
+  @@map("daily_book_stats")
+}
+
+model DefaultRevenueRule {
+  id                          String   @id @default(uuid())
+  created_at                  DateTime @default(now())
+  format                      String
+  fulfillment_cost_percentage Float    @default(0)
+  narrator_percentage         Float    @default(0)
+  platform_percentage         Float    @default(0)
+  publisher_percentage        Float    @default(0)
+  updated_at                  DateTime @updatedAt
+  writer_percentage           Float    @default(0)
+
+  @@map("default_revenue_rules")
+}
+
+model EbookChapter {
+  id             String   @id @default(uuid())
+  book_format_id String
+  chapter_order  Int
+  chapter_title  String
+  content        String?
+  created_at     DateTime @default(now())
+  created_by     String?
+  file_url       String?
+  status         String   @default("draft")
+  updated_at     DateTime @updatedAt
+
+  book_format BookFormat @relation(fields: [book_format_id], references: [id])
+
+  @@map("ebook_chapters")
+}
+
+model EmailLog {
+  id              String   @id @default(uuid())
+  created_at      DateTime @default(now())
+  error_message   String?
+  recipient_email String
+  sent_at         DateTime?
+  status          String   @default("pending")
+  subject         String   @default("")
+  template_type   String
+
+  @@map("email_logs")
+}
+
+model EmailSendLog {
+  id              String   @id @default(uuid())
+  created_at      DateTime @default(now())
+  error_message   String?
+  message_id      String?
+  metadata        Json?
+  recipient_email String
+  status          String   @default("pending")
+  template_name   String
+
+  @@map("email_send_log")
+}
+
+model EmailSendState {
+  id              String   @id @default(uuid())
+  created_at      DateTime @default(now())
+  idempotency_key String   @unique
+  last_attempt_at DateTime?
+  recipient_email String
+  retry_count     Int      @default(0)
+  status          String   @default("pending")
+  template_name   String
+  updated_at      DateTime @updatedAt
+
+  @@map("email_send_state")
+}
+
+model EmailTemplate {
+  id          String   @id @default(uuid())
+  body        String   @default("")
+  created_at  DateTime @default(now())
+  is_active   Boolean  @default(true)
+  name        String
+  subject     String
+  template_type String  @unique
+  updated_at  DateTime @updatedAt
+  variables   String[]
+
+  @@map("email_templates")
+}
+
+model EmailUnsubscribeToken {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  email      String   @unique
+  token      String   @unique
+
+  @@map("email_unsubscribe_tokens")
+}
+
+model Follow {
+  id          String   @id @default(uuid())
+  created_at  DateTime @default(now())
+  followee_id String
+  follower_id String
+
+  @@unique([follower_id, followee_id])
+  @@map("follows")
+}
+
+model FormatRevenueSplit {
+  id                   String   @id @default(uuid())
+  book_id              String
+  created_at           DateTime @default(now())
+  format               String
+  fulfillment_cost_pct Float    @default(0)
+  narrator_pct         Float    @default(0)
+  platform_pct         Float    @default(0)
+  publisher_pct        Float    @default(0)
+  updated_at           DateTime @updatedAt
+  writer_pct           Float    @default(0)
+
+  @@map("format_revenue_splits")
+}
+
+model FreeShippingCampaign {
+  id              String   @id @default(uuid())
+  created_at      DateTime @default(now())
+  end_date        DateTime?
+  is_active       Boolean  @default(true)
+  min_order_value Float    @default(0)
+  name            String
+  start_date      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@map("free_shipping_campaigns")
+}
+
+model GamificationPoint {
+  id           String   @id @default(uuid())
+  created_at   DateTime? @default(now())
+  event_type   String
+  points       Int      @default(0)
+  reference_id String?
+  user_id      String
+
+  @@map("gamification_points")
+}
+
+model HeroBanner {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  cta_link   String?
+  cta_text   String?
+  image_url  String?
+  is_active  Boolean  @default(true)
+  sort_order Int      @default(0)
+  subtitle   String?
+  title      String
+  updated_at DateTime @updatedAt
+
+  @@map("hero_banners")
+}
+
+model HomepageSection {
+  id             String   @id @default(uuid())
+  created_at     DateTime @default(now())
+  display_source String?
+  is_enabled     Boolean  @default(true)
+  section_key    String   @unique
+  sort_order     Int      @default(0)
+  subtitle       String?
+  title          String
+  updated_at     DateTime @updatedAt
+
+  @@map("homepage_sections")
+}
+
+model ListeningProgress {
+  id               String   @id @default(uuid())
+  book_id          String
+  created_at       DateTime @default(now())
+  current_position Float?
+  current_track    Int?
+  last_listened_at DateTime?
+  percentage       Float?
+  total_duration   Float?
+  updated_at       DateTime @updatedAt
+  user_id          String
+
+  book Book @relation(fields: [book_id], references: [id])
+
+  @@unique([user_id, book_id])
+  @@map("listening_progress")
+}
+
+model LiveSession {
+  id                String   @id @default(uuid())
+  created_at        DateTime @default(now())
+  disconnect_reason String?
+  ended_at          DateTime?
+  rj_user_id        String
+  show_title        String?
+  started_at        DateTime @default(now())
+  station_id        String?
+  status            String   @default("live")
+  stream_url        String?
+
+  station RadioStation? @relation(fields: [station_id], references: [id])
+
+  @@map("live_sessions")
+}
+
+model Narrator {
+  id          String   @id @default(uuid())
+  avatar_url  String?
+  bio         String?
+  created_at  DateTime @default(now())
+  email       String?
+  is_featured Boolean? @default(false)
+  is_trending Boolean? @default(false)
+  linked_at   DateTime?
+  name        String
+  name_en     String?
+  phone       String?
+  priority    Int      @default(0)
+  rating      Float?
+  specialty   String?
+  status      String   @default("active")
+  updated_at  DateTime @updatedAt
+  user_id     String?
+
+  book_formats BookFormat[]
+
+  @@map("narrators")
+}
+
+model NotificationPreference {
+  id                  String   @id @default(uuid())
+  created_at          DateTime @default(now())
+  email_enabled       Boolean  @default(true)
+  order_enabled       Boolean  @default(true)
+  promotional_enabled Boolean  @default(true)
+  push_enabled        Boolean  @default(true)
+  reminder_enabled    Boolean  @default(true)
+  support_enabled     Boolean  @default(true)
+  updated_at          DateTime @updatedAt
+  user_id             String   @unique
+
+  @@map("notification_preferences")
+}
+
+model NotificationTemplate {
+  id         String   @id @default(uuid())
+  channel    String   @default("in_app")
+  created_at DateTime @default(now())
+  cta_link   String?
+  cta_text   String?
+  message    String   @default("")
+  name       String
+  status     String   @default("active")
+  title      String   @default("")
+  type       String   @default("general")
+  updated_at DateTime @updatedAt
+
+  @@map("notification_templates")
+}
+
+model Notification {
+  id             String   @id @default(uuid())
+  audience       String   @default("all")
+  channel        String   @default("in_app")
+  created_at     DateTime @default(now())
+  created_by     String?
+  image_url      String?
+  link           String?
+  message        String
+  priority       String   @default("normal")
+  scheduled_at   DateTime?
+  sent_at        DateTime?
+  status         String   @default("draft")
+  target_user_id String?
+  template_id    String?
+  title          String
+  type           String   @default("general")
+
+  user_notifications UserNotification[]
+
+  @@map("notifications")
+}
+
+model OrderItem {
+  id                  String         @id @default(uuid())
+  book_id             String?
+  created_at          DateTime       @default(now())
+  format              BookFormatType
+  price               Float          @default(0)
+  book_format_id      String?
+  order_id            String
+  quantity            Int            @default(1)
+  unit_cost           Float?
+
+  order             Order              @relation(fields: [order_id], references: [id])
+  book_format       BookFormat?        @relation(fields: [book_format_id], references: [id])
+  contributor_earnings ContributorEarning[]
+
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id         String   @id @default(uuid())
+  changed_by String?
+  created_at DateTime @default(now())
+  new_status String
+  note       String?
+  old_status String?
+  order_id   String
+
+  order Order @relation(fields: [order_id], references: [id])
+
+  @@map("order_status_history")
+}
+
+model Order {
+  id                         String   @id @default(uuid())
+  cod_collected_amount       Float?
+  cod_payment_status         String   @default("unpaid")
+  cod_settled_at             DateTime?
+  cod_settlement_reference   String?
+  coupon_code                String?
+  created_at                 DateTime @default(now())
+  discount_amount            Float?
+  estimated_delivery_days    String?
+  fulfillment_cost           Float?
+  is_purchased               Boolean? @default(false)
+  notes                      String?
+  order_number               String   @unique
+  packaging_cost             Float?
+  payment_method             String?
+  purchase_cost_per_unit     Float?
+  shipping_address           String?
+  shipping_area              String?
+  shipping_carrier           String?
+  shipping_city              String?
+  shipping_cost              Float?
+  shipping_district          String?
+  shipping_method_id         String?
+  shipping_method_name       String?
+  shipping_name              String?
+  shipping_phone             String?
+  shipping_zip               String?
+  status                     String?  @default("pending")
+  total_amount               Float?
+  total_weight               Float?
+  updated_at                 DateTime @updatedAt
+  updated_by_admin           Boolean? @default(false)
+  user_id                    String
+
+  items           OrderItem[]
+  status_history  OrderStatusHistory[]
+  payments        Payment[]
+  coupon_usages   CouponUsage[]
+  contributor_earnings ContributorEarning[]
+  payment_events  PaymentEvent[]
+
+  @@map("orders")
+}
+
+model PaymentEvent {
+  id             String   @id @default(uuid())
+  amount         Float?
+  created_at     DateTime @default(now())
+  currency       String?
+  event_type     String   @default("payment")
+  gateway        String   @default("unknown")
+  order_id       String?
+  raw_response   Json?
+  status         String   @default("pending")
+  transaction_id String?
+
+  order Order? @relation(fields: [order_id], references: [id])
+
+  @@map("payment_events")
+}
+
+model PaymentGateway {
+  id            String   @id @default(uuid())
+  config        Json     @default("{}")
+  created_at    DateTime @default(now())
+  gateway_key   String   @unique
+  is_enabled    Boolean  @default(true)
+  label         String
+  mode          String?
+  notes         String?
+  sort_priority Int      @default(0)
+  updated_at    DateTime @updatedAt
+
+  @@map("payment_gateways")
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  amount         Float
+  created_at     DateTime @default(now())
+  method         String?
+  order_id       String
+  status         String?  @default("pending")
+  transaction_id String?
+  user_id        String
+
+  order Order @relation(fields: [order_id], references: [id])
+
+  @@map("payments")
+}
+
+model PlatformSetting {
+  key        String   @id
+  updated_at DateTime @updatedAt
+  value      String
+
+  @@map("platform_settings")
+}
+
+model Profile {
+  id                      String   @id @default(uuid())
+  avatar_url              String?
+  bio                     String?
+  created_at              DateTime @default(now())
+  daily_reward_last_claimed DateTime?
+  deleted_at              DateTime?
+  deleted_reason          String?
+  display_name            String?
+  experience              String?
+  facebook_url            String?
+  full_name               String?
+  genre                   String?
+  instagram_url           String?
+  is_active               Boolean  @default(true)
+  phone                   String?
+  portfolio_url           String?
+  preferred_language      String?
+  referral_code           String?  @unique
+  referred_by             String?
+  specialty               String?
+  updated_at              DateTime @updatedAt
+  user_id                 String   @unique
+  website_url             String?
+  youtube_url             String?
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("profiles")
+}
+
+model Publisher {
+  id          String   @id @default(uuid())
+  created_at  DateTime @default(now())
+  description String?
+  email       String?
+  is_featured Boolean? @default(false)
+  is_trending Boolean? @default(false)
+  is_verified Boolean? @default(false)
+  linked_at   DateTime?
+  logo_url    String?
+  name        String
+  name_en     String?
+  phone       String?
+  priority    Int      @default(0)
+  status      String   @default("active")
+  updated_at  DateTime @updatedAt
+  user_id     String?
+
+  books        Book[]
+  book_formats BookFormat[]
+
+  @@map("publishers")
+}
+
+model RadioStation {
+  id          String   @id @default(uuid())
+  artwork_url String?
+  created_at  DateTime @default(now())
+  description String?
+  is_active   Boolean  @default(true)
+  name        String
+  sort_order  Int      @default(0)
+  stream_url  String
+  updated_at  DateTime @updatedAt
+
+  live_sessions LiveSession[]
+  show_schedules ShowSchedule[]
+
+  @@map("radio_stations")
+}
+
+model ReadingProgress {
+  id           String   @id @default(uuid())
+  book_id      String
+  created_at   DateTime @default(now())
+  current_page Int?
+  last_read_at DateTime?
+  percentage   Float?
+  total_pages  Int?
+  updated_at   DateTime @updatedAt
+  user_id      String
+
+  book Book @relation(fields: [book_id], references: [id])
+
+  @@unique([user_id, book_id])
+  @@map("reading_progress")
+}
+
+model Referral {
+  id               String   @id @default(uuid())
+  completed_at     DateTime?
+  created_at       DateTime @default(now())
+  ip_address       String?
+  referral_code    String
+  referred_user_id String?
+  referrer_id      String
+  reward_amount    Float    @default(0)
+  reward_status    String   @default("pending")
+  source           String?
+  status           String   @default("pending")
+
+  @@map("referrals")
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  book_id    String
+  comment    String?
+  created_at DateTime @default(now())
+  rating     Int
+  status     String   @default("pending")
+  updated_at DateTime @updatedAt
+  user_id    String
+
+  book Book @relation(fields: [book_id], references: [id])
+
+  @@map("reviews")
+}
+
+model RewardedAdLog {
+  id             String   @id @default(uuid())
+  ad_event_id    String
+  coins_rewarded Int      @default(0)
+  created_at     DateTime @default(now())
+  placement_key  String?
+  status         String   @default("pending")
+  user_id        String
+
+  @@map("rewarded_ad_logs")
+}
+
+model RjProfile {
+  id          String   @id @default(uuid())
+  avatar_url  String?
+  bio         String?
+  created_at  DateTime @default(now())
+  email       String?
+  is_active   Boolean  @default(true)
+  is_approved Boolean  @default(false)
+  phone       String?
+  specialty   String?
+  stage_name  String
+  updated_at  DateTime @updatedAt
+  user_id     String   @unique
+
+  @@map("rj_profiles")
+}
+
+model RoleApplication {
+  id           String   @id @default(uuid())
+  applied_role String
+  created_at   DateTime @default(now())
+  display_name String?
+  notes        String?
+  portfolio_url String?
+  reviewed_at  DateTime?
+  reviewed_by  String?
+  sample_work  String?
+  status       String   @default("pending")
+  updated_at   DateTime @updatedAt
+  user_id      String
+  verified     Boolean  @default(false)
+
+  @@map("role_applications")
+}
+
+model RoleChangeLog {
+  id          String   @id @default(uuid())
+  changed_by  String
+  created_at  DateTime @default(now())
+  new_role    String
+  old_role    String?
+  reason      String?
+  user_id     String
+
+  @@map("role_change_logs")
+}
+
+model RolePermission {
+  id             String   @id @default(uuid())
+  created_at     DateTime @default(now())
+  is_allowed     Boolean  @default(true)
+  permission_key String
+  role           AppRole
+  updated_at     DateTime @updatedAt
+
+  @@unique([role, permission_key])
+  @@map("role_permissions")
+}
+
+model ShipmentEvent {
+  id          String   @id @default(uuid())
+  created_at  DateTime @default(now())
+  description String?
+  location    String?
+  shipment_id String
+  status      String
+
+  shipment Shipment @relation(fields: [shipment_id], references: [id])
+
+  @@map("shipment_events")
+}
+
+model Shipment {
+  id              String   @id @default(uuid())
+  carrier         String?
+  created_at      DateTime @default(now())
+  estimated_delivery DateTime?
+  order_id        String   @unique
+  shipped_at      DateTime?
+  status          String   @default("pending")
+  tracking_number String?
+  updated_at      DateTime @updatedAt
+
+  events ShipmentEvent[]
+
+  @@map("shipments")
+}
+
+model ShippingMethod {
+  id             String   @id @default(uuid())
+  base_cost      Float    @default(0)
+  created_at     DateTime @default(now())
+  delivery_days  String?
+  description    String?
+  is_active      Boolean  @default(true)
+  name           String
+  per_kg_cost    Float    @default(0)
+  updated_at     DateTime @updatedAt
+  zone           String?
+
+  @@map("shipping_methods")
+}
+
+model ShowSchedule {
+  id           String   @id @default(uuid())
+  created_at   DateTime @default(now())
+  day_of_week  Int
+  end_time     String
+  is_active    Boolean  @default(true)
+  rj_user_id   String
+  show_title   String
+  start_time   String
+  station_id   String
+  updated_at   DateTime @updatedAt
+
+  station RadioStation @relation(fields: [station_id], references: [id])
+
+  @@map("show_schedules")
+}
+
+model SiteSetting {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  key        String   @unique
+  updated_at DateTime @updatedAt
+  value      String
+
+  @@map("site_settings")
+}
+
+model SmsLog {
+  id           String   @id @default(uuid())
+  created_at   DateTime @default(now())
+  message      String
+  phone_number String
+  provider     String?
+  status       String   @default("pending")
+  template_key String?
+
+  @@map("sms_logs")
+}
+
+model SmsTemplate {
+  id           String   @id @default(uuid())
+  body         String
+  created_at   DateTime @default(now())
+  is_active    Boolean  @default(true)
+  name         String
+  template_key String   @unique
+  updated_at   DateTime @updatedAt
+  variables    String[]
+
+  @@map("sms_templates")
+}
+
+model SubscriptionPlan {
+  id            String   @id @default(uuid())
+  created_at    DateTime @default(now())
+  description   String?
+  duration_days Int      @default(30)
+  features      String[]
+  is_active     Boolean  @default(true)
+  is_featured   Boolean  @default(false)
+  name          String
+  price         Float
+  sort_order    Int      @default(0)
+  updated_at    DateTime @updatedAt
+
+  subscriptions UserSubscription[]
+
+  @@map("subscription_plans")
+}
+
+model SupportTicket {
+  id           String   @id @default(uuid())
+  assigned_to  String?
+  category     String?
+  closed_at    DateTime?
+  created_at   DateTime @default(now())
+  description  String
+  priority     String   @default("normal")
+  resolved_at  DateTime?
+  status       String   @default("open")
+  subject      String
+  updated_at   DateTime @updatedAt
+  user_id      String
+
+  replies TicketReply[]
+
+  @@map("support_tickets")
+}
+
+model SuppressedEmail {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  email      String   @unique
+  reason     String?
+
+  @@map("suppressed_emails")
+}
+
+model SystemLog {
+  id          String   @id @default(uuid())
+  created_at  DateTime @default(now())
+  fingerprint String?  @unique
+  level       String
+  message     String
+  metadata    Json?
+  module      String
+  updated_at  DateTime @updatedAt
+  user_id     String?
+
+  @@map("system_logs")
+}
+
+model TicketReply {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  is_staff   Boolean  @default(false)
+  message    String
+  ticket_id  String
+  updated_at DateTime @updatedAt
+  user_id    String
+
+  ticket SupportTicket @relation(fields: [ticket_id], references: [id])
+
+  @@map("ticket_replies")
+}
+
+model TtsAudio {
+  id          String   @id @default(uuid())
+  audio_url   String?
+  book_id     String?
+  created_at  DateTime @default(now())
+  language    String   @default("bn")
+  source_text String
+  status      String   @default("pending")
+  updated_at  DateTime @updatedAt
+  user_id     String
+  voice_id    String?
+
+  @@map("tts_audio")
+}
+
+model UserActivityLog {
+  id            String   @id @default(uuid())
+  action        String
+  activity_type String?
+  book_id       String?
+  created_at    DateTime @default(now())
+  device_type   String?
+  format        String?
+  ip_address    String?
+  metadata      Json?
+  page          String?
+  session_id    String?
+  user_agent    String?
+  user_id       String
+
+  @@map("user_activity_logs")
+}
+
+model UserBadge {
+  id         String   @id @default(uuid())
+  badge_id   String
+  created_at DateTime @default(now())
+  earned_at  DateTime @default(now())
+  user_id    String
+
+  badge BadgeDefinition @relation(fields: [badge_id], references: [id])
+
+  @@unique([user_id, badge_id])
+  @@map("user_badges")
+}
+
+model UserCoin {
+  id           String   @id @default(uuid())
+  balance      Int      @default(0)
+  created_at   DateTime @default(now())
+  total_earned Int      @default(0)
+  total_spent  Int      @default(0)
+  updated_at   DateTime @updatedAt
+  user_id      String   @unique
+
+  @@map("user_coins")
+}
+
+model UserGoal {
+  id            String   @id @default(uuid())
+  completed_at  DateTime?
+  created_at    DateTime? @default(now())
+  current_value Int?      @default(0)
+  goal_type     String   @default("reading")
+  period        String   @default("daily")
+  started_at    DateTime?
+  status        String   @default("active")
+  target_value  Int      @default(0)
+  user_id       String
+
+  @@map("user_goals")
+}
+
+model UserNotification {
+  id              String   @id @default(uuid())
+  created_at      DateTime @default(now())
+  is_read         Boolean  @default(false)
+  notification_id String
+  read_at         DateTime?
+  user_id         String
+
+  notification Notification @relation(fields: [notification_id], references: [id])
+
+  @@map("user_notifications")
+}
+
+model UserPermissionOverride {
+  id             String   @id @default(uuid())
+  created_at     DateTime @default(now())
+  granted_by     String?
+  is_allowed     Boolean  @default(true)
+  notes          String?
+  permission_key String
+  updated_at     DateTime @updatedAt
+  user_id        String
+
+  @@unique([user_id, permission_key])
+  @@map("user_permission_overrides")
+}
+
+model UserPresence {
+  id              String   @id @default(uuid())
+  activity_type   String   @default("idle")
+  created_at      DateTime @default(now())
+  current_book_id String?
+  current_page    String?
+  last_seen       DateTime @default(now())
+  session_id      String?
+  user_id         String   @unique
+
+  current_book Book? @relation(fields: [current_book_id], references: [id])
+
+  @@map("user_presence")
+}
+
+model UserPurchase {
+  id             String   @id @default(uuid())
+  amount         Float    @default(0)
+  book_id        String
+  created_at     DateTime @default(now())
+  format         String   @default("ebook")
+  payment_method String?
+  status         String   @default("completed")
+  updated_at     DateTime @updatedAt
+  user_id        String
+
+  @@map("user_purchases")
+}
+
+model UserRole {
+  id      String  @id @default(uuid())
+  role    AppRole
+  user_id String
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@unique([user_id, role])
+  @@map("user_roles")
+}
+
+model UserStreak {
+  id                 String   @id @default(uuid())
+  best_streak        Int?     @default(0)
+  created_at         DateTime? @default(now())
+  current_streak     Int?     @default(0)
+  last_activity_date String?
+  streak_updated_at  DateTime? @updatedAt
+  user_id            String   @unique
+
+  @@map("user_streaks")
+}
+
+model UserSubscription {
+  id              String   @id @default(uuid())
+  amount_paid     Float?
+  coupon_code     String?
+  created_at      DateTime @default(now())
+  discount_amount Float?
+  end_date        DateTime?
+  plan_id         String
+  start_date      DateTime @default(now())
+  status          String   @default("active")
+  updated_at      DateTime @updatedAt
+  user_id         String
+
+  plan         SubscriptionPlan @relation(fields: [plan_id], references: [id])
+  coupon_usages CouponUsage[]
+
+  @@map("user_subscriptions")
+}
+
+model Voice {
+  id          String   @id @default(uuid())
+  created_at  DateTime @default(now())
+  description String?
+  is_active   Boolean  @default(true)
+  language    String   @default("bn")
+  name        String
+  provider    String   @default("google")
+  updated_at  DateTime @updatedAt
+  voice_id    String   @unique
+
+  @@map("voices")
+}
+
+model WithdrawalRequest {
+  id             String   @id @default(uuid())
+  amount         Float
+  bank_account   String?
+  bank_name      String?
+  created_at     DateTime @default(now())
+  mobile_number  String?
+  method         String   @default("bank")
+  notes          String?
+  processed_at   DateTime?
+  processed_by   String?
+  status         String   @default("pending")
+  updated_at     DateTime @updatedAt
+  user_id        String
+
+  @@map("withdrawal_requests")
+}

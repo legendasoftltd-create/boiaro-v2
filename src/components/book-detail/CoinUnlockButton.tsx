@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWallet } from "@/hooks/useWallet";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,62 +16,27 @@ interface Props {
 
 export function CoinUnlockButton({ bookId, format, price, coinPrice }: Props) {
   const { user } = useAuth();
-  const { wallet, checkUnlock, unlockWithCoins } = useWallet();
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [coinCost, setCoinCost] = useState(0);
-  const [coinEnabled, setCoinEnabled] = useState(false);
-  const [hasSubscription, setHasSubscription] = useState(false);
+  const { wallet, unlockWithCoins } = useWallet();
   const [unlocking, setUnlocking] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const load = async () => {
-      // Get coin settings
-      const { data: settings } = await supabase
-        .from("platform_settings")
-        .select("*")
-        .in("key", ["coin_system_enabled", "coin_unlock_enabled", "coin_conversion_ratio"]);
-      const settingsMap: Record<string, string> = {};
-      ((settings as any[]) || []).forEach((s: any) => { settingsMap[s.key] = s.value; });
+  const { data: settings, isLoading: settingsLoading } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user });
+  const { data: unlockData, isLoading: unlockLoading } = trpc.wallet.checkUnlock.useQuery(
+    { bookId, format },
+    { enabled: !!user }
+  );
+  const { data: subData, isLoading: subLoading } = trpc.wallet.hasSubscription.useQuery(
+    { format },
+    { enabled: !!user }
+  );
 
-      const systemEnabled = settingsMap.coin_system_enabled === "true";
-      const unlockEnabled = settingsMap.coin_unlock_enabled === "true";
-      setCoinEnabled(systemEnabled && unlockEnabled);
-
-      if (systemEnabled && unlockEnabled) {
-        if (coinPrice != null && coinPrice > 0) {
-          setCoinCost(coinPrice);
-        } else {
-          const ratio = parseFloat(settingsMap.coin_conversion_ratio) || 0.10;
-          setCoinCost(Math.ceil(price / ratio));
-        }
-      }
-
-      // Check if already unlocked or has subscription
-      if (user) {
-        const [unlocked, subRes] = await Promise.all([
-          checkUnlock(bookId, format),
-          supabase
-            .from("user_subscriptions" as any)
-            .select("id, subscription_plans!inner(access_type)")
-            .eq("user_id", user.id)
-            .eq("status", "active")
-            .limit(1),
-        ]);
-        setIsUnlocked(unlocked);
-
-        const subs = ((subRes.data as any[]) || []);
-        if (subs.length > 0) {
-          const at = (subs[0] as any)?.subscription_plans?.access_type;
-          if (at === "premium" || at === "both" || at === format) {
-            setHasSubscription(true);
-          }
-        }
-      }
-      setLoading(false);
-    };
-    load();
-  }, [user, bookId, format, price, coinPrice, checkUnlock]);
+  const loading = settingsLoading || unlockLoading || subLoading;
+  const utils = trpc.useUtils();
+  const coinEnabled = settings ? settings.systemEnabled && settings.unlockEnabled : false;
+  const coinCost = coinPrice != null && coinPrice > 0
+    ? coinPrice
+    : settings ? Math.ceil(price / settings.conversionRatio) : 0;
+  const isUnlocked = unlockData?.unlocked ?? false;
+  const hasSubscription = subData?.hasSub ?? false;
 
   // Coin unlock is disabled for ebooks — only audiobooks support coin/ad unlock
   if (format === "ebook") return null;
@@ -136,7 +100,7 @@ export function CoinUnlockButton({ bookId, format, price, coinPrice }: Props) {
   const handleUnlock = async () => {
     setUnlocking(true);
     const success = await unlockWithCoins(bookId, format, coinCost);
-    if (success) setIsUnlocked(true);
+    if (success) utils.wallet.checkUnlock.invalidate({ bookId, format });
     setUnlocking(false);
   };
 

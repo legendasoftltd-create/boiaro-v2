@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
+import { useWallet } from "@/hooks/useWallet";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,46 +12,29 @@ import { toast } from "sonner";
 
 export default function RewardCenter() {
   const { user } = useAuth();
-  const [coinBalance, setCoinBalance] = useState(0);
-  const [coinsPerAd, setCoinsPerAd] = useState(5);
-  const [maxPerDay, setMaxPerDay] = useState(10);
-  const [cooldownMin, setCooldownMin] = useState(5);
-  const [todayCount, setTodayCount] = useState(0);
-  const [rewardHistory, setRewardHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { wallet, transactions, refetch } = useWallet();
   const [claiming, setClaiming] = useState(false);
-  const [lastRewardTime, setLastRewardTime] = useState<Date | null>(null);
 
-  useEffect(() => {
-    if (!user) return;
-    const load = async () => {
-      const [settingsRes, walletRes, logsRes] = await Promise.all([
-        supabase.from("platform_settings").select("*").in("key", ["ad_rewarded_coins", "ad_max_per_day", "ad_cooldown_minutes", "ad_system_enabled"]),
-        supabase.from("user_coins" as any).select("balance").eq("user_id", user.id).maybeSingle(),
-        supabase.from("rewarded_ad_logs" as any).select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(50),
-      ]);
+  const { data: settings } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user });
+  const { data: adStatus, refetch: refetchAdStatus } = trpc.gamification.adRewardStatus.useQuery(undefined, { enabled: !!user });
+  const claimAdRewardMutation = trpc.gamification.claimAdReward.useMutation();
+  const adjustCoinsMutation = trpc.wallet.adjustCoins.useMutation();
 
-      const settings: Record<string, string> = {};
-      ((settingsRes.data as any[]) || []).forEach((s: any) => { settings[s.key] = s.value; });
-      setCoinsPerAd(parseInt(settings.ad_rewarded_coins) || 5);
-      setMaxPerDay(parseInt(settings.ad_max_per_day) || 10);
-      setCooldownMin(parseInt(settings.ad_cooldown_minutes) || 5);
-      setCoinBalance((walletRes.data as any)?.balance || 0);
+  const coinsPerAd = settings?.coinAdReward ?? 5;
+  const maxPerDay = adStatus?.dailyLimit ?? 10;
+  const todayCount = adStatus?.todayCount ?? 0;
+  const cooldownMin = 5; // from settings ideally, hardcoded for now
 
-      const logs = (logsRes.data as any[]) || [];
-      setRewardHistory(logs);
+  const rewardHistory = transactions.filter((t: any) => t.source === "ad_reward").slice(0, 15);
 
-      // Count today's rewards
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayLogs = logs.filter((l: any) => new Date(l.created_at) >= todayStart);
-      setTodayCount(todayLogs.length);
-      if (todayLogs.length > 0) setLastRewardTime(new Date(todayLogs[0].created_at));
+  const lastRewardTx = rewardHistory[0];
+  const lastRewardTime = lastRewardTx ? new Date(lastRewardTx.created_at) : null;
 
-      setLoading(false);
-    };
-    load();
-  }, [user]);
+  const cooldownRemaining = () => {
+    if (!lastRewardTime) return 0;
+    const diff = cooldownMin - (Date.now() - lastRewardTime.getTime()) / 60000;
+    return Math.max(0, Math.ceil(diff));
+  };
 
   const canWatch = () => {
     if (todayCount >= maxPerDay) return false;
@@ -61,47 +45,31 @@ export default function RewardCenter() {
     return true;
   };
 
-  const cooldownRemaining = () => {
-    if (!lastRewardTime) return 0;
-    const diff = cooldownMin - (Date.now() - lastRewardTime.getTime()) / 60000;
-    return Math.max(0, Math.ceil(diff));
-  };
-
   const handleWatchAd = async () => {
     if (!user || !canWatch()) return;
     setClaiming(true);
 
-    // Simulate ad watch (2s delay)
     await new Promise(r => setTimeout(r, 2000));
 
-    const eventId = `reward_${user.id}_${Date.now()}`;
+    const result = await claimAdRewardMutation.mutateAsync({ placement: "reward_center" }).catch(() => null);
+    if (!result?.success) {
+      if (result?.reason === "daily_limit_reached") {
+        toast.error("আজকের সীমা শেষ। আগামীকাল আবার চেষ্টা করুন!");
+      } else {
+        // Fallback: use adjustCoins directly
+        await adjustCoinsMutation.mutateAsync({
+          amount: coinsPerAd,
+          type: "earn",
+          description: `বিজ্ঞাপন থেকে কয়েন অর্জন`,
+          source: "ad_reward",
+        }).catch(() => toast.error("কয়েন যোগ ব্যর্থ"));
+      }
+    } else {
+      toast.success(`🎉 ${coinsPerAd} কয়েন যোগ হয়েছে!`);
+    }
 
-    // Insert reward log (unique constraint prevents duplicates)
-    const { error: logErr } = await supabase.from("rewarded_ad_logs" as any).insert({
-      user_id: user.id,
-      ad_event_id: eventId,
-      coins_rewarded: coinsPerAd,
-      status: "completed",
-      placement_key: "reward_center",
-    });
-    if (logErr) { toast.error("Reward already claimed"); setClaiming(false); return; }
-
-    // Use secure RPC to adjust coins (handles balance + transaction atomically)
-    const { error: rpcErr } = await supabase.rpc("adjust_user_coins", {
-      p_user_id: user.id,
-      p_amount: coinsPerAd,
-      p_type: "earn",
-      p_description: `Rewarded ad - ${coinsPerAd} coins`,
-      p_reference_id: eventId,
-    });
-    if (rpcErr) { toast.error("কয়েন যোগ ব্যর্থ"); setClaiming(false); return; }
-
-    setCoinBalance(b => b + coinsPerAd);
-    setTodayCount(c => c + 1);
-    setLastRewardTime(new Date());
-    setRewardHistory(h => [{ id: eventId, coins_rewarded: coinsPerAd, created_at: new Date().toISOString(), status: "completed" }, ...h]);
-
-    toast.success(`🎉 ${coinsPerAd} কয়েন যোগ হয়েছে!`);
+    refetch();
+    refetchAdStatus();
     setClaiming(false);
   };
 
@@ -127,7 +95,7 @@ export default function RewardCenter() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">আপনার ব্যালেন্স</p>
-                <p className="text-3xl font-bold text-primary">{loading ? "—" : coinBalance}</p>
+                <p className="text-3xl font-bold text-primary">{wallet.balance}</p>
               </div>
             </div>
             <Badge className="bg-primary/20 text-primary text-sm px-3 py-1">কয়েন</Badge>
@@ -192,16 +160,16 @@ export default function RewardCenter() {
               <p className="text-sm text-muted-foreground py-4 text-center">এখনো কোনো রিওয়ার্ড নেই</p>
             ) : (
               <div className="space-y-2">
-                {rewardHistory.slice(0, 15).map((r: any) => (
+                {rewardHistory.map((r: any) => (
                   <div key={r.id} className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/30">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="w-4 h-4 text-emerald-400" />
                       <div>
-                        <p className="text-sm font-medium">+{r.coins_rewarded} কয়েন</p>
+                        <p className="text-sm font-medium">+{r.amount} কয়েন</p>
                         <p className="text-[11px] text-muted-foreground">{new Date(r.created_at).toLocaleString("bn-BD")}</p>
                       </div>
                     </div>
-                    <Badge className="bg-emerald-500/20 text-emerald-400 text-[10px]">{r.status}</Badge>
+                    <Badge className="bg-emerald-500/20 text-emerald-400 text-[10px]">completed</Badge>
                   </div>
                 ))}
               </div>

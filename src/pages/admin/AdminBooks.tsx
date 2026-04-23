@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +25,7 @@ import { validateMediaFile, sanitizeTrackTitle, ACCEPTED_FILE_INPUT } from "@/li
 import { useAdminLogger } from "@/hooks/useAdminLogger";
 
 export default function AdminBooks() {
+  const utils = trpc.useUtils();
   const [books, setBooks] = useState<any[]>([]);
   const [bookFormats, setBookFormats] = useState<Record<string, any[]>>({});
   const [bookContribCounts, setBookContribCounts] = useState<Record<string, number>>({});
@@ -75,6 +77,15 @@ export default function AdminBooks() {
   const formats = selectedBookId ? (formatsByBookId[selectedBookId] || []) : [];
   const formatsLoaded = !!selectedBookId && formatsHydratedBookId === selectedBookId;
   const { log } = useAdminLogger();
+  const upsertBookMutation = trpc.admin.upsertBook.useMutation();
+  const deleteBookMutation = trpc.admin.deleteBookWithFormats.useMutation();
+  const upsertFormatMutation = trpc.admin.upsertBookFormat.useMutation();
+  const deleteFormatMutation = trpc.admin.deleteBookFormatCascade.useMutation();
+  const setFormatAvailabilityMutation = trpc.admin.setBookFormatAvailability.useMutation();
+  const addTrackMutation = trpc.admin.addAudiobookTrackAdmin.useMutation();
+  const updateTrackMutation = trpc.admin.updateAudiobookTrackAdmin.useMutation();
+  const deleteTrackMutation = trpc.admin.deleteAudiobookTrackAdmin.useMutation();
+  const createLedgerEntryMutation = trpc.admin.createAccountingLedgerEntry.useMutation();
 
   useEffect(() => {
     if (!formatOpen || !selectedBookId) return;
@@ -90,33 +101,39 @@ export default function AdminBooks() {
   }, [formatOpen, selectedBookId, formatsLoading, formatsLoaded, formats, formatForm?.id, formatForm?.format]);
 
   const load = async () => {
-    const [b, a, c, p, n, bf, bc] = await Promise.all([
-      supabase.from("books").select("*, authors(name), categories(name, name_bn), publishers(name)").order("created_at", { ascending: false }),
-      supabase.from("authors").select("id, name"),
-      supabase.from("categories").select("id, name, name_bn"),
-      supabase.from("publishers").select("id, name"),
-      supabase.from("narrators").select("id, name"),
-      supabase.from("book_formats").select("book_id, format, narrator_id, narrators(name)"),
-      supabase.from("book_contributors").select("book_id"),
+    const [b, a, c, p, n, bc] = await Promise.all([
+      utils.admin.listBooks.fetch({ limit: 1000 }),
+      utils.admin.listAuthors.fetch({}),
+      utils.admin.listCategories.fetch(),
+      utils.admin.listPublishers.fetch({}),
+      utils.admin.listNarrators.fetch({}),
+      utils.admin.listBookContributorCounts.fetch(),
     ]);
-    setBooks(b.data || []);
-    setAuthors(a.data || []);
-    setCategories(c.data || []);
-    setPublishers(p.data || []);
-    setNarrators(n.data || []);
+    const booksWithLegacyAliases = (b.books || []).map((book: any) => ({
+      ...book,
+      authors: book.author ?? null,
+      categories: book.category ?? null,
+      publishers: book.publisher ?? null,
+    }));
+    setBooks(booksWithLegacyAliases);
+    setAuthors(a || []);
+    setCategories(c || []);
+    setPublishers(p || []);
+    setNarrators(n || []);
 
-    // Group formats by book_id for badges
     const fmtMap: Record<string, any[]> = {};
-    (bf.data || []).forEach((f) => {
+    (b.books || []).flatMap((book: any) => book.formats || []).forEach((f: any) => {
       if (!fmtMap[f.book_id]) fmtMap[f.book_id] = [];
-      fmtMap[f.book_id].push(f);
+      fmtMap[f.book_id].push({
+        ...f,
+        narrators: f.narrator ?? null,
+      });
     });
     setBookFormats(fmtMap);
 
-    // Count contributors per book
     const contribMap: Record<string, number> = {};
-    (bc.data || []).forEach((c) => {
-      contribMap[c.book_id] = (contribMap[c.book_id] || 0) + 1;
+    (bc || []).forEach((row: any) => {
+      contribMap[row.book_id] = row.count;
     });
     setBookContribCounts(contribMap);
   };
@@ -208,20 +225,20 @@ export default function AdminBooks() {
     const nextOrder = tracks.length + 1;
     const chapterPrice = trackForm.chapter_price ? Number(trackForm.chapter_price) : null;
 
-    const { error } = await supabase.from("audiobook_tracks").insert({
-      book_format_id: selectedFormatId,
-      title: trackForm.title.trim(),
-      audio_url: trackForm.audio_url,
-      track_number: nextOrder,
-      duration: trackForm.duration || null,
-      is_preview: nextOrder === 1,
-      status: "draft",
-      media_type: uploadedMediaType,
-      chapter_price: chapterPrice,
-    } as any);
-
-    if (error) {
-      toast.error(error.message);
+    try {
+      await addTrackMutation.mutateAsync({
+        book_format_id: selectedFormatId,
+        title: trackForm.title.trim(),
+        audio_url: trackForm.audio_url,
+        track_number: nextOrder,
+        duration: trackForm.duration || null,
+        is_preview: nextOrder === 1,
+        status: "draft",
+        media_type: uploadedMediaType,
+        chapter_price: chapterPrice,
+      });
+    } catch (error: any) {
+      toast.error(error.message || "Failed to add track");
       setSavingTrack(false);
       return;
     }
@@ -234,12 +251,16 @@ export default function AdminBooks() {
   };
 
   const loadTracks = async (formatId: string) => {
-    const { data } = await supabase.from("audiobook_tracks").select("*").eq("book_format_id", formatId).order("track_number");
-    setTracks(data || []);
+    try {
+      const data = await utils.admin.getAudiobookTracksForFormat.fetch({ bookFormatId: formatId });
+      setTracks(data || []);
+    } catch {
+      setTracks([]);
+    }
   };
 
   const deleteTrack = async (id: string) => {
-    await supabase.from("audiobook_tracks").delete().eq("id", id);
+    await deleteTrackMutation.mutateAsync({ id });
     if (selectedFormatId) loadTracks(selectedFormatId);
     toast.success("Track deleted");
   };
@@ -248,8 +269,12 @@ export default function AdminBooks() {
     const trimmed = editingTrackTitle.trim();
     if (!trimmed) { toast.error("Title cannot be empty"); return; }
     const price = editingTrackPrice ? Number(editingTrackPrice) : null;
-    const { error } = await supabase.from("audiobook_tracks").update({ title: trimmed, chapter_price: price } as any).eq("id", id);
-    if (error) { toast.error(error.message); return; }
+    try {
+      await updateTrackMutation.mutateAsync({ id, title: trimmed, chapter_price: price });
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update track");
+      return;
+    }
     setTracks(tracks.map(t => t.id === id ? { ...t, title: trimmed, chapter_price: price } : t));
     setEditingTrackId(null);
     toast.success("Track updated");
@@ -262,8 +287,12 @@ export default function AdminBooks() {
     setTracksOpen(true);
     loadTracks(formatId);
     // Load full audiobook price
-    const { data } = await supabase.from("book_formats").select("price").eq("id", formatId).maybeSingle();
-    setFullAudiobookPrice(data ? Number(data.price) || 0 : null);
+    try {
+      const data = await utils.admin.getBookFormatPrice.fetch({ formatId });
+      setFullAudiobookPrice(data ? Number(data.price) || 0 : null);
+    } catch {
+      setFullAudiobookPrice(null);
+    }
   };
 
   const totalChapterCoinPrice = tracks.reduce((sum: number, t: any) => {
@@ -313,13 +342,22 @@ export default function AdminBooks() {
     }
 
     if (editBook) {
-      const { error } = await supabase.from("books").update(payload).eq("id", editBook.id);
-      if (error) { toast.error(error.message); return; }
+      try {
+        await upsertBookMutation.mutateAsync({ id: editBook.id, ...payload });
+      } catch (error: any) {
+        toast.error(error.message || "Failed to update book");
+        return;
+      }
       await log({ module: "books", action: "Book updated", actionType: "update", targetType: "book", targetId: editBook.id, details: `Updated book: ${payload.title}` });
       toast.success("Book updated");
     } else {
-      const { data: inserted, error } = await supabase.from("books").insert(payload).select("id").maybeSingle();
-      if (error) { toast.error(error.message); return; }
+      let inserted: any = null;
+      try {
+        inserted = await upsertBookMutation.mutateAsync({ ...payload });
+      } catch (error: any) {
+        toast.error(error.message || "Failed to create book");
+        return;
+      }
       await log({ module: "books", action: "Book created", actionType: "create", targetType: "book", targetId: inserted?.id, details: `Created book: ${payload.title}` });
       toast.success("Book created");
     }
@@ -329,8 +367,7 @@ export default function AdminBooks() {
 
   const deleteBook = async (id: string) => {
     if (!confirm("Delete this book and all its formats?")) return;
-    await supabase.from("book_formats").delete().eq("book_id", id);
-    await supabase.from("books").delete().eq("id", id);
+    await deleteBookMutation.mutateAsync({ id });
     await log({ module: "books", action: "Book deleted", actionType: "delete", targetType: "book", targetId: id, details: `Deleted book: ${id}`, riskLevel: "high" });
     toast.success("Deleted");
     load();
@@ -345,10 +382,13 @@ export default function AdminBooks() {
     const requestId = ++formatFetchRef.current;
     console.debug("[AdminBooks][Formats] open request", { requestId, selectedBookId: bookId });
 
-    const { data, error } = await supabase
-      .from("book_formats")
-      .select("id, book_id, format, price, original_price, discount, pages, duration, file_size, file_url, chapters_count, preview_chapters, preview_percentage, audio_quality, binding, dimensions, weight, weight_kg_per_copy, delivery_days, in_stock, stock_count, is_available, narrator_id, submission_status, printing_cost, unit_cost, default_packaging_cost, publisher_commission_percent, submitted_by, publisher_id, payout_model, isbn, created_at, updated_at, publishers:publisher_id(name)")
-      .eq("book_id", bookId);
+    let data: any[] = [];
+    let error: Error | null = null;
+    try {
+      data = await utils.admin.listBookFormatsByBook.fetch({ bookId });
+    } catch (err: any) {
+      error = err;
+    }
 
     if (requestId !== formatFetchRef.current) {
       console.debug("[AdminBooks][Formats] stale response ignored", { requestId, selectedBookId: bookId });
@@ -365,7 +405,11 @@ export default function AdminBooks() {
       return;
     }
 
-    const fmts = data || [];
+    const fmts = (data || []).map((f: any) => ({
+      ...f,
+      publishers: f.publisher ?? null,
+      narrators: f.narrator ?? null,
+    }));
     console.debug("[AdminBooks][Formats] fetch success", {
       selectedBookId: bookId,
       count: fmts.length,
@@ -449,14 +493,22 @@ export default function AdminBooks() {
     payload.publisher_id = payload.publisher_id || null;
 
     if (formatForm.id) {
-      const { error } = await supabase.from("book_formats").update(payload).eq("id", formatForm.id);
-      if (error) { toast.error(error.message); return; }
+      try {
+        await upsertFormatMutation.mutateAsync({ ...payload, id: formatForm.id, book_id: selectedBookId });
+      } catch (error: any) {
+        toast.error(error.message || "Failed to update format");
+        return;
+      }
     } else {
       // Check for duplicate format
       const existing = formats.find(f => f.format === payload.format);
       if (existing) { toast.error(`This book already has a ${payload.format} format. Edit the existing one instead.`); return; }
-      const { error } = await supabase.from("book_formats").insert(payload);
-      if (error) { toast.error(error.message); return; }
+      try {
+        await upsertFormatMutation.mutateAsync({ ...payload, book_id: selectedBookId });
+      } catch (error: any) {
+        toast.error(error.message || "Failed to create format");
+        return;
+      }
     }
     // Record inventory purchase in accounting ledger if toggled on
     if (recordPurchaseInLedger && payload.format === "hardcopy") {
@@ -465,7 +517,7 @@ export default function AdminBooks() {
       if (qty > 0 && unitCost > 0) {
         const bookTitle = books.find(b => b.id === selectedBookId)?.title || "Unknown";
         const currentStock = Number(formats.find(f => f.format === "hardcopy")?.stock_count) || 0;
-        await supabase.from("accounting_ledger" as any).insert({
+        await createLedgerEntryMutation.mutateAsync({
           type: "expense",
           category: "inventory_purchase",
           description: `Hardcopy stock purchase: ${bookTitle} — ${qty} copies × ৳${unitCost} (stock ${currentStock} → ${Number(payload.stock_count) || 0})`,
@@ -474,7 +526,7 @@ export default function AdminBooks() {
           book_id: selectedBookId,
           reference_type: "book_format",
           reference_id: formatForm.id || null,
-        } as any);
+        });
         toast.success(`Ledger: ৳${(qty * unitCost).toLocaleString()} inventory expense recorded`);
       } else {
         toast.warning("Ledger entry skipped — purchase qty or unit cost is 0");
@@ -487,8 +539,7 @@ export default function AdminBooks() {
   };
 
   const deleteFormat = async (id: string) => {
-    await supabase.from("audiobook_tracks").delete().eq("book_format_id", id);
-    await supabase.from("book_formats").delete().eq("id", id);
+    await deleteFormatMutation.mutateAsync({ id });
     toast.success("Deleted");
     if (selectedBookId) openFormats(selectedBookId);
   };
@@ -799,8 +850,12 @@ export default function AdminBooks() {
                         <button
                           onClick={async () => {
                             const newVal = !(f.is_available ?? true);
-                            const { error } = await supabase.from("book_formats").update({ is_available: newVal }).eq("id", f.id);
-                            if (error) { toast.error(error.message); return; }
+                            try {
+                              await setFormatAvailabilityMutation.mutateAsync({ id: f.id, isAvailable: newVal });
+                            } catch (error: any) {
+                              toast.error(error.message || "Failed to update availability");
+                              return;
+                            }
                             if (selectedBookId) {
                               setFormatsByBookId((prev) => ({
                                 ...prev,

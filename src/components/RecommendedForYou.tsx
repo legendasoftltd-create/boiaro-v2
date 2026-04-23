@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Sparkles, Loader2 } from "lucide-react";
 import { BookCard } from "./BookCard";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { useBooks } from "@/hooks/useBooks";
 import type { MasterBook } from "@/lib/types";
 import { useContentFilter } from "@/contexts/ContentFilterContext";
@@ -12,84 +12,21 @@ import { filterBooks } from "@/hooks/useBookFilter";
 export function RecommendedForYou() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
-  const { books: allBooks, trending } = useBooks();
+  const { trending } = useBooks();
   const { globalFilter } = useContentFilter();
-  const [recommendations, setRecommendations] = useState<MasterBook[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [_error, setError] = useState(false);
 
   const scroll = (d: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: d === "left" ? -320 : 320, behavior: "smooth" });
 
-  useEffect(() => {
-    const fetchRecommendations = async () => {
-      try {
-        const { data, error: fnError } = await supabase.functions.invoke("ai-recommend", {
-          body: {
-            type: user ? "personalized" : "trending",
-            userId: user?.id || null,
-          },
-        });
+  const { data: recData, isLoading } = trpc.books.recommendations.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
 
-        if (fnError || data?.error) {
-          setError(true);
-          setLoading(false);
-          return;
-        }
+  const recBooks = (recData as MasterBook[] | undefined) ?? [];
+  const loading = isLoading;
 
-        const recBooks = (data?.recommendations || []) as any[];
-        if (recBooks.length > 0) {
-          // Map API response to MasterBook format by matching with loaded books
-          const matched = recBooks
-            .map((rec: any) => allBooks.find(b => b.id === rec.id))
-            .filter(Boolean) as MasterBook[];
-
-          // If matched from allBooks, use those; otherwise create lightweight cards
-          if (matched.length >= 4) {
-            setRecommendations(matched);
-          } else {
-            // Create basic book objects from API data
-            const basic: MasterBook[] = recBooks.slice(0, 10).map((r: any) => ({
-              id: r.id,
-              title: r.title || "",
-              titleEn: r.title_en || "",
-              slug: r.slug || "",
-              author: { id: "", name: r.authors?.name || "", nameEn: "", avatar: "", bio: "", genre: "", booksCount: 0, followers: "0", isFeatured: false },
-              publisher: { id: "", name: "", nameEn: "", logo: "", description: "", booksCount: 0, isVerified: false },
-              category: { id: "", name: r.categories?.name || "", nameBn: "", icon: "BookOpen", count: "0", color: "primary" },
-              cover: r.cover_url || "",
-              description: "",
-              descriptionBn: "",
-              rating: Number(r.rating) || 0,
-              reviewsCount: 0,
-              totalReads: "0",
-              publishedDate: "",
-              language: "bn",
-              tags: [],
-              isFeatured: r.is_featured || false,
-              isNew: false,
-              isBestseller: false,
-              isFree: r.is_free || false,
-              formats: {},
-            }));
-            setRecommendations(basic);
-          }
-        }
-      } catch {
-        setError(true);
-      }
-      setLoading(false);
-    };
-
-    // Wait for allBooks to load before fetching recommendations
-    if (allBooks.length > 0) {
-      fetchRecommendations();
-    }
-  }, [user, allBooks.length]);
-
-  // Fallback to trending if AI fails or no results
   const displayBooks = filterBooks(
-    recommendations.length > 0 ? recommendations : trending.slice(0, 8),
+    recBooks.length > 0 ? recBooks : trending.slice(0, 8),
     globalFilter
   );
 

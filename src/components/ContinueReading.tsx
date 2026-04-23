@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { useBooks } from "@/hooks/useBooks";
 import type { MasterBook } from "@/lib/types";
 
@@ -28,28 +28,23 @@ export function ContinueReading() {
   const scroll = (d: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: d === "left" ? -300 : 300, behavior: "smooth" });
 
+  const { data: progressList = [] } = trpc.profiles.readingProgress.useQuery(undefined, {
+    enabled: !!user,
+  });
+
   useEffect(() => {
     if (!user || allBooks.length === 0) return;
-
-    supabase
-      .from("reading_progress")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("last_read_at", { ascending: false })
-      .limit(10)
-      .then(({ data }) => {
-        if (!data) return;
-        const bookMap = new Map(allBooks.map(b => [b.id, b]));
-        const mapped = (data as any[])
-          .map(p => {
-            const book = bookMap.get(p.book_id);
-            if (!book) return null;
-            return { ...p, book } as ProgressItem;
-          })
-          .filter((p): p is ProgressItem => p !== null && (p.percentage || 0) < 100);
-        setItems(mapped);
-      });
-  }, [user, allBooks.length]);
+    const bookMap = new Map(allBooks.map(b => [b.id, b]));
+    const mapped = (progressList as any[])
+      .map(p => {
+        const book = bookMap.get(p.book_id);
+        if (!book) return null;
+        return { ...p, book } as ProgressItem;
+      })
+      .filter((p): p is ProgressItem => p !== null && (p.percentage || 0) < 100)
+      .slice(0, 10);
+    setItems(mapped);
+  }, [user, allBooks.length, progressList]);
 
   if (!user && items.length === 0) {
     return (

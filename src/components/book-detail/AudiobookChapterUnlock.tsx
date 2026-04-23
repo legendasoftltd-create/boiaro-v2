@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWallet } from "@/hooks/useWallet";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,15 +52,32 @@ function calcFullUnlockCost(
 export function AudiobookChapterUnlock({ bookId, tracks, audiobookPrice, onUnlocked }: Props) {
   const { user } = useAuth();
   const { wallet, refetch } = useWallet();
-  const [unlockedChapters, setUnlockedChapters] = useState<Set<string>>(new Set());
-  const [hasFullUnlock, setHasFullUnlock] = useState(false);
-  const [_unlocking, setUnlocking] = useState<string | null>(null);
   const [fullUnlocking, setFullUnlocking] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [coinEnabled, setCoinEnabled] = useState(false);
-  const [adCoinReward, setAdCoinReward] = useState(DEFAULT_AD_COIN_REWARD);
-  const [chapterPrices, setChapterPrices] = useState<Record<string, number>>({});
   const [modalTrack, setModalTrack] = useState<TrackWithPrice | null>(null);
+
+  const trackIds = tracks.map(t => t.id);
+
+  const { data: coinSettings, isLoading: settingsLoading } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user });
+  const { data: trackPriceData = [] } = trpc.books.trackPrices.useQuery(
+    { trackIds },
+    { enabled: trackIds.length > 0 }
+  );
+  const { data: userUnlocks = [], isLoading: unlocksLoading } = trpc.wallet.userUnlocks.useQuery(undefined, { enabled: !!user });
+  const unlockContentMutation = trpc.wallet.unlockContent.useMutation();
+  const adjustCoinsMutation = trpc.wallet.adjustCoins.useMutation();
+
+  const coinEnabled = coinSettings ? coinSettings.systemEnabled && coinSettings.unlockEnabled : false;
+  const adCoinReward = coinSettings?.coinAdReward ?? DEFAULT_AD_COIN_REWARD;
+  const loading = settingsLoading || unlocksLoading;
+
+  const chapterPrices: Record<string, number> = {};
+  trackPriceData.forEach((t: any) => { if (t.chapter_price != null) chapterPrices[t.id] = Number(t.chapter_price); });
+
+  const bookUnlocks = (userUnlocks as any[]).filter((u: any) => u.book_id === bookId && u.status === "active");
+  const hasFullUnlock = bookUnlocks.some((u: any) => u.format === "audiobook");
+  const unlockedChapters = new Set<string>(
+    bookUnlocks.map((u: any) => u.format?.match(/^audiobook_chapter_(.+)$/)?.[1]).filter(Boolean)
+  );
 
   const tracksWithPrices: TrackWithPrice[] = tracks.map(t => ({
     ...t,
@@ -68,66 +85,7 @@ export function AudiobookChapterUnlock({ bookId, tracks, audiobookPrice, onUnloc
   }));
   const nonPreviewTracks = tracksWithPrices.filter(t => !t.isPreview);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data: settings } = await supabase
-        .from("platform_settings")
-        .select("*")
-        .in("key", ["coin_system_enabled", "coin_unlock_enabled", "coin_ad_reward"]);
-      const map: Record<string, string> = {};
-      ((settings as any[]) || []).forEach((s: any) => { map[s.key] = s.value; });
-      setCoinEnabled(map.coin_system_enabled === "true" && map.coin_unlock_enabled === "true");
-      setAdCoinReward(parseInt(map.coin_ad_reward, 10) || DEFAULT_AD_COIN_REWARD);
-
-      const trackIds = tracks.map(t => t.id);
-      if (trackIds.length > 0) {
-        const { data: trackData } = await supabase
-          .from("audiobook_tracks")
-          .select("id, chapter_price")
-          .in("id", trackIds);
-        const prices: Record<string, number> = {};
-        (trackData || []).forEach((t: any) => {
-          if (t.chapter_price != null) prices[t.id] = Number(t.chapter_price);
-        });
-        setChapterPrices(prices);
-      }
-
-      if (user) {
-        const { data: unlocks } = await supabase
-          .from("content_unlocks")
-          .select("format, book_id, id")
-          .eq("user_id", user.id)
-          .eq("book_id", bookId)
-          .eq("status", "active");
-
-        const set = new Set<string>();
-        let fullFound = false;
-        (unlocks || []).forEach((u: any) => {
-          if (u.format === "audiobook") fullFound = true;
-          const match = u.format?.match(/^audiobook_chapter_(.+)$/);
-          if (match) set.add(match[1]);
-        });
-        setUnlockedChapters(set);
-        setHasFullUnlock(fullFound);
-      }
-      setLoading(false);
-    };
-    load();
-  }, [user, bookId, tracks]);
-
-  const logDuplicatePrevented = useCallback(async (format: string) => {
-    if (!user) return;
-    await supabase.rpc("upsert_system_log", {
-      p_level: "info",
-      p_module: "chapter_unlock",
-      p_message: "Duplicate unlock attempt prevented",
-      p_fingerprint: `dup_unlock_${user.id}_${bookId}_${format}`,
-      p_user_id: user.id,
-      p_metadata: JSON.stringify({
-        user_id: user.id, book_id: bookId, format, action: "duplicate_prevented",
-      }),
-    });
-  }, [user, bookId]);
+  const utils = trpc.useUtils();
 
   const isChapterUnlockable = useCallback((track: TrackWithPrice, index: number): boolean => {
     if (index === 0) return true;
@@ -137,181 +95,45 @@ export function AudiobookChapterUnlock({ bookId, tracks, audiobookPrice, onUnloc
     return unlockedChapters.has(prevTrack.id);
   }, [nonPreviewTracks, unlockedChapters]);
 
-  const _handleCoinUnlock = useCallback(async (track: TrackWithPrice) => {
-    if (!user) return;
-    const chapterFormat = `audiobook_chapter_${track.id}`;
-    const chapterCost = track.chapterPrice;
-
-    if (unlockedChapters.has(track.id)) {
-      toast.info("এই চ্যাপ্টার ইতোমধ্যে আনলক করা হয়েছে");
-      logDuplicatePrevented(chapterFormat);
-      return;
-    }
-
-    const trackIdx = nonPreviewTracks.findIndex(t => t.id === track.id);
-    if (!isChapterUnlockable(track, trackIdx)) {
-      toast.error("আগের চ্যাপ্টার প্রথমে আনলক করুন");
-      return;
-    }
-
-    const { data: existing } = await supabase
-      .from("content_unlocks")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("book_id", bookId)
-      .eq("format", chapterFormat)
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (existing) {
-      setUnlockedChapters(prev => new Set(prev).add(track.id));
-      toast.info("এই চ্যাপ্টার ইতোমধ্যে আনলক করা হয়েছে");
-      logDuplicatePrevented(chapterFormat);
-      return;
-    }
-
-    if (wallet.balance < chapterCost) {
-      toast.error(`${chapterCost} কয়েন প্রয়োজন (বর্তমান: ${wallet.balance})`);
-      return;
-    }
-    setUnlocking(track.id);
-
-    const refId = `ch_unlock_${bookId}_${track.id}_${user.id}`;
-
-    const { error: rpcErr } = await supabase.rpc("adjust_user_coins", {
-      p_user_id: user.id,
-      p_amount: -chapterCost,
-      p_type: "spend",
-      p_description: `অডিওবুক চ্যাপ্টার আনলক - ${track.title}`,
-      p_reference_id: refId,
-      p_source: "chapter_unlock",
-    });
-
-    if (rpcErr) {
-      toast.error("কয়েন কাটা ব্যর্থ হয়েছে");
-      setUnlocking(null);
-      return;
-    }
-
-    const { error: unlockErr } = await supabase.from("content_unlocks").upsert({
-      user_id: user.id,
-      book_id: bookId,
-      format: chapterFormat,
-      coins_spent: chapterCost,
-      unlock_method: "coin",
-      status: "active",
-    }, { onConflict: "user_id,book_id,format" } as any);
-
-    if (unlockErr) {
-      await supabase.rpc("adjust_user_coins", {
-        p_user_id: user.id,
-        p_amount: chapterCost,
-        p_type: "earn",
-        p_description: `রিফান্ড: চ্যাপ্টার আনলক ব্যর্থ - ${track.title}`,
-        p_reference_id: `refund_${refId}`,
-        p_source: "chapter_unlock_refund",
-      });
-      toast.error("আনলক ব্যর্থ হয়েছে, কয়েন ফেরত দেওয়া হয়েছে");
-      setUnlocking(null);
-      return;
-    }
-
-    setUnlockedChapters(prev => new Set(prev).add(track.id));
-    toast.success(`🎧 "${track.title}" আনলক হয়েছে!`);
-    refetch();
-    onUnlocked();
-    setUnlocking(null);
-  }, [user, wallet, bookId, refetch, onUnlocked, unlockedChapters, logDuplicatePrevented, nonPreviewTracks, isChapterUnlockable]);
 
   const handleFullCoinUnlock = useCallback(async () => {
     if (!user) return;
-
-    const { data: existing } = await supabase
-      .from("content_unlocks")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("book_id", bookId)
-      .eq("format", "audiobook")
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (existing) {
-      setHasFullUnlock(true);
-      toast.info("ইতোমধ্যে সম্পূর্ণ অডিওবুক আনলক করা আছে");
-      logDuplicatePrevented("audiobook");
-      return;
-    }
+    if (hasFullUnlock) { toast.info("ইতোমধ্যে সম্পূর্ণ অডিওবুক আনলক করা আছে"); return; }
 
     const { cost: adjustedCost } = calcFullUnlockCost(nonPreviewTracks, unlockedChapters);
-    if (adjustedCost <= 0) {
-      toast.info("সব চ্যাপ্টার ইতোমধ্যে আনলক করা আছে");
-      return;
-    }
-
-    if (wallet.balance < adjustedCost) {
-      toast.error(`${adjustedCost} কয়েন প্রয়োজন (বর্তমান: ${wallet.balance})`);
-      return;
-    }
+    if (adjustedCost <= 0) { toast.info("সব চ্যাপ্টার ইতোমধ্যে আনলক করা আছে"); return; }
+    if (wallet.balance < adjustedCost) { toast.error(`${adjustedCost} কয়েন প্রয়োজন (বর্তমান: ${wallet.balance})`); return; }
 
     setFullUnlocking(true);
-    const refId = `full_unlock_${bookId}_${user.id}`;
     const remaining = nonPreviewTracks.filter(t => !unlockedChapters.has(t.id));
-
-    const { error: rpcErr } = await supabase.rpc("adjust_user_coins", {
-      p_user_id: user.id,
-      p_amount: -adjustedCost,
-      p_type: "spend",
-      p_description: `সম্পূর্ণ অডিওবুক আনলক (${remaining.length} চ্যাপ্টার + ভবিষ্যৎ চ্যাপ্টার)`,
-      p_reference_id: refId,
-      p_source: "full_audiobook_unlock",
-    });
-
-    if (rpcErr) {
-      toast.error("কয়েন কাটা ব্যর্থ হয়েছে");
-      setFullUnlocking(false);
-      return;
-    }
-
-    const { error: unlockErr } = await supabase.from("content_unlocks").upsert({
-      user_id: user.id,
-      book_id: bookId,
-      format: "audiobook",
-      coins_spent: adjustedCost,
-      unlock_method: "coin",
-      status: "active",
-    }, { onConflict: "user_id,book_id,format" } as any);
-
-    if (unlockErr) {
-      await supabase.rpc("adjust_user_coins", {
-        p_user_id: user.id,
-        p_amount: adjustedCost,
-        p_type: "earn",
-        p_description: `রিফান্ড: সম্পূর্ণ অডিওবুক আনলক ব্যর্থ`,
-        p_reference_id: `refund_${refId}`,
-        p_source: "full_unlock_refund",
+    try {
+      await adjustCoinsMutation.mutateAsync({
+        amount: -adjustedCost,
+        type: "spend",
+        description: `সম্পূর্ণ অডিওবুক আনলক (${remaining.length} চ্যাপ্টার + ভবিষ্যৎ চ্যাপ্টার)`,
+        referenceId: `full_unlock_${bookId}_${user.id}`,
+        source: "full_audiobook_unlock",
       });
-      toast.error("আনলক ব্যর্থ হয়েছে, কয়েন ফেরত দেওয়া হয়েছে");
-      setFullUnlocking(false);
-      return;
+      await unlockContentMutation.mutateAsync({ bookId, format: "audiobook", coinCost: 0 });
+      toast.success("সম্পূর্ণ অডিওবুক আনলক হয়েছে!");
+      utils.wallet.userUnlocks.invalidate();
+      refetch();
+      onUnlocked();
+    } catch (e: any) {
+      toast.error(e?.message || "আনলক ব্যর্থ হয়েছে");
     }
-
-    setHasFullUnlock(true);
-    setModalTrack(null);
-    toast.success("🎉 সম্পূর্ণ অডিওবুক আনলক হয়েছে!");
-    refetch();
-    onUnlocked();
     setFullUnlocking(false);
-  }, [user, wallet, bookId, nonPreviewTracks, unlockedChapters, refetch, onUnlocked, logDuplicatePrevented]);
+  }, [user, wallet, bookId, nonPreviewTracks, unlockedChapters, hasFullUnlock, adjustCoinsMutation, unlockContentMutation, utils, refetch, onUnlocked]);
 
   const handleAdReward = useCallback(() => {
     refetch();
   }, [refetch]);
 
-  const handleModalChapterUnlocked = useCallback((trackId: string) => {
-    setUnlockedChapters(prev => new Set(prev).add(trackId));
+  const handleModalChapterUnlocked = useCallback((_trackId: string) => {
+    utils.wallet.userUnlocks.invalidate();
     refetch();
     onUnlocked();
-  }, [refetch, onUnlocked]);
+  }, [utils, refetch, onUnlocked]);
 
   if (loading || !coinEnabled) return null;
   if (tracks.length === 0) return null;

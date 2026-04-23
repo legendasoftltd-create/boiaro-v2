@@ -1,35 +1,21 @@
 import { useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { BookCard } from "@/components/BookCard";
 import { Badge } from "@/components/ui/badge";
 import { BookOpen } from "lucide-react";
 import { FollowButton } from "@/components/FollowButton";
+import { trpc } from "@/lib/trpc";
 import { useBooks } from "@/hooks/useBooks";
 
 const AuthorProfile = () => {
   const { id } = useParams<{ id: string }>();
-  const [author, setAuthor] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: author, isLoading } = trpc.books.authorById.useQuery({ id: id! }, { enabled: !!id });
   const { books: allBooks, loading: booksLoading } = useBooks();
 
-  useEffect(() => {
-    if (!id) return;
-    const load = async () => {
-      setLoading(true);
-      const { data: a } = await supabase.from("authors").select("id, name, name_en, avatar_url, bio, genre, is_featured, is_trending, priority, status, user_id, created_at, updated_at").eq("id", id).single();
-      setAuthor(a);
-      setLoading(false);
-    };
-    load();
-  }, [id]);
-
-  // Filter books by author from the shared cache (already transformed to MasterBook)
   const authorBooks = allBooks.filter((b) => b.author.id === id);
 
-  if (loading || booksLoading) return (
+  if (isLoading || booksLoading) return (
     <main className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 py-20 text-center text-muted-foreground">Loading...</div>

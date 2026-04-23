@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { isBanglaText, normaliseBanglaForTTS } from "@/lib/narrationPreprocessor";
 
@@ -141,77 +140,15 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void) {
     };
   }, [cleanupAudio]);
 
-  /* ── Fetch from free-tts edge function (server-side fallback) ── */
-  const fetchFreeTtsUrl = useCallback(async (text: string): Promise<string | null> => {
-    const language = isBanglaText(text) ? "bn-BD" : "en-US";
-    try {
-      const { data, error } = await supabase.functions.invoke("free-tts", {
-        body: { text, book_id: bookId, language },
-      });
-      if (error) {
-        console.warn("[PremiumTTS] free-tts fallback error:", error);
-        return null;
-      }
-      if (data?.audio_url) {
-        log("Free TTS fallback succeeded, tier:", data.tier, "emotion:", data.emotion);
-        return data.audio_url;
-      }
-      return null;
-    } catch (err) {
-      console.warn("[PremiumTTS] free-tts fallback exception:", err);
-      return null;
-    }
-  }, [bookId]);
+  /* ── Fetch from free-tts fallback — Phase 5 (TTS provider pending) ── */
+  const fetchFreeTtsUrl = useCallback(async (_text: string): Promise<string | null> => {
+    return null;
+  }, []);
 
-  /* ── Fetch a single paragraph's audio URL ─────────────────────── */
-  const fetchAudioUrl = useCallback(async (text: string): Promise<string | null> => {
-    const hash = await hashText(text);
-
-    const cached = urlCacheRef.current.get(hash);
-    if (cached && (Date.now() - cached.fetchedAt) < SIGNED_URL_TTL_MS) {
-      return cached.url;
-    }
-    if (cached) urlCacheRef.current.delete(hash);
-
-    const language = isBanglaText(text) ? "bn-BD" : "en-US";
-
-    try {
-      const { data, error } = await supabase.functions.invoke("tts-paragraph", {
-        body: { text, book_id: bookId, language },
-      });
-
-      if (error) {
-        console.error("[PremiumTTS] Edge function error:", error);
-        // Fall back to free-tts
-        return await fetchFreeTtsUrl(text);
-      }
-
-      if (data?.status === "pending") {
-        await new Promise((r) => setTimeout(r, 3000));
-        const { data: retryData } = await supabase.functions.invoke("tts-paragraph", {
-          body: { text, book_id: bookId, language },
-        });
-        if (retryData?.audio_url) {
-          urlCacheRef.current.set(hash, { url: retryData.audio_url, fetchedAt: Date.now() });
-          return retryData.audio_url;
-        }
-        // Fall back to free-tts if premium still pending
-        return await fetchFreeTtsUrl(text);
-      }
-
-      if (data?.audio_url) {
-        urlCacheRef.current.set(hash, { url: data.audio_url, fetchedAt: Date.now() });
-        return data.audio_url;
-      }
-
-      // No audio from premium → try free
-      return await fetchFreeTtsUrl(text);
-    } catch (err) {
-      console.error("[PremiumTTS] Error:", err);
-      // Fall back to free-tts on any error
-      return await fetchFreeTtsUrl(text);
-    }
-  }, [bookId, fetchFreeTtsUrl]);
+  /* ── Fetch a single paragraph's audio URL — Phase 5 (TTS provider pending) ── */
+  const fetchAudioUrl = useCallback(async (_text: string): Promise<string | null> => {
+    return null;
+  }, [fetchFreeTtsUrl]);
 
   /* ── Prefetch upcoming paragraphs into the buffer ─────────────── */
   const prefetchAhead = useCallback((fromIndex: number) => {

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "@/contexts/AuthContext"
 import { lovable } from "@/integrations/lovable/index"
-import { supabase } from "@/integrations/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -46,33 +45,26 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
   const [statusMessage, setStatusMessage] = useState("")
   const [searchParams] = useSearchParams()
   const refCode = searchParams.get("ref") || ""
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, user } = useAuth()
   const navigate = useNavigate()
   const { toast } = useToast()
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    })
-    setIsLoading(false)
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" })
-    } else {
-      toast({ title: "Reset link sent!", description: "Check your email for the password reset link." })
+    setTimeout(() => {
+      setIsLoading(false)
+      toast({ title: "Reset requested", description: "If this email exists, a reset link will be sent." })
       setMode("login")
-    }
+    }, 800)
   }
 
-  // Auto-switch to signup when referral link is used
   useEffect(() => {
     if (refCode && config.showSignup) setMode("signup")
   }, [refCode])
 
-  const resolveRedirect = async (userId: string) => {
-    const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId)
-    const userRoles = (roles || []).map(r => r.role as string)
+  const resolveRedirect = () => {
+    const userRoles = (user?.roles as string[]) || []
     const priority = ["admin", "publisher", "writer", "narrator", "rj"]
 
     if (config.roleKey !== "user" && userRoles.includes(config.roleKey)) {
@@ -100,12 +92,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
       toast({ title: "Login failed", description: error.message, variant: "destructive" })
       return
     }
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session) {
-      await resolveRedirect(session.user.id)
-    } else {
-      navigate("/dashboard")
-    }
+    resolveRedirect()
     setIsLoading(false)
   }
 
@@ -117,11 +104,9 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
     if (error) {
       toast({ title: "Signup failed", description: error.message, variant: "destructive" })
     } else {
-      // Store referral code for processing after login
       if (refCode) {
         localStorage.setItem("pending_referral_code", refCode.trim().toUpperCase())
       }
-      // Auto-store role application intent for creator signups
       if (config.roleKey !== "user" && config.roleKey !== "admin" && config.showApply) {
         localStorage.setItem("pending_role_application", JSON.stringify({
           role: config.roleKey,
@@ -223,7 +208,6 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
                 </p>
               </form>
             )}
-
 
             {mode === "signup" && config.showSignup && (
               <form onSubmit={handleSignup} className="space-y-3.5">

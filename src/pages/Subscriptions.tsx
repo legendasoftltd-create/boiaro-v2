@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -10,149 +9,51 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Crown, Check, Star, Ticket } from "lucide-react";
-
-interface Plan {
-  id: string;
-  name: string;
-  code: string;
-  description: string | null;
-  price: number;
-  billing_type: string;
-  access_type: string;
-  is_featured: boolean;
-  trial_days: number;
-  benefits: string[];
-}
-
-interface UserSub {
-  id: string;
-  plan_id: string;
-  start_date: string;
-  end_date: string | null;
-  status: string;
-  subscription_plans: { name: string; code: string } | null;
-}
-
-const billingLabels: Record<string, string> = { monthly: "/mo", yearly: "/yr", lifetime: " once" };
+import { trpc } from "@/lib/trpc";
 
 export default function Subscriptions() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [activeSub, setActiveSub] = useState<UserSub | null>(null);
   const [couponCode, setCouponCode] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponApplied, setCouponApplied] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string>("");
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const loadPlans = async () => {
-      const { data } = await supabase
-        .from("subscription_plans" as any)
-        .select("*")
-        .eq("status", "active")
-        .order("sort_order");
-      setPlans((data as any[] || []) as Plan[]);
-    };
-    loadPlans();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    const loadSub = async () => {
-      const { data } = await supabase
-        .from("user_subscriptions" as any)
-        .select("*, subscription_plans(name, code)")
-        .eq("user_id", user.id)
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(1);
-      const list = (data as any[] || []) as UserSub[];
-      setActiveSub(list[0] || null);
-    };
-    loadSub();
-  }, [user]);
+  const { data: plans = [] } = trpc.wallet.subscriptionPlans.useQuery();
+  const { data: activeSub } = trpc.wallet.activeSubscription.useQuery(undefined, { enabled: !!user });
+  const subscribeMutation = trpc.wallet.subscribe.useMutation({
+    onSuccess: () => { toast.success("Subscription activated!"); navigate("/dashboard"); },
+    onError: (err) => toast.error(err.message || "Failed to subscribe"),
+  });
+  const validateCouponMutation = trpc.orders.validateCoupon.useMutation();
 
   const applyCoupon = async () => {
-    if (!couponCode.trim()) return;
-    const { data } = await supabase
-      .from("coupons" as any)
-      .select("*")
-      .eq("code", couponCode.toUpperCase())
-      .eq("status", "active")
-      .single();
-    const coupon = data as any;
-    if (!coupon) { toast.error("Invalid coupon code"); return; }
-    const now = new Date();
-    if (coupon.end_date && new Date(coupon.end_date) < now) { toast.error("Coupon expired"); return; }
-    if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) { toast.error("Coupon usage limit reached"); return; }
-    if (coupon.applies_to !== "all" && coupon.applies_to !== "subscription") { toast.error("Coupon not valid for subscriptions"); return; }
-
-    const plan = plans.find(p => p.id === selectedPlan);
-    if (!plan) { toast.error("Select a plan first"); return; }
-    if (coupon.min_order_amount > 0 && plan.price < coupon.min_order_amount) {
-      toast.error(`Minimum ৳${coupon.min_order_amount} required`); return;
+    if (!couponCode.trim() || !selectedPlan) { toast.error("Select a plan first"); return; }
+    const plan = (plans as any[]).find((p: any) => p.id === selectedPlan);
+    if (!plan) return;
+    try {
+      const result = await validateCouponMutation.mutateAsync({
+        code: couponCode,
+        totalAmount: plan.price,
+        hasHardcopy: false,
+        hasEbook: false,
+        hasAudiobook: false,
+      });
+      setCouponDiscount(result.discountAmount);
+      setCouponApplied(true);
+      toast.success(`Coupon applied! ৳${result.discountAmount} off`);
+    } catch (err: any) {
+      toast.error(err.message || "Invalid coupon");
     }
-
-    const discount = coupon.discount_type === "percentage"
-      ? Math.min(plan.price, (plan.price * coupon.discount_value) / 100)
-      : Math.min(plan.price, coupon.discount_value);
-    setCouponDiscount(discount);
-    setCouponApplied(true);
-    toast.success(`Coupon applied! ৳${discount} off`);
   };
 
-  const subscribe = async (planId: string) => {
+  const subscribe = (planId: string) => {
     if (!user) { navigate("/auth"); return; }
-    setLoading(true);
-    try {
-      const plan = plans.find(p => p.id === planId);
-      if (!plan) throw new Error("Plan not found");
-
-      const now = new Date();
-      let endDate: Date | null = null;
-      if (plan.billing_type === "monthly") { endDate = new Date(now); endDate.setMonth(endDate.getMonth() + 1); }
-      else if (plan.billing_type === "yearly") { endDate = new Date(now); endDate.setFullYear(endDate.getFullYear() + 1); }
-
-      const finalAmount = Math.max(0, plan.price - (selectedPlan === planId ? couponDiscount : 0));
-
-      const { error } = await supabase.from("user_subscriptions" as any).insert({
-        user_id: user.id,
-        plan_id: planId,
-        start_date: now.toISOString(),
-        end_date: endDate?.toISOString() || null,
-        status: "active",
-        coupon_code: couponApplied && selectedPlan === planId ? couponCode.toUpperCase() : null,
-        discount_amount: selectedPlan === planId ? couponDiscount : 0,
-        amount_paid: finalAmount,
-      } as any);
-
-      if (error) throw error;
-
-      // Track coupon usage
-      if (couponApplied && selectedPlan === planId) {
-        const { data: couponData } = await supabase
-          .from("coupons" as any)
-          .select("id, used_count")
-          .eq("code", couponCode.toUpperCase())
-          .single();
-        if (couponData) {
-          const c = couponData as any;
-          await supabase.from("coupon_usage" as any).insert({
-            coupon_id: c.id, user_id: user.id, discount_amount: couponDiscount,
-          } as any);
-          await supabase.from("coupons" as any).update({ used_count: c.used_count + 1 } as any).eq("id", c.id);
-        }
-      }
-
-      toast.success("Subscription activated!");
-      navigate("/dashboard");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to subscribe");
-    } finally {
-      setLoading(false);
-    }
+    subscribeMutation.mutate({
+      planId,
+      couponCode: couponApplied && selectedPlan === planId ? couponCode.toUpperCase() : undefined,
+      couponDiscount: couponApplied && selectedPlan === planId ? couponDiscount : undefined,
+    });
   };
 
   return (
@@ -172,7 +73,7 @@ export default function Subscriptions() {
             <CardContent className="p-6 flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Current Plan</p>
-                <p className="text-lg font-bold text-primary">{(activeSub.subscription_plans as any)?.name}</p>
+                <p className="text-lg font-bold text-primary">{(activeSub as any).plan?.name}</p>
                 {activeSub.end_date && (
                   <p className="text-xs text-muted-foreground">Expires: {new Date(activeSub.end_date).toLocaleDateString()}</p>
                 )}
@@ -183,10 +84,11 @@ export default function Subscriptions() {
         )}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {plans.map(plan => {
+          {(plans as any[]).map((plan: any) => {
             const isSelected = selectedPlan === plan.id;
             const finalPrice = isSelected && couponApplied ? Math.max(0, plan.price - couponDiscount) : plan.price;
-            const benefits = Array.isArray(plan.benefits) ? plan.benefits : [];
+            const benefits: string[] = Array.isArray(plan.features) ? plan.features : [];
+            const durationLabel = plan.duration_days >= 365 ? "/yr" : plan.duration_days >= 28 ? "/mo" : ` / ${plan.duration_days}d`;
             return (
               <Card
                 key={plan.id}
@@ -210,13 +112,10 @@ export default function Subscriptions() {
                       <span className="text-lg text-muted-foreground line-through mr-1">৳{plan.price}</span>
                     )}
                     <span className="text-3xl font-bold text-primary">৳{finalPrice}</span>
-                    <span className="text-muted-foreground text-sm">{billingLabels[plan.billing_type]}</span>
+                    <span className="text-muted-foreground text-sm">{durationLabel}</span>
                   </div>
-                  {plan.trial_days > 0 && (
-                    <Badge variant="outline" className="text-xs">{plan.trial_days} days free trial</Badge>
-                  )}
                   <ul className="space-y-2">
-                    {benefits.map((b, i) => (
+                    {benefits.map((b: string, i: number) => (
                       <li key={i} className="flex items-center gap-2 text-sm">
                         <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                         <span>{b}</span>
@@ -226,7 +125,7 @@ export default function Subscriptions() {
                   <Button
                     className="w-full"
                     variant={plan.is_featured ? "default" : "outline"}
-                    disabled={loading || (activeSub?.plan_id === plan.id)}
+                    disabled={subscribeMutation.isPending || (activeSub?.plan_id === plan.id)}
                     onClick={(e) => { e.stopPropagation(); subscribe(plan.id); }}
                   >
                     {activeSub?.plan_id === plan.id ? "Current Plan" : "Subscribe"}
@@ -235,14 +134,14 @@ export default function Subscriptions() {
               </Card>
             );
           })}
-          {plans.length === 0 && (
+          {(plans as any[]).length === 0 && (
             <div className="col-span-full text-center py-12 text-muted-foreground">
               No subscription plans available yet.
             </div>
           )}
         </div>
 
-        {plans.length > 0 && (
+        {(plans as any[]).length > 0 && (
           <Card className="max-w-md mx-auto border-border">
             <CardContent className="p-6">
               <div className="flex items-center gap-2 mb-3">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tv, Flame, Gift } from "lucide-react";
@@ -19,31 +19,17 @@ const STREAK_BONUS = 2;     // bonus coins
 export function WatchAdButton({ onRewardEarned, placement = "general", variant = "default", className }: Props) {
   const { user } = useAuth();
   const [watching, setWatching] = useState(false);
-  const [todayCount, setTodayCount] = useState(0);
-  const [dailyLimit, setDailyLimit] = useState(10);
   const [cooldownEnd, setCooldownEnd] = useState<number>(0);
   const [cooldownLeft, setCooldownLeft] = useState(0);
 
-  // Load today's ad count and settings
-  useEffect(() => {
-    if (!user) return;
-    const load = async () => {
-      const [settingsRes, countRes] = await Promise.all([
-        supabase.from("platform_settings").select("key, value")
-          .in("key", ["coin_daily_limit", "ad_cooldown_minutes"]),
-        supabase.from("coin_transactions")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", user.id)
-          .eq("source", "ad_reward")
-          .gte("created_at", new Date(new Date().setHours(0, 0, 0, 0)).toISOString()),
-      ]);
-      const map: Record<string, string> = {};
-      ((settingsRes.data as any[]) || []).forEach((s: any) => { map[s.key] = s.value; });
-      setDailyLimit(parseInt(map.coin_daily_limit || "10", 10));
-      setTodayCount(countRes.count || 0);
-    };
-    load();
-  }, [user]);
+  const { data: adStatus } = trpc.gamification.adRewardStatus.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const todayCount = adStatus?.todayCount ?? 0;
+  const dailyLimit = adStatus?.dailyLimit ?? 10;
+
+  const claimAdRewardMutation = trpc.gamification.claimAdReward.useMutation();
+  const adjustCoinsMutation = trpc.wallet.adjustCoins.useMutation();
 
   // Cooldown timer
   useEffect(() => {
@@ -72,47 +58,39 @@ export function WatchAdButton({ onRewardEarned, placement = "general", variant =
     // Simulate ad watch (replace with real ad SDK later)
     await new Promise(r => setTimeout(r, 2000));
 
-    const { data, error } = await supabase.rpc("claim_ad_reward", {
-      p_ad_placement: placement,
-    });
+    try {
+      const result = await claimAdRewardMutation.mutateAsync({ placement });
 
-    const result = data as any;
-    if (error || !result?.success) {
-      if (result?.reason === "daily_limit_reached") {
-        toast.error("আজকের অ্যাড সীমা শেষ");
-      } else {
-        toast.error("অ্যাড রিওয়ার্ড ব্যর্থ");
+      if (!result.success) {
+        toast.error(result.reason === "daily_limit_reached" ? "আজকের অ্যাড সীমা শেষ" : "অ্যাড রিওয়ার্ড ব্যর্থ");
+        setWatching(false);
+        return;
       }
-      setWatching(false);
-      return;
+
+      const newCount = todayCount + 1;
+      const isStreakHit = newCount > 0 && newCount % STREAK_THRESHOLD === 0;
+
+      if (isStreakHit) {
+        await adjustCoinsMutation.mutateAsync({
+          amount: STREAK_BONUS,
+          type: "bonus",
+          description: `স্ট্রিক বোনাস! ${STREAK_THRESHOLD}টি অ্যাড দেখেছেন`,
+          referenceId: `streak_${newCount}_${new Date().toISOString().slice(0, 10)}`,
+          source: "ad_streak_bonus",
+        });
+        toast.success(`স্ট্রিক বোনাস! +${STREAK_BONUS} কয়েন অতিরিক্ত!`, { duration: 3000 });
+      } else {
+        toast.success(`+${result.reward} কয়েন পেয়েছেন!`);
+      }
+
+      setCooldownEnd(Date.now() + 30 * 1000);
+      onRewardEarned?.(result.new_balance + (isStreakHit ? STREAK_BONUS : 0));
+    } catch {
+      toast.error("অ্যাড রিওয়ার্ড ব্যর্থ");
     }
 
-    const newCount = todayCount + 1;
-    setTodayCount(newCount);
-
-    // Streak bonus check
-    const isStreakHit = newCount > 0 && newCount % STREAK_THRESHOLD === 0;
-    if (isStreakHit) {
-      // Award bonus coins
-      await supabase.rpc("adjust_user_coins", {
-        p_user_id: user.id,
-        p_amount: STREAK_BONUS,
-        p_type: "earn",
-        p_description: `স্ট্রিক বোনাস! ${STREAK_THRESHOLD}টি অ্যাড দেখেছেন`,
-        p_reference_id: `streak_${newCount}_${new Date().toISOString().slice(0, 10)}`,
-        p_source: "ad_streak_bonus",
-      });
-      toast.success(`🔥 স্ট্রিক বোনাস! +${STREAK_BONUS} কয়েন অতিরিক্ত!`, { duration: 3000 });
-    } else {
-      toast.success(`+${result.reward} কয়েন পেয়েছেন!`);
-    }
-
-    // Set 30-second cooldown
-    setCooldownEnd(Date.now() + 30 * 1000);
-
-    onRewardEarned?.(result.new_balance + (isStreakHit ? STREAK_BONUS : 0));
     setWatching(false);
-  }, [user, todayCount, dailyLimit, cooldownLeft, placement, onRewardEarned]);
+  }, [user, todayCount, dailyLimit, cooldownLeft, placement, onRewardEarned, claimAdRewardMutation, adjustCoinsMutation]);
 
   if (!user) return null;
 

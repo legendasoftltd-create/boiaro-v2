@@ -1,10 +1,11 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { trpc, createTrpcClient } from "@/lib/trpc";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { AudioPlayerProvider } from "@/contexts/AudioPlayerContext";
 import { Sentry } from "@/lib/sentry";
@@ -145,8 +146,6 @@ const AdminRjManagement = lazy(() => import("./pages/admin/AdminRjManagement.tsx
 const AdminSms = lazy(() => import("./pages/admin/AdminSms.tsx"));
 const TtsDemo = lazy(() => import("./pages/TtsDemo.tsx"));
 
-const queryClient = new QueryClient();
-
 const SentryErrorBoundary = Sentry.ErrorBoundary;
 
 const PageLoader = () => (
@@ -155,8 +154,22 @@ const PageLoader = () => (
   </div>
 );
 
-const App = () => (
+// Smart admin gateway: shows login form if unauthenticated, admin layout if authenticated as admin
+function AdminGateway() {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (!user) return <AdminAuth />;
+  const roles = (user?.roles as string[]) || [];
+  if (!roles.includes("admin")) return <Navigate to="/dashboard" replace />;
+  return <Outlet />;
+}
+
+const App = () => {
+  const [queryClient] = useState(() => new QueryClient());
+  const [trpcClient] = useState(() => createTrpcClient());
+  return (
   <SentryErrorBoundary fallback={<div className="min-h-screen flex items-center justify-center bg-background text-foreground"><div className="text-center space-y-4"><h1 className="text-2xl font-bold">Something went wrong</h1><p className="text-muted-foreground">An unexpected error occurred. Please refresh the page.</p><button onClick={() => window.location.reload()} className="px-4 py-2 bg-primary text-primary-foreground rounded-md">Refresh</button></div></div>}>
+  <trpc.Provider client={trpcClient} queryClient={queryClient}>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
@@ -176,7 +189,7 @@ const App = () => (
                 <Route path="/writer-auth" element={<Navigate to="/creator-auth" replace />} />
                 <Route path="/publisher-auth" element={<Navigate to="/creator-auth" replace />} />
                 <Route path="/narrator-auth" element={<Navigate to="/creator-auth" replace />} />
-                <Route path="/admin-auth" element={<AdminAuth />} />
+                <Route path="/admin-auth" element={<Navigate to="/admin" replace />} />
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
                 <Route path="/book/:slug" element={<BookDetail />} />
@@ -205,8 +218,9 @@ const App = () => (
                 <Route path="/invite" element={<ProtectedRoute><InvitePage /></ProtectedRoute>} />
                 <Route path="/gamification" element={<ProtectedRoute><GamificationPage /></ProtectedRoute>} />
                 <Route path="/tts-demo" element={<ProtectedRoute><TtsDemo /></ProtectedRoute>} />
-                {/* Admin */}
-                <Route path="/admin" element={<ProtectedRoute requiredRole="admin" loginPath="/admin-auth"><AdminLayout /></ProtectedRoute>}>
+                {/* Admin — /admin shows login if unauthenticated, dashboard if admin */}
+                <Route path="/admin" element={<AdminGateway />}>
+                  <Route element={<AdminLayout />}>
                   <Route index element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
                   <Route path="books" element={<AdminBooks />} />
                   <Route path="authors" element={<AdminAuthors />} />
@@ -274,6 +288,7 @@ const App = () => (
                   <Route path="performance" element={<AdminPerformance />} />
                   <Route path="weekly-report" element={<AdminWeeklyReport />} />
                   <Route path="backup-status" element={<AdminBackupStatus />} />
+                  </Route>
                 </Route>
 
                 {/* Creator Panel */}
@@ -313,7 +328,9 @@ const App = () => (
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
+  </trpc.Provider>
   </SentryErrorBoundary>
-);
+  );
+};
 
 export default App;
