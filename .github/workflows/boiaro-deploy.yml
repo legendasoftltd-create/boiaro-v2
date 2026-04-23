@@ -23,6 +23,17 @@ jobs:
             set -euo pipefail
 
             APP_DIR="/var/www/html/staging.boiaro.com"
+            REPO_URL="${{ secrets.DEPLOY_REPO_URL }}"
+            if [ -z "$REPO_URL" ]; then
+              REPO_URL="https://github.com/${{ github.repository }}.git"
+            fi
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p "$APP_DIR"
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+
             cd "$APP_DIR"
-            git checkout main
-            git pull --ff-only origin main
+            git fetch origin main
+            git checkout -B main origin/main
+            git reset --hard origin/main
