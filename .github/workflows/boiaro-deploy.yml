@@ -23,6 +23,43 @@ jobs:
             set -euo pipefail
 
             APP_DIR="/var/www/html/staging.boiaro.com"
+            REPO_URL="${{ secrets.DEPLOY_REPO_URL }}"
+            if [ -z "$REPO_URL" ]; then
+              REPO_URL="https://github.com/${{ github.repository }}.git"
+            fi
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p "$APP_DIR"
+              git clone "$REPO_URL" "$APP_DIR"
+            fi
+
             cd "$APP_DIR"
-            git checkout main
-            git pull --ff-only origin main
+            git config --global --add safe.directory "$APP_DIR"
+            git fetch origin main
+            git reset --hard
+            git clean -fd
+            git checkout -B main origin/main
+            git reset --hard origin/main
+
+            # Load Node/npm for non-interactive SSH sessions (nvm is not auto-loaded)
+            export NVM_DIR="$HOME/.nvm"
+            if [ -s "$NVM_DIR/nvm.sh" ]; then
+              . "$NVM_DIR/nvm.sh"
+              nvm use default
+            fi
+
+            if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+              echo "Node.js/npm not found for deploy user: $(whoami)"
+              echo "Make sure nvm and a default Node version are installed for this user."
+              exit 1
+            fi
+
+            npm ci
+            cd server
+            npm ci
+            npm run build
+            cd ..
+            npm run build
+
+            pm2 startOrReload ecosystem.config.cjs --env production
+            pm2 save
