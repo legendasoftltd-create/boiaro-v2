@@ -24,7 +24,7 @@ export function useRecentlyViewed() {
 }
 
 export function useBecauseYouRead(allBooks: MasterBook[]) {
-  const query = trpc.books.recommendations.useQuery({ bookId: undefined });
+  const query = trpc.books.recommendations.useQuery();
   const recBooks = (query.data as any[]) || [];
 
   const sourceBook = recBooks.length > 0

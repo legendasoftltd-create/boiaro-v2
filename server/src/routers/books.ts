@@ -455,7 +455,7 @@ export const booksRouter = router({
     }),
 
   recommendations: publicProcedure
-    .input(z.object({ bookId: z.string().optional() }))
+    .input(z.object({ bookId: z.string().optional() }).optional().default({}))
     .query(async ({ input }) => {
       if (!input.bookId) {
         return prisma.book.findMany({
