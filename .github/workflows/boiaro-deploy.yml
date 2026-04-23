@@ -2,26 +2,97 @@ name: Remote Deploy
 
 on:
   push:
-    branches: [ main ]  # Trigger only on pushes to main
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Execute Remote Commands via SSH
+      - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
+          script_stop: true
           script: |
-            cd /var/www/html/boiarov2.blocknots.com/boiaro-v2
-            git pull origin main
-            # Add your build/restart commands below, for example:
-            /root/.bun/bin/bun install
-            /root/.bun/bin/bun run build
-            /root/.nvm/versions/node/v24.14.0/bin/pm2 restart boiaro-new-app
+            set -euo pipefail
+
+            APP_DIR="/var/www/html/boiarov2.blocknots.com/boiaro-v2"
+            APP_NAME="${{ secrets.PM2_APP_NAME }}"
+            if [ -z "$APP_NAME" ]; then
+              APP_NAME="boiaro-new-app"
+            fi
+
+            PG_DB="${{ secrets.POSTGRES_DB }}"
+            PG_USER="${{ secrets.POSTGRES_USER }}"
+            PG_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+
+            if [ -z "$PG_DB" ]; then
+              PG_DB="boiaro"
+            fi
+            if [ -z "$PG_USER" ]; then
+              PG_USER="boiaro_user"
+            fi
+
+            if ! command -v psql >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y postgresql postgresql-contrib
+            fi
+
+            sudo systemctl enable postgresql
+            sudo systemctl start postgresql
+
+            DB_EXISTS="$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${PG_DB}'")"
+            if [ "$DB_EXISTS" != "1" ]; then
+              sudo -u postgres createdb "$PG_DB"
+            fi
+
+            USER_EXISTS="$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${PG_USER}'")"
+            if [ "$USER_EXISTS" != "1" ]; then
+              if [ -z "${PG_PASSWORD}" ]; then
+                echo "POSTGRES_PASSWORD secret is required on first run."
+                exit 1
+              fi
+              sudo -u postgres psql -c "CREATE USER ${PG_USER} WITH PASSWORD '${PG_PASSWORD}';"
+            elif [ -n "${PG_PASSWORD}" ]; then
+              sudo -u postgres psql -c "ALTER USER ${PG_USER} WITH PASSWORD '${PG_PASSWORD}';"
+            fi
+
+            sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${PG_DB} TO ${PG_USER};"
+
+            cd "$APP_DIR"
+            git checkout main
+            git pull --ff-only origin main
+
+            npm ci
+            npm --prefix server ci
+
+            npm run build
+            npm --prefix server run build
+
+            cd server
+            npx prisma generate
+            npx prisma migrate deploy
+            FIRST_SEED_MARKER=".first_seed_done"
+            if [ ! -f "$FIRST_SEED_MARKER" ]; then
+              npm run seed:all
+              touch "$FIRST_SEED_MARKER"
+            fi
+            cd ..
+
+            if ! command -v pm2 >/dev/null 2>&1; then
+              sudo npm install -g pm2
+            fi
+
+            if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
+              pm2 restart "$APP_NAME" --update-env
+            else
+              pm2 start npm --name "$APP_NAME" -- run server:start
+            fi
+
+            pm2 save
