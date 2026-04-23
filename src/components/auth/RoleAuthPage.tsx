@@ -45,7 +45,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
   const [statusMessage, setStatusMessage] = useState("")
   const [searchParams] = useSearchParams()
   const refCode = searchParams.get("ref") || ""
-  const { signIn, signUp, user } = useAuth()
+  const { signIn, signInWithGoogle, signUp, user } = useAuth()
   const navigate = useNavigate()
   const { toast } = useToast()
 
@@ -251,9 +251,23 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
                 </div>
                 <Button type="button" variant="outline"
                   className="w-full h-10 text-[13px] gap-2 border-border/30 hover:bg-secondary/40"
+                  disabled={isLoading}
                   onClick={async () => {
-                    const { error } = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })
-                    if (error) toast({ title: "Google login failed", description: String(error), variant: "destructive" })
+                    setIsLoading(true)
+                    const oauth = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin })
+                    if (oauth.error || !oauth.data?.accessToken) {
+                      setIsLoading(false)
+                      toast({ title: "Google login failed", description: oauth.error?.message || "Unable to authorize with Google.", variant: "destructive" })
+                      return
+                    }
+                    const { error } = await signInWithGoogle(oauth.data.accessToken)
+                    if (error) {
+                      setIsLoading(false)
+                      toast({ title: "Google login failed", description: error.message, variant: "destructive" })
+                      return
+                    }
+                    resolveRedirect()
+                    setIsLoading(false)
                   }}>
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />

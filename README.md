@@ -11,6 +11,7 @@ cp .env.example .env
 # DATABASE_URL=postgresql://...
 # JWT_SECRET=<secure value>
 # JWT_REFRESH_SECRET=<secure value>
+# GOOGLE_CLIENT_ID=<google oauth web client id>
 # CORS_ORIGIN=http://localhost:8080
 # NODE_ENV=development
 
@@ -52,3 +53,12 @@ npx prisma db seed -- --dry-run
 - Admin: `http://localhost:8080/admin`
 - Creator auth: `http://localhost:8080/creator-auth`
 - RJ auth: `http://localhost:8080/rj-auth`
+
+## Google Login Setup
+1. Create an OAuth 2.0 **Web application** client in [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+2. Add `http://localhost:8080` to **Authorized JavaScript origins** (and your production domain later).
+3. Set frontend env var:
+   - root `.env`: `VITE_GOOGLE_CLIENT_ID=...`
+4. Set backend env var:
+   - `server/.env`: `GOOGLE_CLIENT_ID=...`
+5. Restart both frontend and backend servers after changing env vars.
