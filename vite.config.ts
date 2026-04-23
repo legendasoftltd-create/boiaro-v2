@@ -25,6 +25,11 @@ export default defineConfig(() => ({
       },
     },
   },
+  preview: {
+    host: "::",
+    port: 8080,
+    allowedHosts: ["boiarov2.blocknots.com", "staging.boiaro.com"],
+  },
   plugins: [react()],
   resolve: {
     alias: {
