@@ -113,7 +113,7 @@ function trpcBookToMasterBook(book: any): MasterBook {
 
 export function useBooks() {
   const { data, isLoading: loading } = trpc.books.list.useQuery(
-    { limit: 200 },
+    { limit: 100 },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 
