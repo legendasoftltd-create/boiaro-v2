@@ -12,7 +12,7 @@ import type { MasterBook, EbookFormat } from "@/lib/types"
 interface Props { book: MasterBook; ebook: EbookFormat }
 
 export function EbookTab({ book, ebook }: Props) {
-  const isFree = ebook.price === 0
+  const isFree = book.isFree || ebook.price === 0
   const navigate = useNavigate()
   const { user } = useAuth()
   const { progress } = useReadingProgress(book.id)

@@ -1,0 +1,13 @@
+id,key,title,description,icon_url,category,condition_type,condition_value,coin_reward,is_active,sort_order,created_at,updated_at
+11d2b683-b1f1-4b4a-960b-b90d70e18b5d,streak_7,Weekly Warrior,Maintain a 7-day reading streak,,streak,streak,7,25,true,4,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+15257719-ff5f-4a04-ae8a-562a6b76df49,first_audiobook,First Audiobook,Listen to your first audiobook,,listening,listen_count,1,5,true,2,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+165afe34-e100-45d5-ae31-d46c773b4424,coin_collector,Coin Collector,Earn 500 coins total,,engagement,coins_earned,500,20,true,8,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+3c9543dd-9b34-4e4b-9ff8-85c4f46859fc,audiophile,Audiophile,Listen to 10 audiobooks,,listening,listen_count,10,50,true,7,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+4c40c6a5-b12c-42a1-83cd-9df8023ede2f,early_supporter,Early Supporter,Joined during launch period,,special,manual,0,10,true,10,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+55d2749f-802b-46e0-ae1e-a735e40c2c40,first_book_read,First Book Read,Read your first ebook on BoiAro,,reading,read_count,1,5,true,1,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+6df6dfff-e20c-4f43-8a44-65acd71352f9,top_reader,Top Reader,Reach Top 10 on the leaderboard,,achievement,manual,0,75,true,12,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+84527eeb-9161-4144-ad85-6ef63ec75d46,bookworm,Bookworm,Read 10 books,,reading,read_count,10,50,true,6,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+aa32d7c0-22e5-47af-8279-7927583f095e,streak_3,3-Day Streak,Maintain a 3-day reading streak,,streak,streak,3,10,true,3,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+ac10b3e9-365e-41be-84fa-fea68eefe285,goal_setter,Goal Setter,Complete your first reading goal,,engagement,goal_complete,1,15,true,11,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+bca6498c-94e2-4c5e-86fd-0c22fc70a283,streak_30,Monthly Master,Maintain a 30-day reading streak,,streak,streak,30,100,true,5,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00
+eba6832e-9a2b-407d-9395-1298f9ac33fc,referral_champion,Referral Champion,Refer 5 friends successfully,,social,referral_count,5,50,true,9,2026-03-25 05:25:36.665806+00,2026-03-25 05:25:36.665806+00

@@ -67,20 +67,20 @@
 ### Admin router — still missing
 - [ ] `admin.softDeleteUser(userId, reason)` — mark profile deleted_at
 - [ ] `admin.restoreUser(userId)` — clear deleted_at
-- [ ] `admin.listSubmissions(status?)` — book format submissions
+- [x] `admin.listSubmissions(status?)` — book format submissions ✅
 - [x] `admin.listNotifications` / `admin.sendNotification` ✅
 - [x] `admin.listWithdrawals` / `admin.processWithdrawal(id, status)` ✅
 - [x] `admin.listCoinPackages` / `admin.updateCoinPackage` ✅
 - [x] `admin.listCoupons` / `admin.createCoupon` / `admin.updateCoupon` ✅
 - [x] `admin.listSubscriptionPlans` / `admin.createPlan` / `admin.updatePlan` ✅
-- [ ] `admin.listCmsPages` / `admin.createCmsPage` / `admin.updateCmsPage`
-- [ ] `admin.listBanners` / `admin.createBanner` / `admin.updateBanner` / `admin.deleteBanner`
+- [x] `admin.listCmsPages` / `admin.createCmsPage` / `admin.updateCmsPage` ✅
+- [x] `admin.listBanners` / `admin.createBanner` / `admin.updateBanner` / `admin.deleteBanner` ✅ (`listHeroBanners` / `upsertHeroBanner` / `deleteHeroBanner`)
 - [x] `admin.listAdBanners` / `admin.updateAdBanner` ✅
 - [x] `admin.listShippingMethods` / `admin.updateShippingMethod` ✅
 - [ ] `admin.financialReport(period)` — revenue/cost breakdown
 - [ ] `admin.weeklyReport` — weekly KPIs
-- [ ] `admin.dbHealth` — Prisma health check
-- [ ] `admin.systemLogs(limit?, level?)` — system log table
+- [x] `admin.dbHealth` — Prisma health check ✅
+- [x] `admin.systemLogs(limit?, level?)` — system log table ✅
 
 ---
 
@@ -179,8 +179,8 @@
 - [x] `AdminBlog.tsx` ✅
 
 ### Need new endpoints first
-- [ ] `AdminBanners.tsx`, `AdminCmsPages.tsx` → need banner/CMS endpoints
-- [ ] `AdminSubmissions.tsx` → need `admin.listSubmissions`
+- [x] `AdminBanners.tsx`, `AdminCmsPages.tsx` ✅
+- [x] `AdminSubmissions.tsx` ✅
 - [x] `AdminNotifications.tsx` ✅
 - [x] `AdminWithdrawals.tsx` ✅
 - [x] `AdminCoinPackages.tsx`, `AdminCoinSettings.tsx` ✅
@@ -206,7 +206,8 @@
 - [ ] `AdminDrmSettings.tsx` → DRM settings endpoints
 - [ ] `AdminRadio.tsx`, `AdminRjManagement.tsx` → `rj.*` endpoints
 - [ ] `AdminTickets.tsx`, `AdminTicketDetail.tsx` → support ticket endpoints
-- [ ] `AdminSystemLogs.tsx`, `AdminAlerts.tsx`, `AdminDbHealth.tsx` → system endpoints
+- [ ] `AdminAlerts.tsx` → system endpoints
+- [x] `AdminSystemLogs.tsx`, `AdminDbHealth.tsx` ✅
 - [ ] `AdminPurchaseReport.tsx`, `AdminPerformance.tsx` → report endpoints
 - [ ] `AdminLiveMonitoring.tsx`, `AdminR2Dashboard.tsx` → monitoring endpoints
 - [ ] `AdminFreeShipping.tsx` → `shipping.*` endpoints

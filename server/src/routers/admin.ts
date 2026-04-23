@@ -14,6 +14,36 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
+const HOMEPAGE_SECTION_DEFAULTS: Array<{
+  section_key: string;
+  title: string;
+  subtitle: string | null;
+  is_enabled: boolean;
+  sort_order: number;
+  display_source: string | null;
+}> = [
+  { section_key: "hero", title: "Hero Banner", subtitle: null, is_enabled: true, sort_order: 1, display_source: null },
+  { section_key: "continue_reading", title: "পড়া চালিয়ে যান", subtitle: null, is_enabled: true, sort_order: 2, display_source: null },
+  { section_key: "continue_listening", title: "শোনা চালিয়ে যান", subtitle: null, is_enabled: true, sort_order: 3, display_source: null },
+  { section_key: "recently_viewed", title: "সম্প্রতি দেখা", subtitle: null, is_enabled: true, sort_order: 4, display_source: null },
+  { section_key: "recommended_for_you", title: "আপনার জন্য", subtitle: "AI সাজেশন", is_enabled: true, sort_order: 5, display_source: null },
+  { section_key: "because_you_read", title: "আপনি যা পড়েছেন", subtitle: null, is_enabled: true, sort_order: 6, display_source: null },
+  { section_key: "featured_books", title: "নতুন প্রকাশনা", subtitle: "সদ্য প্রকাশিত বইসমূহ", is_enabled: true, sort_order: 7, display_source: null },
+  { section_key: "trending_books", title: "ট্রেন্ডিং বই", subtitle: "জনপ্রিয় বইসমূহ", is_enabled: true, sort_order: 8, display_source: null },
+  { section_key: "top_10_most_read", title: "সর্বাধিক পঠিত ১০", subtitle: null, is_enabled: true, sort_order: 9, display_source: null },
+  { section_key: "editors_pick", title: "সম্পাদকের পছন্দ", subtitle: null, is_enabled: true, sort_order: 10, display_source: null },
+  { section_key: "popular_audiobooks", title: "জনপ্রিয় অডিওবুক", subtitle: "শুনুন আপনার পছন্দের বই", is_enabled: true, sort_order: 11, display_source: null },
+  { section_key: "audiobooks", title: "অডিওবুক সমূহ", subtitle: null, is_enabled: true, sort_order: 12, display_source: null },
+  { section_key: "hard_copies", title: "হার্ড কপি", subtitle: "সংগ্রহে রাখুন", is_enabled: true, sort_order: 13, display_source: null },
+  { section_key: "free_books", title: "ফ্রি বই", subtitle: "বিনামূল্যে পড়ুন", is_enabled: true, sort_order: 14, display_source: null },
+  { section_key: "categories", title: "ক্যাটাগরি", subtitle: "বিষয় অনুযায়ী বই খুঁজুন", is_enabled: true, sort_order: 15, display_source: null },
+  { section_key: "authors", title: "জনপ্রিয় লেখক", subtitle: "আমাদের প্রিয় লেখকগণ", is_enabled: true, sort_order: 16, display_source: null },
+  { section_key: "narrators", title: "জনপ্রিয় কথক", subtitle: null, is_enabled: true, sort_order: 17, display_source: null },
+  { section_key: "live_radio", title: "Live Radio", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 18, display_source: null },
+  { section_key: "blog", title: "ব্লগ ও আর্টিকেল", subtitle: "আমাদের সাম্প্রতিক লেখা", is_enabled: true, sort_order: 19, display_source: null },
+  { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 20, display_source: null },
+];
+
 export const adminRouter = router({
   // ── Books ───────────────────────────────────────────────────────────────────
   listBooks: adminProcedure
@@ -26,14 +56,278 @@ export const adminRouter = router({
         orderBy: { created_at: "desc" },
         include: {
           author: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true, name_bn: true } },
           publisher: { select: { id: true, name: true } },
-          formats: { select: { id: true, format: true, price: true, submission_status: true } },
+          formats: {
+            select: {
+              id: true,
+              book_id: true,
+              format: true,
+              price: true,
+              stock_count: true,
+              narrator_id: true,
+              submission_status: true,
+              narrator: { select: { id: true, name: true } },
+            },
+          },
         },
       });
       let nextCursor: string | undefined;
       if (books.length > input.limit) nextCursor = books.pop()!.id;
       return { books, nextCursor };
     }),
+
+  listBookContributorCounts: adminProcedure.query(async () => {
+    const grouped = await prisma.bookContributor.groupBy({
+      by: ["book_id"],
+      _count: { book_id: true },
+    });
+    return grouped.map((row) => ({ book_id: row.book_id, count: row._count.book_id }));
+  }),
+
+  listBookFormatsByBook: adminProcedure
+    .input(z.object({ bookId: z.string() }))
+    .query(({ input }) =>
+      prisma.bookFormat.findMany({
+        where: { book_id: input.bookId },
+        select: {
+          id: true,
+          book_id: true,
+          format: true,
+          price: true,
+          original_price: true,
+          discount: true,
+          pages: true,
+          duration: true,
+          file_size: true,
+          file_url: true,
+          chapters_count: true,
+          preview_chapters: true,
+          preview_percentage: true,
+          audio_quality: true,
+          binding: true,
+          dimensions: true,
+          weight: true,
+          weight_kg_per_copy: true,
+          delivery_days: true,
+          in_stock: true,
+          stock_count: true,
+          is_available: true,
+          narrator_id: true,
+          submission_status: true,
+          printing_cost: true,
+          unit_cost: true,
+          default_packaging_cost: true,
+          publisher_commission_percent: true,
+          submitted_by: true,
+          publisher_id: true,
+          payout_model: true,
+          isbn: true,
+          created_at: true,
+          updated_at: true,
+          publisher: { select: { name: true } },
+          narrator: { select: { name: true } },
+        },
+      })
+    ),
+
+  getBookFormatPrice: adminProcedure
+    .input(z.object({ formatId: z.string() }))
+    .query(({ input }) =>
+      prisma.bookFormat.findUnique({
+        where: { id: input.formatId },
+        select: { price: true },
+      })
+    ),
+
+  upsertBook: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        title: z.string().min(1),
+        title_en: z.string().optional().nullable(),
+        slug: z.string().min(1),
+        description: z.string().optional().nullable(),
+        description_bn: z.string().optional().nullable(),
+        author_id: z.string().optional().nullable(),
+        category_id: z.string().optional().nullable(),
+        publisher_id: z.string().optional().nullable(),
+        cover_url: z.string().optional().nullable(),
+        is_featured: z.boolean().optional(),
+        is_bestseller: z.boolean().optional(),
+        is_new: z.boolean().optional(),
+        is_free: z.boolean().optional(),
+        language: z.string().optional().nullable(),
+        tags: z.array(z.string()).nullable().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const { id, author_id, category_id, publisher_id, ...data } = input;
+      const normalizedTags =
+        data.tags === undefined ? undefined : data.tags === null ? [] : data.tags;
+
+      const relationData = {
+        author: author_id ? { connect: { id: author_id } } : { disconnect: true },
+        category: category_id ? { connect: { id: category_id } } : { disconnect: true },
+        publisher: publisher_id ? { connect: { id: publisher_id } } : { disconnect: true },
+      };
+
+      if (id) {
+        return prisma.book.update({
+          where: { id },
+          data: {
+            ...data,
+            ...(normalizedTags !== undefined ? { tags: { set: normalizedTags } } : {}),
+            ...relationData,
+          } as any,
+        });
+      }
+
+      return prisma.book.create({
+        data: {
+          ...data,
+          ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
+          ...(author_id ? { author: { connect: { id: author_id } } } : {}),
+          ...(category_id ? { category: { connect: { id: category_id } } } : {}),
+          ...(publisher_id ? { publisher: { connect: { id: publisher_id } } } : {}),
+        } as any,
+      });
+    }),
+
+  deleteBookWithFormats: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) =>
+      prisma.$transaction([
+        prisma.bookFormat.deleteMany({ where: { book_id: input.id } }),
+        prisma.book.delete({ where: { id: input.id } }),
+      ])
+    ),
+
+  upsertBookFormat: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        book_id: z.string(),
+        format: z.string(),
+        narrator_id: z.string().nullable().optional(),
+        price: z.number().nullable().optional(),
+        original_price: z.number().nullable().optional(),
+        discount: z.number().nullable().optional(),
+        pages: z.number().int().nullable().optional(),
+        duration: z.string().nullable().optional(),
+        file_size: z.string().nullable().optional(),
+        file_url: z.string().nullable().optional(),
+        chapters_count: z.number().int().nullable().optional(),
+        preview_chapters: z.number().int().nullable().optional(),
+        preview_percentage: z.number().nullable().optional(),
+        audio_quality: z.string().nullable().optional(),
+        binding: z.string().nullable().optional(),
+        dimensions: z.string().nullable().optional(),
+        weight: z.string().nullable().optional(),
+        weight_kg_per_copy: z.number().nullable().optional(),
+        delivery_days: z.number().int().nullable().optional(),
+        in_stock: z.boolean().nullable().optional(),
+        stock_count: z.number().int().nullable().optional(),
+        is_available: z.boolean().nullable().optional(),
+        submission_status: z.string().nullable().optional(),
+        printing_cost: z.number().nullable().optional(),
+        unit_cost: z.number().nullable().optional(),
+        default_packaging_cost: z.number().nullable().optional(),
+        publisher_commission_percent: z.number().nullable().optional(),
+        submitted_by: z.string().nullable().optional(),
+        publisher_id: z.string().nullable().optional(),
+        payout_model: z.string().nullable().optional(),
+        isbn: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      if (id) return prisma.bookFormat.update({ where: { id }, data: data as any });
+      return prisma.bookFormat.create({ data: data as any });
+    }),
+
+  setBookFormatAvailability: adminProcedure
+    .input(z.object({ id: z.string(), isAvailable: z.boolean() }))
+    .mutation(({ input }) =>
+      prisma.bookFormat.update({
+        where: { id: input.id },
+        data: { is_available: input.isAvailable },
+      })
+    ),
+
+  deleteBookFormatCascade: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) =>
+      prisma.$transaction([
+        prisma.audiobookTrack.deleteMany({ where: { book_format_id: input.id } }),
+        prisma.bookFormat.delete({ where: { id: input.id } }),
+      ])
+    ),
+
+  addAudiobookTrackAdmin: adminProcedure
+    .input(
+      z.object({
+        book_format_id: z.string(),
+        title: z.string().min(1),
+        audio_url: z.string().nullable().optional(),
+        track_number: z.number().int(),
+        duration: z.string().nullable().optional(),
+        is_preview: z.boolean().optional(),
+        status: z.string().optional(),
+        media_type: z.string().optional(),
+        chapter_price: z.number().nullable().optional(),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      prisma.audiobookTrack.create({
+        data: {
+          ...input,
+          created_by: ctx.userId,
+        } as any,
+      })
+    ),
+
+  updateAudiobookTrackAdmin: adminProcedure
+    .input(z.object({ id: z.string(), title: z.string().min(1), chapter_price: z.number().nullable().optional() }))
+    .mutation(({ input }) =>
+      prisma.audiobookTrack.update({
+        where: { id: input.id },
+        data: { title: input.title, chapter_price: input.chapter_price ?? null },
+      })
+    ),
+
+  deleteAudiobookTrackAdmin: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.audiobookTrack.delete({ where: { id: input.id } })),
+
+  createAccountingLedgerEntry: adminProcedure
+    .input(
+      z.object({
+        type: z.string(),
+        category: z.string(),
+        description: z.string().nullable().optional(),
+        amount: z.number(),
+        entry_date: z.string().optional(),
+        book_id: z.string().nullable().optional(),
+        reference_type: z.string().nullable().optional(),
+        reference_id: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      prisma.accountingLedger.create({
+        data: {
+          type: input.type,
+          category: input.category,
+          description: input.description ?? null,
+          amount: input.amount,
+          entry_date: input.entry_date ? new Date(input.entry_date) : new Date(),
+          book_id: input.book_id ?? null,
+          reference_type: input.reference_type ?? null,
+          reference_id: input.reference_id ?? null,
+          created_by: ctx.userId,
+        },
+      })
+    ),
 
   approveBook: adminProcedure
     .input(z.object({ bookId: z.string() }))
@@ -727,9 +1021,30 @@ export const adminRouter = router({
     .mutation(({ input }) => prisma.category.delete({ where: { id: input.id } })),
 
   // ── Homepage Sections ─────────────────────────────────────────────────────────
-  listHomepageSections: adminProcedure.query(() =>
-    prisma.homepageSection.findMany({ orderBy: { sort_order: "asc" } })
-  ),
+  listHomepageSections: adminProcedure.query(async () => {
+    const existing = await prisma.homepageSection.findMany({ orderBy: { sort_order: "asc" } });
+    if (existing.length > 0) return existing;
+
+    await prisma.homepageSection.createMany({
+      data: HOMEPAGE_SECTION_DEFAULTS,
+      skipDuplicates: true,
+    });
+
+    return prisma.homepageSection.findMany({ orderBy: { sort_order: "asc" } });
+  }),
+
+  resetHomepageSections: adminProcedure
+    .input(z.object({ hardReset: z.boolean().default(false) }).optional())
+    .mutation(async ({ input }) => {
+      if (input?.hardReset) {
+        await prisma.homepageSection.deleteMany({});
+      }
+      await prisma.homepageSection.createMany({
+        data: HOMEPAGE_SECTION_DEFAULTS,
+        skipDuplicates: true,
+      });
+      return { success: true };
+    }),
 
   updateHomepageSection: adminProcedure
     .input(z.object({ id: z.string(), title: z.string().optional(), subtitle: z.string().optional(), is_enabled: z.boolean().optional(), sort_order: z.number().optional(), display_source: z.string().optional() }))
@@ -1121,6 +1436,70 @@ export const adminRouter = router({
   deleteHeroBanner: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.heroBanner.delete({ where: { id: input.id } })),
+
+  // ── CMS Pages CRUD ──────────────────────────────────────────────────────────
+  listCmsPages: adminProcedure.query(() =>
+    prisma.cmsPage.findMany({ orderBy: { updated_at: "desc" } })
+  ),
+
+  createCmsPage: adminProcedure
+    .input(
+      z.object({
+        title: z.string().min(1),
+        slug: z.string().min(1),
+        content: z.string().default(""),
+        featured_image: z.string().nullable().optional(),
+        status: z.string().default("draft"),
+        seo_title: z.string().nullable().optional(),
+        seo_description: z.string().nullable().optional(),
+        seo_keywords: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.cmsPage.create({
+        data: {
+          title: input.title,
+          slug: input.slug,
+          content: input.content,
+          status: input.status,
+          featured_image: input.featured_image ?? null,
+          seo_title: input.seo_title ?? null,
+          seo_description: input.seo_description ?? null,
+          seo_keywords: input.seo_keywords ?? null,
+        },
+      })
+    ),
+
+  updateCmsPage: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        title: z.string().min(1),
+        slug: z.string().min(1),
+        content: z.string().default(""),
+        featured_image: z.string().nullable().optional(),
+        status: z.string().default("draft"),
+        seo_title: z.string().nullable().optional(),
+        seo_description: z.string().nullable().optional(),
+        seo_keywords: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      return prisma.cmsPage.update({
+        where: { id },
+        data: {
+          title: data.title,
+          slug: data.slug,
+          content: data.content,
+          status: data.status,
+          featured_image: data.featured_image ?? null,
+          seo_title: data.seo_title ?? null,
+          seo_description: data.seo_description ?? null,
+          seo_keywords: data.seo_keywords ?? null,
+        },
+      });
+    }),
 
   // ── Coin Packages ───────────────────────────────────────────────────────────
   listCoinPackages: adminProcedure.query(() =>
@@ -1709,6 +2088,192 @@ export const adminRouter = router({
         data: { status: "rejected", reviewer_id: ctx.userId },
       })
     ),
+
+  // ── System Health & Logs ────────────────────────────────────────────────────
+  dbHealth: adminProcedure.query(async () => {
+    const nowIso = new Date().toISOString();
+
+    const [connectionsRaw, slowQueriesRaw, tableStatsRaw, indexUsageRaw, cacheRaw, sizeRaw, locksRaw] = await Promise.all([
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT pid, state, wait_event,
+               LEFT(query, 180) AS query_preview
+        FROM pg_stat_activity
+        WHERE datname = current_database()
+        ORDER BY state = 'active' DESC, query_start DESC
+        LIMIT 80
+      `).catch(() => []),
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT pid, state,
+               EXTRACT(EPOCH FROM (clock_timestamp() - query_start)) * 1000 AS duration_ms,
+               LEFT(query, 180) AS query_preview
+        FROM pg_stat_activity
+        WHERE state = 'active'
+          AND query_start IS NOT NULL
+          AND query NOT ILIKE '%pg_stat_activity%'
+          AND (clock_timestamp() - query_start) > interval '500 milliseconds'
+        ORDER BY duration_ms DESC
+        LIMIT 20
+      `).catch(() => []),
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT relname AS table_name,
+               n_live_tup AS estimated_rows,
+               pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+               pg_size_pretty(pg_indexes_size(relid)) AS index_size
+        FROM pg_stat_user_tables
+        ORDER BY pg_total_relation_size(relid) DESC
+        LIMIT 30
+      `).catch(() => []),
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT
+          indexrelname AS index_name,
+          relname AS table_name,
+          idx_scan,
+          idx_tup_read,
+          pg_size_pretty(pg_relation_size(indexrelid)) AS size
+        FROM pg_stat_user_indexes
+        ORDER BY idx_scan DESC NULLS LAST
+        LIMIT 50
+      `).catch(() => []),
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT
+          SUM(blks_hit)::bigint AS blocks_hit,
+          SUM(blks_read)::bigint AS blocks_read
+        FROM pg_stat_database
+        WHERE datname = current_database()
+      `).catch(() => []),
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT pg_database_size(current_database())::bigint AS size_bytes,
+               pg_size_pretty(pg_database_size(current_database())) AS size_pretty
+      `).catch(() => []),
+      prisma.$queryRawUnsafe<any[]>(`
+        SELECT blocked.pid AS blocked_pid,
+               blocking.pid AS blocking_pid,
+               LEFT(blocked.query, 120) AS blocked_query
+        FROM pg_locks blocked_locks
+        JOIN pg_stat_activity blocked ON blocked.pid = blocked_locks.pid
+        JOIN pg_locks blocking_locks
+          ON blocking_locks.locktype = blocked_locks.locktype
+          AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+          AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+          AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+          AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+          AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+          AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+          AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+          AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+          AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+          AND blocking_locks.pid <> blocked_locks.pid
+        JOIN pg_stat_activity blocking ON blocking.pid = blocking_locks.pid
+        WHERE NOT blocked_locks.granted
+      `).catch(() => []),
+    ]);
+
+    const activeConnections = connectionsRaw.filter((c) => c.state === "active").length;
+    const currentUsed = connectionsRaw.length;
+    const maxConnections = 90;
+    const saturation = Math.round((currentUsed / maxConnections) * 100);
+    const cacheHit = Number(cacheRaw?.[0]?.blocks_hit ?? 0);
+    const cacheRead = Number(cacheRaw?.[0]?.blocks_read ?? 0);
+    const cacheRatio = cacheHit + cacheRead > 0 ? cacheHit / (cacheHit + cacheRead) : 1;
+    const slowCount = slowQueriesRaw.length;
+
+    let healthScore = 100;
+    healthScore -= Math.min(35, Math.max(0, saturation - 45));
+    healthScore -= Math.min(25, slowCount * 3);
+    healthScore -= locksRaw.length > 0 ? 15 : 0;
+    healthScore -= cacheRatio < 0.9 ? Math.round((0.9 - cacheRatio) * 100) : 0;
+    healthScore = Math.max(0, Math.min(100, healthScore));
+    const healthStatus = healthScore >= 80 ? "healthy" : healthScore >= 55 ? "degraded" : "critical";
+
+    return {
+      health: { score: healthScore, status: healthStatus },
+      connections: { active: activeConnections, details: connectionsRaw },
+      slow_queries: { count: slowCount, queries: slowQueriesRaw },
+      pool: {
+        max_connections: maxConnections,
+        current_used: currentUsed,
+        active: activeConnections,
+        idle: connectionsRaw.filter((c) => c.state === "idle").length,
+        idle_in_transaction: connectionsRaw.filter((c) => c.state === "idle in transaction").length,
+        waiting: locksRaw.length,
+        saturation_pct: saturation,
+        avg_idle_seconds: null,
+        longest_idle_seconds: null,
+        by_state: Object.entries(
+          connectionsRaw.reduce((acc, cur) => {
+            const key = String(cur.state || "unknown");
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)
+        ).map(([state, count]) => ({ state, count })),
+      },
+      tables: tableStatsRaw,
+      index_usage: indexUsageRaw,
+      cache: {
+        ratio: cacheRatio,
+        blocks_hit: cacheHit,
+        blocks_read: cacheRead,
+      },
+      db_size: sizeRaw?.[0] ?? null,
+      locks: locksRaw,
+      timestamp: nowIso,
+    };
+  }),
+
+  systemLogs: adminProcedure
+    .input(
+      z.object({
+        page: z.number().int().min(0).default(0),
+        pageSize: z.number().int().min(1).max(100).default(30),
+        level: z.string().optional(),
+        module: z.string().optional(),
+        search: z.string().optional(),
+      }).optional()
+    )
+    .query(async ({ input }) => {
+      const page = input?.page ?? 0;
+      const pageSize = input?.pageSize ?? 30;
+      const where: any = {};
+      if (input?.level && input.level !== "all") where.level = input.level;
+      if (input?.module) where.module = input.module;
+      if (input?.search) {
+        where.OR = [
+          { message: { contains: input.search, mode: "insensitive" } },
+          { module: { contains: input.search, mode: "insensitive" } },
+        ];
+      }
+
+      const [rows, total] = await Promise.all([
+        prisma.systemLog.findMany({
+          where,
+          orderBy: { created_at: "desc" },
+          skip: page * pageSize,
+          take: pageSize,
+        }),
+        prisma.systemLog.count({ where }),
+      ]);
+
+      return {
+        logs: rows.map((r) => ({
+          ...r,
+          occurrence_count: 1,
+          first_seen_at: r.created_at,
+          last_seen_at: r.updated_at ?? r.created_at,
+        })),
+        total,
+      };
+    }),
+
+  cleanupSystemLogs: adminProcedure
+    .input(z.object({ olderThanDays: z.number().int().min(1).max(365).default(90) }).optional())
+    .mutation(async ({ input }) => {
+      const olderThanDays = input?.olderThanDays ?? 90;
+      const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+      const result = await prisma.systemLog.deleteMany({
+        where: { created_at: { lt: cutoff } },
+      });
+      return { deleted: result.count };
+    }),
 
   // ── Approve / Reject Role Application (enhanced) ──────────────────────────
   approveApplication: adminProcedure

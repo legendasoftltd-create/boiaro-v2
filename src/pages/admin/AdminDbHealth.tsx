@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,15 +49,7 @@ function healthBg(status: string) {
 }
 
 export default function AdminDbHealth() {
-  const { data, isLoading, refetch, dataUpdatedAt } = useQuery<DbHealth>({
-    queryKey: ["db-health"],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("db-health-check", {
-        body: {},
-      });
-      if (error) throw error;
-      return data;
-    },
+  const { data, isLoading, refetch, dataUpdatedAt } = trpc.admin.dbHealth.useQuery(undefined, {
     refetchInterval: 30_000,
     staleTime: 10_000,
   });

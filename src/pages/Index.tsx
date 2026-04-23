@@ -59,6 +59,7 @@ const FALLBACK_KEYS = [
   "popular_audiobooks", "audiobooks", "hard_copies", "free_books",
   "categories", "authors", "narrators", "live_radio", "blog", "app_download",
 ]
+const REGISTRY_KEYS = new Set(Object.keys(SECTION_REGISTRY))
 
 /** Each section gets its own Suspense boundary so one slow import doesn't block others */
 const LazySection = memo(({ sectionKey, books, popularAudiobooks }: { sectionKey: string; books: any[]; popularAudiobooks: any[] }) => {
@@ -79,7 +80,10 @@ const Index = () => {
 
   const orderedKeys = useMemo(() => {
     if (!sections || sections.length === 0) return FALLBACK_KEYS
-    return sections.map(s => s.section_key)
+    const known = sections
+      .map(s => s.section_key)
+      .filter((k): k is string => REGISTRY_KEYS.has(k))
+    return known.length > 0 ? known : FALLBACK_KEYS
   }, [sections])
 
   return (

@@ -8,6 +8,20 @@ interface BatchUrlEntry {
   fetchedAt: number;
 }
 
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+
+function resolveContentUrl(rawUrl: string | null | undefined): string | null {
+  if (!rawUrl) return null;
+  if (/^(https?:\/\/|blob:|data:)/i.test(rawUrl)) return rawUrl;
+
+  if (rawUrl.startsWith("/")) {
+    if (API_BASE) return `${API_BASE}${rawUrl}`;
+    if (typeof window !== "undefined") return `${window.location.origin}${rawUrl}`;
+  }
+
+  return rawUrl;
+}
+
 // ── Metrics (production-safe, globally accumulated) ──
 const mediaMetrics = {
   signedUrlsGenerated: 0,
@@ -127,7 +141,7 @@ export function useSecureContent() {
         const cached = batchUrlCache.current[bookId]?.[trackNumber];
         if (cached && (Date.now() - cached.fetchedAt) < 240_000) {
           mediaMetrics.cacheHits++;
-          return { url: cached.url };
+          return { url: resolveContentUrl(cached.url) };
         }
 
         if (user) {
@@ -135,7 +149,7 @@ export function useSecureContent() {
           const afterBatch = batchUrlCache.current[bookId]?.[trackNumber];
           if (afterBatch) {
             mediaMetrics.cacheHits++;
-            return { url: afterBatch.url };
+            return { url: resolveContentUrl(afterBatch.url) };
           }
         }
         mediaMetrics.cacheMisses++;
@@ -167,7 +181,7 @@ export function useSecureContent() {
         if ((result as any).denied) return result as any;
 
         mediaMetrics.signedUrlsGenerated++;
-        return { url: result.url };
+        return { url: resolveContentUrl(result.url) };
       } catch (err) {
         console.error("Secure URL request error:", err);
         mediaRetryQueue.enqueue({ type: "signed_url", bookId, trackNumber, contentType, error: err instanceof Error ? err.message : "Unknown" });
