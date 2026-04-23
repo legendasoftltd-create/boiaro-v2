@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useRef, useEffect, useCallback, type ReactNode } from "react"
-import { supabase } from "@/integrations/supabase/client"
 import { useAuth } from "@/contexts/AuthContext"
 import { useSecureContent } from "@/hooks/useSecureContent"
 import { recordPlaybackError } from "@/hooks/useSecureContent"
+import { trpc } from "@/lib/trpc"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { toast } from "sonner"
 import type { MediaType } from "@/lib/audioValidation"
@@ -73,6 +73,10 @@ const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(und
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const { getSecureUrl, prefetchBatchUrls } = useSecureContent()
+  const utils = trpc.useUtils()
+  const updateListeningProgressMutation = trpc.profiles.updateListeningProgress.useMutation()
+  const updateListeningProgressRef = useRef(updateListeningProgressMutation.mutateAsync)
+  updateListeningProgressRef.current = updateListeningProgressMutation.mutateAsync
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const loadRequestRef = useRef(0)
@@ -143,15 +147,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    if (!url && rawSource && user) {
-      const { data, error } = await supabase.storage.from("audiobooks").createSignedUrl(rawSource, 300)
-      if (!error && data?.signedUrl) {
-        url = data.signedUrl
-      }
-    }
-
     return url
-  }, [getSecureUrl, user])
+  }, [getSecureUrl])
 
   // Actually start playback on the audio element — call ONLY from user gesture chain
   const playAudio = useCallback(async () => {
@@ -408,24 +405,13 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const saveProgress = useCallback(async () => {
     if (!user || !state.book) return
     const audio = audioRef.current
-    const totalDurationSec = parseDurationToSeconds(state.audiobook?.duration || "0")
-    const overallPct = totalDurationSec > 0
-      ? Math.round((state.currentTime / totalDurationSec) * 100)
-      : state.progressPercentage
-
-    await supabase.from("listening_progress").upsert(
-      {
-        user_id: user.id,
-        book_id: state.book.id,
-        current_track: state.currentTrackIndex + 1,
-        current_position: Math.floor(state.currentTime),
-        total_duration: Math.floor(audio?.duration || 0),
-        percentage: Math.min(overallPct, 100),
-        last_listened_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,book_id", ignoreDuplicates: false }
-    )
-  }, [user, state.book, state.currentTime, state.currentTrackIndex, state.audiobook, state.progressPercentage])
+    await updateListeningProgressRef.current({
+      bookId: state.book.id,
+      currentPosition: Math.floor(state.currentTime),
+      totalDuration: Math.floor(audio?.duration || 0),
+      currentTrack: state.currentTrackIndex + 1,
+    }).catch(() => {}) // silent — progress save is best-effort
+  }, [user, state.book, state.currentTime, state.currentTrackIndex])
 
   const loadBook = useCallback((book: MasterBook, audiobook: AudiobookFormat, tracks?: AudioTrack[], autoPlay?: boolean) => {
     const finalTracks: AudioTrack[] = (tracks || [])
@@ -482,13 +468,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   const loadSavedProgress = async (bookId: string) => {
     if (!user) return
-    const { data } = await supabase
-      .from("listening_progress")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("book_id", bookId)
-      .single()
-
+    const data = await utils.profiles.listeningProgressByBook.fetch({ bookId }).catch(() => null)
     if (data) {
       setState((prev) => ({
         ...prev,

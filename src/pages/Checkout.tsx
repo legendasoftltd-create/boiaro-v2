@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { ArrowLeft, MapPin, Phone, User as UserIcon, CreditCard, Truck, ShoppingBag, Wallet, Banknote, CheckCircle2, AlertCircle, Loader2, Globe, Package, Ticket, Weight, Info, Gift, FlaskConical } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,10 +13,9 @@ import { useCart } from "@/contexts/CartContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { useShippingCalculator } from "@/hooks/useShippingCalculator"
 import { useFreeShipping } from "@/hooks/useFreeShipping"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { toast } from "sonner"
 import { z } from "zod"
-import { sendTransactionalEmail, getEmailTemplate } from "@/lib/emailService"
 import { DISTRICTS, isDhakaArea } from "@/lib/bangladeshDistricts"
 
 const shippingSchema = z.object({
@@ -53,18 +52,33 @@ export default function Checkout() {
   const [method, setMethod] = useState<string>("")
   const [step, setStep] = useState<CheckoutStep>("shipping")
   const [orderId, setOrderId] = useState<string | null>(null)
-  const [gateways, setGateways] = useState<PaymentGateway[]>([])
   const [couponCode, setCouponCode] = useState("")
   const [couponDiscount, setCouponDiscount] = useState(0)
   const [couponApplied, setCouponApplied] = useState(false)
+  const [appliedCouponId, setAppliedCouponId] = useState<string | null>(null)
   const [directLoading, setDirectLoading] = useState(false)
   const [successRedirect, setSuccessRedirect] = useState<{ path: string; label: string } | null>(null)
 
   const shipping = useShippingCalculator(items)
   const freeShipping = useFreeShipping(totalPrice, shipping.areaType)
 
+  const utils = trpc.useUtils()
+  const { data: gatewaysData = [] } = trpc.orders.paymentGateways.useQuery()
+  const gateways = gatewaysData as PaymentGateway[]
+
+  const validateCouponMutation = trpc.orders.validateCoupon.useMutation()
+  const placeOrderMutation = trpc.orders.placeOrder.useMutation()
+
   // Sync district to shipping calculator
   useEffect(() => { shipping.setDistrict(form.district); }, [form.district])
+
+  // Set default payment method when gateways load
+  const defaultMethodSet = useRef(false)
+  useEffect(() => {
+    if (defaultMethodSet.current || gateways.length === 0) return
+    const available = isDigitalOnly ? gateways.filter(g => g.gateway_key !== "cod") : gateways
+    if (available.length > 0) { setMethod(available[0].gateway_key); defaultMethodSet.current = true }
+  }, [gateways])
 
   // Auto-load book from query params
   useEffect(() => {
@@ -74,23 +88,20 @@ export default function Checkout() {
     if (items.some(i => i.book.id === bookId && i.format === format)) return
     const loadBook = async () => {
       setDirectLoading(true)
-      const SAFE_AUTHORS = "id, name, name_en, avatar_url, bio, genre, is_featured, is_trending, priority, status, user_id";
-      const SAFE_PUBLISHERS = "id, name, name_en, logo_url, description, is_verified, is_featured, is_trending, priority, status, user_id";
-      const [bookRes, fmtRes] = await Promise.all([
-        supabase.from("books").select(`*, authors(${SAFE_AUTHORS}), publishers(${SAFE_PUBLISHERS}), categories(*)`).eq("id", bookId).maybeSingle(),
-        supabase.from("book_formats").select("id, book_id, format, price, original_price, discount, pages, duration, file_size, chapters_count, preview_chapters, preview_percentage, audio_quality, binding, dimensions, weight, delivery_days, in_stock, stock_count, is_available, narrator_id, submission_status, printing_cost, unit_cost, submitted_by, created_at, updated_at").eq("book_id", bookId).eq("format", format).maybeSingle(),
-      ])
-      if (bookRes.data && fmtRes.data) {
-        const price = Number(fmtRes.data.price) || 0
+      const dbBook = await utils.books.detail.fetch({ id: bookId }).catch(() => null)
+      if (dbBook) {
+        const formats: any[] = (dbBook as any).formats || []
+        const fmt = formats.find((f: any) => f.format === format)
+        const price = Number(fmt?.price) || 0
         const book: any = {
-          id: bookRes.data.id, title: bookRes.data.title, titleEn: bookRes.data.title_en || "",
-          slug: bookRes.data.slug, cover: bookRes.data.cover_url || "",
-          description: bookRes.data.description || "", descriptionBn: bookRes.data.description_bn || "",
-          rating: bookRes.data.rating || 0, reviewsCount: bookRes.data.reviews_count || 0,
-          totalReads: String(bookRes.data.total_reads || 0), publishedDate: bookRes.data.published_date || "",
-          language: bookRes.data.language || "bn", tags: bookRes.data.tags || [],
+          id: dbBook.id, title: dbBook.title, titleEn: (dbBook as any).title_en || "",
+          slug: dbBook.slug, cover: dbBook.cover_url || "",
+          description: (dbBook as any).description || "", descriptionBn: (dbBook as any).description_bn || "",
+          rating: (dbBook as any).rating || 0, reviewsCount: (dbBook as any).reviews_count || 0,
+          totalReads: String((dbBook as any).total_reads || 0), publishedDate: (dbBook as any).published_date || "",
+          language: (dbBook as any).language || "bn", tags: (dbBook as any).tags || [],
           isFeatured: false, isNew: false, isBestseller: false, isFree: false,
-          author: { id: "", name: bookRes.data.authors?.name || "", nameEn: "", avatar: "", bio: "", genre: "", booksCount: 0, followers: "0", isFeatured: false },
+          author: { id: "", name: (dbBook as any).author?.name || "", nameEn: "", avatar: "", bio: "", genre: "", booksCount: 0, followers: "0", isFeatured: false },
           publisher: { id: "", name: "", nameEn: "", logo: "", description: "", booksCount: 0, isVerified: false },
           category: { id: "", name: "", nameBn: "", icon: "📚", count: "0", color: "#888" },
           formats: {},
@@ -109,17 +120,6 @@ export default function Checkout() {
   }, [isDigitalOnly, items.length])
 
   useEffect(() => {
-    const loadGateways = async () => {
-      const { data } = await supabase.rpc("get_enabled_gateways" as any)
-      const list = ((data as any[]) || []).map((g: any) => ({ ...g, is_enabled: true }))
-      setGateways(list)
-      const available = isDigitalOnly ? list.filter((g: any) => g.gateway_key !== "cod") : list
-      if (available.length > 0 && !method) setMethod(available[0].gateway_key)
-    }
-    loadGateways()
-  }, [])
-
-  useEffect(() => {
     if (isDigitalOnly && method === "cod") {
       const available = gateways.filter(g => g.gateway_key !== "cod")
       setMethod(available.length > 0 ? available[0].gateway_key : "")
@@ -129,46 +129,23 @@ export default function Checkout() {
   const effectiveShippingCharge = freeShipping.isFreeShipping ? 0 : shipping.shippingCharge
   const grandTotal = totalPrice + effectiveShippingCharge - couponDiscount
 
-  const [appliedCouponId, setAppliedCouponId] = useState<string | null>(null)
-
   const applyCoupon = async () => {
     if (!couponCode.trim() || !user) return
-    const { data } = await supabase.from("coupons" as any).select("*").eq("code", couponCode.toUpperCase()).eq("status", "active").single()
-    const coupon = data as any
-    if (!coupon) { toast.error("Invalid coupon code"); return }
-    const now = new Date()
-    if (coupon.start_date && new Date(coupon.start_date) > now) { toast.error("Coupon not yet active"); return }
-    if (coupon.end_date && new Date(coupon.end_date) < now) { toast.error("Coupon expired"); return }
-    if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) { toast.error("Usage limit reached"); return }
-    if (coupon.min_order_amount > 0 && totalPrice < coupon.min_order_amount) { toast.error(`Min ৳${coupon.min_order_amount} required`); return }
-
-    // Check applies_to scope against cart
-    const hasHardcopy = items.some(i => i.format === "hardcopy")
-    const hasEbook = items.some(i => i.format === "ebook")
-    const hasAudiobook = items.some(i => i.format === "audiobook")
-    if (coupon.applies_to === "hardcopy" && !hasHardcopy) { toast.error("This coupon is for hardcopy orders only"); return }
-    if (coupon.applies_to === "ebook" && !hasEbook) { toast.error("This coupon is for ebook orders only"); return }
-    if (coupon.applies_to === "audiobook" && !hasAudiobook) { toast.error("This coupon is for audiobook orders only"); return }
-
-    // Check per_user_limit
-    if (coupon.per_user_limit && coupon.per_user_limit > 0) {
-      const { count } = await supabase.from("coupon_usage" as any).select("id", { count: "exact", head: true }).eq("coupon_id", coupon.id).eq("user_id", user.id)
-      if ((count || 0) >= coupon.per_user_limit) { toast.error("You've already used this coupon"); return }
+    try {
+      const result = await validateCouponMutation.mutateAsync({
+        code: couponCode,
+        totalAmount: totalPrice,
+        hasHardcopy: items.some(i => i.format === "hardcopy"),
+        hasEbook: items.some(i => i.format === "ebook"),
+        hasAudiobook: items.some(i => i.format === "audiobook"),
+      })
+      setCouponDiscount(result.discountAmount)
+      setCouponApplied(true)
+      setAppliedCouponId(result.couponId)
+      toast.success(`Coupon applied! ৳${result.discountAmount} off`)
+    } catch (err: any) {
+      toast.error(err.message || "Invalid coupon")
     }
-
-    // Check first_order_only
-    if (coupon.first_order_only) {
-      const { count } = await supabase.from("orders").select("id", { count: "exact", head: true }).eq("user_id", user.id).in("status", ["confirmed", "paid", "completed", "delivered"])
-      if ((count || 0) > 0) { toast.error("This coupon is for first orders only"); return }
-    }
-
-    const disc = coupon.discount_type === "percentage"
-      ? Math.min(totalPrice, (totalPrice * coupon.discount_value) / 100)
-      : Math.min(totalPrice, coupon.discount_value)
-    setCouponDiscount(disc)
-    setCouponApplied(true)
-    setAppliedCouponId(coupon.id)
-    toast.success(`Coupon applied! ৳${disc} off`)
   }
 
   const handleChange = (field: string, value: string) => {
@@ -197,146 +174,52 @@ export default function Checkout() {
     if (!user) { toast.error("Please sign in"); navigate("/auth"); return }
     if (items.length === 0) { toast.error("Cart is empty"); return }
 
-    // Stock availability check for hardcopy items
-    const hardcopyCartItems = items.filter(i => i.format === "hardcopy")
-    if (hardcopyCartItems.length > 0) {
-      const stockCheckPayload = hardcopyCartItems.map(i => ({
-        book_id: i.book.id, format: "hardcopy", quantity: i.quantity,
-      }))
-      const { data: stockResult, error: stockErr } = await supabase.rpc("check_stock", {
-        p_items: stockCheckPayload,
-      })
-      if (stockErr) { toast.error("স্টক যাচাই করতে ব্যর্থ হয়েছে"); return }
-      const outOfStock = (stockResult as any[])?.filter((s: any) => !s.in_stock)
-      if (outOfStock && outOfStock.length > 0) {
-        const names = outOfStock.map((s: any) => {
-          const item = items.find(i => i.book.id === s.book_id)
-          return `"${item?.book.title || 'Book'}" (স্টক: ${s.available})`
-        }).join(", ")
-        toast.error(`স্টকে নেই: ${names}`)
-        return
-      }
-    }
-
-    // Duplicate purchase check for digital items
-    for (const item of items) {
-      if (item.format === "ebook" || item.format === "audiobook") {
-        const [purchaseRes, unlockRes] = await Promise.all([
-          supabase
-            .from("user_purchases" as any)
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("book_id", item.book.id)
-            .eq("format", item.format)
-            .eq("status", "active")
-            .maybeSingle(),
-          supabase
-            .from("content_unlocks")
-            .select("id")
-            .eq("user_id", user.id)
-            .eq("book_id", item.book.id)
-            .eq("format", item.format)
-            .eq("status", "active")
-            .maybeSingle(),
-        ])
-
-        if (purchaseRes.data || unlockRes.data) {
-          toast.error(`"${item.book.title}" (${item.format}) ইতোমধ্যে আনলক করা হয়েছে`)
-          return
-        }
-      }
-    }
-
     setStep("processing")
     setLoading(true)
     try {
       const orderPayload: any = {
-        user_id: user.id,
-        total_amount: grandTotal,
-        status: "pending",
-        payment_method: method,
-        coupon_code: couponApplied ? couponCode.toUpperCase() : null,
-        discount_amount: couponDiscount,
+        items: items.map(item => ({
+          bookId: item.book.id,
+          format: item.format as "ebook" | "audiobook" | "hardcopy",
+          quantity: item.quantity,
+          price: item.price,
+          bookTitle: item.book.title,
+        })),
+        paymentMethod: method,
+        couponCode: couponApplied ? couponCode.toUpperCase() : undefined,
+        couponDiscount: couponApplied ? couponDiscount : undefined,
+        appliedCouponId: couponApplied ? appliedCouponId ?? undefined : undefined,
+        grandTotal,
       }
-      // Always store customer identity for admin visibility (digital-only orders skip shipping form)
+
       if (!shipping.hasHardcopy) {
-        orderPayload.shipping_name = profile?.display_name || user.email || "Customer"
-        orderPayload.shipping_phone = profile?.phone || null
+        orderPayload.shippingName = profile?.display_name || user.email || "Customer"
+        orderPayload.shippingPhone = profile?.phone || undefined
       }
       if (shipping.hasHardcopy) {
-        orderPayload.packaging_cost = 10
-      }
-      if (shipping.hasHardcopy) {
-        orderPayload.shipping_name = form.name
-        orderPayload.shipping_phone = form.phone
-        orderPayload.shipping_address = form.address
-        orderPayload.shipping_city = form.district
-        orderPayload.shipping_zip = form.postalCode || null
-        orderPayload.shipping_district = form.district
-        orderPayload.shipping_area = form.area
-        orderPayload.total_weight = shipping.totalWeight
-      }
-      if (shipping.hasHardcopy && shipping.selectedMethod) {
-        orderPayload.shipping_method_id = shipping.selectedMethod.id
-        orderPayload.shipping_method_name = shipping.selectedMethod.name
-        orderPayload.shipping_carrier = shipping.selectedMethod.provider_code
-        orderPayload.shipping_cost = effectiveShippingCharge
-        orderPayload.estimated_delivery_days = shipping.selectedMethod.delivery_time
-        if (freeShipping.isFreeShipping && freeShipping.campaign) {
-          orderPayload.free_shipping_campaign = freeShipping.campaign.name
+        orderPayload.packagingCost = 10
+        orderPayload.shippingName = form.name
+        orderPayload.shippingPhone = form.phone
+        orderPayload.shippingAddress = form.address
+        orderPayload.shippingCity = form.district
+        orderPayload.shippingZip = form.postalCode || undefined
+        orderPayload.shippingDistrict = form.district
+        orderPayload.shippingArea = form.area
+        orderPayload.totalWeight = shipping.totalWeight
+        if (shipping.selectedMethod) {
+          orderPayload.shippingMethodId = shipping.selectedMethod.id
+          orderPayload.shippingMethodName = shipping.selectedMethod.name
+          orderPayload.shippingCarrier = shipping.selectedMethod.provider_code
+          orderPayload.shippingCost = effectiveShippingCharge
+          orderPayload.estimatedDeliveryDays = String(shipping.selectedMethod.delivery_time)
         }
       }
-      const { data: order, error: orderErr } = await supabase.from("orders").insert(orderPayload).select("id").single()
-      if (orderErr || !order) throw orderErr || new Error("Failed to create order")
 
-      const orderItems = items.map(item => ({
-        order_id: order.id, book_id: item.book.id,
-        format: item.format as "ebook" | "audiobook" | "hardcopy",
-        quantity: item.quantity, unit_price: item.price,
-      }))
-      const { error: itemsErr } = await supabase.from("order_items").insert(orderItems)
-      if (itemsErr) throw itemsErr
+      const result = await placeOrderMutation.mutateAsync(orderPayload)
 
-      const isCod = method === "cod"
-      const isMobilePayment = method === "bkash" || method === "nagad"
-      const isSSLCommerz = method === "sslcommerz"
-      const isDemo = method === "demo"
-      const paymentStatus = isCod ? "cod_pending" : isDemo ? "paid" : "awaiting_payment"
-      const transactionId = isDemo
-        ? `DEMO-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
-        : !isCod ? `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}` : null
-      const paymentPayload: any = {
-        user_id: user.id, order_id: order.id, amount: grandTotal,
-        method: isDemo ? "demo" : method,
-        status: paymentStatus, transaction_id: transactionId,
-      }
-      const { error: payErr } = await supabase.from("payments").insert(paymentPayload)
-      if (payErr) console.error("Payment insert failed:", JSON.stringify(payErr))
-
-      if (isDemo) {
-        // Demo uses the same unified fulfill-order handler as SSLCommerz
-        const { data: fulfillResult, error: fulfillErr } = await supabase.functions.invoke("fulfill-order", {
-          body: { order_id: order.id, transaction_id: transactionId, gateway: "demo", paid_amount: grandTotal },
-        })
-        if (fulfillErr) console.error("Demo fulfill error:", fulfillErr)
-        else console.log("Demo fulfill result:", fulfillResult)
-      } else if (isSSLCommerz) {
-        const { data: sslResult, error: sslErr } = await supabase.functions.invoke("sslcommerz-initiate", { body: { order_id: order.id } })
-        if (sslErr || !sslResult?.gateway_url) throw new Error(sslResult?.error || "Failed to initiate SSLCommerz payment")
-        window.location.href = sslResult.gateway_url
+      if (result.gatewayUrl) {
+        window.location.href = result.gatewayUrl
         return
-      } else if (isMobilePayment) {
-        await new Promise(r => setTimeout(r, 2000))
-        await supabase.from("payments").update({ status: "paid", transaction_id: `${method.toUpperCase()}-${Date.now()}` } as any).eq("order_id", order.id)
-        await supabase.from("orders").update({ status: "confirmed" }).eq("id", order.id)
-        try { await supabase.functions.invoke("calculate-earnings", { body: { order_id: order.id } }) } catch (e) { console.error("Earnings calculation failed:", e) }
-      }
-
-      // Record coupon usage + increment used_count
-      if (couponApplied && appliedCouponId) {
-        await supabase.from("coupon_usage" as any).insert({ coupon_id: appliedCouponId, user_id: user.id, order_id: order.id, discount_amount: couponDiscount } as any)
-        const { data: cpn } = await supabase.from("coupons" as any).select("used_count").eq("id", appliedCouponId).single() as any
-        await supabase.from("coupons" as any).update({ used_count: ((cpn?.used_count || 0) + 1) } as any).eq("id", appliedCouponId)
       }
 
       // Save redirect info before clearing cart
@@ -349,20 +232,9 @@ export default function Checkout() {
         )
       }
 
-      setOrderId(order.id)
+      setOrderId(result.orderId)
       clearCart()
       setStep("success")
-
-      try {
-        const template = await getEmailTemplate("order_confirmation")
-        if (template) {
-          await sendTransactionalEmail({
-            recipientEmail: user.email || "", templateType: "order_confirmation", subject: template.subject,
-            templateData: { user_name: form.name, order_id: order.id.slice(0, 8), total_amount: String(grandTotal) },
-            idempotencyKey: `order-confirm-${order.id}`,
-          })
-        }
-      } catch (e) { console.error("Order email failed:", e) }
     } catch (err: any) {
       setStep("failed")
       toast.error(err?.message || "Payment failed")
@@ -602,7 +474,7 @@ export default function Checkout() {
                     {gateways.filter(gw => !(isDigitalOnly && gw.gateway_key === "cod")).map(gw => {
                       const Icon = gatewayIcons[gw.gateway_key] || CreditCard
                       const isOnlineNotReady = ["stripe", "paypal", "razorpay"].includes(gw.gateway_key)
-                      const isDemo = gw.gateway_key === "demo"
+                      const isDemoGw = gw.gateway_key === "demo"
                       return (
                         <button key={gw.gateway_key} onClick={() => setMethod(gw.gateway_key)}
                           className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${method === gw.gateway_key ? "border-primary bg-primary/5" : "border-border bg-secondary hover:border-primary/30"}`}>
@@ -612,9 +484,9 @@ export default function Checkout() {
                           <div className="flex-1">
                             <p className="text-sm font-medium text-foreground flex items-center gap-2">
                               {gw.label}
-                              {isDemo && <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px]">🧪 Test</Badge>}
+                              {isDemoGw && <Badge className="bg-amber-500/20 text-amber-400 border-amber-500/30 text-[10px]">🧪 Test</Badge>}
                             </p>
-                            <p className="text-xs text-muted-foreground">{isDemo ? "No real charge — for testing only" : (gw as any).config?.description || "Online payment"}</p>
+                            <p className="text-xs text-muted-foreground">{isDemoGw ? "No real charge — for testing only" : (gw as any).config?.description || "Online payment"}</p>
                           </div>
                           <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${method === gw.gateway_key ? "border-primary" : "border-muted-foreground/30"}`}>
                             {method === gw.gateway_key && <div className="w-2.5 h-2.5 rounded-full bg-primary" />}
@@ -638,8 +510,10 @@ export default function Checkout() {
                   <div className="border-t border-border pt-4">
                     <div className="flex items-center gap-2 mb-2"><Ticket className="w-4 h-4 text-primary" /><span className="text-sm font-medium">Coupon Code</span></div>
                     <div className="flex gap-2">
-                      <Input placeholder="Enter code" value={couponCode} onChange={e => { setCouponCode(e.target.value); setCouponApplied(false); setCouponDiscount(0); }} className="bg-secondary font-mono uppercase text-sm" />
-                      <Button variant="outline" size="sm" onClick={applyCoupon} disabled={!couponCode.trim()}>Apply</Button>
+                      <Input placeholder="Enter code" value={couponCode} onChange={e => { setCouponCode(e.target.value); setCouponApplied(false); setCouponDiscount(0); setAppliedCouponId(null) }} className="bg-secondary font-mono uppercase text-sm" />
+                      <Button variant="outline" size="sm" onClick={applyCoupon} disabled={!couponCode.trim() || validateCouponMutation.isPending}>
+                        {validateCouponMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Apply"}
+                      </Button>
                     </div>
                     {couponApplied && <p className="text-xs text-emerald-400 mt-1.5">✓ ৳{couponDiscount} discount applied</p>}
                   </div>

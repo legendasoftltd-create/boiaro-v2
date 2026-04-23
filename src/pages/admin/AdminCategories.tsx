@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,40 +10,52 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
 export default function AdminCategories() {
-  const [items, setItems] = useState<any[]>([]);
+  const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<any>(null);
   const [form, setForm] = useState({ name: "", name_bn: "", name_en: "", slug: "", icon: "", color: "", priority: 0, is_featured: false, is_trending: false });
 
-  const load = async () => {
-    const { data } = await supabase.from("categories").select("*").order("priority", { ascending: true }).order("created_at", { ascending: false });
-    setItems(data || []);
-  };
-  useEffect(() => { load(); }, []);
+  const { data: items = [] } = trpc.admin.listCategories.useQuery();
+
+  const createMutation = trpc.admin.createCategoryFull.useMutation({
+    onSuccess: () => { utils.admin.listCategories.invalidate(); setOpen(false); toast.success("Saved"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateMutation = trpc.admin.updateCategoryFull.useMutation({
+    onSuccess: () => { utils.admin.listCategories.invalidate(); setOpen(false); toast.success("Saved"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMutation = trpc.admin.deleteCategory.useMutation({
+    onSuccess: () => { utils.admin.listCategories.invalidate(); toast.success("Deleted"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const toggleStatusMutation = trpc.admin.updateCategoryFull.useMutation({
+    onSuccess: () => { utils.admin.listCategories.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
 
   const openNew = () => { setEdit(null); setForm({ name: "", name_bn: "", name_en: "", slug: "", icon: "", color: "", priority: 0, is_featured: false, is_trending: false }); setOpen(true); };
   const openEdit = (c: any) => { setEdit(c); setForm({ name: c.name, name_bn: c.name_bn || "", name_en: c.name_en || "", slug: c.slug || "", icon: c.icon || "", color: c.color || "", priority: c.priority || 0, is_featured: c.is_featured || false, is_trending: c.is_trending || false }); setOpen(true); };
 
-  const save = async () => {
+  const save = () => {
     const autoSlug = form.slug || (form.name_en || form.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const payload = { ...form, priority: Number(form.priority) || 0, slug: autoSlug, name_en: form.name_en || form.name };
     if (edit) {
-      const { error } = await supabase.from("categories").update(payload).eq("id", edit.id);
-      if (error) { toast.error(error.message); return; }
+      updateMutation.mutate({ id: edit.id, ...payload });
     } else {
-      const { error } = await supabase.from("categories").insert(payload);
-      if (error) { toast.error(error.message); return; }
+      createMutation.mutate(payload);
     }
-    toast.success("Saved"); setOpen(false); load();
   };
 
-  const remove = async (id: string) => { if (!confirm("Delete?")) return; await supabase.from("categories").delete().eq("id", id); toast.success("Deleted"); load(); };
+  const remove = (id: string) => { if (!confirm("Delete?")) return; deleteMutation.mutate({ id }); };
 
-  const toggleStatus = async (c: any) => {
+  const toggleStatus = (c: any) => {
     const newStatus = c.status === "active" ? "inactive" : "active";
-    await supabase.from("categories").update({ status: newStatus }).eq("id", c.id);
+    toggleStatusMutation.mutate({ id: c.id, status: newStatus });
     toast.success(newStatus === "active" ? "Activated" : "Deactivated");
-    load();
   };
 
   return (
@@ -56,7 +68,7 @@ export default function AdminCategories() {
         <Table>
           <TableHeader><TableRow><TableHead>Bengali Name</TableHead><TableHead>English</TableHead><TableHead>Slug</TableHead><TableHead>Priority</TableHead><TableHead>Featured</TableHead><TableHead>Trending</TableHead><TableHead>Active</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
-            {items.map((c) => (
+            {items.map((c: any) => (
               <TableRow key={c.id}>
                 <TableCell className="font-medium">{c.name_bn || c.name}</TableCell>
                 <TableCell>{c.name_en || c.name}</TableCell>
@@ -88,7 +100,7 @@ export default function AdminCategories() {
             <div><Label>Priority</Label><Input type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} /></div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_featured} onChange={(e) => setForm({ ...form, is_featured: e.target.checked })} />Featured</label>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_trending} onChange={(e) => setForm({ ...form, is_trending: e.target.checked })} />Trending</label>
-            <Button className="w-full" onClick={save}>Save</Button>
+            <Button className="w-full" onClick={save} disabled={createMutation.isPending || updateMutation.isPending}>Save</Button>
           </div>
         </DialogContent>
       </Dialog>

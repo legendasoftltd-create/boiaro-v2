@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccessQuery } from "@/hooks/useAccessQuery";
+import { trpc } from "@/lib/trpc";
 
 interface AudiobookAccessState {
   hasFullAccess: boolean;
@@ -44,59 +44,16 @@ export function useAudiobookAccess(
     refetch,
   } = useAccessQuery(bookId, "audiobook", isFree, user?.id);
 
-  // Always fetch preview_percentage fresh from DB + subscribe to realtime changes
-  const [dbPreviewPct, setDbPreviewPct] = useState<number | null>(
-    _previewPercentageOverride ?? null
+  const formatsQuery = trpc.books.formatsByBookId.useQuery(
+    { bookId: bookId! },
+    { enabled: !!bookId, staleTime: 60_000, refetchInterval: 60_000 }
   );
 
-  useEffect(() => {
-    if (!bookId) return;
-    let cancelled = false;
-
-    const fetchPreviewPct = async () => {
-      const { data } = await supabase
-        .from("book_formats")
-        .select("preview_percentage")
-        .eq("book_id", bookId)
-        .eq("format", "audiobook")
-        .maybeSingle();
-
-      if (!cancelled && data) {
-        setDbPreviewPct(data.preview_percentage ?? null);
-      }
-    };
-
-    fetchPreviewPct();
-
-    // Realtime subscription: instant update when admin changes preview_percentage
-    const channel = supabase
-      .channel(`preview-pct-${bookId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "book_formats",
-          filter: `book_id=eq.${bookId}`,
-        },
-        (payload) => {
-          const row = payload.new as any;
-          if (row?.format === "audiobook") {
-            const newPct = row.preview_percentage ?? null;
-            if (import.meta.env.DEV) {
-              console.debug("[useAudiobookAccess] realtime preview_percentage update", { newPct });
-            }
-            setDbPreviewPct(newPct);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      cancelled = true;
-      supabase.removeChannel(channel);
-    };
-  }, [bookId]);
+  const audiobookFormat = ((formatsQuery.data as any[]) || []).find(
+    (f: any) => f.format === "audiobook"
+  );
+  const dbPreviewPct: number | null =
+    _previewPercentageOverride ?? audiobookFormat?.preview_chapters ?? null;
 
   const effectivePreview = (dbPreviewPct != null && dbPreviewPct >= 0 && dbPreviewPct <= 100)
     ? dbPreviewPct

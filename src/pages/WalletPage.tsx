@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWallet } from "@/hooks/useWallet";
 import { Navbar } from "@/components/Navbar";
@@ -18,22 +18,11 @@ import { Link } from "react-router-dom";
 export default function WalletPage() {
   const { user } = useAuth();
   const { wallet, transactions, loading } = useWallet();
-  const [unlocks, setUnlocks] = useState<any[]>([]);
   const [filterType, setFilterType] = useState("all");
-  const [conversionRatio, setConversionRatio] = useState(1);
 
-  useEffect(() => {
-    if (!user) return;
-    const load = async () => {
-      const [unlockRes, settingsRes] = await Promise.all([
-        supabase.from("content_unlocks").select("*, books(title, slug, cover_url)").eq("user_id", user.id).order("created_at", { ascending: false }).limit(20),
-        supabase.from("platform_settings").select("*").eq("key", "coin_conversion_ratio").maybeSingle(),
-      ]);
-      setUnlocks((unlockRes.data as any[]) || []);
-      if (settingsRes.data) setConversionRatio(parseFloat(settingsRes.data.value) || 1);
-    };
-    load();
-  }, [user]);
+  const { data: unlocks = [] } = trpc.wallet.userUnlocksWithBooks.useQuery(undefined, { enabled: !!user });
+  const { data: settings } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user });
+  const conversionRatio = settings?.conversionRatio ?? 1;
 
   if (!user) return null;
 
@@ -177,18 +166,18 @@ export default function WalletPage() {
                 </CardContent>
               </Card>
             ) : (
-              unlocks.map((u: any) => (
+              (unlocks as any[]).map((u: any) => (
                 <Card key={u.id} className="border-border/30">
                   <CardContent className="p-4 flex items-center gap-3">
-                    {u.books?.cover_url ? (
-                      <img src={u.books.cover_url} alt="" className="w-12 h-16 rounded object-cover" />
+                    {u.book?.cover_url ? (
+                      <img src={u.book.cover_url} alt="" className="w-12 h-16 rounded object-cover" />
                     ) : (
                       <div className="w-12 h-16 rounded bg-secondary/60 flex items-center justify-center">
                         <BookOpen className="w-5 h-5 text-muted-foreground" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{u.books?.title || "Unknown"}</p>
+                      <p className="text-sm font-medium truncate">{u.book?.title || "Unknown"}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <Badge className="text-[10px]" variant="secondary">
                           {u.format === "ebook" ? "ইবুক" : u.format === "audiobook" ? "অডিওবুক" : u.format}

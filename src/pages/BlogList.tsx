@@ -1,5 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Link } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -7,18 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, User } from "lucide-react";
 
 export default function BlogList() {
-  const { data: posts = [], isLoading } = useQuery({
-    queryKey: ["blog-posts-public"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("blog_posts")
-        .select("*")
-        .eq("status", "published")
-        .order("publish_date", { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
+  const { data: result, isLoading } = trpc.books.blogPosts.useQuery({ limit: 50 });
+  const posts = result?.posts ?? [];
 
   return (
     <div className="min-h-screen bg-background">

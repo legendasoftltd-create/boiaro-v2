@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,22 +12,18 @@ interface DuplicateDetectorProps {
 }
 
 export function DuplicateDetector({ title, currentBookId, onAttachToExisting }: DuplicateDetectorProps) {
-  const [matches, setMatches] = useState<any[]>([]);
+  const [debouncedTitle, setDebouncedTitle] = useState("");
 
   useEffect(() => {
-    if (!title || title.length < 3) { setMatches([]); return; }
-    const timer = setTimeout(async () => {
-      const searchPattern = `%${title}%`;
-      const { data } = await supabase
-        .from("books")
-        .select("id, title, title_en, cover_url, submission_status")
-        .or(`title.ilike.${searchPattern},title_en.ilike.${searchPattern}`)
-        .neq("id", currentBookId || "00000000-0000-0000-0000-000000000000")
-        .limit(5);
-      setMatches(data || []);
-    }, 500);
+    if (!title || title.length < 3) { setDebouncedTitle(""); return; }
+    const timer = setTimeout(() => setDebouncedTitle(title), 500);
     return () => clearTimeout(timer);
-  }, [title, currentBookId]);
+  }, [title]);
+
+  const { data: matches = [] } = trpc.books.searchBooksByTitle.useQuery(
+    { query: debouncedTitle, excludeId: currentBookId },
+    { enabled: debouncedTitle.length >= 3 }
+  );
 
   if (!matches.length) return null;
 

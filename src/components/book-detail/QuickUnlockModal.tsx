@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWallet } from "@/hooks/useWallet";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,21 +10,8 @@ import { Tv, Coins, Sparkles, ShoppingCart, Lock, Play, Gift, Info, Headphones, 
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
-// Structured logging helper — fire-and-forget
-function logEvent(
-  module: string, event: string, metadata: Record<string, unknown>,
-  userId?: string, level: string = "info"
-) {
-  const fp = `${module}_${event}_${userId || "anon"}_${metadata.track_id || ""}`;
-  supabase.rpc("upsert_system_log", {
-    p_level: level,
-    p_module: module,
-    p_message: event,
-    p_fingerprint: fp.slice(0, 120),
-    p_user_id: userId ?? null,
-    p_metadata: JSON.stringify(metadata),
-  }).then(() => {}, () => {}); // swallow errors — logging must never block UX
-}
+// No-op logging shim — replace with server logging when needed
+function logEvent(_module: string, _event: string, _metadata: Record<string, unknown>, _userId?: string, _level?: string) {}
 
 interface QuickUnlockModalProps {
   open: boolean;
@@ -52,32 +39,24 @@ export function QuickUnlockModal({
   const { user } = useAuth();
   const { wallet, refetch } = useWallet();
   const [adsWatched, setAdsWatched] = useState(0);
-  const [adsRequired, setAdsRequired] = useState(DEFAULT_ADS_PER_QUICK_UNLOCK);
-  const [bonusPerSession, setBonusPerSession] = useState(DEFAULT_BONUS_PER_SESSION);
-  const [adCoinReward, setAdCoinReward] = useState(DEFAULT_AD_COIN_REWARD);
   const [watching, setWatching] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [coinPop, setCoinPop] = useState(false);
   const coinPopTimeout = useRef<ReturnType<typeof setTimeout>>();
   const sessionIdRef = useRef<string>("");
-  const adInFlightRef = useRef(false); // debounce guard
-  const grantedAdsRef = useRef<Set<number>>(new Set()); // prevent double-count
+  const adInFlightRef = useRef(false);
+  const grantedAdsRef = useRef<Set<number>>(new Set());
 
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from("platform_settings")
-        .select("key, value")
-        .in("key", ["ads_per_quick_unlock", "bonus_coin_per_ad_session", "coin_ad_reward"]);
-      const map: Record<string, string> = {};
-      ((data as any[]) || []).forEach((s: any) => { map[s.key] = s.value; });
-      if (map.ads_per_quick_unlock) setAdsRequired(parseInt(map.ads_per_quick_unlock, 10) || DEFAULT_ADS_PER_QUICK_UNLOCK);
-      if (map.bonus_coin_per_ad_session) setBonusPerSession(parseInt(map.bonus_coin_per_ad_session, 10) || DEFAULT_BONUS_PER_SESSION);
-      setAdCoinReward(parseInt(map.coin_ad_reward, 10) || DEFAULT_AD_COIN_REWARD);
-    };
-    load();
-  }, []);
+  const { data: coinSettings } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user });
+  const adsRequired = coinSettings?.adsPerQuickUnlock ?? DEFAULT_ADS_PER_QUICK_UNLOCK;
+  const bonusPerSession = coinSettings?.bonusPerSession ?? DEFAULT_BONUS_PER_SESSION;
+  const adCoinReward = coinSettings?.coinAdReward ?? DEFAULT_AD_COIN_REWARD;
+
+  const claimAdRewardMutation = trpc.gamification.claimAdReward.useMutation();
+  const adjustCoinsMutation = trpc.wallet.adjustCoins.useMutation();
+  const unlockContentMutation = trpc.wallet.unlockContent.useMutation();
+  const utils = trpc.useUtils();
 
   useEffect(() => {
     if (open) {
@@ -161,19 +140,15 @@ export function QuickUnlockModal({
 
     await new Promise(r => setTimeout(r, 2000));
 
-    const { data, error } = await supabase.rpc("claim_ad_reward", {
-      p_ad_placement: `quick_unlock_${bookId}`,
-    });
+    let result: { success: boolean; reason?: string; new_balance?: number; reward?: number };
+    try {
+      result = await claimAdRewardMutation.mutateAsync({ placement: `quick_unlock_${bookId}` });
+    } catch {
+      result = { success: false, reason: "error" };
+    }
 
-    const result = data as any;
-    if (error || !result?.success) {
-      const reason = result?.reason || error?.message || "unknown";
-      logEvent("quick_unlock", "ad_reward_failed", {
-        track_id: track?.id, book_id: bookId, ad_index: adIndex,
-        reason, session_id: sessionIdRef.current,
-      }, user.id, "warning");
-
-      if (result?.reason === "daily_limit_reached") {
+    if (!result.success) {
+      if (result.reason === "daily_limit_reached") {
         toast.error("আজকের অ্যাড সীমা শেষ");
       } else {
         toast.error("অ্যাড রিওয়ার্ড ব্যর্থ");
@@ -183,54 +158,30 @@ export function QuickUnlockModal({
       return;
     }
 
-    // Mark this ad index as granted (idempotent within session)
     grantedAdsRef.current.add(adIndex);
     setAdsWatched(adIndex);
     triggerCoinPop();
     refetch();
 
-    logEvent("quick_unlock", "ad_completed", {
-      track_id: track?.id, book_id: bookId, ad_index: adIndex,
-      coins_awarded: adCoinReward, new_balance: result.new_balance,
-      session_id: sessionIdRef.current,
-    }, user.id);
-
     if (adIndex >= adsRequired) {
-      // Bonus coins
       if (bonusPerSession > 0) {
-        const bonusRefId = `quick_bonus_${track?.id}_${sessionIdRef.current}`;
-        await supabase.rpc("adjust_user_coins", {
-          p_user_id: user.id,
-          p_amount: bonusPerSession,
-          p_type: "earn",
-          p_description: `অ্যাড সেশন বোনাস! ${adsRequired}টি অ্যাড দেখেছেন`,
-          p_reference_id: bonusRefId,
-          p_source: "ad_session_bonus",
+        await adjustCoinsMutation.mutateAsync({
+          amount: bonusPerSession,
+          type: "bonus",
+          description: `অ্যাড সেশন বোনাস! ${adsRequired}টি অ্যাড দেখেছেন`,
+          referenceId: `quick_bonus_${track?.id}_${sessionIdRef.current}`,
+          source: "ad_session_bonus",
         });
-        logEvent("quick_unlock", "bonus_coins_awarded", {
-          track_id: track?.id, book_id: bookId, bonus: bonusPerSession,
-          session_id: sessionIdRef.current,
-        }, user.id);
         refetch();
       }
 
-      // Attempt auto-unlock
       if (track) {
-        const { data: walletData } = await supabase
-          .from("user_coins")
-          .select("balance")
-          .eq("user_id", user.id)
-          .single();
-        const realBalance = (walletData as any)?.balance || 0;
-
+        const freshWallet = await utils.wallet.balance.fetch();
+        const realBalance = freshWallet?.wallet?.balance ?? 0;
         if (realBalance >= track.chapterPrice) {
           await performCoinUnlock(track);
         } else {
           const deficit = track.chapterPrice - realBalance;
-          logEvent("quick_unlock", "auto_unlock_insufficient", {
-            track_id: track.id, book_id: bookId, balance: realBalance,
-            cost: track.chapterPrice, deficit, session_id: sessionIdRef.current,
-          }, user.id, "warning");
           toast.info(`সেশন সম্পন্ন! আরো ${deficit} কয়েন প্রয়োজন।`);
         }
       }
@@ -240,103 +191,27 @@ export function QuickUnlockModal({
 
     adInFlightRef.current = false;
     setWatching(false);
-  }, [user, watching, adsWatched, adsRequired, bonusPerSession, bookId, track, refetch, adCoinReward]);
+  }, [user, watching, adsWatched, adsRequired, bonusPerSession, bookId, track, refetch, adCoinReward, claimAdRewardMutation, adjustCoinsMutation, utils, performCoinUnlock]);
 
   const performCoinUnlock = useCallback(async (t: { id: string; title: string; chapterPrice: number }) => {
     if (!user) return;
     setUnlocking(true);
-
     const chapterFormat = `audiobook_chapter_${t.id}`;
-    const cost = t.chapterPrice;
-    const meta = { track_id: t.id, book_id: bookId, cost, session_id: sessionIdRef.current };
-
-    logEvent("quick_unlock", "unlock_attempt", meta, user.id);
-
-    // Duplicate check: already unlocked?
-    const { data: existing } = await supabase
-      .from("content_unlocks")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("book_id", bookId)
-      .eq("format", chapterFormat)
-      .eq("status", "active")
-      .maybeSingle();
-
-    if (existing) {
-      logEvent("quick_unlock", "unlock_duplicate_prevented", meta, user.id);
-      toast.info("এই চ্যাপ্টার ইতোমধ্যে আনলক করা আছে");
+    try {
+      await unlockContentMutation.mutateAsync({ bookId, format: chapterFormat, coinCost: t.chapterPrice });
       setUnlocked(true);
+      refetch();
       onChapterUnlocked(t.id);
-      setUnlocking(false);
-      return;
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.includes("Insufficient")) {
+        toast.error(`আরো ${t.chapterPrice - wallet.balance} কয়েন প্রয়োজন`);
+      } else {
+        toast.error("আনলক ব্যর্থ হয়েছে");
+      }
     }
-
-    // Balance check
-    const { data: walletData } = await supabase
-      .from("user_coins")
-      .select("balance")
-      .eq("user_id", user.id)
-      .single();
-    const currentBalance = (walletData as any)?.balance || 0;
-
-    if (currentBalance < cost) {
-      logEvent("quick_unlock", "unlock_failed", { ...meta, balance: currentBalance, reason: "insufficient_coins" }, user.id, "warning");
-      toast.error(`আরো ${cost - currentBalance} কয়েন প্রয়োজন`);
-      setUnlocking(false);
-      return;
-    }
-
-    const refId = `quick_ch_${bookId}_${t.id}_${user.id}`;
-
-    const { error: rpcErr } = await supabase.rpc("adjust_user_coins", {
-      p_user_id: user.id,
-      p_amount: -cost,
-      p_type: "spend",
-      p_description: `কুইক আনলক - ${t.title}`,
-      p_reference_id: refId,
-      p_source: "quick_chapter_unlock",
-    });
-
-    if (rpcErr) {
-      logEvent("quick_unlock", "unlock_failed", { ...meta, reason: "coin_deduct_failed", error: rpcErr.message }, user.id, "error");
-      toast.error("কয়েন কাটা ব্যর্থ");
-      setUnlocking(false);
-      return;
-    }
-
-    logEvent("quick_unlock", "coins_deducted", { ...meta, amount: cost, ref_id: refId }, user.id);
-
-    const { error: unlockErr } = await supabase.from("content_unlocks").upsert({
-      user_id: user.id,
-      book_id: bookId,
-      format: chapterFormat,
-      coins_spent: cost,
-      unlock_method: "coin",
-      status: "active",
-    }, { onConflict: "user_id,book_id,format" } as any);
-
-    if (unlockErr) {
-      // Refund
-      await supabase.rpc("adjust_user_coins", {
-        p_user_id: user.id,
-        p_amount: cost,
-        p_type: "earn",
-        p_description: `রিফান্ড: কুইক আনলক ব্যর্থ - ${t.title}`,
-        p_reference_id: `refund_${refId}`,
-        p_source: "quick_unlock_refund",
-      });
-      logEvent("quick_unlock", "unlock_failed_refunded", { ...meta, reason: "db_upsert_failed", error: unlockErr.message }, user.id, "error");
-      toast.error("আনলক ব্যর্থ, কয়েন ফেরত দেওয়া হয়েছে");
-      setUnlocking(false);
-      return;
-    }
-
-    logEvent("quick_unlock", "unlock_success", meta, user.id);
-    setUnlocked(true);
-    refetch();
-    onChapterUnlocked(t.id);
     setUnlocking(false);
-  }, [user, bookId, refetch, onChapterUnlocked, sessionIdRef]);
+  }, [user, bookId, wallet.balance, unlockContentMutation, refetch, onChapterUnlocked]);
 
   const handleDirectCoinUnlock = useCallback(async () => {
     if (!track) return;

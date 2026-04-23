@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -112,41 +111,31 @@ export default function AdminActivityLogs() {
   const [detailLog, setDetailLog] = useState<LogEntry | null>(null);
   const [page, setPage] = useState(0);
 
-  const { data: pageData, isLoading } = useQuery({
-    queryKey: ["admin-activity-logs", page, moduleFilter, riskFilter, statusFilter, search, tab, dateFrom, dateTo],
-    queryFn: async () => {
-      let query = supabase
-        .from("admin_activity_logs")
-        .select("*", { count: "exact" })
-        .order("created_at", { ascending: false });
+  const { data: rawLogs = [], isLoading } = trpc.admin.activityLogs.useQuery({ limit: PAGE_SIZE });
 
-      if (moduleFilter !== "all") query = query.eq("module", moduleFilter);
-      if (riskFilter !== "all") query = query.eq("risk_level", riskFilter);
-      if (statusFilter !== "all") query = query.eq("status", statusFilter);
-      if (tab === "login") query = query.in("action_type", ["login", "logout"]);
-      if (tab === "sensitive") query = query.in("risk_level", ["high", "critical"]);
-      if (dateFrom) query = query.gte("created_at", `${dateFrom}T00:00:00`);
-      if (dateTo) query = query.lte("created_at", `${dateTo}T23:59:59`);
-      if (search) {
-        query = query.or(`user_name.ilike.%${search}%,action.ilike.%${search}%,details.ilike.%${search}%,module.ilike.%${search}%`);
-      }
+  const allLogs = rawLogs as unknown as LogEntry[];
 
-      const from = page * PAGE_SIZE;
-      query = query.range(from, from + PAGE_SIZE - 1);
-
-      const { data, error, count } = await query;
-      if (error) throw error;
-      return { logs: (data || []) as LogEntry[], total: count || 0 };
-    },
+  const filteredLogs = allLogs.filter((l) => {
+    if (moduleFilter !== "all" && l.module !== moduleFilter) return false;
+    if (riskFilter !== "all" && l.risk_level !== riskFilter) return false;
+    if (statusFilter !== "all" && l.status !== statusFilter) return false;
+    if (tab === "login" && !["login", "logout"].includes(l.action_type || "")) return false;
+    if (tab === "sensitive" && !["high", "critical"].includes(l.risk_level)) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      const match = (l.user_name || "").toLowerCase().includes(s) || l.action.toLowerCase().includes(s) || (l.details || "").toLowerCase().includes(s) || (l.module || "").toLowerCase().includes(s);
+      if (!match) return false;
+    }
+    return true;
   });
 
-  const logs = pageData?.logs || [];
-  const totalCount = pageData?.total || 0;
+  const totalCount = filteredLogs.length;
+  const pagedLogs = filteredLogs.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const exportCSV = () => {
     const headers = ["ID", "Admin", "Role", "Action", "Action Type", "Module", "Target", "Details", "Status", "Risk", "Date"];
-    const rows = logs.map((l) => [
+    const rows = pagedLogs.map((l) => [
       l.id, l.user_name || "", l.actor_role || "", l.action, l.action_type || "",
       l.module || "", l.target_id || "", l.details || "", l.status, l.risk_level,
       new Date(l.created_at).toLocaleString(),
@@ -284,7 +273,7 @@ export default function AdminActivityLogs() {
                   ) : logs.length === 0 ? (
                     <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No logs found</TableCell></TableRow>
                   ) : (
-                    logs.map((l) => (
+                    pagedLogs.map((l) => (
                       <TableRow key={l.id} className={l.risk_level === "critical" ? "bg-red-500/5" : l.risk_level === "high" ? "bg-orange-500/5" : ""}>
                         <TableCell>
                           <div className="flex items-center gap-2">

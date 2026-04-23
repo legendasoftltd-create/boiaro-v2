@@ -3,43 +3,31 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { CheckCircle2, AlertCircle, XCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Navbar } from "@/components/Navbar";
-import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc";
 
 export default function PaymentCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const status = searchParams.get("status") || "unknown";
   const orderId = searchParams.get("order_id");
   const isCoinPurchase = searchParams.get("type") === "coin";
-  const _purchaseId = searchParams.get("purchase_id");
   const [countdown, setCountdown] = useState(10);
   const [contentRedirect, setContentRedirect] = useState<string | null>(null);
   const [redirectLabel, setRedirectLabel] = useState<string>("");
+
+  const utils = trpc.useUtils();
 
   // On success, look up order items to determine content redirect
   useEffect(() => {
     if (status !== "success" || !orderId || isCoinPurchase) return;
     const lookupContent = async () => {
       try {
-        const { data: orderItems } = await supabase
-          .from("order_items")
-          .select("book_id, format")
-          .eq("order_id", orderId);
-
-        if (!orderItems || orderItems.length === 0) return;
-        const digital = orderItems.find((i: any) => i.format === "ebook" || i.format === "audiobook");
+        const order = await utils.orders.byId.fetch({ id: orderId });
+        if (!order?.items?.length) return;
+        const digital = order.items.find((i: any) => i.format === "ebook" || i.format === "audiobook");
         if (!digital) return;
 
-        // Get book slug
-        const { data: book } = await supabase
-          .from("books")
-          .select("slug")
-          .eq("id", digital.book_id)
-          .single();
-
-        const slug = book?.slug || digital.book_id;
+        const slug = (digital as any).book_format?.book?.slug || (digital as any).book_id;
         if (digital.format === "ebook") {
           setContentRedirect(`/read/${slug}`);
           setRedirectLabel("📖 Read Now");
@@ -48,16 +36,15 @@ export default function PaymentCallback() {
           setRedirectLabel("🎧 Listen Now");
         }
 
-        // Invalidate access caches
-        queryClient.invalidateQueries({ queryKey: ["content_unlocks"] });
-        queryClient.invalidateQueries({ queryKey: ["user_purchases"] });
-        queryClient.invalidateQueries({ queryKey: ["content-access"] });
+        // Invalidate access-related caches
+        utils.wallet.checkAccess.invalidate();
+        utils.wallet.userUnlocks.invalidate();
       } catch (e) {
         console.warn("Failed to look up order items:", e);
       }
     };
     lookupContent();
-  }, [status, orderId, isCoinPurchase, queryClient]);
+  }, [status, orderId, isCoinPurchase]);
 
   const redirectTo = isCoinPurchase ? "/wallet" : contentRedirect || "/orders";
 
@@ -65,11 +52,7 @@ export default function PaymentCallback() {
     if (status === "success") {
       const timer = setInterval(() => {
         setCountdown(prev => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            navigate(redirectTo);
-            return 0;
-          }
+          if (prev <= 1) { clearInterval(timer); navigate(redirectTo); return 0; }
           return prev - 1;
         });
       }, 1000);
@@ -106,7 +89,7 @@ export default function PaymentCallback() {
       desc: "Verifying your payment status.",
       note: null,
     },
-  }[status] || {
+  }[status] ?? {
     icon: <Loader2 className="w-12 h-12 text-muted-foreground animate-spin" />,
     bg: "bg-muted",
     title: "Processing...",

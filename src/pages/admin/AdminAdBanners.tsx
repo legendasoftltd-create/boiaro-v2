@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,20 +32,28 @@ const PLACEMENTS = [
 ];
 
 export default function AdminAdBanners() {
-  const [banners, setBanners] = useState<AdBanner[]>([]);
+  const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<Partial<AdBanner>>({});
   const [editId, setEditId] = useState<string | null>(null);
-
-  const fetchBanners = async () => {
-    const { data } = await supabase.from("ad_banners" as any).select("*").order("display_order");
-    setBanners((data as any[]) || []);
-    setLoading(false);
-  };
-
-  useEffect(() => { fetchBanners(); }, []);
+  const { data: bannersRaw = [], isLoading: loading } = trpc.admin.listAdBanners.useQuery();
+  const banners = bannersRaw as AdBanner[];
+  const upsertMutation = trpc.admin.updateAdBanner.useMutation({
+    onSuccess: async () => {
+      await utils.admin.listAdBanners.invalidate();
+      toast.success(editId ? "Banner updated" : "Banner created");
+      setFormOpen(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMutation = trpc.admin.deleteAdBanner.useMutation({
+    onSuccess: async () => {
+      await utils.admin.listAdBanners.invalidate();
+      toast.success("Banner deleted");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const openNew = () => {
     setEditId(null);
@@ -60,7 +68,8 @@ export default function AdminAdBanners() {
   };
 
   const save = async () => {
-    const payload = {
+    upsertMutation.mutate({
+      id: editId || undefined,
       title: form.title || null,
       image_url: form.image_url || null,
       destination_url: form.destination_url || null,
@@ -70,31 +79,16 @@ export default function AdminAdBanners() {
       device: form.device || "both",
       start_date: form.start_date || new Date().toISOString(),
       end_date: form.end_date || null,
-      updated_at: new Date().toISOString(),
-    };
-
-    if (editId) {
-      const { error } = await supabase.from("ad_banners" as any).update(payload).eq("id", editId);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Banner updated");
-    } else {
-      const { error } = await supabase.from("ad_banners" as any).insert(payload);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Banner created");
-    }
-    setFormOpen(false);
-    fetchBanners();
+    });
   };
 
   const deleteBanner = async (id: string) => {
-    await supabase.from("ad_banners" as any).delete().eq("id", id);
-    toast.success("Banner deleted");
-    fetchBanners();
+    deleteMutation.mutate({ id });
   };
 
-  const filtered = banners.filter(b =>
+  const filtered = useMemo(() => banners.filter(b =>
     !search || (b.title || "").toLowerCase().includes(search.toLowerCase()) || b.placement_key.includes(search)
-  );
+  ), [banners, search]);
 
   const statusBadge = (s: string) => {
     const c: Record<string, string> = {
@@ -155,9 +149,9 @@ export default function AdminAdBanners() {
                 </TableCell>
                 <TableCell><Badge variant="outline" className="text-[11px]">{b.placement_key}</Badge></TableCell>
                 <TableCell>{statusBadge(b.status)}</TableCell>
-                <TableCell className="text-right text-sm">{b.impressions.toLocaleString()}</TableCell>
-                <TableCell className="text-right text-sm">{b.clicks.toLocaleString()}</TableCell>
-                <TableCell className="text-right text-sm font-medium">{ctr(b.impressions, b.clicks)}</TableCell>
+                <TableCell className="text-right text-sm">{Number(b.impressions || 0).toLocaleString()}</TableCell>
+                <TableCell className="text-right text-sm">{Number(b.clicks || 0).toLocaleString()}</TableCell>
+                <TableCell className="text-right text-sm font-medium">{ctr(Number(b.impressions || 0), Number(b.clicks || 0))}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-1">
                     <Button size="sm" variant="ghost" onClick={() => openEdit(b)}>Edit</Button>
@@ -216,7 +210,7 @@ export default function AdminAdBanners() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button onClick={save}>Save</Button>
+            <Button onClick={save} disabled={upsertMutation.isPending}>Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

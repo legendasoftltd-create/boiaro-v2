@@ -16,6 +16,7 @@ import { useRadioStation } from "@/hooks/useRadioStation"
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
 import { useTheme } from "next-themes"
+import { toMediaUrl } from "@/lib/mediaUrl"
 
 const navLinks = [
   { href: "/books?format=ebook", label: "eBooks", icon: BookOpen },
@@ -41,9 +42,9 @@ export function Navbar() {
   const initials = (profile?.display_name || user?.email || "U").slice(0, 2).toUpperCase()
 
   // Dynamic logos from site settings, falling back to static assets
-  const logoDesktop = get("logo_url") || logoBoiaroFallback
-  const logoMobile = get("logo_mobile_url") || logoBoiaroShortFallback
-  const logoDark = get("logo_dark_url")
+  const logoDesktop = toMediaUrl(get("logo_url")) || logoBoiaroFallback
+  const logoMobile = toMediaUrl(get("logo_mobile_url")) || logoBoiaroShortFallback
+  const logoDark = toMediaUrl(get("logo_dark_url"))
   const brandName = get("brand_name", "BoiAro")
 
   // Use dark mode logo when in dark theme and available

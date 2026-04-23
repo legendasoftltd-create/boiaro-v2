@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import { Star, MessageSquare, Send, Pencil, Trash2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { useAuth } from "@/contexts/AuthContext"
 import { toast } from "sonner"
 import type { MasterBook } from "@/lib/types"
@@ -20,7 +20,7 @@ interface Review {
   comment: string | null
   created_at: string
   user_id: string
-  profiles?: { display_name: string | null } | null
+  display_name?: string | null
 }
 
 function StarRating({
@@ -73,70 +73,24 @@ function timeAgo(d: string) {
 
 export function BookReviews({ book, onReviewChange }: Props) {
   const { user } = useAuth()
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [loading, setLoading] = useState(true)
+  const utils = trpc.useUtils()
   const [showForm, setShowForm] = useState(false)
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState("")
-  const [submitting, setSubmitting] = useState(false)
   const [editingReviewId, setEditingReviewId] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const { data: reviews = [], isLoading: loading } = trpc.books.reviews.useQuery(
+    { bookId: book.id },
+    { staleTime: 60_000 }
+  )
+  const postReviewMutation = trpc.books.postReview.useMutation({
+    onSuccess: () => { utils.books.reviews.invalidate({ bookId: book.id }); onReviewChange?.() },
+  })
+  const deleteReviewMutation = trpc.books.deleteReview.useMutation({
+    onSuccess: () => { utils.books.reviews.invalidate({ bookId: book.id }); onReviewChange?.() },
+  })
 
-    const { data, error } = await supabase
-      .from("reviews")
-      .select("id, rating, comment, created_at, user_id, status")
-      .eq("book_id", book.id)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      if (import.meta.env.DEV) {
-        console.error("[BookReviews] Failed to load reviews", error)
-      }
-      toast.error("Failed to load reviews")
-      setReviews([])
-      setLoading(false)
-      return
-    }
-
-    const rawReviews = ((data as Review[]) || []).filter((r: any) => (r.status || "approved") === "approved")
-    const reviewerIds = [...new Set(rawReviews.map((r) => r.user_id).filter(Boolean))]
-
-    if (reviewerIds.length === 0) {
-      setReviews(rawReviews)
-      setLoading(false)
-      return
-    }
-
-    const { data: profilesData, error: profilesError } = await supabase
-      .from("profiles_public" as any)
-      .select("user_id, display_name")
-      .in("user_id", reviewerIds)
-
-    if (profilesError && import.meta.env.DEV) {
-      console.error("[BookReviews] Failed to load profile names", profilesError)
-    }
-
-    const profileMap = new Map<string, string | null>()
-    ;(profilesData || []).forEach((profile: any) => {
-      profileMap.set(profile.user_id, profile.display_name)
-    })
-
-    const enriched = rawReviews.map((review) => ({
-      ...review,
-      profiles: { display_name: profileMap.get(review.user_id) ?? null },
-    }))
-
-    setReviews(enriched)
-    setLoading(false)
-  }, [book.id])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  const existingReview = user ? reviews.find((r) => r.user_id === user.id) : null
+  const existingReview = user ? (reviews as Review[]).find((r) => r.user_id === user.id) : null
 
   const totalReviews = reviews.length
   const avgRating = reviews.length
@@ -176,63 +130,27 @@ export function BookReviews({ book, onReviewChange }: Props) {
     setComment("")
   }
 
-  const handleRate = async (nextRating: number) => {
+  const handleRate = (nextRating: number) => {
     setRating(nextRating)
-
-    if (!user) return
-
-    const { error } = await supabase.rpc("post_rating", {
-      p_book_id: book.id,
-      p_rating: nextRating,
-    })
-
-    if (error) {
-      if (import.meta.env.DEV) {
-        console.error("[BookReviews] Failed to save rating", error)
-      }
-      return
-    }
-
-    onReviewChange?.()
-    await load()
   }
 
   const submit = async () => {
-    if (!user) {
-      toast.error("Please login to rate or review")
-      return
-    }
-    if (!comment.trim()) {
-      toast.error("Please write a review before submitting")
-      return
-    }
-    setSubmitting(true)
+    if (!user) { toast.error("Please login to rate or review"); return }
+    if (!comment.trim()) { toast.error("Please write a review before submitting"); return }
     const isUpdate = Boolean(editingReviewId || existingReview)
-
-    const { error } = await supabase.rpc("post_review", {
-      p_book_id: book.id,
-      p_rating: rating,
-      p_review_text: comment.trim(),
-    })
-
-    if (error) {
-      toast.error(error.message)
-    } else {
+    try {
+      await postReviewMutation.mutateAsync({ bookId: book.id, rating, comment: comment.trim() })
       toast.success(isUpdate ? "Review updated!" : "Review submitted!")
       closeForm()
-      await load()
-      onReviewChange?.()
+    } catch (e: any) {
+      toast.error(e.message || "Failed to submit review")
     }
-
-    setSubmitting(false)
   }
 
   const deleteReview = async (id: string) => {
-    await supabase.from("reviews").delete().eq("id", id)
+    await deleteReviewMutation.mutateAsync({ reviewId: id })
     toast.success("Review deleted")
     if (editingReviewId === id) closeForm()
-    await load()
-    onReviewChange?.()
   }
 
   return (
@@ -292,11 +210,11 @@ export function BookReviews({ book, onReviewChange }: Props) {
               )}
               <Button
                 onClick={submit}
-                disabled={submitting || !user}
+                disabled={postReviewMutation.isPending || !user}
                 className="gap-2 w-full sm:w-auto"
               >
                 <Send className="w-4 h-4" />
-                {submitting
+                {postReviewMutation.isPending
                   ? "Submitting..."
                   : editingReviewId
                   ? "Update Review"
@@ -360,7 +278,7 @@ export function BookReviews({ book, onReviewChange }: Props) {
           <div className="space-y-4">
             {reviews.map((review) => {
               const name =
-                (review.profiles as any)?.display_name || "Reader"
+                (review as any).display_name || "Reader"
               const isOwn = user?.id === review.user_id
               return (
                 <Card

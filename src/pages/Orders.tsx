@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Navbar } from "@/components/Navbar"
 import { Footer } from "@/components/Footer"
 import { useAuth } from "@/contexts/AuthContext"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { OrderInvoice } from "@/components/admin/OrderInvoice"
 
 // ─── Payment Status Config ───
@@ -53,32 +53,28 @@ function isHardcopyOrder(orderItems: any[]): boolean {
 export default function Orders() {
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
-  const [orders, setOrders] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [invoiceOrder, setInvoiceOrder] = useState<any>(null)
   const [invoiceItems, setInvoiceItems] = useState<any[]>([])
-  const [userEmail, setUserEmail] = useState<string>("")
+
+  const { data: ordersData, isLoading: loading } = trpc.orders.myOrders.useQuery(
+    { limit: 100 },
+    { enabled: !!user }
+  )
+
+  const userEmail = user?.email ?? ""
+
+  // Normalize tRPC response: items → order_items, item.book_format.book → item.books
+  const orders = (ordersData?.orders ?? []).map((o: any) => ({
+    ...o,
+    order_items: (o.items ?? []).map((i: any) => ({
+      ...i,
+      books: i.book_format?.book ?? null,
+    })),
+    shipments: [],
+  }))
 
   useEffect(() => {
-    if (authLoading) return
-    if (!user) { navigate("/auth"); return }
-
-    const fetchOrders = async () => {
-      const { data } = await supabase
-        .from("orders")
-        .select("*, order_items(*, books(title, cover_url)), payments(status, method, amount, transaction_id), shipments(courier_name, provider_code, tracking_code, status)")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(100)
-
-      setOrders(data || [])
-      setLoading(false)
-    }
-    fetchOrders()
-
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.email) setUserEmail(data.user.email)
-    })
+    if (!authLoading && !user) navigate("/auth")
   }, [user, authLoading, navigate])
 
   const formatDate = (d: string) => new Date(d).toLocaleDateString("en-US", {

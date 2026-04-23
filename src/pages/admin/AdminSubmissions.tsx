@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,173 +8,66 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle, XCircle, Eye, BookOpen, Image, Loader2, User2, RotateCcw, FileAudio, Pencil } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/contexts/AuthContext";
 
 export default function AdminSubmissions() {
-  const { user } = useAuth();
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const utils = trpc.useUtils();
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "draft" | "edit_requests">("pending");
   const [previewBook, setPreviewBook] = useState<any>(null);
-  const [tracks, setTracks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  // Edit requests state
-  const [editRequests, setEditRequests] = useState<any[]>([]);
-  const [editRequestsLoading, setEditRequestsLoading] = useState(false);
   const [reviewingRequest, setReviewingRequest] = useState<any>(null);
   const [adminNotes, setAdminNotes] = useState("");
 
-  const load = async () => {
-    if (filter === "edit_requests") {
-      loadEditRequests();
-      return;
-    }
-    setLoading(true);
-    const { data } = await supabase
-      .from("books")
-      .select("*, categories(name, name_bn), book_formats(id, format, price, stock_count, duration, audio_quality), book_contributors(user_id, role, format)")
-      .eq("submission_status", filter)
-      .not("submitted_by", "is", null)
-      .order("created_at", { ascending: false });
+  const { data: submissions = [], isLoading } = trpc.admin.listSubmissions.useQuery(
+    { status: filter },
+    { enabled: filter !== "edit_requests" }
+  );
 
-    const books: any[] = data || [];
-    if (books.length > 0) {
-      const userIds = [...new Set(books.map(b => b.submitted_by).filter(Boolean))];
-      const { data: profiles } = await supabase.from("profiles").select("user_id, display_name").in("user_id", userIds);
-      const profileMap: Record<string, string> = {};
-      (profiles || []).forEach(p => { profileMap[p.user_id] = p.display_name || "Unknown"; });
-      books.forEach(b => { b._submitter = profileMap[b.submitted_by] || "Unknown"; });
-    }
+  const { data: editRequests = [], isLoading: editRequestsLoading } = trpc.admin.listEditRequests.useQuery(
+    undefined,
+    { enabled: filter === "edit_requests" }
+  );
 
-    setSubmissions(books);
-    setLoading(false);
-  };
+  const { data: tracks = [] } = trpc.admin.getAudiobookTracksForFormat.useQuery(
+    { bookFormatId: previewBook?.book_formats?.find((f: any) => f.format === "audiobook")?.id || "" },
+    { enabled: !!previewBook?.book_formats?.find((f: any) => f.format === "audiobook") }
+  );
 
-  const loadEditRequests = async () => {
-    setEditRequestsLoading(true);
-    const { data } = await supabase
-      .from("content_edit_requests" as any)
-      .select("*")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-
-    const requests: any[] = data || [];
-
-    // Enrich with submitter names and book titles
-    if (requests.length > 0) {
-      const userIds = [...new Set(requests.map((r: any) => r.submitted_by).filter(Boolean))];
-      const contentIds = [...new Set(requests.map((r: any) => r.content_id).filter(Boolean))];
-
-      const [profilesRes, booksRes] = await Promise.all([
-        supabase.from("profiles").select("user_id, display_name").in("user_id", userIds),
-        supabase.from("books").select("id, title, cover_url").in("id", contentIds),
-      ]);
-
-      const profileMap: Record<string, string> = {};
-      (profilesRes.data || []).forEach(p => { profileMap[p.user_id] = p.display_name || "Unknown"; });
-
-      const bookMap: Record<string, any> = {};
-      (booksRes.data || []).forEach(b => { bookMap[b.id] = b; });
-
-      requests.forEach((r: any) => {
-        r._submitter = profileMap[r.submitted_by] || "Unknown";
-        r._book = bookMap[r.content_id] || null;
-      });
-    }
-
-    setEditRequests(requests);
-    setEditRequestsLoading(false);
-  };
-
-  useEffect(() => { load(); }, [filter]);
-
-  const loadTracks = async (bookFormats: any[]) => {
-    const audioFmt = bookFormats?.find((f: any) => f.format === "audiobook");
-    if (!audioFmt) { setTracks([]); return; }
-    const { data } = await supabase.from("audiobook_tracks").select("*").eq("book_format_id", audioFmt.id).order("track_number");
-    setTracks(data || []);
-  };
-
-  const openPreview = async (book: any) => {
-    setPreviewBook(book);
-    await loadTracks(book.book_formats || []);
-  };
-
-  const handleAction = async (bookId: string, action: "approved" | "rejected" | "draft") => {
-    setActionLoading(bookId);
-    const { error } = await supabase.from("books").update({ submission_status: action }).eq("id", bookId);
-    if (error) {
-      toast.error(error.message);
-    } else {
+  const updateStatusMutation = trpc.admin.updateSubmissionStatus.useMutation({
+    onSuccess: (_data, vars) => {
       const msgs: Record<string, string> = { approved: "Content approved and is now live!", rejected: "Content rejected.", draft: "Sent back for correction." };
-      toast.success(msgs[action]);
+      toast.success(msgs[vars.status] || "Updated");
+      utils.admin.listSubmissions.invalidate();
       setPreviewBook(null);
-      load();
-    }
-    setActionLoading(null);
-  };
+      setActionLoading(null);
+    },
+    onError: (e) => { toast.error(e.message); setActionLoading(null); },
+  });
 
-  // --- Edit request actions ---
-  const approveEditRequest = async (request: any) => {
-    if (!user) return;
-    setActionLoading(request.id);
-
-    try {
-      const changes = request.proposed_changes;
-
-      // Apply book-level changes
-      if (changes.book && request.content_type === "book") {
-        const { submission_status: _ss, submitted_by: _sb, ...bookUpdates } = changes.book;
-        await supabase.from("books").update(bookUpdates).eq("id", request.content_id);
-      }
-
-      // Apply format-level changes
-      if (changes.format && changes.format.format_id) {
-        const { format_id, ...formatUpdates } = changes.format;
-        await supabase.from("book_formats").update(formatUpdates).eq("id", format_id);
-      }
-
-      // Mark request as approved
-      await supabase
-        .from("content_edit_requests" as any)
-        .update({
-          status: "approved",
-          admin_notes: adminNotes || null,
-          reviewed_by: user.id,
-          reviewed_at: new Date().toISOString(),
-        } as any)
-        .eq("id", request.id);
-
+  const approveEditMutation = trpc.admin.approveEditRequest.useMutation({
+    onSuccess: () => {
       toast.success("Edit request approved — changes applied to live content");
+      utils.admin.listEditRequests.invalidate();
       setReviewingRequest(null);
       setAdminNotes("");
-      loadEditRequests();
-    } catch {
-      toast.error("Failed to apply changes");
-    }
-    setActionLoading(null);
-  };
+      setActionLoading(null);
+    },
+    onError: (e) => { toast.error(e.message); setActionLoading(null); },
+  });
 
-  const rejectEditRequest = async (request: any) => {
-    if (!user) return;
-    setActionLoading(request.id);
+  const rejectEditMutation = trpc.admin.rejectEditRequest.useMutation({
+    onSuccess: () => {
+      toast.success("Edit request rejected");
+      utils.admin.listEditRequests.invalidate();
+      setReviewingRequest(null);
+      setAdminNotes("");
+      setActionLoading(null);
+    },
+    onError: (e) => { toast.error(e.message); setActionLoading(null); },
+  });
 
-    await supabase
-      .from("content_edit_requests" as any)
-      .update({
-        status: "rejected",
-        admin_notes: adminNotes || null,
-        reviewed_by: user.id,
-        reviewed_at: new Date().toISOString(),
-      } as any)
-      .eq("id", request.id);
-
-    toast.success("Edit request rejected");
-    setReviewingRequest(null);
-    setAdminNotes("");
-    loadEditRequests();
-    setActionLoading(null);
+  const handleAction = (bookId: string, action: "approved" | "rejected" | "draft") => {
+    setActionLoading(bookId);
+    updateStatusMutation.mutate({ bookId, status: action });
   };
 
   const formatBadge = (fmt: string) => {
@@ -194,11 +87,9 @@ export default function AdminSubmissions() {
     return <Badge variant="outline" className={`text-[10px] capitalize ${colors[role] || ""}`}>{role}</Badge>;
   };
 
-  // Render a diff-like view showing proposed changes
   const renderChanges = (changes: any) => {
     if (!changes) return null;
     const entries: { key: string; value: any }[] = [];
-
     if (changes.book) {
       Object.entries(changes.book).forEach(([k, v]) => {
         if (k !== "submitted_by" && k !== "submission_status" && k !== "slug" && v !== null && v !== undefined) {
@@ -213,15 +104,12 @@ export default function AdminSubmissions() {
         }
       });
     }
-
     return (
       <div className="space-y-1.5">
         {entries.map(({ key, value }) => (
           <div key={key} className="flex items-start gap-2 text-sm">
             <span className="text-muted-foreground font-mono text-xs min-w-[120px]">{key}:</span>
-            <span className="font-medium break-all">
-              {typeof value === "object" ? JSON.stringify(value) : String(value)}
-            </span>
+            <span className="font-medium break-all">{typeof value === "object" ? JSON.stringify(value) : String(value)}</span>
           </div>
         ))}
       </div>
@@ -246,13 +134,12 @@ export default function AdminSubmissions() {
         </TabsList>
       </Tabs>
 
-      {/* Edit Requests Tab */}
       {filter === "edit_requests" ? (
         editRequestsLoading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-        ) : editRequests.length > 0 ? (
+        ) : (editRequests as any[]).length > 0 ? (
           <div className="space-y-2">
-            {editRequests.map((req: any) => (
+            {(editRequests as any[]).map((req: any) => (
               <div key={req.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/20 hover:bg-secondary/30 transition-colors">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   {req._book?.cover_url ? (
@@ -288,12 +175,11 @@ export default function AdminSubmissions() {
           </Card>
         )
       ) : (
-        /* Regular submissions */
-        loading ? (
+        isLoading ? (
           <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
-        ) : submissions.length > 0 ? (
+        ) : (submissions as any[]).length > 0 ? (
           <div className="space-y-2">
-            {submissions.map(book => (
+            {(submissions as any[]).map((book: any) => (
               <div key={book.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/20 hover:bg-secondary/30 transition-colors">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   {book.cover_url ? (
@@ -312,7 +198,7 @@ export default function AdminSubmissions() {
                     <p className="text-xs text-muted-foreground mt-0.5">{new Date(book.created_at).toLocaleDateString()}</p>
                   </div>
                 </div>
-                <Button size="sm" variant="outline" onClick={() => openPreview(book)} className="h-8 gap-1.5 text-xs ml-2">
+                <Button size="sm" variant="outline" onClick={() => setPreviewBook(book)} className="h-8 gap-1.5 text-xs ml-2">
                   <Eye className="w-3.5 h-3.5" /> Review
                 </Button>
               </div>
@@ -328,7 +214,6 @@ export default function AdminSubmissions() {
         )
       )}
 
-      {/* Submission Detail Dialog */}
       <Dialog open={!!previewBook} onOpenChange={() => setPreviewBook(null)}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Submission Review</DialogTitle></DialogHeader>
@@ -381,13 +266,13 @@ export default function AdminSubmissions() {
                 </div>
               </div>
 
-              {tracks.length > 0 && (
+              {(tracks as any[]).length > 0 && (
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <FileAudio className="w-3.5 h-3.5" /> Episodes ({tracks.length})
+                    <FileAudio className="w-3.5 h-3.5" /> Episodes ({(tracks as any[]).length})
                   </h3>
                   <div className="space-y-1.5">
-                    {tracks.map(t => (
+                    {(tracks as any[]).map((t: any) => (
                       <div key={t.id} className="flex items-center gap-3 p-2 bg-secondary/20 rounded-lg">
                         <div className="w-7 h-7 rounded bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
                           {t.track_number}
@@ -424,7 +309,6 @@ export default function AdminSubmissions() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Request Review Dialog */}
       <Dialog open={!!reviewingRequest} onOpenChange={() => { setReviewingRequest(null); setAdminNotes(""); }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -435,7 +319,6 @@ export default function AdminSubmissions() {
           </DialogHeader>
           {reviewingRequest && (
             <div className="space-y-5">
-              {/* Book info */}
               <div className="flex gap-4">
                 {reviewingRequest._book?.cover_url ? (
                   <img src={reviewingRequest._book.cover_url} alt="" className="w-20 h-28 object-cover rounded-lg" />
@@ -456,29 +339,20 @@ export default function AdminSubmissions() {
                 </div>
               </div>
 
-              {/* Proposed changes */}
               <div className="p-4 rounded-lg bg-secondary/30 border border-border/30">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Proposed Changes</h3>
                 {renderChanges(reviewingRequest.proposed_changes)}
               </div>
 
-              {/* Admin notes */}
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Admin Notes (optional)</label>
-                <Textarea
-                  value={adminNotes}
-                  onChange={e => setAdminNotes(e.target.value)}
-                  placeholder="Add a note for the creator..."
-                  className="mt-1.5"
-                  rows={2}
-                />
+                <Textarea value={adminNotes} onChange={e => setAdminNotes(e.target.value)} placeholder="Add a note for the creator..." className="mt-1.5" rows={2} />
               </div>
 
-              {/* Actions */}
               <div className="flex gap-2 pt-2 border-t border-border/30">
                 <Button
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                  onClick={() => approveEditRequest(reviewingRequest)}
+                  onClick={() => { setActionLoading(reviewingRequest.id); approveEditMutation.mutate({ requestId: reviewingRequest.id, adminNotes: adminNotes || undefined }); }}
                   disabled={!!actionLoading}
                 >
                   {actionLoading === reviewingRequest.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-4 w-4 mr-2" />Approve & Apply</>}
@@ -486,7 +360,7 @@ export default function AdminSubmissions() {
                 <Button
                   variant="outline"
                   className="flex-1 text-destructive border-destructive/30"
-                  onClick={() => rejectEditRequest(reviewingRequest)}
+                  onClick={() => { setActionLoading(reviewingRequest.id); rejectEditMutation.mutate({ requestId: reviewingRequest.id }); }}
                   disabled={!!actionLoading}
                 >
                   <XCircle className="h-4 w-4 mr-2" />Reject

@@ -1,6 +1,6 @@
 import { useCallback, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 
 type EventType =
   | "book_view"
@@ -33,30 +33,29 @@ function getSessionId() {
 export function useActivityTracker() {
   const { user } = useAuth();
   const debounceRef = useRef<Record<string, number>>({});
+  const logActivity = trpc.gamification.logActivity.useMutation();
 
   const track = useCallback(
     async (eventType: EventType, options?: TrackOptions) => {
       if (!user) return;
 
-      // Debounce same event+book within 2 seconds
       const key = `${eventType}-${options?.bookId || ""}`;
       const now = Date.now();
       if (debounceRef.current[key] && now - debounceRef.current[key] < 2000) return;
       debounceRef.current[key] = now;
 
       try {
-        await supabase.from("user_activity_logs").insert({
-          user_id: user.id,
-          event_type: eventType,
-          book_id: options?.bookId || null,
-          metadata: options?.metadata || {},
-          session_id: getSessionId(),
+        await logActivity.mutateAsync({
+          action: eventType,
+          activityType: eventType,
+          bookId: options?.bookId,
+          metadata: { ...options?.metadata, session_id: getSessionId() },
         });
       } catch {
         // Silent fail — don't break UX for tracking
       }
     },
-    [user]
+    [user, logActivity]
   );
 
   const trackBookView = useCallback(
@@ -107,8 +106,7 @@ export function useActivityTracker() {
   );
 
   const trackTtsPreview = useCallback(
-    (mode: "browser" | "premium") =>
-      track("tts_preview", { metadata: { mode } }),
+    (mode: "browser" | "premium") => track("tts_preview", { metadata: { mode } }),
     [track]
   );
 

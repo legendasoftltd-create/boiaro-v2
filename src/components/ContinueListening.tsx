@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ChevronLeft, ChevronRight, Headphones, Play } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { useBooks } from "@/hooks/useBooks";
 import type { MasterBook } from "@/lib/types";
 
@@ -29,28 +29,22 @@ export function ContinueListening() {
   const scroll = (d: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: d === "left" ? -340 : 340, behavior: "smooth" });
 
+  const { data: progressList = [] } = trpc.profiles.listeningProgress.useQuery(undefined, {
+    enabled: !!user,
+  });
+
   useEffect(() => {
     if (!user || allBooks.length === 0) return;
-
-    supabase
-      .from("listening_progress")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("last_listened_at", { ascending: false })
-      .limit(10)
-      .then(({ data }) => {
-        if (!data) return;
-        const bookMap = new Map(allBooks.map(b => [b.id, b]));
-        const mapped = (data as any[])
-          .map(p => {
-            const book = bookMap.get(p.book_id);
-            if (!book) return null;
-            return { ...p, book } as ListeningItem;
-          })
-          .filter((p): p is ListeningItem => p !== null && (Number(p.percentage) || 0) < 100);
-        setItems(mapped);
-      });
-  }, [user, allBooks.length]);
+    const bookMap = new Map(allBooks.map(b => [b.id, b]));
+    const mapped = (progressList as any[])
+      .map(p => {
+        const book = bookMap.get(p.book_id);
+        if (!book) return null;
+        return { ...p, book } as ListeningItem;
+      })
+      .filter((p): p is ListeningItem => p !== null && (Number(p.percentage) || 0) < 100);
+    setItems(mapped);
+  }, [user, allBooks.length, progressList]);
 
   if (items.length === 0) return null;
 

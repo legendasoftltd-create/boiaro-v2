@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 
 /**
  * Tracks reading/listening time for a book and periodically flushes to the database.
@@ -16,6 +16,8 @@ export function useConsumptionTracker(
   const lastTickRef = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const logConsumption = trpc.gamification.logConsumptionTime.useMutation();
+
   const flush = useCallback(async () => {
     if (!user || !bookId || accumulatedRef.current < 5) return;
 
@@ -23,16 +25,11 @@ export function useConsumptionTracker(
     accumulatedRef.current = 0;
 
     try {
-      await supabase.rpc("log_consumption_time" as any, {
-        p_book_id: bookId,
-        p_format: format,
-        p_seconds: seconds,
-      });
+      await logConsumption.mutateAsync({ bookId, format, seconds });
     } catch {
-      // Re-add on failure so we don't lose data
       accumulatedRef.current += seconds;
     }
-  }, [user, bookId, format]);
+  }, [user, bookId, format, logConsumption]);
 
   useEffect(() => {
     if (!isActive || !user || !bookId) {
@@ -65,24 +62,12 @@ export function useConsumptionTracker(
     };
   }, [isActive, user, bookId, flush]);
 
-  // Flush on page unload
+  // Flush on page unload (best-effort via tRPC)
   useEffect(() => {
-    const handleUnload = () => {
-      if (accumulatedRef.current >= 5 && user && bookId) {
-        // Use sendBeacon for reliability
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/log_consumption_time`;
-        const body = JSON.stringify({
-          p_book_id: bookId,
-          p_format: format,
-          p_seconds: accumulatedRef.current,
-        });
-        navigator.sendBeacon?.(url, new Blob([body], { type: "application/json" }));
-      }
-    };
-
+    const handleUnload = () => { flush(); };
     window.addEventListener("beforeunload", handleUnload);
     return () => window.removeEventListener("beforeunload", handleUnload);
-  }, [user, bookId, format]);
+  }, [flush]);
 
   return { flush };
 }

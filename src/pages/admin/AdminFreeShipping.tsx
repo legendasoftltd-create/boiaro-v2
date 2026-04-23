@@ -1,97 +1,59 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Gift, Plus, Pencil, Trash2 } from "lucide-react";
 
-interface Campaign {
-  id: string;
-  name: string;
-  is_active: boolean;
-  min_order_amount: number;
-  area_type: string;
-  description: string | null;
-  created_at: string;
-}
-
-const emptyForm = { name: "", is_active: false, min_order_amount: 500, area_type: "all", description: "" };
+const emptyForm = { name: "", is_active: false, min_order_value: 500, start_date: "", end_date: "" };
 
 export default function AdminFreeShipping() {
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [editing, setEditing] = useState<Campaign | null>(null);
+  const utils = trpc.useUtils();
+  const [editId, setEditId] = useState<string | undefined>(undefined);
   const [form, setForm] = useState(emptyForm);
   const [showDialog, setShowDialog] = useState(false);
 
-  const load = async () => {
-    const { data } = await supabase
-      .from("free_shipping_campaigns")
-      .select("*")
-      .order("created_at", { ascending: false });
-    setCampaigns((data as any[] || []) as Campaign[]);
-  };
+  const { data: campaigns = [] } = trpc.admin.listFreeShipping.useQuery();
 
-  useEffect(() => { load(); }, []);
+  const saveMutation = trpc.admin.upsertFreeShipping.useMutation({
+    onSuccess: () => { utils.admin.listFreeShipping.invalidate(); setShowDialog(false); toast.success(editId ? "Campaign updated" : "Campaign created"); },
+    onError: (e) => toast.error(e.message),
+  });
 
-  const openNew = () => { setEditing(null); setForm({ ...emptyForm }); setShowDialog(true); };
-  const openEdit = (c: Campaign) => {
-    setEditing(c);
-    setForm({ name: c.name, is_active: c.is_active, min_order_amount: c.min_order_amount, area_type: c.area_type, description: c.description || "" });
+  const deleteMutation = trpc.admin.deleteFreeShipping.useMutation({
+    onSuccess: () => { utils.admin.listFreeShipping.invalidate(); toast.success("Deleted"); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const toggleMutation = trpc.admin.toggleFreeShipping.useMutation({
+    onSuccess: () => utils.admin.listFreeShipping.invalidate(),
+    onError: (e) => toast.error(e.message),
+  });
+
+  const openNew = () => { setEditId(undefined); setForm({ ...emptyForm }); setShowDialog(true); };
+  const openEdit = (c: any) => {
+    setEditId(c.id);
+    setForm({ name: c.name, is_active: c.is_active, min_order_value: c.min_order_value, start_date: c.start_date ? new Date(c.start_date).toISOString().split("T")[0] : "", end_date: c.end_date ? new Date(c.end_date).toISOString().split("T")[0] : "" });
     setShowDialog(true);
   };
 
-  const save = async () => {
+  const save = () => {
     if (!form.name.trim()) { toast.error("Name is required"); return; }
-    const payload = {
-      name: form.name.trim(),
-      is_active: form.is_active,
-      min_order_amount: Number(form.min_order_amount),
-      area_type: form.area_type,
-      description: form.description || null,
-    };
-    if (editing) {
-      const { error } = await supabase.from("free_shipping_campaigns").update(payload as any).eq("id", editing.id);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Campaign updated");
-    } else {
-      const { error } = await supabase.from("free_shipping_campaigns").insert(payload as any);
-      if (error) { toast.error(error.message); return; }
-      toast.success("Campaign created");
-    }
-    setShowDialog(false);
-    load();
+    saveMutation.mutate({ id: editId, name: form.name.trim(), is_active: form.is_active, min_order_value: Number(form.min_order_value), start_date: form.start_date || undefined, end_date: form.end_date || null });
   };
-
-  const toggleActive = async (c: Campaign) => {
-    await supabase.from("free_shipping_campaigns").update({ is_active: !c.is_active } as any).eq("id", c.id);
-    toast.success(`${c.name} → ${c.is_active ? "Inactive" : "Active"}`);
-    load();
-  };
-
-  const remove = async (c: Campaign) => {
-    if (!confirm(`Delete "${c.name}"?`)) return;
-    await supabase.from("free_shipping_campaigns").delete().eq("id", c.id);
-    toast.success("Deleted");
-    load();
-  };
-
-  const areaLabel: Record<string, string> = { all: "All Areas", inside_dhaka: "ঢাকার ভিতরে", outside_dhaka: "ঢাকার বাইরে" };
-  const areaColor: Record<string, string> = { all: "bg-blue-500/20 text-blue-400", inside_dhaka: "bg-emerald-500/20 text-emerald-400", outside_dhaka: "bg-amber-500/20 text-amber-400" };
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><Gift className="w-6 h-6 text-primary" /> Free Shipping Campaigns</h1>
-          <p className="text-sm text-muted-foreground mt-1">Create campaigns to offer free shipping based on order amount and delivery area</p>
+          <p className="text-sm text-muted-foreground mt-1">Create campaigns to offer free shipping based on order amount</p>
         </div>
         <Button onClick={openNew} className="gap-2"><Plus className="w-4 h-4" /> New Campaign</Button>
       </div>
@@ -99,19 +61,19 @@ export default function AdminFreeShipping() {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <Card className="bg-card border-border">
           <CardContent className="p-4">
-            <p className="text-2xl font-bold">{campaigns.length}</p>
+            <p className="text-2xl font-bold">{(campaigns as any[]).length}</p>
             <p className="text-xs text-muted-foreground">Total Campaigns</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
           <CardContent className="p-4">
-            <p className="text-2xl font-bold text-emerald-400">{campaigns.filter(c => c.is_active).length}</p>
+            <p className="text-2xl font-bold text-emerald-400">{(campaigns as any[]).filter((c: any) => c.is_active).length}</p>
             <p className="text-xs text-muted-foreground">Active</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
           <CardContent className="p-4">
-            <p className="text-2xl font-bold text-muted-foreground">{campaigns.filter(c => !c.is_active).length}</p>
+            <p className="text-2xl font-bold text-muted-foreground">{(campaigns as any[]).filter((c: any) => !c.is_active).length}</p>
             <p className="text-xs text-muted-foreground">Inactive</p>
           </CardContent>
         </Card>
@@ -123,31 +85,32 @@ export default function AdminFreeShipping() {
             <TableRow>
               <TableHead>Campaign</TableHead>
               <TableHead>Min Order (৳)</TableHead>
-              <TableHead>Area</TableHead>
+              <TableHead>Start Date</TableHead>
+              <TableHead>End Date</TableHead>
               <TableHead>Active</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {campaigns.map(c => (
+            {(campaigns as any[]).map((c: any) => (
               <TableRow key={c.id}>
                 <TableCell>
                   <p className="font-medium text-sm">{c.name}</p>
-                  {c.description && <p className="text-xs text-muted-foreground">{c.description}</p>}
                 </TableCell>
-                <TableCell className="font-medium">৳{c.min_order_amount}</TableCell>
-                <TableCell><Badge className={areaColor[c.area_type] || ""}>{areaLabel[c.area_type] || c.area_type}</Badge></TableCell>
-                <TableCell><Switch checked={c.is_active} onCheckedChange={() => toggleActive(c)} /></TableCell>
+                <TableCell className="font-medium">৳{c.min_order_value}</TableCell>
+                <TableCell className="text-sm">{c.start_date ? new Date(c.start_date).toLocaleDateString() : "—"}</TableCell>
+                <TableCell className="text-sm">{c.end_date ? new Date(c.end_date).toLocaleDateString() : <Badge variant="outline" className="text-[10px]">Ongoing</Badge>}</TableCell>
+                <TableCell><Switch checked={c.is_active} onCheckedChange={(v) => toggleMutation.mutate({ id: c.id, isActive: v })} /></TableCell>
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
                     <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="w-4 h-4" /></Button>
-                    <Button size="icon" variant="ghost" className="text-destructive" onClick={() => remove(c)}><Trash2 className="w-4 h-4" /></Button>
+                    <Button size="icon" variant="ghost" className="text-destructive" onClick={() => { if (confirm(`Delete "${c.name}"?`)) deleteMutation.mutate({ id: c.id }); }}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
             ))}
-            {!campaigns.length && (
-              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No campaigns yet</TableCell></TableRow>
+            {!(campaigns as any[]).length && (
+              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No campaigns yet</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -155,7 +118,7 @@ export default function AdminFreeShipping() {
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing ? "Edit Campaign" : "New Campaign"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editId ? "Edit Campaign" : "New Campaign"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div>
               <Label className="text-sm mb-1.5">Campaign Name *</Label>
@@ -164,29 +127,22 @@ export default function AdminFreeShipping() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-sm mb-1.5">Min Order Amount (৳)</Label>
-                <Input type="number" value={form.min_order_amount} onChange={e => setForm(f => ({ ...f, min_order_amount: Number(e.target.value) }))} className="bg-secondary" />
+                <Input type="number" value={form.min_order_value} onChange={e => setForm(f => ({ ...f, min_order_value: Number(e.target.value) }))} className="bg-secondary" />
               </div>
               <div>
-                <Label className="text-sm mb-1.5">Area</Label>
-                <Select value={form.area_type} onValueChange={v => setForm(f => ({ ...f, area_type: v }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Areas</SelectItem>
-                    <SelectItem value="inside_dhaka">ঢাকার ভিতরে</SelectItem>
-                    <SelectItem value="outside_dhaka">ঢাকার বাইরে</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label className="text-sm mb-1.5">Start Date</Label>
+                <Input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} className="bg-secondary" />
               </div>
             </div>
             <div>
-              <Label className="text-sm mb-1.5">Description (optional)</Label>
-              <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Campaign details..." className="bg-secondary" rows={2} />
+              <Label className="text-sm mb-1.5">End Date (leave blank for ongoing)</Label>
+              <Input type="date" value={form.end_date} onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))} className="bg-secondary" />
             </div>
             <div className="flex items-center gap-3">
               <Switch checked={form.is_active} onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))} />
               <Label className="text-sm">Active</Label>
             </div>
-            <Button className="w-full" onClick={save}>{editing ? "Update" : "Create"}</Button>
+            <Button className="w-full" onClick={save} disabled={saveMutation.isPending}>{editId ? "Update" : "Create"}</Button>
           </div>
         </DialogContent>
       </Dialog>

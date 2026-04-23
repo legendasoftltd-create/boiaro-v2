@@ -1,0 +1,2 @@
+id,user_id,push_enabled,email_enabled,promotional_enabled,reminder_enabled,order_enabled,support_enabled,created_at,updated_at
+01d8bc8e-a0b1-4eca-9605-34a45b33e264,a5f4dc8b-4502-4bcf-8bde-5fad86ba8111,true,true,true,true,true,true,2026-03-25 10:51:44.874874+00,2026-03-25 10:51:44.874874+00

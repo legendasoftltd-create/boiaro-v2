@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,9 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "sonner";
 import {
-  User, Link as LinkIcon, Shield, Camera, Save, Loader2,
+  User, Link as LinkIcon, Shield, Save, Loader2,
   Facebook, Instagram, Youtube, Globe, ExternalLink, Calendar,
 } from "lucide-react";
 
@@ -52,104 +52,46 @@ export default function CreatorProfilePage({
   specialtyLabel = "Specialty / Genre",
   specialtyPlaceholder = "Your area of expertise",
 }: Props) {
-  const { user, profile, updateProfile } = useAuth();
-  const { toast } = useToast();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const utils = trpc.useUtils();
   const [form, setForm] = useState<ProfileData>(emptyProfile);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [_extendedLoaded, setExtendedLoaded] = useState(false);
 
-  // Load extended profile fields from DB (beyond what AuthContext provides)
+  const { data: profileData } = trpc.profiles.me.useQuery(undefined, { enabled: !!user });
+
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("profiles")
-      .select("full_name, phone, experience, specialty, genre, facebook_url, instagram_url, youtube_url, website_url, portfolio_url")
-      .eq("user_id", user.id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setForm((prev) => ({
-            ...prev,
-            full_name: (data as any).full_name || "",
-            phone: (data as any).phone || "",
-            experience: (data as any).experience || "",
-            specialty: (data as any).specialty || "",
-            genre: (data as any).genre || "",
-            facebook_url: (data as any).facebook_url || "",
-            instagram_url: (data as any).instagram_url || "",
-            youtube_url: (data as any).youtube_url || "",
-            website_url: (data as any).website_url || "",
-            portfolio_url: (data as any).portfolio_url || "",
-          }));
-        }
-        setExtendedLoaded(true);
+    if (profileData) {
+      setForm({
+        display_name: profileData.display_name || "",
+        full_name: profileData.full_name || "",
+        phone: profileData.phone || "",
+        bio: profileData.bio || "",
+        experience: profileData.experience || "",
+        specialty: profileData.specialty || "",
+        genre: profileData.genre || "",
+        facebook_url: profileData.facebook_url || "",
+        instagram_url: profileData.instagram_url || "",
+        youtube_url: profileData.youtube_url || "",
+        website_url: profileData.website_url || "",
+        portfolio_url: profileData.portfolio_url || "",
+        avatar_url: profileData.avatar_url || "",
       });
-  }, [user]);
-
-  // Sync AuthContext profile fields
-  useEffect(() => {
-    if (profile) {
-      setForm((prev) => ({
-        ...prev,
-        display_name: profile.display_name || "",
-        bio: profile.bio || "",
-        avatar_url: profile.avatar_url || "",
-      }));
     }
-  }, [profile]);
+  }, [profileData]);
+
+  const updateMutation = trpc.profiles.update.useMutation({
+    onSuccess: () => {
+      utils.profiles.me.invalidate();
+      toast.success("Profile saved!");
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   const update = (key: keyof ProfileData, val: string) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowedTypes.includes(file.type)) {
-      toast({ title: "Invalid format", description: "Only JPG, PNG, and WebP are allowed", variant: "destructive" });
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Max 2MB", variant: "destructive" });
-      return;
-    }
-    setUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/avatar.${ext}`;
-    const { error } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
-    if (error) {
-      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
-      setUploading(false);
-      return;
-    }
-    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
-    const avatarUrl = urlData.publicUrl + "?t=" + Date.now();
-    await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("user_id", user.id);
-    update("avatar_url", avatarUrl);
-    setUploading(false);
-    toast({ title: "Photo updated!" });
-  };
-
-  const handleAvatarRemove = async () => {
-    if (!user) return;
-    setUploading(true);
-    await supabase.from("profiles").update({ avatar_url: null }).eq("user_id", user.id);
-    update("avatar_url", "");
-    setUploading(false);
-    toast({ title: "Photo removed" });
-  };
-
-  const handleSave = async () => {
-    if (!user) return;
-    setSaving(true);
-    const { avatar_url: _avatar_url, ...updates } = form;
-    await supabase.from("profiles").update(updates as any).eq("user_id", user.id);
-    // Sync AuthContext for display_name/bio
-    await updateProfile({ display_name: form.display_name, bio: form.bio });
-    setSaving(false);
-    toast({ title: "Profile saved!" });
+  const handleSave = () => {
+    const { avatar_url: _av, ...rest } = form;
+    updateMutation.mutate(rest);
   };
 
   const initials = (form.display_name || user?.email || roleLabel[0]).slice(0, 2).toUpperCase();
@@ -158,6 +100,7 @@ export default function CreatorProfilePage({
     : "";
 
   const inputClass = "h-10 rounded-xl bg-secondary/40 border-border/40";
+  const saving = updateMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -167,19 +110,11 @@ export default function CreatorProfilePage({
       <Card className="border-border/30 bg-card/60">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row items-center gap-5">
-            <div className="relative group">
+            <div className="relative">
               <Avatar className="w-24 h-24 border-2 border-primary/30">
                 <AvatarImage src={form.avatar_url || undefined} />
                 <AvatarFallback className="bg-primary/10 text-primary text-2xl font-serif">{initials}</AvatarFallback>
               </Avatar>
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-              >
-                {uploading ? <Loader2 className="w-5 h-5 text-white animate-spin" /> : <Camera className="w-5 h-5 text-white" />}
-              </button>
-              <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden" onChange={handleAvatarUpload} />
             </div>
             <div className="text-center sm:text-left">
               <h2 className="text-lg font-bold font-serif">{form.display_name || roleLabel}</h2>
@@ -192,16 +127,7 @@ export default function CreatorProfilePage({
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 mt-2 justify-center sm:justify-start">
-                <Button variant="outline" size="sm" className="text-[11px] h-7 gap-1" onClick={() => fileRef.current?.click()} disabled={uploading}>
-                  <Camera className="w-3 h-3" /> Change Photo
-                </Button>
-                {form.avatar_url && (
-                  <Button variant="ghost" size="sm" className="text-[11px] h-7 text-destructive hover:text-destructive" onClick={handleAvatarRemove} disabled={uploading}>
-                    Remove
-                  </Button>
-                )}
-              </div>
+              <p className="text-[10px] text-muted-foreground mt-2">Avatar upload available in Phase 5 (storage provider pending)</p>
             </div>
           </div>
         </CardContent>

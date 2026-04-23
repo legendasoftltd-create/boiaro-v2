@@ -1,62 +1,67 @@
-import { useState, useEffect, useCallback } from "react"
-import { supabase } from "@/integrations/supabase/client"
-import { useAuth } from "@/contexts/AuthContext"
+import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 
 interface ReadingProgressData {
-  currentPage: number
-  totalPages: number
-  percentage: number
-  lastReadAt: string | null
+  currentPage: number;
+  totalPages: number;
+  percentage: number;
+  lastReadAt: string | null;
 }
 
 export function useReadingProgress(bookId: string | undefined) {
-  const { user } = useAuth()
-  const [progress, setProgress] = useState<ReadingProgressData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { user } = useAuth();
+  const [localProgress, setLocalProgress] = useState<ReadingProgressData | null>(null);
+
+  const query = trpc.profiles.readingProgressByBook.useQuery(
+    { bookId: bookId! },
+    { enabled: !!user && !!bookId }
+  );
+
+  const updateMutation = trpc.profiles.updateReadingProgress.useMutation();
 
   useEffect(() => {
-    if (!user || !bookId) { setLoading(false); return }
-    loadProgress()
-  }, [user, bookId])
-
-  const loadProgress = async () => {
-    if (!user || !bookId) return
-    const { data } = await supabase
-      .from("reading_progress")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("book_id", bookId)
-      .single()
-
-    if (data) {
-      setProgress({
-        currentPage: data.current_page || 0,
-        totalPages: data.total_pages || 0,
-        percentage: Number(data.percentage) || 0,
-        lastReadAt: data.last_read_at,
-      })
+    const d = query.data as any;
+    if (d) {
+      setLocalProgress({
+        currentPage: d.current_page || 0,
+        totalPages: d.total_pages || 0,
+        percentage: Number(d.percentage) || 0,
+        lastReadAt: d.last_read_at || null,
+      });
     }
-    setLoading(false)
-  }
+  }, [query.data]);
 
-  const saveProgress = useCallback(async (currentPage: number, totalPages: number) => {
-    if (!user || !bookId) return
-    const percentage = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0
+  const saveProgress = useCallback(
+    async (currentPage: number, totalPages: number) => {
+      if (!user || !bookId) return;
+      const percentage = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
+      const clamped = Math.min(percentage, 100);
 
-    await supabase.from("reading_progress").upsert(
-      {
-        user_id: user.id,
-        book_id: bookId,
-        current_page: currentPage,
-        total_pages: totalPages,
-        percentage: Math.min(percentage, 100),
-        last_read_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,book_id", ignoreDuplicates: false }
-    )
+      setLocalProgress({ currentPage, totalPages, percentage: clamped, lastReadAt: new Date().toISOString() });
 
-    setProgress({ currentPage, totalPages, percentage, lastReadAt: new Date().toISOString() })
-  }, [user, bookId])
+      try {
+        await updateMutation.mutateAsync({
+          bookId,
+          currentPage,
+          totalPages,
+          percentage: clamped,
+        });
+      } catch {
+        // Silent
+      }
+    },
+    [user, bookId, updateMutation]
+  );
 
-  return { progress, loading, saveProgress, loadProgress }
+  const loadProgress = useCallback(async () => {
+    await query.refetch();
+  }, [query]);
+
+  return {
+    progress: localProgress,
+    loading: query.isLoading,
+    saveProgress,
+    loadProgress,
+  };
 }

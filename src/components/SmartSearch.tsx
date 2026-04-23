@@ -4,9 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { useNavigate } from "react-router-dom";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
+import { toMediaUrl } from "@/lib/mediaUrl";
 
 interface SearchResult {
   id: string;
@@ -25,6 +26,7 @@ export function SmartSearch({ open, onOpenChange }: { open: boolean; onOpenChang
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { trackSearch } = useActivityTracker();
@@ -34,37 +36,51 @@ export function SmartSearch({ open, onOpenChange }: { open: boolean; onOpenChang
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 100);
     } else {
+      clearTimeout(debounceRef.current);
       setQuery("");
       setResults([]);
       setSearched(false);
+      setError(null);
     }
   }, [open]);
 
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
+
+  const utils = trpc.useUtils();
+
   const doSearch = async (q: string) => {
-    if (q.trim().length < 2) { setResults([]); setSearched(false); return; }
+    if (q.trim().length < 2) {
+      setResults([]);
+      setSearched(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setSearched(true);
+    setError(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("ai-search", {
-        body: { query: q.trim() },
-      });
-
-      if (error) throw error;
-      setResults(data?.results || []);
-      trackSearch(q.trim(), data?.results?.length || 0);
-    } catch (err) {
-      console.error("Search error:", err);
-      // Fallback to basic DB search
-      const { data } = await supabase
-        .from("books")
-        .select("id, title, title_en, slug, cover_url, rating, is_free, authors(name), categories(name)")
-        .eq("submission_status", "approved")
-        .or(`title.ilike.%${q.trim()}%,title_en.ilike.%${q.trim()}%`)
-        .limit(15);
-      setResults(data || []);
+      const data = await utils.books.list.fetch({ search: q.trim(), limit: 15 });
+      const books = (data?.books ?? []) as any[];
+      const mapped: SearchResult[] = books.map((b: any) => ({
+        id: b.id,
+        title: b.title,
+        title_en: b.title_en,
+        slug: b.slug,
+        cover_url: toMediaUrl(b.cover_url),
+        rating: b.rating ? Number(b.rating) : undefined,
+        is_free: b.is_free,
+        authors: b.author ? { name: b.author.name } : null,
+        categories: b.category ? { name: b.category.name } : null,
+      }));
+      setResults(mapped);
+      trackSearch(q.trim(), mapped.length);
+    } catch {
+      setResults([]);
+      setError("Search failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleInput = (val: string) => {
@@ -88,7 +104,12 @@ export function SmartSearch({ open, onOpenChange }: { open: boolean; onOpenChang
             placeholder="Search books in Bangla or English..."
             value={query}
             onChange={(e) => handleInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && doSearch(query)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                clearTimeout(debounceRef.current);
+                doSearch(query);
+              }
+            }}
             className="border-0 shadow-none focus-visible:ring-0 text-base h-10 px-0"
           />
           {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />}
@@ -110,6 +131,11 @@ export function SmartSearch({ open, onOpenChange }: { open: boolean; onOpenChang
           {searched && !loading && results.length === 0 && (
             <div className="p-6 text-center text-muted-foreground text-sm">
               No books found for "{query}"
+            </div>
+          )}
+          {error && (
+            <div className="px-6 pb-4 text-center text-sm text-destructive">
+              {error}
             </div>
           )}
 

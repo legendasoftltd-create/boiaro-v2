@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -8,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Bell, Mail, Megaphone, ShoppingCart, HeadphonesIcon, Clock } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 interface Preferences {
   push_enabled: boolean;
@@ -30,54 +30,25 @@ const defaults: Preferences = {
 export default function NotificationSettings() {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<Preferences>(defaults);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+
+  const { data, isLoading } = trpc.notifications.preferences.useQuery(undefined, { enabled: !!user });
+  const updateMutation = trpc.notifications.updatePreferences.useMutation({
+    onSuccess: () => toast.success("সেটিংস সেভ হয়েছে"),
+    onError: () => toast.error("সেভ ব্যর্থ হয়েছে"),
+  });
 
   useEffect(() => {
-    if (!user) return;
-    supabase
-      .from("notification_preferences" as any)
-      .select("*")
-      .eq("user_id", user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          const d = data as any;
-          setPrefs({
-            push_enabled: d.push_enabled,
-            email_enabled: d.email_enabled,
-            promotional_enabled: d.promotional_enabled,
-            reminder_enabled: d.reminder_enabled,
-            order_enabled: d.order_enabled,
-            support_enabled: d.support_enabled,
-          });
-        }
-        setLoading(false);
+    if (data) {
+      setPrefs({
+        push_enabled: data.push_enabled,
+        email_enabled: data.email_enabled,
+        promotional_enabled: data.promotional_enabled,
+        reminder_enabled: data.reminder_enabled,
+        order_enabled: data.order_enabled,
+        support_enabled: data.support_enabled,
       });
-  }, [user]);
-
-  const save = async () => {
-    if (!user) return;
-    setSaving(true);
-    const { data: existing } = await supabase
-      .from("notification_preferences" as any)
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (existing) {
-      await supabase
-        .from("notification_preferences" as any)
-        .update({ ...prefs, updated_at: new Date().toISOString() })
-        .eq("user_id", user.id);
-    } else {
-      await supabase
-        .from("notification_preferences" as any)
-        .insert({ user_id: user.id, ...prefs });
     }
-    toast.success("সেটিংস সেভ হয়েছে");
-    setSaving(false);
-  };
+  }, [data]);
 
   const toggles = [
     { key: "push_enabled" as const, label: "পুশ নোটিফিকেশন", desc: "ব্রাউজার ও মোবাইল পুশ নোটিফিকেশন পান", icon: Bell },
@@ -113,7 +84,7 @@ export default function NotificationSettings() {
                 <Switch
                   checked={prefs[t.key]}
                   onCheckedChange={(v) => setPrefs({ ...prefs, [t.key]: v })}
-                  disabled={loading}
+                  disabled={isLoading}
                 />
               </div>
             ))}
@@ -121,8 +92,8 @@ export default function NotificationSettings() {
         </Card>
 
         <div className="flex justify-end mt-4">
-          <Button className="btn-gold" onClick={save} disabled={saving || loading}>
-            {saving ? "সেভ হচ্ছে..." : "সেটিংস সেভ করুন"}
+          <Button className="btn-gold" onClick={() => updateMutation.mutate(prefs)} disabled={updateMutation.isPending || isLoading}>
+            {updateMutation.isPending ? "সেভ হচ্ছে..." : "সেটিংস সেভ করুন"}
           </Button>
         </div>
       </div>

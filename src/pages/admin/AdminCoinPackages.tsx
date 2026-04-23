@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useMemo, useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,30 +23,33 @@ interface CoinPackage {
 }
 
 export default function AdminCoinPackages() {
-  const [packages, setPackages] = useState<CoinPackage[]>([]);
-  const [purchases, setPurchases] = useState<any[]>([]);
+  const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [editPkg, setEditPkg] = useState<CoinPackage | null>(null);
   const [form, setForm] = useState({ name: "", coins: "", price: "", bonus_coins: "0", sort_order: "0", is_featured: false });
-  const [stats, setStats] = useState({ totalRevenue: 0, totalPurchases: 0, totalCoins: 0 });
+  const { data: packages = [] } = trpc.admin.listCoinPackages.useQuery();
+  const { data: purchases = [] } = trpc.admin.listCoinPurchases.useQuery({ status: "completed", limit: 50 });
+  const upsertMutation = trpc.admin.updateCoinPackage.useMutation({
+    onSuccess: async () => {
+      await utils.admin.listCoinPackages.invalidate();
+      toast.success(editPkg ? "Package updated" : "Package created");
+      setOpen(false);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+  const deleteMutation = trpc.admin.deleteCoinPackage.useMutation({
+    onSuccess: async () => {
+      await utils.admin.listCoinPackages.invalidate();
+      toast.success("Package deleted");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
-  const load = async () => {
-    const [pkgRes, purchaseRes] = await Promise.all([
-      supabase.from("coin_packages").select("*").order("sort_order"),
-      supabase.from("coin_purchases").select("*").eq("payment_status", "completed").order("created_at", { ascending: false }).limit(50),
-    ]);
-    // Admin can see all packages (active + inactive) via admin RLS policy
-    setPackages((pkgRes.data as CoinPackage[]) || []);
-    const completedPurchases = (purchaseRes.data as any[]) || [];
-    setPurchases(completedPurchases);
-    setStats({
-      totalRevenue: completedPurchases.reduce((s, p) => s + Number(p.price || 0), 0),
-      totalPurchases: completedPurchases.length,
-      totalCoins: completedPurchases.reduce((s, p) => s + (p.coins_amount || 0), 0),
-    });
-  };
-
-  useEffect(() => { load(); }, []);
+  const stats = useMemo(() => ({
+    totalRevenue: (purchases as any[]).reduce((s, p) => s + Number(p.price || 0), 0),
+    totalPurchases: (purchases as any[]).length,
+    totalCoins: (purchases as any[]).reduce((s, p) => s + (p.coins_amount || 0), 0),
+  }), [purchases]);
 
   const openNew = () => {
     setEditPkg(null);
@@ -68,36 +71,38 @@ export default function AdminCoinPackages() {
   };
 
   const save = async () => {
-    const payload = {
+    if (!form.name || !form.coins || !form.price) {
+      toast.error("Name, coins and price are required");
+      return;
+    }
+    upsertMutation.mutate({
+      id: editPkg?.id,
       name: form.name,
       coins: Number(form.coins),
       price: Number(form.price),
       bonus_coins: Number(form.bonus_coins),
       sort_order: Number(form.sort_order),
       is_featured: form.is_featured,
-    };
-
-    if (editPkg) {
-      await supabase.from("coin_packages").update(payload).eq("id", editPkg.id);
-      toast.success("Package updated");
-    } else {
-      await supabase.from("coin_packages").insert(payload);
-      toast.success("Package created");
-    }
-    setOpen(false);
-    load();
+      is_active: editPkg?.is_active ?? true,
+    });
   };
 
   const toggleActive = async (pkg: CoinPackage) => {
-    await supabase.from("coin_packages").update({ is_active: !pkg.is_active }).eq("id", pkg.id);
-    load();
+    upsertMutation.mutate({
+      id: pkg.id,
+      name: pkg.name,
+      coins: pkg.coins,
+      price: pkg.price,
+      bonus_coins: pkg.bonus_coins,
+      sort_order: pkg.sort_order,
+      is_featured: pkg.is_featured,
+      is_active: !pkg.is_active,
+    });
   };
 
   const deletePkg = async (id: string) => {
     if (!confirm("Delete this package?")) return;
-    await supabase.from("coin_packages").delete().eq("id", id);
-    toast.success("Package deleted");
-    load();
+    deleteMutation.mutate({ id });
   };
 
   return (
@@ -151,7 +156,7 @@ export default function AdminCoinPackages() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {packages.map((pkg) => (
+              {(packages as CoinPackage[]).map((pkg) => (
                 <TableRow key={pkg.id}>
                   <TableCell className="font-medium">
                     {pkg.name}
@@ -201,7 +206,7 @@ export default function AdminCoinPackages() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {purchases.slice(0, 20).map((p) => (
+                {(purchases as any[]).slice(0, 20).map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="text-xs">{new Date(p.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>{p.coins_amount}</TableCell>
@@ -254,7 +259,9 @@ export default function AdminCoinPackages() {
               <Switch checked={form.is_featured} onCheckedChange={(v) => setForm({ ...form, is_featured: v })} />
               <Label>Featured Package</Label>
             </div>
-            <Button onClick={save} className="gap-2"><Save className="w-4 h-4" />Save</Button>
+            <Button onClick={save} className="gap-2" disabled={upsertMutation.isPending}>
+              <Save className="w-4 h-4" />Save
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

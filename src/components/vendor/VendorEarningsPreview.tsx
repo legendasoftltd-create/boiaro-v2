@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -13,55 +11,15 @@ interface VendorEarningsPreviewProps {
   role: "writer" | "publisher" | "narrator";
 }
 
-interface RevenueRule {
-  writer_percentage: number;
-  publisher_percentage: number;
-  narrator_percentage: number;
-  platform_percentage: number;
-  fulfillment_cost_percentage: number;
-}
-
 export function VendorEarningsPreview({ bookId, format, basePrice, role }: VendorEarningsPreviewProps) {
-  const [rule, setRule] = useState<RevenueRule | null>(null);
-  const [adminDiscount, setAdminDiscount] = useState<{ original_price: number | null; discount: number | null }>({ original_price: null, discount: null });
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading } = trpc.profiles.revenuePreview.useQuery(
+    { bookId, format },
+    { enabled: !!bookId && !!format }
+  );
 
-  useEffect(() => {
-    if (!bookId || !format) return;
-    const load = async () => {
-      setLoading(true);
+  if (isLoading || !data?.rule || basePrice <= 0) return null;
 
-      // Check for book-specific override first, then fallback to defaults
-      const [overrideRes, defaultRes, formatRes] = await Promise.all([
-        supabase.from("format_revenue_splits").select("*").eq("book_id", bookId).eq("format", format).maybeSingle(),
-        supabase.from("default_revenue_rules").select("*").eq("format", format).maybeSingle(),
-        supabase.from("book_formats").select("original_price, discount").eq("book_id", bookId).eq("format", format).maybeSingle(),
-      ]);
-
-      const ruleData = overrideRes.data || defaultRes.data;
-      if (ruleData) {
-        setRule({
-          writer_percentage: ruleData.writer_percentage,
-          publisher_percentage: ruleData.publisher_percentage,
-          narrator_percentage: ruleData.narrator_percentage,
-          platform_percentage: ruleData.platform_percentage,
-          fulfillment_cost_percentage: ruleData.fulfillment_cost_percentage,
-        });
-      }
-
-      if (formatRes.data) {
-        setAdminDiscount({
-          original_price: formatRes.data.original_price ? Number(formatRes.data.original_price) : null,
-          discount: formatRes.data.discount ? Number(formatRes.data.discount) : null,
-        });
-      }
-
-      setLoading(false);
-    };
-    load();
-  }, [bookId, format]);
-
-  if (loading || !rule || basePrice <= 0) return null;
+  const { rule, original_price, discount } = data;
 
   const rolePercentageMap: Record<string, number> = {
     writer: rule.writer_percentage,
@@ -70,17 +28,15 @@ export function VendorEarningsPreview({ bookId, format, basePrice, role }: Vendo
   };
 
   const mySharePct = rolePercentageMap[role] || 0;
-  
-  // Calculate final price considering admin-applied discount
+
   let finalPrice = basePrice;
-  if (adminDiscount.discount && adminDiscount.discount > 0) {
-    finalPrice = basePrice * (1 - adminDiscount.discount / 100);
+  if (discount && discount > 0) {
+    finalPrice = basePrice * (1 - discount / 100);
   }
 
   const estimatedEarning = finalPrice * (mySharePct / 100);
   const platformPct = rule.platform_percentage;
   const fulfillmentPct = rule.fulfillment_cost_percentage;
-
   const roleLabel = role === "writer" ? "Author" : role === "publisher" ? "Publisher" : "Narrator";
 
   return (
@@ -98,10 +54,10 @@ export function VendorEarningsPreview({ bookId, format, basePrice, role }: Vendo
           <div className="text-muted-foreground">Original Price</div>
           <div className="text-right font-medium">৳{basePrice.toFixed(0)}</div>
 
-          {adminDiscount.discount && adminDiscount.discount > 0 ? (
+          {discount && discount > 0 ? (
             <>
               <div className="text-muted-foreground">Admin Discount</div>
-              <div className="text-right text-destructive">-{adminDiscount.discount}%</div>
+              <div className="text-right text-destructive">-{discount}%</div>
             </>
           ) : null}
 

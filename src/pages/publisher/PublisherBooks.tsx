@@ -1,6 +1,5 @@
-import { useAuth } from "@/contexts/AuthContext";
-import { useEffect, useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,230 +8,92 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Upload, Loader2, Pencil, Image, Package, Link2, Lock } from "lucide-react";
+import { Plus, Loader2, Pencil, Image, Package, Link2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { AttachToExistingBook } from "@/components/book-submission/AttachToExistingBook";
 import { VendorEarningsPreview } from "@/components/vendor/VendorEarningsPreview";
 import { useContentEditRequest } from "@/hooks/useContentEditRequest";
 
+const emptyForm = () => ({
+  title: "", title_en: "", description: "", category_id: "", cover_url: "",
+  language: "bn", tags: "", price: "",
+  stock_count: "", binding: "", pages: "", weight: "", dimensions: "", delivery_days: "3",
+});
+
 export default function PublisherBooks() {
-  const { user } = useAuth();
   const { submitEditRequest } = useContentEditRequest();
-  const [books, setBooks] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [editBook, setEditBook] = useState<any>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadingCover, setUploadingCover] = useState(false);
-  const coverRef = useRef<HTMLInputElement>(null);
-
-  // Attach flow
   const [mode, setMode] = useState<"choose" | "create" | "attach" | "attach-form">("choose");
   const [attachedBook, setAttachedBook] = useState<{ id: string; title: string; cover_url: string | null } | null>(null);
+  const [form, setForm] = useState(emptyForm());
 
-  const [form, setForm] = useState({
-    title: "", title_en: "", description: "", category_id: "", cover_url: "",
-    language: "bn", tags: "", price: "",
-    stock_count: "", binding: "", pages: "", weight: "", dimensions: "", delivery_days: "3",
+  const { data: books = [], isLoading } = trpc.books.myCreatorBooks.useQuery({ role: "publisher" });
+  const { data: categories = [] } = trpc.books.categories.useQuery();
+
+  const submitMutation = trpc.books.submitBook.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("Book submitted for review"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const updateMutation = trpc.books.updateBook.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("Updated"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const attachMutation = trpc.books.attachBookFormat.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); setOpen(false); toast.success("Hardcopy format attached and submitted for review"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const submitForReviewMutation = trpc.books.submitBookForReview.useMutation({
+    onSuccess: () => { utils.books.myCreatorBooks.invalidate(); toast.success("Submitted for review"); },
+    onError: (err) => toast.error(err.message),
   });
 
-  const load = async () => {
-    if (!user) return;
-    const { data } = await supabase
-      .from("books")
-      .select("*, categories(name, name_bn), book_formats(id, format, price, stock_count, binding, in_stock, submitted_by)")
-      .eq("submitted_by", user.id)
-      .order("created_at", { ascending: false });
-
-    const { data: contribData } = await supabase
-      .from("book_contributors")
-      .select("book_id")
-      .eq("user_id", user.id)
-      .eq("role", "publisher");
-
-    const contribBookIds = (contribData || []).map(c => c.book_id);
-    const ownBookIds = (data || []).map(b => b.id);
-    const extraIds = contribBookIds.filter(id => !ownBookIds.includes(id));
-
-    let allBooks = data || [];
-    if (extraIds.length > 0) {
-      const { data: extraBooks } = await supabase
-        .from("books")
-        .select("*, categories(name, name_bn), book_formats(id, format, price, stock_count, binding, in_stock, submitted_by)")
-        .in("id", extraIds);
-      allBooks = [...allBooks, ...(extraBooks || [])];
-    }
-
-    setBooks(allBooks);
-    const { data: cats } = await supabase.from("categories").select("id, name, name_bn");
-    setCategories(cats || []);
-  };
-
-  useEffect(() => { load(); }, [user]);
-
-  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingCover(true);
-    const ext = file.name.split(".").pop();
-    const path = `covers/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("book-covers").upload(path, file);
-    if (error) { toast.error(error.message); setUploadingCover(false); return; }
-    const { data: { publicUrl } } = supabase.storage.from("book-covers").getPublicUrl(path);
-    setForm(f => ({ ...f, cover_url: publicUrl }));
-    setUploadingCover(false);
-  };
+  const isPending = submitMutation.isPending || updateMutation.isPending || attachMutation.isPending;
 
   const openNew = () => {
-    setEditBook(null);
-    setAttachedBook(null);
-    setMode("choose");
-    setForm({ title: "", title_en: "", description: "", category_id: "", cover_url: "", language: "bn", tags: "", price: "", stock_count: "", binding: "", pages: "", weight: "", dimensions: "", delivery_days: "3" });
-    setOpen(true);
+    setEditBook(null); setAttachedBook(null); setMode("choose"); setForm(emptyForm()); setOpen(true);
   };
-
   const openEdit = (book: any) => {
-    setEditBook(book);
-    setAttachedBook(null);
-    setMode("create");
-    const fmt = (book.book_formats || []).find((f: any) => f.format === "hardcopy");
-    setForm({
-      title: book.title || "", title_en: book.title_en || "",
-      description: book.description || "", category_id: book.category_id || "",
-      cover_url: book.cover_url || "", language: book.language || "bn",
-      tags: (book.tags || []).join(", "),
-      price: fmt?.price?.toString() || "",
-      stock_count: fmt?.stock_count?.toString() || "", binding: fmt?.binding || "",
-      pages: "", weight: "", dimensions: "", delivery_days: "3",
-    });
+    setEditBook(book); setAttachedBook(null); setMode("create");
+    const fmt = (book.formats || []).find((f: any) => f.format === "hardcopy");
+    setForm({ ...emptyForm(), title: book.title || "", description: book.description || "", tags: (book.tags || []).join(", "), price: fmt?.price?.toString() || "", stock_count: fmt?.stock_count?.toString() || "", binding: fmt?.binding || "" });
     setOpen(true);
-  };
-
-  const handleAttachSelect = (book: { id: string; title: string; cover_url: string | null }) => {
-    setAttachedBook(book);
-    setMode("attach-form");
-    setForm(f => ({ ...f, price: "", stock_count: "", binding: "", pages: "", weight: "", dimensions: "", delivery_days: "3" }));
-  };
-
-  const saveAttachFormat = async () => {
-    if (!user || !attachedBook) return;
-    setUploading(true);
-
-    const formatPayload = {
-      book_id: attachedBook.id,
-      format: "hardcopy" as const,
-      price: form.price ? Number(form.price) : 0,
-      stock_count: form.stock_count ? Number(form.stock_count) : 0,
-      binding: (form.binding || null) as "paperback" | "hardcover" | null,
-      pages: form.pages ? Number(form.pages) : null,
-      weight: form.weight || null,
-      dimensions: form.dimensions || null,
-      delivery_days: form.delivery_days ? Number(form.delivery_days) : 3,
-      in_stock: form.stock_count ? Number(form.stock_count) > 0 : true,
-      submission_status: "pending",
-      submitted_by: user.id,
-      payout_model: "inventory_resale",
-    };
-
-    const { error: fmtError } = await supabase.from("book_formats").insert(formatPayload);
-    if (fmtError) {
-      if (fmtError.message.includes("duplicate") || fmtError.message.includes("unique")) {
-        toast.error("This book already has a hardcopy format");
-      } else {
-        toast.error(fmtError.message);
-      }
-      setUploading(false);
-      return;
-    }
-
-    await supabase.from("book_contributors").insert({
-      book_id: attachedBook.id, user_id: user.id, role: "publisher", format: "hardcopy",
-    });
-
-    setUploading(false);
-    setOpen(false);
-    toast.success("Hardcopy format attached and submitted for review");
-    load();
   };
 
   const save = async (asDraft = false) => {
-    if (!user || !form.title) { toast.error("Title is required"); return; }
-    setUploading(true);
-    const slug = form.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0980-\u09FF-]/g, "");
-
-    const bookPayload = {
-      title: form.title, title_en: form.title_en || null, slug,
-      description: form.description || null, category_id: form.category_id || null,
-      cover_url: form.cover_url || null, language: form.language,
-      submission_status: asDraft ? "draft" : "pending", submitted_by: user.id,
-      tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : null,
-    };
-
-    let bookId: string;
+    if (!form.title) { toast.error("Title is required"); return; }
     if (editBook) {
-      // If content is approved/pending → submit edit request
-      if (editBook.submission_status && editBook.submission_status !== "draft") {
-        const hardcopyFmt = (editBook.book_formats || []).find((f: any) => f.format === "hardcopy");
-        const success = await submitEditRequest({
-          contentType: "book",
-          contentId: editBook.id,
-          submittedBy: user.id,
-          proposedChanges: {
-            book: bookPayload,
-            format: {
-              price: form.price ? Number(form.price) : 0,
-              stock_count: form.stock_count ? Number(form.stock_count) : 0,
-              binding: form.binding || null,
-              pages: form.pages ? Number(form.pages) : null,
-              weight: form.weight || null, dimensions: form.dimensions || null,
-              delivery_days: form.delivery_days ? Number(form.delivery_days) : 3,
-              format_id: hardcopyFmt?.id,
-            },
-          },
-        });
-        setUploading(false);
-        if (success) setOpen(false);
-        return;
+      if (editBook.submission_status !== "draft") {
+        const fmt = (editBook.formats || []).find((f: any) => f.format === "hardcopy");
+        await submitEditRequest({ contentType: "book", contentId: editBook.id, submittedBy: "", proposedChanges: { book: form, format: { price: Number(form.price), stock_count: Number(form.stock_count), binding: form.binding, format_id: fmt?.id } } });
+        setOpen(false); return;
       }
-      const { error } = await supabase.from("books").update(bookPayload).eq("id", editBook.id);
-      if (error) { toast.error(error.message); setUploading(false); return; }
-      bookId = editBook.id;
+      updateMutation.mutate({
+        bookId: editBook.id, formatId: (editBook.formats || []).find((f: any) => f.format === "hardcopy")?.id,
+        title: form.title, titleEn: form.title_en || undefined, description: form.description || undefined,
+        categoryId: form.category_id || undefined, coverUrl: form.cover_url || undefined,
+        language: form.language, tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [], asDraft,
+        format: "hardcopy", price: form.price ? Number(form.price) : 0,
+        stockCount: form.stock_count ? Number(form.stock_count) : undefined,
+        binding: (form.binding || undefined) as "paperback" | "hardcover" | undefined,
+        pages: form.pages ? Number(form.pages) : undefined,
+        weight: form.weight || undefined, dimensions: form.dimensions || undefined,
+        deliveryDays: form.delivery_days ? Number(form.delivery_days) : 3,
+      });
     } else {
-      const { data, error } = await supabase.from("books").insert(bookPayload).select("id").single();
-      if (error) { toast.error(error.message); setUploading(false); return; }
-      bookId = data.id;
-      await supabase.from("book_contributors").insert({ book_id: bookId, user_id: user.id, role: "publisher", format: "hardcopy" });
+      submitMutation.mutate({
+        title: form.title, titleEn: form.title_en || undefined, description: form.description || undefined,
+        categoryId: form.category_id || undefined, coverUrl: form.cover_url || undefined,
+        language: form.language, tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [], asDraft,
+        format: "hardcopy", role: "publisher", price: form.price ? Number(form.price) : 0,
+        stockCount: form.stock_count ? Number(form.stock_count) : undefined,
+        binding: (form.binding || undefined) as "paperback" | "hardcover" | undefined,
+        pages: form.pages ? Number(form.pages) : undefined,
+        weight: form.weight || undefined, dimensions: form.dimensions || undefined,
+        deliveryDays: form.delivery_days ? Number(form.delivery_days) : 3,
+      });
     }
-
-    const existingFmt = editBook?.book_formats?.find((f: any) => f.format === "hardcopy");
-    const formatPayload = {
-      book_id: bookId, format: "hardcopy" as const,
-      price: form.price ? Number(form.price) : 0,
-      stock_count: form.stock_count ? Number(form.stock_count) : 0,
-      binding: (form.binding || null) as "paperback" | "hardcover" | null,
-      pages: form.pages ? Number(form.pages) : null,
-      weight: form.weight || null, dimensions: form.dimensions || null,
-      delivery_days: form.delivery_days ? Number(form.delivery_days) : 3,
-      in_stock: (form.stock_count ? Number(form.stock_count) > 0 : true),
-      payout_model: "inventory_resale",
-    };
-
-    if (existingFmt) {
-      await supabase.from("book_formats").update(formatPayload).eq("id", existingFmt.id);
-    } else {
-      await supabase.from("book_formats").insert(formatPayload);
-    }
-
-    setUploading(false);
-    setOpen(false);
-    toast.success(asDraft ? "Saved as draft" : editBook ? "Updated" : "Book submitted for review");
-    load();
-  };
-
-  const submitForReview = async (book: any) => {
-    await supabase.from("books").update({ submission_status: "pending" }).eq("id", book.id);
-    toast.success("Submitted for review");
-    load();
   };
 
   const statusBadge = (status: string) => {
@@ -298,8 +159,11 @@ export default function PublisherBooks() {
       {attachedBook && form.price && Number(form.price) > 0 && (
         <VendorEarningsPreview bookId={attachedBook.id} format="hardcopy" basePrice={Number(form.price)} role="publisher" />
       )}
-      <Button className="w-full" onClick={saveAttachFormat} disabled={uploading}>
-        {uploading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Attaching...</> : "Attach & Submit for Review"}
+      <Button className="w-full" onClick={() => {
+        if (!attachedBook) return;
+        attachMutation.mutate({ bookId: attachedBook.id, format: "hardcopy", role: "publisher", price: form.price ? Number(form.price) : 0, stockCount: form.stock_count ? Number(form.stock_count) : undefined, binding: (form.binding || undefined) as "paperback" | "hardcover" | undefined, pages: form.pages ? Number(form.pages) : undefined, weight: form.weight || undefined, dimensions: form.dimensions || undefined, deliveryDays: form.delivery_days ? Number(form.delivery_days) : 3 });
+      }} disabled={isPending}>
+        {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Attaching...</> : "Attach & Submit for Review"}
       </Button>
     </div>
   );
@@ -309,15 +173,7 @@ export default function PublisherBooks() {
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
           <Label>Cover Image</Label>
-          <div className="flex items-center gap-4 mt-1.5">
-            {form.cover_url && <img src={form.cover_url} alt="" className="w-16 h-24 object-cover rounded border" />}
-            <div>
-              <input ref={coverRef} type="file" accept="image/*" className="hidden" onChange={handleCoverUpload} />
-              <Button type="button" variant="outline" size="sm" onClick={() => coverRef.current?.click()} disabled={uploadingCover}>
-                {uploadingCover ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Uploading...</> : <><Upload className="h-3 w-3 mr-1.5" />Upload Cover</>}
-              </Button>
-            </div>
-          </div>
+          <p className="text-xs text-muted-foreground mt-1">Cover upload available in Phase 5 (storage provider pending)</p>
         </div>
         <div className="col-span-2"><Label>Title *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
         <div><Label>Title (English)</Label><Input value={form.title_en} onChange={e => setForm(f => ({ ...f, title_en: e.target.value }))} /></div>
@@ -325,7 +181,7 @@ export default function PublisherBooks() {
           <Label>Category</Label>
           <Select value={form.category_id} onValueChange={v => setForm(f => ({ ...f, category_id: v }))}>
             <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-            <SelectContent>{categories.map(c => <SelectItem key={c.id} value={c.id}>{c.name_bn || c.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{(categories as any[]).map((c: any) => <SelectItem key={c.id} value={c.id}>{c.name_bn || c.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         <div className="col-span-2"><Label>Description</Label><Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={3} /></div>
@@ -350,11 +206,11 @@ export default function PublisherBooks() {
         <VendorEarningsPreview bookId={editBook.id} format="hardcopy" basePrice={Number(form.price)} role="publisher" />
       )}
       <div className="flex gap-3 mt-4">
-        <Button variant="outline" className="flex-1" onClick={() => save(true)} disabled={uploading}>
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Draft"}
+        <Button variant="outline" className="flex-1" onClick={() => save(true)} disabled={isPending}>
+          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Draft"}
         </Button>
-        <Button className="flex-1" onClick={() => save(false)} disabled={uploading}>
-          {uploading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : editBook ? "Update & Submit" : "Submit for Review"}
+        <Button className="flex-1" onClick={() => save(false)} disabled={isPending}>
+          {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : editBook ? "Update & Submit" : "Submit for Review"}
         </Button>
       </div>
     </>
@@ -367,10 +223,12 @@ export default function PublisherBooks() {
         <Button onClick={openNew} className="gap-2"><Plus className="h-4 w-4" />Submit Hardcopy</Button>
       </div>
 
-      {books.length > 0 ? (
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : (books as any[]).length > 0 ? (
         <div className="grid gap-4">
-          {books.map(book => {
-            const hc = (book.book_formats || []).find((f: any) => f.format === "hardcopy");
+          {(books as any[]).map((book: any) => {
+            const hc = (book.formats || []).find((f: any) => f.format === "hardcopy");
             return (
               <Card key={book.id} className="border-border/30 bg-card/60">
                 <CardContent className="p-4 flex gap-4">
@@ -386,7 +244,7 @@ export default function PublisherBooks() {
                       <h3 className="font-semibold truncate">{book.title}</h3>
                       {statusBadge(book.submission_status || "pending")}
                     </div>
-                    <p className="text-xs text-muted-foreground">{book.categories?.name_bn || book.categories?.name || "No category"}</p>
+                    <p className="text-xs text-muted-foreground">{book.category?.name_bn || book.category?.name || "No category"}</p>
                     {hc && (
                       <div className="flex gap-3 mt-2 text-xs text-muted-foreground">
                         <span>৳{hc.price}</span>
@@ -402,8 +260,8 @@ export default function PublisherBooks() {
                       </Button>
                     )}
                     {book.submission_status === "draft" && (
-                      <Button size="sm" onClick={() => submitForReview(book)} className="gap-1 text-xs h-8 bg-primary">
-                        <Upload className="h-3 w-3" />Submit
+                      <Button size="sm" onClick={() => submitForReviewMutation.mutate({ bookId: book.id })} disabled={submitForReviewMutation.isPending} className="gap-1 text-xs h-8 bg-primary">
+                        Submit
                       </Button>
                     )}
                     {book.submission_status && book.submission_status !== "draft" && (
@@ -436,11 +294,11 @@ export default function PublisherBooks() {
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editBook ? "Edit Book" : mode === "attach" ? "Attach to Existing Book" : mode === "attach-form" ? "Attach Hardcopy Format" : mode === "create" ? "Submit Hardcopy" : "Submit Hardcopy"}
+              {editBook ? "Edit Book" : mode === "attach" ? "Attach to Existing Book" : mode === "attach-form" ? "Attach Hardcopy Format" : "Submit Hardcopy"}
             </DialogTitle>
           </DialogHeader>
           {mode === "choose" && !editBook && renderChooseMode()}
-          {mode === "attach" && <AttachToExistingBook format="hardcopy" onSelect={handleAttachSelect} onCancel={() => setMode("choose")} />}
+          {mode === "attach" && <AttachToExistingBook format="hardcopy" onSelect={(b) => { setAttachedBook(b); setMode("attach-form"); }} onCancel={() => setMode("choose")} />}
           {mode === "attach-form" && renderAttachForm()}
           {mode === "create" && renderCreateForm()}
         </DialogContent>
