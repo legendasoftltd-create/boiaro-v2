@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Newspaper, Calendar } from "lucide-react"
 import { useRef } from "react"
 import { format } from "date-fns"
+import { toMediaUrl } from "@/lib/mediaUrl"
 
 export function BlogSection() {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -61,7 +62,7 @@ export function BlogSection() {
               {post.cover_image && (
                 <div className="aspect-[16/9] overflow-hidden">
                   <img
-                    src={post.cover_image}
+                    src={toMediaUrl(post.cover_image)}
                     alt={post.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />

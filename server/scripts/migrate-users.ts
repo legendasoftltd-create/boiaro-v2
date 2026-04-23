@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../src/generated/prisma/index.js";
+import { AppRole, PrismaClient } from "../src/generated/prisma/index.js";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -19,6 +19,7 @@ interface CsvRow {
   lastname?: string;
   username?: string;
   password?: string;
+  country_code?: string;
   provider?: string;
   providerId?: string;
   phone?: string;
@@ -32,7 +33,7 @@ interface CsvRow {
 interface UserRecord {
   user: {
     email: string;
-    password_hash: string | null;
+    password_hash: string;
     email_verified: boolean;
     created_at: Date;
     updated_at: Date;
@@ -53,6 +54,18 @@ const SOCIAL_PASSWORD_HASH = await bcrypt.hash(
   `SOCIAL_NO_PASSWORD_${Date.now()}`,
   12
 );
+
+function toBoolean(value?: string): boolean {
+  const normalized = (value || "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+function normalizePhone(countryCode?: string, phone?: string): string | null {
+  const cc = (countryCode || "").trim();
+  const p = (phone || "").trim();
+  if (!cc && !p) return null;
+  return `${cc}${p}`.replace(/\s+/g, "");
+}
 
 async function migrateUsers() {
   const users: UserRecord[] = [];
@@ -95,15 +108,15 @@ async function migrateUsers() {
         else if (lastName) fullName = lastName;
 
         const passwordHash =
-          row.password && row.password !== ""
-            ? row.password
+          row.password && row.password.trim() !== ""
+            ? row.password.trim()
             : SOCIAL_PASSWORD_HASH;
 
         users.push({
           user: {
             email,
             password_hash: passwordHash,
-            email_verified: row.is_verified === "1",
+            email_verified: toBoolean(row.is_verified),
             created_at: row.createdAt ? new Date(row.createdAt) : new Date(),
             updated_at: row.updatedAt ? new Date(row.updatedAt) : new Date(),
           },
@@ -113,9 +126,9 @@ async function migrateUsers() {
               row.username && row.username.trim() !== ""
                 ? row.username.trim()
                 : null,
-            phone: row.phone || null,
+            phone: normalizePhone(row.country_code, row.phone),
             avatar_url: row.image && row.image !== "" ? row.image : null,
-            is_active: row.active === "true",
+            is_active: toBoolean(row.active),
             created_at: row.createdAt ? new Date(row.createdAt) : new Date(),
             updated_at: row.updatedAt ? new Date(row.updatedAt) : new Date(),
           },
@@ -142,6 +155,7 @@ async function migrateUsers() {
   }
 
   let inserted = 0;
+  let updated = 0;
   let errors = 0;
   const errorDetails: { email: string; error: string }[] = [];
 
@@ -155,7 +169,40 @@ async function migrateUsers() {
           const existing = await tx.user.findUnique({
             where: { email: user.email },
           });
-          if (existing) return;
+          if (existing) {
+            await tx.user.update({
+              where: { id: existing.id },
+              data: {
+                password_hash: user.password_hash,
+                email_verified: user.email_verified,
+              },
+            });
+
+            await tx.profile.upsert({
+              where: { user_id: existing.id },
+              update: {
+                full_name: profile.full_name,
+                display_name: profile.display_name,
+                phone: profile.phone,
+                avatar_url: profile.avatar_url,
+                is_active: profile.is_active,
+              },
+              create: { user_id: existing.id, ...profile },
+            });
+
+            await tx.userRole.upsert({
+              where: {
+                user_id_role: {
+                  user_id: existing.id,
+                  role: AppRole.user,
+                },
+              },
+              update: {},
+              create: { user_id: existing.id, role: AppRole.user },
+            });
+            updated++;
+            return;
+          }
 
           const newUser = await tx.user.create({ data: user });
 
@@ -164,12 +211,14 @@ async function migrateUsers() {
           });
 
           await tx.userRole.create({
-            data: { user_id: newUser.id, role: "user" },
+            data: { user_id: newUser.id, role: AppRole.user },
           });
         });
 
         inserted++;
-        if (inserted % 100 === 0) console.log(`Migrated ${inserted} users...`);
+        if ((inserted + updated) % 100 === 0) {
+          console.log(`Migrated ${inserted + updated} users...`);
+        }
       } catch (error: unknown) {
         errors++;
         const message =
@@ -183,7 +232,8 @@ async function migrateUsers() {
   console.log(`\n${"=".repeat(50)}`);
   console.log(`MIGRATION SUMMARY`);
   console.log(`${"=".repeat(50)}`);
-  console.log(`Successfully migrated : ${inserted} users`);
+  console.log(`Inserted             : ${inserted} users`);
+  console.log(`Updated              : ${updated} users`);
   console.log(`Failed               : ${errors} users`);
 
   const shown = errorDetails.slice(0, 10);

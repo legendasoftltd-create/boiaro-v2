@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import type { MasterBook, Author, Publisher, Category } from "@/lib/types";
+import { toMediaUrl } from "@/lib/mediaUrl";
 
 function trpcBookToMasterBook(book: any): MasterBook {
   const author: Author = book.author
@@ -8,7 +9,7 @@ function trpcBookToMasterBook(book: any): MasterBook {
         id: book.author.id,
         name: book.author.name,
         nameEn: book.author.name_en || "",
-        avatar: book.author.avatar_url || "",
+        avatar: toMediaUrl(book.author.avatar_url) || "",
         bio: book.author.bio || "",
         genre: book.author.genre || "",
         booksCount: 0,
@@ -22,7 +23,7 @@ function trpcBookToMasterBook(book: any): MasterBook {
         id: book.publisher.id,
         name: book.publisher.name,
         nameEn: book.publisher.name_en || "",
-        logo: book.publisher.logo_url || "",
+        logo: toMediaUrl(book.publisher.logo_url) || "",
         description: book.publisher.description || "",
         booksCount: 0,
         isVerified: book.publisher.is_verified || false,
@@ -34,7 +35,7 @@ function trpcBookToMasterBook(book: any): MasterBook {
         id: book.category.id,
         name: book.category.name,
         nameBn: book.category.name_bn || book.category.name,
-        icon: book.category.icon || "BookOpen",
+        icon: toMediaUrl(book.category.icon) || "BookOpen",
         count: "0",
         color: book.category.color || "primary",
       }
@@ -93,7 +94,7 @@ function trpcBookToMasterBook(book: any): MasterBook {
     author,
     publisher,
     category,
-    cover: book.cover_url || "",
+    cover: toMediaUrl(book.cover_url) || "",
     description: book.description || "",
     descriptionBn: book.description_bn || book.description || "",
     rating: Number(book.rating) || 0,

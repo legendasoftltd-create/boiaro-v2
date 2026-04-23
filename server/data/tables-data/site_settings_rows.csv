@@ -1,0 +1,44 @@
+id,setting_key,setting_value,setting_type,category,label,sort_order,is_enabled,created_at,updated_at
+02b72045-c88d-47f9-aba2-9067bf541e7c,bottom_tagline,Built for readers. Powered by passion.,text,copyright,Bottom Tagline,2,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:33.223+00
+04cf631e-119f-49ab-bbef-bb90da25c00b,footer_section_contact,true,boolean,footer,Show Contact Section,6,true,2026-03-26 17:55:13.150022+00,2026-03-30 14:13:37.543+00
+07044ac5-586a-4829-a948-80a5ccf9b75b,logo_mobile_url,https://kxpqejmjfnzhqcefyued.supabase.co/storage/v1/object/public/avatars/site/logo_mobile_url-1774880016391.png,image,brand,Mobile Logo,5,true,2026-03-26 17:55:13.150022+00,2026-03-30 14:13:36.839+00
+0ed3ed87-8502-4dd3-88cf-399ce6c73afc,newsletter_enabled,false,boolean,footer,Show Newsletter,3,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:34.397+00
+24a2cafb-6606-4370-b6f5-7a49ae7214e0,copyright_text,© 2026 BoiAro. All rights reserved.,text,copyright,Copyright Text,1,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:29.803+00
+25cfd6fb-2498-456b-b9bd-663bd1ffebc2,footer_section_support,true,boolean,footer,Show Support Section,5,true,2026-03-26 17:55:13.150022+00,2026-03-30 14:13:36.605+00
+34019aad-806b-4a3a-a0c6-8031aa008ab5,policy_link_refund_label,Return and Refund Policy,text,policy_links,Return & Refund - Label,10,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:42.638+00
+3fc974e4-7047-413b-af0d-05d57a9bc33f,logo_footer_url,,image,brand,Footer Logo,7,true,2026-03-26 17:55:13.150022+00,2026-03-30 14:13:37.783+00
+486edf2d-4bb7-4467-9bc3-97136eb10d55,contact_address,"Dhaka, Bangladesh",text,contact,Address,3,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:34.178+00
+4a0ddff4-3e36-484a-99ae-ebc38d326c7f,footer_section_quicklinks,true,boolean,footer,Show Quick Links,4,true,2026-03-26 17:55:13.150022+00,2026-03-30 14:13:36.048+00
+4aea0469-13c7-41d6-bfdc-fd52affc5696,policy_link_delete_account_active,true,boolean,policy_links,Delete Account - Active,15,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:43.789+00
+4f6ee204-8a6f-43a6-a98d-49f5d1a844f1,policy_link_refund_url,/page/return-and-refund-policy,text,policy_links,Return & Refund - URL,11,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:42.867+00
+50245f30-e822-42f2-bc2e-4578745f3926,social_facebook,https://facebook.com/boiarobd,text,social,Facebook,1,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:28.34+00
+59d4a014-29db-4fc6-9346-1792eca344e1,contact_phone,+880 1732821824,text,contact,Phone,2,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:33.447+00
+5dc23dc0-a89a-41ca-a847-15007a6bc713,social_youtube,,text,social,YouTube,2,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:30.323+00
+671eacb2-adef-4fd5-ae8e-c07a5da3d80b,policy_link_our_policy_label,Our Policy,text,policy_links,Our Policy - Label,1,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:28.726+00
+6ada8dce-eba1-43fe-9657-987227a9e125,contact_email,info@boiaro.com,text,contact,Email,1,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:27.68+00
+6e0de066-d6ac-4756-8797-ad37d7f81be8,policy_link_terms_label,Terms And Conditions,text,policy_links,Terms & Conditions - Label,4,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:35.352+00
+6eb3785c-ef95-4bc5-9e2a-9a025bb21174,policy_link_delete_account_url,/page/delete-account-instruction,text,policy_links,Delete Account - URL,14,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:43.549+00
+70322484-6e85-433a-9e67-2a7bfe8a03dc,policy_link_our_policy_active,true,boolean,policy_links,Our Policy - Active,3,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:35.119+00
+737f8cc8-a2e8-4987-a67d-8f2574dc5d82,brand_tagline,Your Digital Destination for Bengali Literature,text,brand,Brand Tagline,2,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:33.681+00
+776cdc16-06c7-4038-86bc-f408ba2fd7fe,social_twitter,,text,social,Twitter/X,4,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:35.816+00
+79b5b9e9-c0f7-44ed-9726-cb36f3819e90,policy_link_our_policy_url,/page/our-policy,text,policy_links,Our Policy - URL,2,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:32.991+00
+7a2e3ce9-3d91-4667-82fd-3a876c8cd3e0,footer_section_social,true,boolean,footer,Show Social Section,7,true,2026-03-26 17:55:13.150022+00,2026-03-30 14:13:38.029+00
+82a3afc3-ed6b-4de5-a0ab-2db2d75d81c7,logo_dark_url,https://kxpqejmjfnzhqcefyued.supabase.co/storage/v1/object/public/avatars/site/logo_dark_url-1774880106304.png,image,brand,Dark Mode Logo,6,true,2026-03-26 17:55:13.150022+00,2026-03-30 14:13:37.301+00
+84b5b04a-9a3b-45da-b93c-deedd1b9c478,policy_link_delete_account_label,Delete Account Instruction,text,policy_links,Delete Account - Label,13,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:43.323+00
+86965534-67cc-4f6c-8861-a7e7667ddfc4,brand_name,BoiAro,text,brand,Brand Name,1,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:28.013+00
+8dfe2392-9b3e-4208-8d1e-e6653e287e7b,social_instagram,,text,social,Instagram,3,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:34.893+00
+a3336661-3681-4a67-b466-2d61b6c11e8f,app_ios_url,,text,app,iOS App URL,2,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:33.953+00
+abdd7ccd-340a-4edb-a445-7a25602ef15c,policy_link_privacy_active,true,boolean,policy_links,Privacy Policy - Active,9,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:42.409+00
+c2042d09-a517-425d-b31a-0abb81f02bba,policy_link_terms_active,true,boolean,policy_links,Terms & Conditions - Active,6,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:37.069+00
+c352a152-1e47-44d5-b94f-6c044d79acba,app_android_url,https://play.google.com/store/apps/details?id=com.boiaro.app,text,app,Android App URL,1,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:29.081+00
+ccaed06b-3d69-46fc-b225-ee2777584cd5,policy_link_privacy_url,/page/privacy-policy,text,policy_links,Privacy Policy - URL,8,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:42.188+00
+deb6c10a-272e-4d5f-a374-b6552cebaf44,policy_link_privacy_label,Privacy Policy,text,policy_links,Privacy Policy - Label,7,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:38.342+00
+e3fc3eec-8617-4e2e-8948-f55d04ebf616,follow_us_text,"Stay connected with us for new releases, updates, and exclusive content.",textarea,social,Follow Us Description,0,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:27.337+00
+e5efbc0d-6eeb-429f-9bef-fbed0a1821f4,footer_section_about,true,boolean,footer,Show About Section,0,true,2026-03-26 17:55:13.150022+00,2026-03-30 14:13:26.944+00
+f459daf5-9249-497d-a51d-2fb49fa51b0f,logo_url,https://kxpqejmjfnzhqcefyued.supabase.co/storage/v1/object/public/avatars/site/logo_url-1774878853187.png,image,brand,Logo,3,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:34.624+00
+f4684091-6fa0-473c-9008-2fa7d1cd104b,policy_link_refund_active,true,boolean,policy_links,Return & Refund - Active,12,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:43.097+00
+f995ef83-a083-4d5d-a35e-4d1ef69d9022,favicon_url,https://kxpqejmjfnzhqcefyued.supabase.co/storage/v1/object/public/avatars/site/favicon_url-1774627777321.png,image,brand,Favicon,4,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:35.59+00
+faab1102-b8d8-4aa8-8ac2-8887446df537,footer_about,"BoiAro is your digital destination for Bengali literature — read eBooks, listen to audiobooks, and order hard copies in one place.",textarea,footer,About Text,1,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:29.449+00
+fac7e598-4ce5-428a-ad80-bc0431b4d91d,app_download_enabled,false,boolean,app,Show App Download,0,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:26.347+00
+fbeaaf79-5af8-4a2e-a3fc-ff99f2d55128,footer_trust_line,Trusted by readers across Bangladesh.,text,footer,Trust Line,2,true,2026-03-26 17:47:05.548851+00,2026-03-30 14:13:30.057+00
+fe3ec81b-1d87-4a66-9b52-0f357c10b386,policy_link_terms_url,/page/terms-and-conditions,text,policy_links,Terms & Conditions - URL,5,true,2026-03-26 18:07:58.73273+00,2026-03-30 14:13:36.377+00

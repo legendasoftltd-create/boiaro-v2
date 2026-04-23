@@ -17,13 +17,22 @@ export const contentRouter = router({
     }))
     .query(async ({ ctx, input }) => {
       const { bookId, contentType, trackNumber } = input;
+      const book = await prisma.book.findUnique({
+        where: { id: bookId },
+        select: { is_free: true },
+      });
+      const formatRecord = await prisma.bookFormat.findFirst({
+        where: { book_id: bookId, format: contentType, submission_status: "approved" },
+        select: { price: true, file_url: true },
+      });
+      const isFreeContent = Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0;
 
       // Check access: coin unlock, purchase, or subscription
-      const coinUnlock = await prisma.contentUnlock.findFirst({
+      const coinUnlock = isFreeContent ? null : await prisma.contentUnlock.findFirst({
         where: { user_id: ctx.userId, book_id: bookId, format: contentType, status: "active" },
       });
 
-      if (!coinUnlock) {
+      if (!coinUnlock && !isFreeContent) {
         const sub = await prisma.userSubscription.findFirst({
           where: { user_id: ctx.userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
         });
@@ -57,11 +66,7 @@ export const contentRouter = router({
 
       // Return the content URL
       if (contentType === "ebook") {
-        const fmt = await prisma.bookFormat.findFirst({
-          where: { book_id: bookId, format: "ebook", submission_status: "approved" },
-          select: { file_url: true },
-        });
-        return { url: fmt?.file_url ?? null };
+        return { url: formatRecord?.file_url ?? null };
       }
 
       if (contentType === "audiobook" && trackNumber !== undefined) {
@@ -118,8 +123,18 @@ export const contentRouter = router({
   ebookContent: protectedProcedure
     .input(z.object({ bookId: z.string() }))
     .query(async ({ ctx, input }) => {
+      const book = await prisma.book.findUnique({
+        where: { id: input.bookId },
+        select: { is_free: true },
+      });
+      const ebookFormat = await prisma.bookFormat.findFirst({
+        where: { book_id: input.bookId, format: "ebook", submission_status: "approved" },
+        select: { file_url: true, preview_percentage: true, price: true },
+      });
+      const isFreeContent = Boolean(book?.is_free) || Number(ebookFormat?.price ?? 0) <= 0;
+
       // Verify access
-      const hasAccess = await prisma.contentUnlock.findFirst({
+      const hasAccess = isFreeContent ? true : await prisma.contentUnlock.findFirst({
         where: { user_id: ctx.userId, book_id: input.bookId, format: "ebook", status: "active" },
       });
       if (!hasAccess) {
@@ -134,10 +149,6 @@ export const contentRouter = router({
         }
       }
 
-      const fmt = await prisma.bookFormat.findFirst({
-        where: { book_id: input.bookId, format: "ebook", submission_status: "approved" },
-        select: { file_url: true, preview_percentage: true },
-      });
-      return { file_url: fmt?.file_url ?? null, preview_percentage: fmt?.preview_percentage ?? null };
+      return { file_url: ebookFormat?.file_url ?? null, preview_percentage: ebookFormat?.preview_percentage ?? null };
     }),
 });

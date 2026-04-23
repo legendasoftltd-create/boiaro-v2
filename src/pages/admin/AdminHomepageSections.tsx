@@ -37,6 +37,13 @@ export default function AdminHomepageSections() {
     onSuccess: () => { utils.admin.listHomepageSections.invalidate(); toast.success("Sections saved"); },
     onError: (e) => toast.error(e.message),
   });
+  const resetMutation = trpc.admin.resetHomepageSections.useMutation({
+    onSuccess: () => {
+      utils.admin.listHomepageSections.invalidate();
+      toast.success("Default homepage sections restored");
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const updateField = (idx: number, field: keyof Section, value: any) => {
     setSections(prev => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
@@ -90,6 +97,14 @@ export default function AdminHomepageSections() {
           <p className="text-sm text-muted-foreground">Drag rows or use arrows to reorder · Toggle visibility per section</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => resetMutation.mutate({ hardReset: false })}
+            disabled={resetMutation.isPending}
+          >
+            {resetMutation.isPending ? "Restoring..." : "Restore Defaults"}
+          </Button>
           {duplicates.size > 0 && (
             <Button variant="outline" size="sm" onClick={autoFixOrder} className="border-destructive/40 text-destructive">
               <AlertTriangle className="h-4 w-4 mr-1.5" />Fix Duplicates

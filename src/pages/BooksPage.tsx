@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react"
+import { useMemo, useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
 // SEO meta tags set via document.title
@@ -73,6 +73,8 @@ export default function BooksPage() {
   const categoryId = searchParams.get("category") || null
   const query = searchParams.get("q") || ""
   const sort = (searchParams.get("sort") as SortKey | null) || null
+  const [searchDraft, setSearchDraft] = useState(query)
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Legacy: support old ?filter=ebook URLs by mapping to format
   const effectiveFormat = format || (["ebook", "audiobook", "hardcopy"].includes(filter as string) ? filter as FormatKey : null)
@@ -105,11 +107,29 @@ export default function BooksPage() {
     setSearchParams(params, { replace: true })
   }, [searchParams, setSearchParams])
 
+  useEffect(() => {
+    setSearchDraft(query);
+  }, [query]);
+
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      const nextValue = searchDraft.trim();
+      if (nextValue === query) return;
+      updateParams({ q: nextValue || null });
+    }, 350);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchDraft, query, updateParams]);
+
 
   const pageTitle = buildTitle(effectiveFormat, effectiveFilter, selectedCategory?.nameBn || selectedCategory?.name || null)
   // Set document title for SEO
   const docTitle = `${pageTitle} | ${get("brand_name", "BoiAro")}`
-  if (typeof document !== "undefined") document.title = docTitle
+  useEffect(() => {
+    if (typeof document !== "undefined") document.title = docTitle;
+  }, [docTitle]);
 
   return (
     <ContentFilterProvider>
@@ -134,8 +154,15 @@ export default function BooksPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Search by title, author..."
-                value={query}
-                onChange={e => updateParams({ q: e.target.value || null })}
+                value={searchDraft}
+                onChange={e => setSearchDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+                    const nextValue = searchDraft.trim();
+                    updateParams({ q: nextValue || null });
+                  }
+                }}
                 className="pl-9 h-10 bg-card border-border/60"
               />
             </div>

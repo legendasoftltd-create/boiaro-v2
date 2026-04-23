@@ -434,8 +434,9 @@ export default function EbookReader() {
         setBookId(dbBook.id);
         setBookTitle(dbBook.title);
         setBookSlug(dbBook.slug);
-        setIsFreeBook(dbBook.is_free || false);
-        setEbookPrice(Number(ebookFmt.price) || 0);
+        const resolvedEbookPrice = Number(ebookFmt.price) || 0;
+        setIsFreeBook(Boolean(dbBook.is_free) || resolvedEbookPrice <= 0);
+        setEbookPrice(resolvedEbookPrice);
         setPreviewPct((ebookFmt as any).preview_percentage ?? null);
         setBookCover(dbBook.cover_url || null);
         // Only auto-detect genre if user hasn't manually chosen one

@@ -19,6 +19,8 @@ export function usePresence() {
   userRef.current = user;
 
   const presenceMutation = trpc.profiles.presence.useMutation();
+  const mutatePresenceRef = useRef(presenceMutation.mutateAsync);
+  mutatePresenceRef.current = presenceMutation.mutateAsync;
 
   const doUpsert = useCallback(async () => {
     const u = userRef.current;
@@ -33,16 +35,16 @@ export function usePresence() {
     }
 
     try {
-      await presenceMutation.mutateAsync({
-        page: page || window.location.pathname,
-        bookId: bookId,
+      await mutatePresenceRef.current({
+        currentPage: page || window.location.pathname,
+        currentBookId: bookId,
         activityType: type,
         sessionId: sid,
       });
     } catch {
       // Silently ignore
     }
-  }, [presenceMutation]);
+  }, []);
 
   const debouncedUpsert = useCallback(() => {
     const elapsed = Date.now() - lastUpsertTime.current;
