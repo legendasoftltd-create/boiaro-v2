@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "npm run db:generate && rm -f tsconfig.tsbuildinfo && rm -rf dist && tsc && mkdir -p dist/generated && cp -r src/generated/prisma dist/generated/prisma",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
