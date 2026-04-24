@@ -29,21 +29,6 @@ export const getHomepageData = async (limit) => {
     const featured = allBooks.filter(b => b.is_featured);
     const slider = (featured.length > 0 ? featured : allBooks).slice(0, 5);
 
-    //    total ebooks count 
-    const totalEbooks = allBooks.filter(book =>
-        book.formats?.some(f => f.format.toLowerCase() === "ebook")
-    ).length;
-
-
-    const totalAudiobooks = allBooks.filter(book =>
-        book.formats?.some(f => f.format.toLowerCase() === "audiobook")
-    ).length;
-
-
-    const totalHardCopies = allBooks.filter(book =>
-        book.formats?.some(f => f.format.toLowerCase().includes("hardcopy"))
-    ).length;
-
     const totalNarrators = narrators.length;
 
     const allCategory = await prisma.category.findMany({
@@ -177,15 +162,11 @@ export const getHomepageData = async (limit) => {
         topTenMostRead,
         'slider': {
             slider,
-            totalEbooks,
-            totalAudiobooks,
-            totalHardCopies,
-            totalNarrators
         },
         allCategory,
         allAuthor,
         allNarrators,
-        "counts": counts,
+        "countsValue": {counts, totalNarrators},
         "NewReleases": {
             "all": allBooks.slice(0, takeLimit),
             "ebooks": allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "ebook")).slice(0, takeLimit),
