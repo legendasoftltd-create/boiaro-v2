@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +22,8 @@ import { SmartPricingAssistant } from "@/components/admin/SmartPricingAssistant"
 import { AdminSearchBar } from "@/components/admin/AdminSearchBar";
 import { validateMediaFile, sanitizeTrackTitle, ACCEPTED_FILE_INPUT } from "@/lib/audioValidation";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 export default function AdminBooks() {
   const utils = trpc.useUtils();
@@ -140,19 +141,38 @@ export default function AdminBooks() {
 
   useEffect(() => { load(); }, []);
 
+  const uploadViaApi = async (file: File, media = false) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem("access_token");
+    const endpoint = media ? "/upload/media" : "/upload";
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({} as any));
+      throw new Error(err.error || response.statusText || "Upload failed");
+    }
+    const data = await response.json();
+    return data.url as string;
+  };
+
   // Cover image upload
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingCover(true);
-    const ext = file.name.split(".").pop();
-    const path = `covers/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("book-covers").upload(path, file);
-    if (error) { toast.error("Upload failed: " + error.message); setUploadingCover(false); return; }
-    const { data: { publicUrl } } = supabase.storage.from("book-covers").getPublicUrl(path);
-    setForm({ ...form, cover_url: publicUrl });
-    setUploadingCover(false);
-    toast.success("Cover uploaded");
+    try {
+      const publicUrl = await uploadViaApi(file, false);
+      setForm({ ...form, cover_url: publicUrl });
+      toast.success("Cover uploaded");
+    } catch (error: any) {
+      toast.error("Upload failed: " + (error.message || "Unknown error"));
+    } finally {
+      setUploadingCover(false);
+    }
   };
 
   // Ebook file upload
@@ -161,14 +181,15 @@ export default function AdminBooks() {
     if (!file) return;
     if (!selectedBookId) return;
     setUploading(true);
-    const ext = file.name.split(".").pop();
-    const path = `${selectedBookId}/${Date.now()}.${ext}`;
-    const { error } = await supabase.storage.from("ebooks").upload(path, file);
-    if (error) { toast.error("Upload failed: " + error.message); setUploading(false); return; }
-    // Store the path (not public URL since ebooks bucket is private)
-    setFormatForm({ ...formatForm, file_url: path, file_size: `${(file.size / 1024 / 1024).toFixed(1)} MB` });
-    setUploading(false);
-    toast.success("eBook file uploaded");
+    try {
+      const uploadedUrl = await uploadViaApi(file, true);
+      setFormatForm({ ...formatForm, file_url: uploadedUrl, file_size: `${(file.size / 1024 / 1024).toFixed(1)} MB` });
+      toast.success("eBook file uploaded");
+    } catch (error: any) {
+      toast.error("Upload failed: " + (error.message || "Unknown error"));
+    } finally {
+      setUploading(false);
+    }
   };
 
   // Single track file upload (narrator-style)
@@ -188,26 +209,21 @@ export default function AdminBooks() {
     const ext = file.name.split(".").pop()?.toLowerCase() || "mp3";
     const path = `${selectedFormatId}/${Date.now()}-${tracks.length + 1}.${ext}`;
 
-    const { error } = await supabase.storage.from("audiobooks").upload(path, validatedFile, {
-      contentType: mimeType,
-      upsert: false,
-    });
-
-    if (error) {
-      toast.error(error.message);
+    try {
+      const uploadedUrl = await uploadViaApi(validatedFile, true);
+      setUploadedMediaType(mediaType);
+      setTrackForm(f => ({
+        ...f,
+        audio_url: uploadedUrl,
+        duration: durationLabel,
+        title: f.title || name,
+      }));
+      toast.success(`${mediaType === "video" ? "Video" : "Audio"} file uploaded`);
+    } catch (error: any) {
+      toast.error(error.message || "Upload failed");
+    } finally {
       setUploadingTrack(false);
-      return;
     }
-
-    setUploadedMediaType(mediaType);
-    setTrackForm(f => ({
-      ...f,
-      audio_url: path,
-      duration: durationLabel,
-      title: f.title || name,
-    }));
-    setUploadingTrack(false);
-    toast.success(`${mediaType === "video" ? "Video" : "Audio"} file uploaded`);
   };
 
   // Save single track (narrator-style)

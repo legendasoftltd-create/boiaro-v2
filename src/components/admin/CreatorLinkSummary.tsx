@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -26,28 +25,10 @@ interface CreatorLinkSummaryProps {
 }
 
 export function CreatorLinkSummary({ userId }: CreatorLinkSummaryProps) {
-  const [links, setLinks] = useState<CreatorLinks | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!userId) return;
-    const load = async () => {
-      setLoading(true);
-      try {
-        const { data, error } = await supabase.functions.invoke("admin-create-creator", {
-          body: { action: "get_user_links", userId },
-        });
-        if (!error && data?.links) {
-          setLinks(data.links);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, [userId]);
+  const { data: links, isLoading: loading } = trpc.admin.getCreatorLinksByUser.useQuery(
+    { userId },
+    { enabled: !!userId, staleTime: 60_000 }
+  );
 
   const totalLinks = (links?.authors?.length || 0) + (links?.publishers?.length || 0) + (links?.narrators?.length || 0);
 

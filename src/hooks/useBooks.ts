@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import type { MasterBook, Author, Publisher, Category } from "@/lib/types";
 import { toMediaUrl } from "@/lib/mediaUrl";
 
-function trpcBookToMasterBook(book: any): MasterBook {
+export function trpcBookToMasterBook(book: any): MasterBook {
   const author: Author = book.author
     ? {
         id: book.author.id,

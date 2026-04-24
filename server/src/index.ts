@@ -8,6 +8,8 @@ import multer from "multer";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers/_app.js";
 import { createContext } from "./context.js";
+import { attachAuth } from "./middleware/auth.js";
+import { restRouter } from "./routes/rest/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +42,8 @@ app.use(
 );
 
 app.use(express.json());
+app.use(attachAuth);
+app.use("/api/v1", restRouter);
 
 // ── File uploads ──────────────────────────────────────────────────────────────
 const UPLOADS_DIR = path.resolve(__dirname, "../../uploads");
@@ -53,7 +57,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({
+const uploadImage = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
@@ -65,7 +69,39 @@ const upload = multer({
   },
 });
 
-app.post("/upload", upload.single("file"), (req, res) => {
+const uploadMedia = multer({
+  storage,
+  limits: { fileSize: 500 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowedMimeTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/pdf",
+      "application/epub+zip",
+      "application/octet-stream",
+      "audio/mpeg",
+      "audio/mp3",
+      "audio/mp4",
+      "audio/aac",
+      "audio/wav",
+      "audio/x-wav",
+      "audio/webm",
+      "audio/ogg",
+      "video/mp4",
+      "video/webm",
+      "video/ogg",
+      "video/quicktime",
+    ];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Unsupported media file type"));
+    }
+  },
+});
+
+function sendUploadedFileUrl(req: express.Request, res: express.Response) {
   if (!req.file) {
     res.status(400).json({ error: "No file provided" });
     return;
@@ -73,7 +109,10 @@ app.post("/upload", upload.single("file"), (req, res) => {
   const baseUrl = process.env.FRONTEND_URL || `http://localhost:${PORT}`;
   const publicUrl = `${baseUrl}/uploads/${req.file.filename}`;
   res.json({ url: publicUrl });
-});
+}
+
+app.post("/upload", uploadImage.single("file"), sendUploadedFileUrl);
+app.post("/upload/media", uploadMedia.single("file"), sendUploadedFileUrl);
 
 // Serve uploaded files
 app.use("/uploads", express.static(UPLOADS_DIR));

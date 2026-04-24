@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { TrendingDown, TrendingUp, AlertTriangle, Package, Info } from "lucide-react";
@@ -21,24 +21,27 @@ export function OrderProfitBreakdown({
   orderPurchaseCost,
   isPurchased,
 }: OrderProfitBreakdownProps) {
+  const utils = trpc.useUtils();
   const [formatData, setFormatData] = useState<Record<string, any>>({});
 
   const hardcopyItems = items.filter((i) => i.format === "hardcopy");
 
   useEffect(() => {
     if (!hardcopyItems.length) return;
-    const bookIds = [...new Set(hardcopyItems.map((i) => i.book_id))];
-    supabase
-      .from("book_formats")
-      .select("book_id, format, original_price, discount, publisher_commission_percent, unit_cost")
-      .in("book_id", bookIds)
-      .eq("format", "hardcopy")
-      .then(({ data }) => {
+    const bookIds = [...new Set(hardcopyItems.map((i) => i.book_id).filter(Boolean))];
+    Promise.all(
+      bookIds.map((bookId) => utils.admin.listBookFormatsByBook.fetch({ bookId }))
+    )
+      .then((results) => {
         const map: Record<string, any> = {};
-        (data || []).forEach((f) => { map[f.book_id] = f; });
+        results.forEach((formats) => {
+          const hardcopy = (formats || []).find((f: any) => f.format === "hardcopy");
+          if (hardcopy?.book_id) map[hardcopy.book_id] = hardcopy;
+        });
         setFormatData(map);
-      });
-  }, [items]);
+      })
+      .catch(() => setFormatData({}));
+  }, [items, utils.admin.listBookFormatsByBook]);
 
   if (!hardcopyItems.length) return null;
 

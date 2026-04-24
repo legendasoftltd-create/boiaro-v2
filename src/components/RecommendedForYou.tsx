@@ -4,8 +4,7 @@ import { ChevronLeft, ChevronRight, Sparkles, Loader2 } from "lucide-react";
 import { BookCard } from "./BookCard";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
-import { useBooks } from "@/hooks/useBooks";
-import type { MasterBook } from "@/lib/types";
+import { useBooks, trpcBookToMasterBook } from "@/hooks/useBooks";
 import { useContentFilter } from "@/contexts/ContentFilterContext";
 import { filterBooks } from "@/hooks/useBookFilter";
 
@@ -22,7 +21,7 @@ export function RecommendedForYou() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const recBooks = (recData as MasterBook[] | undefined) ?? [];
+  const recBooks = ((recData as any[]) ?? []).map(trpcBookToMasterBook);
   const loading = isLoading;
 
   const displayBooks = filterBooks(
