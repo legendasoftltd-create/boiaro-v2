@@ -1,27 +1,19 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { signTokens } from "../lib/auth.js";
+import { refreshTokenSchema, signInSchema } from "../schemas/auth.js";
+import {
+  getMe,
+  refreshAuthTokens,
+  signInUser,
+} from "../services/auth.service.js";
 
 function generateReferralCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
-}
-
-function signTokens(userId: string, email: string) {
-  const accessToken = jwt.sign(
-    { sub: userId, email },
-    process.env.JWT_SECRET!,
-    { expiresIn: "15m" }
-  );
-  const refreshToken = jwt.sign(
-    { sub: userId, email },
-    process.env.JWT_REFRESH_SECRET!,
-    { expiresIn: "30d" }
-  );
-  return { accessToken, refreshToken };
 }
 
 export const authRouter = router({
@@ -56,36 +48,8 @@ export const authRouter = router({
     }),
 
   signIn: publicProcedure
-    .input(z.object({
-      email: z.string().email(),
-      password: z.string(),
-    }))
-    .mutation(async ({ input }) => {
-      const user = await prisma.user.findUnique({
-        where: { email: input.email },
-        include: { profile: true, roles: true },
-      });
-      if (!user) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid email or password" });
-
-      const valid = await bcrypt.compare(input.password, user.password_hash);
-      if (!valid) throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid email or password" });
-
-      if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
-      if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
-
-      const { accessToken, refreshToken } = signTokens(user.id, user.email);
-
-      return {
-        accessToken,
-        refreshToken,
-        user: {
-          id: user.id,
-          email: user.email,
-          roles: user.roles.map((r) => r.role),
-          profile: user.profile,
-        },
-      };
-    }),
+    .input(signInSchema)
+    .mutation(async ({ input }) => signInUser(input)),
 
   signInWithGoogle: publicProcedure
     .input(
@@ -178,31 +142,10 @@ export const authRouter = router({
     }),
 
   refresh: publicProcedure
-    .input(z.object({ refreshToken: z.string() }))
-    .mutation(async ({ input }) => {
-      let payload: { sub: string; email: string };
-      try {
-        payload = jwt.verify(input.refreshToken, process.env.JWT_REFRESH_SECRET!) as any;
-      } catch {
-        throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid refresh token" });
-      }
-      const { accessToken, refreshToken } = signTokens(payload.sub, payload.email);
-      return { accessToken, refreshToken };
-    }),
+    .input(refreshTokenSchema)
+    .mutation(async ({ input }) => refreshAuthTokens(input.refreshToken)),
 
-  me: protectedProcedure.query(async ({ ctx }) => {
-    const user = await prisma.user.findUnique({
-      where: { id: ctx.userId! },
-      include: { profile: true, roles: true },
-    });
-    if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
-    return {
-      id: user.id,
-      email: user.email,
-      roles: user.roles.map((r) => r.role),
-      profile: user.profile,
-    };
-  }),
+  me: protectedProcedure.query(async ({ ctx }) => getMe(ctx.userId!)),
 
   updateProfile: protectedProcedure
     .input(z.object({
