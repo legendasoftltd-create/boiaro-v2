@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -24,29 +24,33 @@ export function AdminUserProfileModal({ userId, open, onOpenChange }: Props) {
   const [coinTxns, setCoinTxns] = useState<any[]>([]);
   const [earnings, setEarnings] = useState<any[]>([]);
   const [stats, setStats] = useState({ totalOrders: 0, totalSpend: 0, lastOrderDate: "", avgOrderValue: 0 });
+  const userProfileQuery = trpc.admin.getUserProfileModalData.useQuery(
+    { userId: userId || "" },
+    { enabled: !!userId && open, staleTime: 60_000 }
+  );
 
   useEffect(() => {
     if (!userId || !open) return;
     setLoading(true);
-    loadAll(userId);
-  }, [userId, open]);
+    if (userProfileQuery.isLoading) return;
 
-  const loadAll = async (uid: string) => {
-    const [profileRes, rolesRes, walletRes, subRes, ordersRes, paymentsRes, coinRes, earningsRes] = await Promise.all([
-      supabase.rpc("admin_get_user_profile", { p_user_id: uid }),
-      supabase.from("user_roles").select("role").eq("user_id", uid),
-      supabase.from("user_coins").select("balance, total_earned, total_spent").eq("user_id", uid).maybeSingle(),
-      supabase.from("user_subscriptions").select("*, subscription_plans(name, price, access_type)").eq("user_id", uid).eq("status", "active").maybeSingle(),
-      supabase.from("orders").select("id, order_number, status, total_amount, payment_method, cod_payment_status, created_at, shipping_name, shipping_address, shipping_district, shipping_phone").eq("user_id", uid).order("created_at", { ascending: false }).limit(50),
-      supabase.from("payments").select("id, amount, method, status, transaction_id, created_at, order_id").eq("user_id", uid).order("created_at", { ascending: false }).limit(50),
-      supabase.from("coin_transactions").select("id, amount, type, description, source, created_at").eq("user_id", uid).order("created_at", { ascending: false }).limit(50),
-      supabase.from("contributor_earnings").select("id, earned_amount, role, format, status, created_at").eq("user_id", uid).order("created_at", { ascending: false }).limit(50),
-    ]);
+    const payload = userProfileQuery.data;
+    if (!payload) {
+      setProfile({ user_id: userId, display_name: "Unknown User", is_active: true });
+      setRoles([]);
+      setWallet(null);
+      setSubscription(null);
+      setOrders([]);
+      setPayments([]);
+      setCoinTxns([]);
+      setEarnings([]);
+      setStats({ totalOrders: 0, totalSpend: 0, lastOrderDate: "", avgOrderValue: 0 });
+      setLoading(false);
+      return;
+    }
 
-    const profileData = profileRes.data as Record<string, any> | null;
-    const orderList = ordersRes.data || [];
-
-    // RPC always returns a json object (even if profile row missing)
+    const orderList = payload.orders || [];
+    const profileData = payload.profile as Record<string, any> | null;
     if (profileData && typeof profileData === "object" && !Array.isArray(profileData)) {
       if (!profileData.display_name && orderList.length > 0) {
         profileData.display_name = orderList[0].shipping_name || "Unknown User";
@@ -55,22 +59,22 @@ export function AdminUserProfileModal({ userId, open, onOpenChange }: Props) {
       setProfile(profileData);
     } else if (orderList.length > 0) {
       setProfile({
-        user_id: uid,
+        user_id: userId,
         display_name: orderList[0].shipping_name || "Unknown User",
         created_at: orderList[0].created_at,
         is_active: true,
       });
     } else {
-      setProfile({ user_id: uid, display_name: "Unknown User", is_active: true });
+      setProfile({ user_id: userId, display_name: "Unknown User", is_active: true });
     }
 
-    setRoles((rolesRes.data || []).map((r: any) => r.role));
-    setWallet(walletRes.data);
-    setSubscription(subRes.data);
+    setRoles(payload.roles || []);
+    setWallet(payload.wallet || null);
+    setSubscription(payload.subscription || null);
     setOrders(orderList);
-    setPayments(paymentsRes.data || []);
-    setCoinTxns(coinRes.data || []);
-    setEarnings(earningsRes.data || []);
+    setPayments(payload.payments || []);
+    setCoinTxns(payload.coinTxns || []);
+    setEarnings(payload.earnings || []);
 
     const validOrders = orderList.filter((o: any) => !["cancelled", "returned"].includes(o.status));
     const totalSpend = validOrders.reduce((s: number, o: any) => s + Number(o.total_amount || 0), 0);
@@ -81,9 +85,8 @@ export function AdminUserProfileModal({ userId, open, onOpenChange }: Props) {
       lastOrderDate: orderList.length > 0 ? orderList[0].created_at : "",
       avgOrderValue: validOrders.length > 0 ? totalSpend / validOrders.length : 0,
     });
-
     setLoading(false);
-  };
+  }, [userId, open, userProfileQuery.data, userProfileQuery.isLoading]);
 
   const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—";
 

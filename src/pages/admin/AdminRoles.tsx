@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Shield, Users, ShieldCheck } from "lucide-react";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+import { trpc } from "@/lib/trpc";
 
 const MODULES = [
   { key: "books", label: "Books" }, { key: "users", label: "Users" },
@@ -29,11 +29,12 @@ const MODULES = [
 ];
 
 interface Role { id: string; name: string; label: string; description: string | null; is_system: boolean; }
-interface Permission { id?: string; role_id: string; module: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; }
-interface AdminUserRole { id: string; user_id: string; admin_role_id: string; is_active: boolean; admin_roles?: { label: string; name: string }; }
+interface Permission { id?: string; role_id?: string; module: string; can_view: boolean; can_create: boolean; can_edit: boolean; can_delete: boolean; }
+interface AdminUserRole { id: string; user_id: string; admin_role_id: string; is_active: boolean; admin_role?: { label: string; name: string }; }
 
 export default function AdminRoles() {
   const qc = useQueryClient();
+  const utils = trpc.useUtils();
   const [tab, setTab] = useState("roles");
   const [roleDialog, setRoleDialog] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -46,31 +47,38 @@ export default function AdminRoles() {
 
   const { data: roles = [] } = useQuery({
     queryKey: ["admin-roles"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("admin_roles").select("*").order("created_at");
-      if (error) throw error;
-      return data as Role[];
-    },
+    queryFn: () => utils.admin.listAdminRoles.fetch() as Promise<Role[]>,
   });
 
   const { data: permissions = [] } = useQuery({
     queryKey: ["role-permissions", selectedRoleId],
     queryFn: async () => {
       if (!selectedRoleId) return [];
-      const { data, error } = await supabase.from("role_permissions").select("*").eq("role_id", selectedRoleId);
-      if (error) throw error;
-      return data as Permission[];
+      const rows = await utils.admin.listAdminRolePermissions.fetch({ roleId: selectedRoleId });
+      const matrix = new Map<string, Permission>();
+      rows.forEach((row) => {
+        const [module, action] = row.permission_key.split(":");
+        const current = matrix.get(module) || {
+          module,
+          can_view: false,
+          can_create: false,
+          can_edit: false,
+          can_delete: false,
+        };
+        if (action === "view") current.can_view = !!row.is_allowed;
+        if (action === "create") current.can_create = !!row.is_allowed;
+        if (action === "edit") current.can_edit = !!row.is_allowed;
+        if (action === "delete") current.can_delete = !!row.is_allowed;
+        matrix.set(module, current);
+      });
+      return Array.from(matrix.values());
     },
     enabled: !!selectedRoleId,
   });
 
   const { data: adminUsers = [] } = useQuery({
     queryKey: ["admin-user-roles"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("admin_user_roles").select("*, admin_roles(label, name)").order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as AdminUserRole[];
-    },
+    queryFn: () => utils.admin.listAdminUserRoles.fetch() as Promise<AdminUserRole[]>,
   });
 
   const getMatrix = () => {
@@ -85,12 +93,18 @@ export default function AdminRoles() {
   const saveRoleMutation = useMutation({
     mutationFn: async () => {
       if (editingRole) {
-        const { error } = await supabase.from("admin_roles").update({ label: roleForm.label, description: roleForm.description || null }).eq("id", editingRole.id);
-        if (error) throw error;
+        await utils.admin.upsertAdminRole.fetch({
+          id: editingRole.id,
+          label: roleForm.label,
+          description: roleForm.description || null,
+        });
         await log({ module: "roles", action: `Role updated: ${roleForm.label}`, actionType: "update", targetType: "admin_role", targetId: editingRole.id, riskLevel: "high" });
       } else {
-        const { error } = await supabase.from("admin_roles").insert({ name: roleForm.name, label: roleForm.label, description: roleForm.description || null });
-        if (error) throw error;
+        await utils.admin.upsertAdminRole.fetch({
+          name: roleForm.name,
+          label: roleForm.label,
+          description: roleForm.description || null,
+        });
         await log({ module: "roles", action: `Role created: ${roleForm.label}`, actionType: "create", targetType: "admin_role", riskLevel: "high" });
       }
     },
@@ -100,8 +114,7 @@ export default function AdminRoles() {
   const deleteRoleMutation = useMutation({
     mutationFn: async (id: string) => {
       const role = roles.find(r => r.id === id);
-      const { error } = await supabase.from("admin_roles").delete().eq("id", id);
-      if (error) throw error;
+      await utils.admin.deleteAdminRole.fetch({ id });
       await log({ module: "roles", action: `Role deleted: ${role?.label || id}`, actionType: "delete", targetType: "admin_role", targetId: id, riskLevel: "critical" });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-roles"] }); toast({ title: "Deleted" }); },
@@ -110,18 +123,18 @@ export default function AdminRoles() {
   const savePermsMutation = useMutation({
     mutationFn: async (matrix: typeof permMatrix) => {
       if (!selectedRoleId) return;
-      await supabase.from("role_permissions").delete().eq("role_id", selectedRoleId);
-      const rows = Object.entries(matrix).map(([module, p]) => ({ role_id: selectedRoleId, module, ...p }));
-      const { error } = await supabase.from("role_permissions").insert(rows);
-      if (error) throw error;
+      const modules = Object.entries(matrix).map(([module, p]) => ({ module, ...p }));
+      await utils.admin.replaceAdminRolePermissions.fetch({ roleId: selectedRoleId, modules });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["role-permissions", selectedRoleId] }); toast({ title: "Permissions saved" }); },
   });
 
   const assignMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("admin_user_roles").upsert({ user_id: assignForm.user_id, admin_role_id: assignForm.admin_role_id }, { onConflict: "user_id" });
-      if (error) throw error;
+      await utils.admin.assignAdminRoleToUser.fetch({
+        user_id: assignForm.user_id,
+        admin_role_id: assignForm.admin_role_id,
+      });
       const role = roles.find(r => r.id === assignForm.admin_role_id);
       await log({ module: "roles", action: `Admin role assigned: ${role?.label || ""}`, actionType: "assign", targetType: "user", targetId: assignForm.user_id, riskLevel: "critical" });
     },
@@ -130,8 +143,7 @@ export default function AdminRoles() {
 
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase.from("admin_user_roles").update({ is_active }).eq("id", id);
-      if (error) throw error;
+      await utils.admin.setAdminUserRoleActive.fetch({ id, is_active });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-user-roles"] }); },
   });
@@ -261,7 +273,7 @@ export default function AdminRoles() {
                 ) : adminUsers.map(u => (
                   <TableRow key={u.id}>
                     <TableCell className="font-mono text-xs">{u.user_id.slice(0, 8)}...</TableCell>
-                    <TableCell><Badge>{u.admin_roles?.label || "—"}</Badge></TableCell>
+                    <TableCell><Badge>{u.admin_role?.label || "—"}</Badge></TableCell>
                     <TableCell><Badge variant={u.is_active ? "default" : "secondary"}>{u.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                     <TableCell>
                       <Switch checked={u.is_active} onCheckedChange={v => toggleActiveMutation.mutate({ id: u.id, is_active: v })} />

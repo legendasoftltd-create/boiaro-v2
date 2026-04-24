@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -27,65 +27,23 @@ interface Props {
 const REFRESH_INTERVAL = 8000;
 
 export function LiveUsersModal({ filter, onClose }: Props) {
+  const utils = trpc.useUtils();
   const [users, setUsers] = useState<PresenceUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchUsers = useCallback(async () => {
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const rows = await utils.admin.liveUsers.fetch({
+      filter: filter || "online",
+    });
 
-    const { data: presence } = await supabase
-      .from("user_presence" as any)
-      .select("user_id, last_seen, activity_type, current_page, current_book_id")
-      .gte("last_seen", fiveMinAgo)
-      .order("last_seen", { ascending: false });
-
-    const rows = (presence as any[]) || [];
-
-    // Filter by type
-    const filtered = filter === "reading"
-      ? rows.filter(r => r.activity_type === "reading")
-      : filter === "listening"
-        ? rows.filter(r => r.activity_type === "listening")
-        : rows;
-
-    if (filtered.length === 0) {
+    if (!rows.length) {
       setUsers([]);
       setLoading(false);
       return;
     }
-
-    // Fetch profile names
-    const userIds = [...new Set(filtered.map(r => r.user_id))];
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("user_id, display_name")
-      .in("user_id", userIds);
-
-    const profileMap: Record<string, string> = {};
-    (profiles || []).forEach(p => {
-      profileMap[p.user_id] = p.display_name || p.user_id.slice(0, 8);
-    });
-
-    // Fetch book titles for users with current_book_id
-    const bookIds = [...new Set(filtered.map(r => r.current_book_id).filter(Boolean))];
-    const bookMap: Record<string, string> = {};
-    if (bookIds.length > 0) {
-      const { data: books } = await supabase
-        .from("books")
-        .select("id, title")
-        .in("id", bookIds);
-      (books || []).forEach(b => {
-        bookMap[b.id] = b.title;
-      });
-    }
-
-    setUsers(filtered.map(r => ({
-      ...r,
-      display_name: profileMap[r.user_id] || r.user_id.slice(0, 8),
-      book_title: r.current_book_id ? bookMap[r.current_book_id] : undefined,
-    })));
+    setUsers(rows as any);
     setLoading(false);
-  }, [filter]);
+  }, [filter, utils.admin.liveUsers]);
 
   useEffect(() => {
     if (!filter) return;
