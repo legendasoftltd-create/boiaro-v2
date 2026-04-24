@@ -364,7 +364,15 @@ export const adminRouter = router({
           : undefined,
         orderBy: { created_at: "desc" },
         include: {
-          profile: { select: { display_name: true, avatar_url: true, is_active: true, deleted_at: true } },
+          profile: {
+            select: {
+              display_name: true,
+              avatar_url: true,
+              is_active: true,
+              deleted_at: true,
+              deleted_reason: true,
+            },
+          },
           roles: true,
         },
       });
@@ -425,6 +433,32 @@ export const adminRouter = router({
       prisma.profile.update({
         where: { user_id: input.userId },
         data: { is_active: input.isActive },
+      })
+    ),
+
+  softDeleteUser: adminProcedure
+    .input(z.object({ userId: z.string(), reason: z.string().optional() }))
+    .mutation(({ input }) =>
+      prisma.profile.update({
+        where: { user_id: input.userId },
+        data: {
+          is_active: false,
+          deleted_at: new Date(),
+          deleted_reason: input.reason ?? null,
+        },
+      })
+    ),
+
+  restoreUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(({ input }) =>
+      prisma.profile.update({
+        where: { user_id: input.userId },
+        data: {
+          is_active: true,
+          deleted_at: null,
+          deleted_reason: null,
+        },
       })
     ),
 
@@ -870,11 +904,11 @@ export const adminRouter = router({
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
 
       if (profileTable === "authors") {
-        await prisma.author.update({ where: { id: profileId }, data: { user_id: user.id } });
+        await prisma.author.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       } else if (profileTable === "publishers") {
-        await prisma.publisher.update({ where: { id: profileId }, data: { user_id: user.id } });
+        await prisma.publisher.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       } else {
-        await prisma.narrator.update({ where: { id: profileId }, data: { user_id: user.id } });
+        await prisma.narrator.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       }
 
       await prisma.userRole.upsert({
@@ -884,6 +918,128 @@ export const adminRouter = router({
       });
 
       return { message: "Profile linked successfully" };
+    }),
+
+  unlinkCreatorProfile: adminProcedure
+    .input(
+      z.object({
+        profileTable: z.enum(["authors", "publishers", "narrators"]),
+        profileId: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const roleByTable: Record<"authors" | "publishers" | "narrators", "writer" | "publisher" | "narrator"> = {
+        authors: "writer",
+        publishers: "publisher",
+        narrators: "narrator",
+      };
+      const targetRole = roleByTable[input.profileTable];
+
+      let previousUserId: string | null | undefined;
+      if (input.profileTable === "authors") {
+        const row = await prisma.author.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
+        previousUserId = row?.user_id;
+        await prisma.author.update({ where: { id: input.profileId }, data: { user_id: null, linked_at: null } });
+      } else if (input.profileTable === "publishers") {
+        const row = await prisma.publisher.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
+        previousUserId = row?.user_id;
+        await prisma.publisher.update({ where: { id: input.profileId }, data: { user_id: null, linked_at: null } });
+      } else {
+        const row = await prisma.narrator.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
+        previousUserId = row?.user_id;
+        await prisma.narrator.update({ where: { id: input.profileId }, data: { user_id: null, linked_at: null } });
+      }
+
+      if (previousUserId) {
+        const [linkedAuthor, linkedPublisher, linkedNarrator] = await Promise.all([
+          targetRole === "writer"
+            ? prisma.author.count({ where: { user_id: previousUserId } })
+            : Promise.resolve(0),
+          targetRole === "publisher"
+            ? prisma.publisher.count({ where: { user_id: previousUserId } })
+            : Promise.resolve(0),
+          targetRole === "narrator"
+            ? prisma.narrator.count({ where: { user_id: previousUserId } })
+            : Promise.resolve(0),
+        ]);
+        const stillLinkedForRole =
+          targetRole === "writer" ? linkedAuthor > 0 : targetRole === "publisher" ? linkedPublisher > 0 : linkedNarrator > 0;
+
+        if (!stillLinkedForRole) {
+          await prisma.userRole.deleteMany({ where: { user_id: previousUserId, role: targetRole as any } });
+        }
+      }
+
+      return { message: "Account unlinked successfully" };
+    }),
+
+  searchCreatorLinkCandidates: adminProcedure
+    .input(z.object({ query: z.string().min(2) }))
+    .query(async ({ input }) => {
+      const q = input.query.trim();
+      const users = await prisma.user.findMany({
+        where: {
+          OR: [
+            { email: { contains: q, mode: "insensitive" } },
+            { profile: { display_name: { contains: q, mode: "insensitive" } } },
+            { profile: { phone: { contains: q, mode: "insensitive" } } },
+          ],
+        },
+        take: 25,
+        orderBy: { created_at: "desc" },
+        include: {
+          profile: { select: { display_name: true, avatar_url: true, phone: true } },
+          roles: true,
+        },
+      });
+      const userIds = users.map((u) => u.id);
+      const [authors, publishers, narrators] = await Promise.all([
+        userIds.length
+          ? prisma.author.findMany({
+              where: { user_id: { in: userIds } },
+              select: { user_id: true, id: true, name: true },
+            })
+          : [],
+        userIds.length
+          ? prisma.publisher.findMany({
+              where: { user_id: { in: userIds } },
+              select: { user_id: true, id: true, name: true },
+            })
+          : [],
+        userIds.length
+          ? prisma.narrator.findMany({
+              where: { user_id: { in: userIds } },
+              select: { user_id: true, id: true, name: true },
+            })
+          : [],
+      ]);
+
+      const linksByUser: Record<string, Array<{ type: string; name: string }>> = {};
+      authors.forEach((a) => {
+        if (!a.user_id) return;
+        if (!linksByUser[a.user_id]) linksByUser[a.user_id] = [];
+        linksByUser[a.user_id].push({ type: "author", name: a.name });
+      });
+      publishers.forEach((p) => {
+        if (!p.user_id) return;
+        if (!linksByUser[p.user_id]) linksByUser[p.user_id] = [];
+        linksByUser[p.user_id].push({ type: "publisher", name: p.name });
+      });
+      narrators.forEach((n) => {
+        if (!n.user_id) return;
+        if (!linksByUser[n.user_id]) linksByUser[n.user_id] = [];
+        linksByUser[n.user_id].push({ type: "narrator", name: n.name });
+      });
+
+      return users.map((u) => ({
+        user_id: u.id,
+        email: u.email,
+        display_name: u.profile?.display_name || u.email,
+        avatar_url: u.profile?.avatar_url ?? null,
+        phone: u.profile?.phone ?? null,
+        roles: u.roles.map((r) => r.role),
+        existing_links: linksByUser[u.id] || [],
+      }));
     }),
 
   // ── Authors CRUD ────────────────────────────────────────────────────────────
@@ -1298,6 +1454,34 @@ export const adminRouter = router({
       })
     ),
 
+  getCreatorLinksByUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ input }) => {
+      const [authors, publishers, narrators] = await Promise.all([
+        prisma.author.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, name: true, name_en: true, avatar_url: true, status: true },
+          orderBy: { linked_at: "desc" },
+        }),
+        prisma.publisher.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, name: true, name_en: true, logo_url: true, status: true },
+          orderBy: { linked_at: "desc" },
+        }),
+        prisma.narrator.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, name: true, name_en: true, avatar_url: true, status: true },
+          orderBy: { linked_at: "desc" },
+        }),
+      ]);
+
+      return {
+        authors,
+        publishers,
+        narrators,
+      };
+    }),
+
   updateUserRole: adminProcedure
     .input(z.object({ userId: z.string(), role: z.string(), action: z.enum(["add", "remove"]) }))
     .mutation(async ({ input }) => {
@@ -1347,29 +1531,6 @@ export const adminRouter = router({
       _count: { role: true },
     })
   ),
-
-  // ── User soft-delete / restore ───────────────────────────────────────────────
-  softDeleteUser: adminProcedure
-    .input(z.object({ userId: z.string(), reason: z.string().optional() }))
-    .mutation(({ input }) =>
-      prisma.profile.update({
-        where: { user_id: input.userId },
-        data: {
-          deleted_at: new Date(),
-          deleted_reason: input.reason || null,
-          is_active: false,
-        },
-      })
-    ),
-
-  restoreUser: adminProcedure
-    .input(z.object({ userId: z.string() }))
-    .mutation(({ input }) =>
-      prisma.profile.update({
-        where: { user_id: input.userId },
-        data: { deleted_at: null, deleted_reason: null, is_active: true },
-      })
-    ),
 
   // ── Admin Activity Log ──────────────────────────────────────────────────────
   logAction: adminProcedure
