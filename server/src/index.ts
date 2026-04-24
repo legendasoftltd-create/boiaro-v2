@@ -8,6 +8,8 @@ import multer from "multer";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers/_app.js";
 import { createContext } from "./context.js";
+import { attachAuth } from "./middleware/auth.js";
+import { restRouter } from "./routes/rest/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +42,8 @@ app.use(
 );
 
 app.use(express.json());
+app.use(attachAuth);
+app.use("/api/v1", restRouter);
 
 // ── File uploads ──────────────────────────────────────────────────────────────
 const UPLOADS_DIR = path.resolve(__dirname, "../../uploads");
