@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,7 @@ interface CreatorAccountCardProps {
 
 export function CreatorAccountCard({ profileId, profileName, profileTable, creatorRole, userId, onLinkChanged }: CreatorAccountCardProps) {
   const navigate = useNavigate();
+  const utils = trpc.useUtils();
   const [linkedUser, setLinkedUser] = useState<LinkedUser | null>(null);
   const [loading, setLoading] = useState(false);
   const [unlinkOpen, setUnlinkOpen] = useState(false);
@@ -66,6 +67,9 @@ export function CreatorAccountCard({ profileId, profileName, profileTable, creat
   const [searching, setSearching] = useState(false);
   const [linking, setLinking] = useState(false);
   const [changeLinkTarget, setChangeLinkTarget] = useState<SearchResult | null>(null);
+  const searchCandidatesMutation = trpc.admin.searchCreatorLinkCandidates.useMutation();
+  const linkProfileMutation = trpc.admin.linkCreatorProfile.useMutation();
+  const unlinkProfileMutation = trpc.admin.unlinkCreatorProfile.useMutation();
 
   const profileTypeLabel = profileTable.slice(0, -1); // "author" / "publisher" / "narrator"
 
@@ -77,10 +81,19 @@ export function CreatorAccountCard({ profileId, profileName, profileTable, creat
   const fetchLinkedUser = async (uid: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-create-creator", {
-        body: { action: "get_linked_user", userId: uid, profileTable, profileId },
-      });
-      if (!error && !data?.error) setLinkedUser(data.user);
+      const data = await utils.admin.getUserDetail.fetch({ id: uid });
+      if (data) {
+        setLinkedUser({
+          user_id: data.id,
+          email: data.email,
+          display_name: data.profile?.display_name || data.email,
+          avatar_url: data.profile?.avatar_url ?? null,
+          phone: data.profile?.phone ?? null,
+          created_at: data.created_at,
+          linked_at: null,
+          roles: (data.roles || []).map((r: any) => r.role),
+        });
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -91,18 +104,12 @@ export function CreatorAccountCard({ profileId, profileName, profileTable, creat
   const handleUnlink = async () => {
     setUnlinking(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-create-creator", {
-        body: { action: "unlink_profile", profileTable, profileId },
-      });
-      if (error || data?.error) {
-        toast.error(data?.error || error?.message || "Unlink failed");
-      } else {
-        toast.success(data.message || "Account unlinked");
-        setLinkedUser(null);
-        onLinkChanged();
-      }
+      const data = await unlinkProfileMutation.mutateAsync({ profileTable, profileId });
+      toast.success(data.message || "Account unlinked");
+      setLinkedUser(null);
+      onLinkChanged();
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e?.message || "Unlink failed");
     } finally {
       setUnlinking(false);
       setUnlinkOpen(false);
@@ -113,17 +120,11 @@ export function CreatorAccountCard({ profileId, profileName, profileTable, creat
     if (searchQuery.trim().length < 2) { toast.error("Enter at least 2 characters"); return; }
     setSearching(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-create-creator", {
-        body: { action: "search_users", query: searchQuery.trim() },
-      });
-      if (error || data?.error) {
-        toast.error(data?.error || error?.message || "Search failed");
-      } else {
-        setSearchResults(data.users || []);
-        if (!data.users?.length) toast.info("No users found");
-      }
+      const users = await searchCandidatesMutation.mutateAsync({ query: searchQuery.trim() });
+      setSearchResults(users as any);
+      if (!users?.length) toast.info("No users found");
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e?.message || "Search failed");
     } finally {
       setSearching(false);
     }
@@ -133,21 +134,20 @@ export function CreatorAccountCard({ profileId, profileName, profileTable, creat
     if (!targetEmail) { toast.error("User has no email"); return; }
     setLinking(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-create-creator", {
-        body: { action: "link_existing", email: targetEmail, role: creatorRole, profileTable, profileId },
+      const data = await linkProfileMutation.mutateAsync({
+        email: targetEmail,
+        role: creatorRole,
+        profileTable,
+        profileId,
       });
-      if (error || data?.error) {
-        toast.error(data?.error || error?.message || "Link failed");
-      } else {
-        toast.success(data.message || "Linked successfully");
-        setSearchMode(false);
-        setSearchQuery("");
-        setSearchResults([]);
-        setChangeLinkTarget(null);
-        onLinkChanged();
-      }
+      toast.success(data.message || "Linked successfully");
+      setSearchMode(false);
+      setSearchQuery("");
+      setSearchResults([]);
+      setChangeLinkTarget(null);
+      onLinkChanged();
     } catch (e: any) {
-      toast.error(e.message);
+      toast.error(e?.message || "Link failed");
     } finally {
       setLinking(false);
     }
