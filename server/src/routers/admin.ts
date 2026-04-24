@@ -44,6 +44,9 @@ const HOMEPAGE_SECTION_DEFAULTS: Array<{
   { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 20, display_source: null },
 ];
 
+const APP_ROLE_VALUES = ["admin", "moderator", "user", "writer", "publisher", "narrator", "rj"] as const;
+const PERMISSION_ACTIONS = ["view", "create", "edit", "delete"] as const;
+
 export const adminRouter = router({
   // ── Books ───────────────────────────────────────────────────────────────────
   listBooks: adminProcedure
@@ -364,7 +367,15 @@ export const adminRouter = router({
           : undefined,
         orderBy: { created_at: "desc" },
         include: {
-          profile: { select: { display_name: true, avatar_url: true, is_active: true, deleted_at: true } },
+          profile: {
+            select: {
+              display_name: true,
+              avatar_url: true,
+              is_active: true,
+              deleted_at: true,
+              deleted_reason: true,
+            },
+          },
           roles: true,
         },
       });
@@ -425,6 +436,32 @@ export const adminRouter = router({
       prisma.profile.update({
         where: { user_id: input.userId },
         data: { is_active: input.isActive },
+      })
+    ),
+
+  softDeleteUser: adminProcedure
+    .input(z.object({ userId: z.string(), reason: z.string().optional() }))
+    .mutation(({ input }) =>
+      prisma.profile.update({
+        where: { user_id: input.userId },
+        data: {
+          is_active: false,
+          deleted_at: new Date(),
+          deleted_reason: input.reason ?? null,
+        },
+      })
+    ),
+
+  restoreUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(({ input }) =>
+      prisma.profile.update({
+        where: { user_id: input.userId },
+        data: {
+          is_active: true,
+          deleted_at: null,
+          deleted_reason: null,
+        },
       })
     ),
 
@@ -745,6 +782,164 @@ export const adminRouter = router({
       ]);
     }),
 
+  listAdminRoles: adminProcedure.query(() =>
+    prisma.adminRole.findMany({
+      orderBy: { created_at: "asc" },
+    })
+  ),
+
+  upsertAdminRole: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        name: z.string().min(2).optional(),
+        label: z.string().min(1),
+        description: z.string().nullable().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      if (input.id) {
+        return prisma.adminRole.update({
+          where: { id: input.id },
+          data: {
+            label: input.label,
+            description: input.description ?? null,
+          },
+        });
+      }
+
+      if (!input.name) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Role name is required for new roles" });
+      }
+
+      return prisma.adminRole.create({
+        data: {
+          name: input.name.trim().toLowerCase(),
+          label: input.label,
+          description: input.description ?? null,
+        },
+      });
+    }),
+
+  deleteAdminRole: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const linkedCount = await prisma.adminUserRole.count({ where: { admin_role_id: input.id } });
+      if (linkedCount > 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot delete a role assigned to users" });
+      }
+      return prisma.adminRole.delete({ where: { id: input.id } });
+    }),
+
+  listAdminRolePermissions: adminProcedure
+    .input(z.object({ roleId: z.string() }))
+    .query(async ({ input }) => {
+      const role = await prisma.adminRole.findUnique({
+        where: { id: input.roleId },
+        select: { id: true, name: true },
+      });
+      if (!role) throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
+      if (!APP_ROLE_VALUES.includes(role.name as (typeof APP_ROLE_VALUES)[number])) return [];
+      return prisma.rolePermission.findMany({
+        where: { role: role.name as (typeof APP_ROLE_VALUES)[number] },
+      });
+    }),
+
+  replaceAdminRolePermissions: adminProcedure
+    .input(
+      z.object({
+        roleId: z.string(),
+        modules: z.array(
+          z.object({
+            module: z.string(),
+            can_view: z.boolean(),
+            can_create: z.boolean(),
+            can_edit: z.boolean(),
+            can_delete: z.boolean(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const role = await prisma.adminRole.findUnique({
+        where: { id: input.roleId },
+        select: { id: true, name: true },
+      });
+      if (!role) throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
+      if (!APP_ROLE_VALUES.includes(role.name as (typeof APP_ROLE_VALUES)[number])) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Permissions require a mapped app role name" });
+      }
+      const appRole = role.name as (typeof APP_ROLE_VALUES)[number];
+      const keys = input.modules.flatMap((entry) =>
+        PERMISSION_ACTIONS.filter((action) => entry[`can_${action}` as const]).map((action) => ({
+          permission_key: `${entry.module}:${action}`,
+        }))
+      );
+
+      await prisma.$transaction([
+        prisma.rolePermission.deleteMany({ where: { role: appRole } }),
+        ...(keys.length
+          ? [
+              prisma.rolePermission.createMany({
+                data: keys.map((key) => ({ role: appRole, permission_key: key.permission_key, is_allowed: true })),
+                skipDuplicates: true,
+              }),
+            ]
+          : []),
+      ]);
+      return { success: true };
+    }),
+
+  listAdminUserRoles: adminProcedure.query(() =>
+    prisma.adminUserRole.findMany({
+      orderBy: { created_at: "desc" },
+      include: { admin_role: { select: { label: true, name: true } } },
+    })
+  ),
+
+  assignAdminRoleToUser: adminProcedure
+    .input(
+      z.object({
+        user_id: z.string(),
+        admin_role_id: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const [existing, role] = await Promise.all([
+        prisma.adminUserRole.findFirst({ where: { user_id: input.user_id } }),
+        prisma.adminRole.findUnique({ where: { id: input.admin_role_id }, select: { name: true } }),
+      ]);
+      if (!role) throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
+
+      const result = existing
+        ? await prisma.adminUserRole.update({
+            where: { id: existing.id },
+            data: { admin_role_id: input.admin_role_id, is_active: true },
+          })
+        : await prisma.adminUserRole.create({
+            data: { user_id: input.user_id, admin_role_id: input.admin_role_id, is_active: true },
+          });
+
+      if (APP_ROLE_VALUES.includes(role.name as (typeof APP_ROLE_VALUES)[number])) {
+        await prisma.userRole.upsert({
+          where: { user_id_role: { user_id: input.user_id, role: role.name as (typeof APP_ROLE_VALUES)[number] } },
+          create: { user_id: input.user_id, role: role.name as (typeof APP_ROLE_VALUES)[number] },
+          update: {},
+        });
+      }
+
+      return result;
+    }),
+
+  setAdminUserRoleActive: adminProcedure
+    .input(z.object({ id: z.string(), is_active: z.boolean() }))
+    .mutation(({ input }) =>
+      prisma.adminUserRole.update({
+        where: { id: input.id },
+        data: { is_active: input.is_active },
+      })
+    ),
+
   // ── Permissions ─────────────────────────────────────────────────────────────
   myPermissions: protectedProcedure.query(async ({ ctx }) => {
     const isAdmin = await prisma.userRole.findFirst({
@@ -870,11 +1065,11 @@ export const adminRouter = router({
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
 
       if (profileTable === "authors") {
-        await prisma.author.update({ where: { id: profileId }, data: { user_id: user.id } });
+        await prisma.author.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       } else if (profileTable === "publishers") {
-        await prisma.publisher.update({ where: { id: profileId }, data: { user_id: user.id } });
+        await prisma.publisher.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       } else {
-        await prisma.narrator.update({ where: { id: profileId }, data: { user_id: user.id } });
+        await prisma.narrator.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       }
 
       await prisma.userRole.upsert({
@@ -884,6 +1079,128 @@ export const adminRouter = router({
       });
 
       return { message: "Profile linked successfully" };
+    }),
+
+  unlinkCreatorProfile: adminProcedure
+    .input(
+      z.object({
+        profileTable: z.enum(["authors", "publishers", "narrators"]),
+        profileId: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const roleByTable: Record<"authors" | "publishers" | "narrators", "writer" | "publisher" | "narrator"> = {
+        authors: "writer",
+        publishers: "publisher",
+        narrators: "narrator",
+      };
+      const targetRole = roleByTable[input.profileTable];
+
+      let previousUserId: string | null | undefined;
+      if (input.profileTable === "authors") {
+        const row = await prisma.author.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
+        previousUserId = row?.user_id;
+        await prisma.author.update({ where: { id: input.profileId }, data: { user_id: null, linked_at: null } });
+      } else if (input.profileTable === "publishers") {
+        const row = await prisma.publisher.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
+        previousUserId = row?.user_id;
+        await prisma.publisher.update({ where: { id: input.profileId }, data: { user_id: null, linked_at: null } });
+      } else {
+        const row = await prisma.narrator.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
+        previousUserId = row?.user_id;
+        await prisma.narrator.update({ where: { id: input.profileId }, data: { user_id: null, linked_at: null } });
+      }
+
+      if (previousUserId) {
+        const [linkedAuthor, linkedPublisher, linkedNarrator] = await Promise.all([
+          targetRole === "writer"
+            ? prisma.author.count({ where: { user_id: previousUserId } })
+            : Promise.resolve(0),
+          targetRole === "publisher"
+            ? prisma.publisher.count({ where: { user_id: previousUserId } })
+            : Promise.resolve(0),
+          targetRole === "narrator"
+            ? prisma.narrator.count({ where: { user_id: previousUserId } })
+            : Promise.resolve(0),
+        ]);
+        const stillLinkedForRole =
+          targetRole === "writer" ? linkedAuthor > 0 : targetRole === "publisher" ? linkedPublisher > 0 : linkedNarrator > 0;
+
+        if (!stillLinkedForRole) {
+          await prisma.userRole.deleteMany({ where: { user_id: previousUserId, role: targetRole as any } });
+        }
+      }
+
+      return { message: "Account unlinked successfully" };
+    }),
+
+  searchCreatorLinkCandidates: adminProcedure
+    .input(z.object({ query: z.string().min(2) }))
+    .query(async ({ input }) => {
+      const q = input.query.trim();
+      const users = await prisma.user.findMany({
+        where: {
+          OR: [
+            { email: { contains: q, mode: "insensitive" } },
+            { profile: { display_name: { contains: q, mode: "insensitive" } } },
+            { profile: { phone: { contains: q, mode: "insensitive" } } },
+          ],
+        },
+        take: 25,
+        orderBy: { created_at: "desc" },
+        include: {
+          profile: { select: { display_name: true, avatar_url: true, phone: true } },
+          roles: true,
+        },
+      });
+      const userIds = users.map((u) => u.id);
+      const [authors, publishers, narrators] = await Promise.all([
+        userIds.length
+          ? prisma.author.findMany({
+              where: { user_id: { in: userIds } },
+              select: { user_id: true, id: true, name: true },
+            })
+          : [],
+        userIds.length
+          ? prisma.publisher.findMany({
+              where: { user_id: { in: userIds } },
+              select: { user_id: true, id: true, name: true },
+            })
+          : [],
+        userIds.length
+          ? prisma.narrator.findMany({
+              where: { user_id: { in: userIds } },
+              select: { user_id: true, id: true, name: true },
+            })
+          : [],
+      ]);
+
+      const linksByUser: Record<string, Array<{ type: string; name: string }>> = {};
+      authors.forEach((a) => {
+        if (!a.user_id) return;
+        if (!linksByUser[a.user_id]) linksByUser[a.user_id] = [];
+        linksByUser[a.user_id].push({ type: "author", name: a.name });
+      });
+      publishers.forEach((p) => {
+        if (!p.user_id) return;
+        if (!linksByUser[p.user_id]) linksByUser[p.user_id] = [];
+        linksByUser[p.user_id].push({ type: "publisher", name: p.name });
+      });
+      narrators.forEach((n) => {
+        if (!n.user_id) return;
+        if (!linksByUser[n.user_id]) linksByUser[n.user_id] = [];
+        linksByUser[n.user_id].push({ type: "narrator", name: n.name });
+      });
+
+      return users.map((u) => ({
+        user_id: u.id,
+        email: u.email,
+        display_name: u.profile?.display_name || u.email,
+        avatar_url: u.profile?.avatar_url ?? null,
+        phone: u.profile?.phone ?? null,
+        roles: u.roles.map((r) => r.role),
+        existing_links: linksByUser[u.id] || [],
+      }));
     }),
 
   // ── Authors CRUD ────────────────────────────────────────────────────────────
@@ -1286,6 +1603,272 @@ export const adminRouter = router({
     .mutation(({ input }) => prisma.notificationTemplate.delete({ where: { id: input.id } })),
 
   // ── User detail + role update ─────────────────────────────────────────────────
+  getAdminUserDetailPage: adminProcedure
+    .input(z.object({ type: z.enum(["user", "author", "narrator", "publisher"]), id: z.string() }))
+    .query(async ({ input }) => {
+      const roleByType = {
+        author: "writer",
+        narrator: "narrator",
+        publisher: "publisher",
+      } as const;
+
+      if (input.type === "user") {
+        const user = await prisma.user.findUnique({
+          where: { id: input.id },
+          include: { profile: true, roles: true },
+        });
+        if (!user || !user.profile) return null;
+
+        return {
+          record: user.profile,
+          profile: user.profile,
+          roles: user.roles.map((r) => r.role),
+          authMeta: {
+            email: user.email,
+            created_at: user.created_at,
+            last_sign_in_at: null,
+            email_confirmed_at: user.email_verified ? user.updated_at : null,
+          },
+          application: null,
+          books: [],
+          earnings: [],
+          withdrawals: [],
+        };
+      }
+
+      const record =
+        input.type === "author"
+          ? await prisma.author.findUnique({ where: { id: input.id } })
+          : input.type === "narrator"
+            ? await prisma.narrator.findUnique({ where: { id: input.id } })
+            : await prisma.publisher.findUnique({ where: { id: input.id } });
+      if (!record) return null;
+
+      if (!record.user_id) {
+        return {
+          record,
+          profile: null,
+          roles: [],
+          authMeta: null,
+          application: null,
+          books: [],
+          earnings: [],
+          withdrawals: [],
+        };
+      }
+
+      const [user, app, books, earnings, withdrawals] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: record.user_id },
+          include: { profile: true, roles: true },
+        }),
+        prisma.roleApplication.findFirst({
+          where: { user_id: record.user_id, applied_role: roleByType[input.type] },
+          orderBy: { created_at: "desc" },
+        }),
+        prisma.book.findMany({
+          where: { submitted_by: record.user_id },
+          select: { id: true, title: true, cover_url: true, submission_status: true, created_at: true },
+          orderBy: { created_at: "desc" },
+          take: 20,
+        }),
+        prisma.contributorEarning.findMany({
+          where: { user_id: record.user_id },
+          orderBy: { created_at: "desc" },
+          take: 50,
+        }),
+        prisma.withdrawalRequest.findMany({
+          where: { user_id: record.user_id },
+          orderBy: { created_at: "desc" },
+          take: 20,
+        }),
+      ]);
+
+      return {
+        record,
+        profile: user?.profile || null,
+        roles: (user?.roles || []).map((r) => r.role),
+        authMeta: user
+          ? {
+              email: user.email,
+              created_at: user.created_at,
+              last_sign_in_at: null,
+              email_confirmed_at: user.email_verified ? user.updated_at : null,
+            }
+          : null,
+        application: app,
+        books,
+        earnings,
+        withdrawals,
+      };
+    }),
+
+  updateAdminUserProfile: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        display_name: z.string().optional(),
+        bio: z.string().optional(),
+        avatar_url: z.string().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.profile.update({
+        where: { user_id: input.userId },
+        data: {
+          display_name: input.display_name,
+          bio: input.bio,
+          avatar_url: input.avatar_url,
+        },
+      })
+    ),
+
+  updateAdminCreatorProfile: adminProcedure
+    .input(
+      z.object({
+        type: z.enum(["author", "narrator", "publisher"]),
+        id: z.string(),
+        name: z.string().optional(),
+        name_en: z.string().optional(),
+        email: z.string().optional(),
+        status: z.string().optional(),
+        priority: z.number().optional(),
+        is_featured: z.boolean().optional(),
+        is_trending: z.boolean().optional(),
+        bio: z.string().optional(),
+        avatar_url: z.string().optional(),
+        genre: z.string().optional(),
+        specialty: z.string().optional(),
+        rating: z.number().optional(),
+        is_verified: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      if (input.type === "author") {
+        return prisma.author.update({
+          where: { id: input.id },
+          data: {
+            name: input.name,
+            name_en: input.name_en,
+            email: input.email,
+            status: input.status,
+            priority: input.priority,
+            is_featured: input.is_featured,
+            is_trending: input.is_trending,
+            bio: input.bio,
+            avatar_url: input.avatar_url,
+            genre: input.genre,
+          },
+        });
+      }
+      if (input.type === "narrator") {
+        return prisma.narrator.update({
+          where: { id: input.id },
+          data: {
+            name: input.name,
+            name_en: input.name_en,
+            email: input.email,
+            status: input.status,
+            priority: input.priority,
+            is_featured: input.is_featured,
+            is_trending: input.is_trending,
+            bio: input.bio,
+            avatar_url: input.avatar_url,
+            specialty: input.specialty,
+            rating: input.rating,
+          },
+        });
+      }
+      return prisma.publisher.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          name_en: input.name_en,
+          email: input.email,
+          status: input.status,
+          priority: input.priority,
+          is_featured: input.is_featured,
+          description: input.bio,
+          logo_url: input.avatar_url,
+          is_verified: input.is_verified,
+        },
+      });
+    }),
+
+  setUserTempPassword: adminProcedure
+    .input(z.object({ userId: z.string(), tempPassword: z.string().min(6) }))
+    .mutation(async ({ input }) => {
+      const password_hash = await bcrypt.hash(input.tempPassword, 12);
+      return prisma.user.update({
+        where: { id: input.userId },
+        data: { password_hash },
+        select: { id: true },
+      });
+    }),
+
+  listCreatorPermissionUsers: adminProcedure.query(async () => {
+    const roleUsers = await prisma.userRole.findMany({
+      where: { role: { in: ["writer", "publisher", "narrator"] } },
+      select: { user_id: true, role: true },
+    });
+    const userIds = [...new Set(roleUsers.map((r) => r.user_id))];
+    if (!userIds.length) return [];
+    const profiles = await prisma.profile.findMany({
+      where: { user_id: { in: userIds } },
+      select: { user_id: true, display_name: true },
+    });
+    const roleMap: Record<string, string[]> = {};
+    roleUsers.forEach((r) => {
+      if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
+      roleMap[r.user_id].push(r.role);
+    });
+    return profiles.map((p) => ({
+      ...p,
+      roles: roleMap[p.user_id] || [],
+    }));
+  }),
+
+  getUserPermissionOverrides: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(({ input }) =>
+      prisma.userPermissionOverride.findMany({
+        where: { user_id: input.userId },
+        select: { permission_key: true, is_allowed: true },
+      })
+    ),
+
+  replaceUserPermissionOverrides: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        grantedBy: z.string().optional(),
+        overrides: z.array(
+          z.object({
+            permission_key: z.string(),
+            is_allowed: z.boolean(),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await prisma.$transaction([
+        prisma.userPermissionOverride.deleteMany({ where: { user_id: input.userId } }),
+        ...(input.overrides.length
+          ? [
+              prisma.userPermissionOverride.createMany({
+                data: input.overrides.map((o) => ({
+                  user_id: input.userId,
+                  permission_key: o.permission_key,
+                  is_allowed: o.is_allowed,
+                  granted_by: input.grantedBy ?? null,
+                })),
+              }),
+            ]
+          : []),
+      ]);
+      return { success: true };
+    }),
+
   getUserDetail: adminProcedure
     .input(z.object({ id: z.string() }))
     .query(({ input }) =>
@@ -1297,6 +1880,121 @@ export const adminRouter = router({
         },
       })
     ),
+
+  getUserProfileModalData: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ input }) => {
+      const [user, wallet, subscription, orders, payments, coinTxns, earnings] = await Promise.all([
+        prisma.user.findUnique({
+          where: { id: input.userId },
+          include: { profile: true, roles: true },
+        }),
+        prisma.userCoin.findUnique({
+          where: { user_id: input.userId },
+          select: { balance: true, total_earned: true, total_spent: true },
+        }),
+        prisma.userSubscription.findFirst({
+          where: { user_id: input.userId, status: "active" },
+          include: { plan: { select: { name: true, price: true } } },
+          orderBy: { created_at: "desc" },
+        }),
+        prisma.order.findMany({
+          where: { user_id: input.userId },
+          select: {
+            id: true,
+            order_number: true,
+            status: true,
+            total_amount: true,
+            payment_method: true,
+            cod_payment_status: true,
+            created_at: true,
+            shipping_name: true,
+            shipping_address: true,
+            shipping_district: true,
+            shipping_phone: true,
+          },
+          orderBy: { created_at: "desc" },
+          take: 50,
+        }),
+        prisma.payment.findMany({
+          where: { user_id: input.userId },
+          select: {
+            id: true,
+            amount: true,
+            method: true,
+            status: true,
+            transaction_id: true,
+            created_at: true,
+            order_id: true,
+          },
+          orderBy: { created_at: "desc" },
+          take: 50,
+        }),
+        prisma.coinTransaction.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, amount: true, type: true, description: true, source: true, created_at: true },
+          orderBy: { created_at: "desc" },
+          take: 50,
+        }),
+        prisma.contributorEarning.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, earned_amount: true, role: true, format: true, status: true, created_at: true },
+          orderBy: { created_at: "desc" },
+          take: 50,
+        }),
+      ]);
+
+      const profile = user?.profile
+        ? {
+            ...user.profile,
+            email: user.email,
+          }
+        : null;
+
+      return {
+        profile,
+        roles: (user?.roles || []).map((r) => r.role),
+        wallet,
+        subscription: subscription
+          ? {
+              ...subscription,
+              subscription_plans: subscription.plan,
+            }
+          : null,
+        orders,
+        payments,
+        coinTxns,
+        earnings,
+      };
+    }),
+
+  getCreatorLinksByUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ input }) => {
+      const [authors, publishers, narrators] = await Promise.all([
+        prisma.author.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, name: true, name_en: true, avatar_url: true, status: true },
+          orderBy: { linked_at: "desc" },
+        }),
+        prisma.publisher.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, name: true, name_en: true, logo_url: true, status: true },
+          orderBy: { linked_at: "desc" },
+        }),
+        prisma.narrator.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, name: true, name_en: true, avatar_url: true, status: true },
+          orderBy: { linked_at: "desc" },
+        }),
+      ]);
+
+      return {
+        authors,
+        publishers,
+        narrators,
+      };
+    }),
 
   updateUserRole: adminProcedure
     .input(z.object({ userId: z.string(), role: z.string(), action: z.enum(["add", "remove"]) }))
@@ -1347,29 +2045,6 @@ export const adminRouter = router({
       _count: { role: true },
     })
   ),
-
-  // ── User soft-delete / restore ───────────────────────────────────────────────
-  softDeleteUser: adminProcedure
-    .input(z.object({ userId: z.string(), reason: z.string().optional() }))
-    .mutation(({ input }) =>
-      prisma.profile.update({
-        where: { user_id: input.userId },
-        data: {
-          deleted_at: new Date(),
-          deleted_reason: input.reason || null,
-          is_active: false,
-        },
-      })
-    ),
-
-  restoreUser: adminProcedure
-    .input(z.object({ userId: z.string() }))
-    .mutation(({ input }) =>
-      prisma.profile.update({
-        where: { user_id: input.userId },
-        data: { deleted_at: null, deleted_reason: null, is_active: true },
-      })
-    ),
 
   // ── Admin Activity Log ──────────────────────────────────────────────────────
   logAction: adminProcedure
@@ -1950,6 +2625,55 @@ export const adminRouter = router({
 
     return { dauData, formatData, onlineCount, totalUsers, readsData };
   }),
+
+  liveUsers: adminProcedure
+    .input(z.object({ filter: z.enum(["online", "reading", "listening"]).optional() }).optional())
+    .query(async ({ input }) => {
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const activityFilter =
+        input?.filter === "reading"
+          ? "reading"
+          : input?.filter === "listening"
+            ? "listening"
+            : undefined;
+
+      const rows = await prisma.userPresence.findMany({
+        where: {
+          last_seen: { gte: fiveMinAgo },
+          ...(activityFilter ? { activity_type: activityFilter } : {}),
+        },
+        orderBy: { last_seen: "desc" },
+        select: {
+          user_id: true,
+          last_seen: true,
+          activity_type: true,
+          current_page: true,
+          current_book_id: true,
+        },
+      });
+
+      if (!rows.length) return [];
+
+      const userIds = [...new Set(rows.map((r) => r.user_id))];
+      const bookIds = [...new Set(rows.map((r) => r.current_book_id).filter(Boolean) as string[])];
+      const [profiles, books] = await Promise.all([
+        prisma.profile.findMany({
+          where: { user_id: { in: userIds } },
+          select: { user_id: true, display_name: true },
+        }),
+        bookIds.length
+          ? prisma.book.findMany({ where: { id: { in: bookIds } }, select: { id: true, title: true } })
+          : Promise.resolve([]),
+      ]);
+      const profileMap = Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || p.user_id.slice(0, 8)]));
+      const bookMap = Object.fromEntries(books.map((b) => [b.id, b.title]));
+
+      return rows.map((r) => ({
+        ...r,
+        display_name: profileMap[r.user_id] || r.user_id.slice(0, 8),
+        book_title: r.current_book_id ? bookMap[r.current_book_id] || null : null,
+      }));
+    }),
 
   readingAnalyticsData: adminProcedure.query(async () => {
     const [logs, books, bookReads, presenceData, settings] = await Promise.all([

@@ -62,3 +62,19 @@ npx prisma db seed -- --dry-run
 4. Set backend env var:
    - `server/.env`: `GOOGLE_CLIENT_ID=...`
 5. Restart both frontend and backend servers after changing env vars.
+
+# Approve book query:
+UPDATE books
+SET submission_status = 'approved',
+    updated_at = NOW()
+WHERE submission_status = 'pending';
+
+UPDATE book_formats bf
+SET submission_status = 'approved',
+    updated_at = NOW()
+FROM books b
+WHERE bf.book_id = b.id
+  AND b.submission_status = 'approved'
+  AND bf.format = 'ebook'
+  AND bf.submission_status = 'pending'
+  AND bf.is_available = true;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -26,6 +26,7 @@ export function HardcopyProfitCalculator({
   estimatedShippingCost = 60,
   packagingCostPerOrder = 10,
 }: HardcopyProfitCalculatorProps) {
+  const utils = trpc.useUtils();
   const [merchantCourierCost, setMerchantCourierCost] = useState(0);
 
   const orig = originalPrice || 0;
@@ -50,11 +51,12 @@ export function HardcopyProfitCalculator({
       platform_percentage: derivedPlatformPct,
       fulfillment_cost_percentage: 0,
     };
-    const { error } = await supabase
-      .from("format_revenue_splits")
-      .upsert(payload, { onConflict: "book_id,format" });
-    if (error) console.error("Failed to sync hardcopy revenue split:", error);
-  }, [bookId, commission, derivedPublisherPct, derivedPlatformPct]);
+    try {
+      await utils.admin.upsertRevenueOverride.fetch(payload);
+    } catch (error) {
+      console.error("Failed to sync hardcopy revenue split:", error);
+    }
+  }, [bookId, commission, derivedPublisherPct, derivedPlatformPct, utils.admin.upsertRevenueOverride]);
 
   useEffect(() => {
     if (!bookId || commission < 0 || commission > 100) return;
