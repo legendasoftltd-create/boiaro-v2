@@ -24,8 +24,10 @@ export function BlogSection() {
   if (isLoading) return <p>Loading...</p>
 
   if (!posts || posts.length === 0) {
-    return <p>No posts found</p>
+    return <> </>
   }
+
+  console.log({result})
 
   return (
     <section className="section-container">
