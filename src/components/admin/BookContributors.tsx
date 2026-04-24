@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,51 +13,59 @@ interface BookContributorsProps {
 }
 
 export function BookContributors({ bookId }: BookContributorsProps) {
+  const utils = trpc.useUtils();
   const [contributors, setContributors] = useState<any[]>([]);
-  const [profiles, setProfiles] = useState<any[]>([]);
   const [roleUsers, setRoleUsers] = useState<Record<string, any[]>>({});
   const [addRole, setAddRole] = useState("writer");
   const [addUserId, setAddUserId] = useState("");
   const [addFormat, setAddFormat] = useState("");
+  const addContributorMutation = trpc.admin.addBookContributor.useMutation();
+  const removeContributorMutation = trpc.admin.removeBookContributor.useMutation();
 
   useEffect(() => { load(); }, [bookId]);
 
   const load = async () => {
-    const [c, r] = await Promise.all([
-      supabase.from("book_contributors").select("*").eq("book_id", bookId),
-      supabase.from("user_roles").select("user_id, role").in("role", ["writer", "publisher", "narrator"]),
+    const [contributorsData, usersData] = await Promise.all([
+      utils.admin.listBookContributors.fetch({ bookId }),
+      utils.admin.listUsers.fetch({ limit: 1000 }),
     ]);
-    setContributors(c.data || []);
+    setContributors(contributorsData || []);
 
-    // Get profiles for role users
-    const userIds = [...new Set((r.data || []).map(u => u.user_id))];
-    if (userIds.length > 0) {
-      const { data: profs } = await supabase.from("profiles").select("user_id, display_name").in("user_id", userIds);
-      setProfiles(profs || []);
-    }
-
-    // Group users by role
     const grouped: Record<string, any[]> = { writer: [], publisher: [], narrator: [] };
-    (r.data || []).forEach(u => {
-      if (grouped[u.role]) grouped[u.role].push(u);
+    (usersData?.users || []).forEach((u: any) => {
+      const uid = u.id;
+      const display_name = u.profile?.display_name || uid.slice(0, 8) + "...";
+      (u.roles || []).forEach((r: any) => {
+        const role = r.role;
+        if (grouped[role]) grouped[role].push({ user_id: uid, display_name });
+      });
     });
     setRoleUsers(grouped);
   };
 
   const getDisplayName = (userId: string) => {
-    const p = profiles.find(p => p.user_id === userId);
-    return p?.display_name || userId.slice(0, 8) + "...";
+    const existing = contributors.find((c) => c.user_id === userId)?.display_name;
+    if (existing) return existing;
+    for (const role of Object.keys(roleUsers)) {
+      const user = (roleUsers[role] || []).find((u: any) => u.user_id === userId);
+      if (user?.display_name) return user.display_name;
+    }
+    return userId.slice(0, 8) + "...";
   };
 
   const addContributor = async () => {
     if (!addUserId) { toast.error("Select a user"); return; }
-    const { error } = await supabase.from("book_contributors").insert({
-      book_id: bookId, user_id: addUserId, role: addRole,
-      format: addFormat || null,
-    });
-    if (error) {
-      if (error.code === "23505") toast.error("This contributor is already assigned");
-      else toast.error(error.message);
+    try {
+      await addContributorMutation.mutateAsync({
+        bookId,
+        userId: addUserId,
+        role: addRole,
+        format: addFormat || "all",
+      });
+    } catch (error: any) {
+      const message = error?.message || "Failed to add contributor";
+      if (message.toLowerCase().includes("unique")) toast.error("This contributor is already assigned");
+      else toast.error(message);
       return;
     }
     toast.success("Contributor added");
@@ -66,7 +74,7 @@ export function BookContributors({ bookId }: BookContributorsProps) {
   };
 
   const removeContributor = async (id: string) => {
-    await supabase.from("book_contributors").delete().eq("id", id);
+    await removeContributorMutation.mutateAsync({ id });
     toast.success("Contributor removed");
     load();
   };
