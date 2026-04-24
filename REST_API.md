@@ -313,5 +313,6 @@ The first REST endpoints added are:
 - `GET /api/v1/auth/me`
 - `GET /api/v1/books`
 - `GET /api/v1/books/:id`
+- `GET /api/v1/homepage`
 
 More endpoints can be added gradually using the same pattern without affecting the existing web tRPC client.
