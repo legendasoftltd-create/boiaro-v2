@@ -73,6 +73,16 @@ function isFreeAccessType(accessType?: string): boolean {
   return value === "free";
 }
 
+function normalizeSubmissionStatus(rawStatus?: string): "approved" | "pending" | "rejected" | "draft" {
+  const value = (rawStatus || "").trim().toLowerCase();
+  if (!value) return "approved";
+  if (value === "approved" || value === "pending" || value === "rejected" || value === "draft") return value;
+  // Legacy datasets often use generic labels like active/published/live.
+  if (value === "active" || value === "published" || value === "live" || value === "public") return "approved";
+  if (value === "inactive" || value === "disabled" || value === "blocked") return "rejected";
+  return "approved";
+}
+
 function toUploadPath(fileName: string | null, folder: "bookPdf" | "bookImages"): string | null {
   if (!fileName) return null;
   const cleaned = fileName.trim();
@@ -82,6 +92,8 @@ function toUploadPath(fileName: string | null, folder: "bookPdf" | "bookImages")
   const onlyName = cleaned.split("/").pop() || cleaned;
   return `/uploads/${folder}/${onlyName}`;
 }
+
+const DEFAULT_EBOOK_FILE_URL = "/uploads/bookPdf/1763570611130-sobar_jonno_ain_ebook.pdf";
 
 function extractEbookChapters(row: CsvRow): Array<{
   chapter_title: string;
@@ -239,7 +251,9 @@ async function migrateBooks() {
       const updatedAt = row.updatedAt ? new Date(row.updatedAt) : new Date();
       const cover = normalizeText(row.image);
       const cover_url = toUploadPath(cover, "bookImages");
-      const file_url = toUploadPath(normalizeText(row.pdf), "bookPdf");
+      const file_url = toUploadPath(normalizeText(row.pdf), "bookPdf") || DEFAULT_EBOOK_FILE_URL;
+      const submissionStatus = normalizeSubmissionStatus(row.status);
+      const hasEbookFile = Boolean(file_url && file_url.trim().length > 0);
       const isFreeBook = isFreeAccessType(row.access_type);
       const parsedPrice = row.price ? Math.max(0, parseFloat(row.price) || 0) : 0;
       const effectivePrice = isFreeBook ? 0 : parsedPrice;
@@ -270,7 +284,7 @@ async function migrateBooks() {
           coin_price: effectiveCoinPrice,
           is_free: isFreeBook,
           is_featured: toBool(row.featured),
-          submission_status: normalizeText(row.status) || "pending",
+          submission_status: submissionStatus,
           published_date: row.published_date ? new Date(row.published_date) : null,
           author_id: resolvedAuthorId,
           category_id: categoryId && categorySet.has(categoryId) ? categoryId : null,
@@ -289,7 +303,7 @@ async function migrateBooks() {
           coin_price: effectiveCoinPrice,
           is_free: isFreeBook,
           is_featured: toBool(row.featured),
-          submission_status: normalizeText(row.status) || "pending",
+          submission_status: submissionStatus,
           published_date: row.published_date ? new Date(row.published_date) : null,
           author_id: resolvedAuthorId,
           category_id: categoryId && categorySet.has(categoryId) ? categoryId : null,
@@ -315,8 +329,8 @@ async function migrateBooks() {
             file_url,
             pages: row.pages ? Math.max(0, parseInt(row.pages, 10) || 0) : null,
             price: effectivePrice,
-            is_available: true,
-            submission_status: normalizeText(row.status) || "pending",
+            is_available: hasEbookFile,
+            submission_status: submissionStatus,
             publisher_id: resolvedPublisherId,
           },
         });
@@ -329,8 +343,8 @@ async function migrateBooks() {
             file_url,
             pages: row.pages ? Math.max(0, parseInt(row.pages, 10) || 0) : null,
             price: effectivePrice,
-            is_available: true,
-            submission_status: normalizeText(row.status) || "pending",
+            is_available: hasEbookFile,
+            submission_status: submissionStatus,
             publisher_id: resolvedPublisherId,
             created_at: createdAt,
             updated_at: updatedAt,

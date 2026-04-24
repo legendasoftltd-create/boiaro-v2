@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Shield, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 
 const ALL_PERMISSIONS = [
   { key: "add_ebook", label: "Add eBook", desc: "Can submit eBook formats" },
@@ -21,6 +21,7 @@ const ALL_PERMISSIONS = [
 
 export default function AdminUserPermissions() {
   const { user: admin } = useAuth();
+  const utils = trpc.useUtils();
   const [creators, setCreators] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState<any>(null);
@@ -30,37 +31,13 @@ export default function AdminUserPermissions() {
   useEffect(() => { loadCreators(); }, []);
 
   const loadCreators = async () => {
-    const { data: roleUsers } = await supabase
-      .from("user_roles")
-      .select("user_id, role")
-      .in("role", ["writer", "publisher", "narrator"]);
-    
-    const userIds = [...new Set((roleUsers || []).map(r => r.user_id))];
-    if (!userIds.length) { setCreators([]); return; }
-
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("user_id, display_name")
-      .in("user_id", userIds);
-
-    const roleMap: Record<string, string[]> = {};
-    (roleUsers || []).forEach(r => {
-      if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
-      roleMap[r.user_id].push(r.role);
-    });
-
-    setCreators((profiles || []).map(p => ({
-      ...p,
-      roles: roleMap[p.user_id] || [],
-    })));
+    const rows = await utils.admin.listCreatorPermissionUsers.fetch();
+    setCreators(rows || []);
   };
 
   const openUser = async (creator: any) => {
     setSelectedUser(creator);
-    const { data } = await supabase
-      .from("user_permission_overrides")
-      .select("permission_key, is_allowed")
-      .eq("user_id", creator.user_id);
+    const data = await utils.admin.getUserPermissionOverrides.fetch({ userId: creator.user_id });
 
     const map: Record<string, boolean | null> = {};
     ALL_PERMISSIONS.forEach(p => { map[p.key] = null; }); // null = use role default
@@ -81,23 +58,17 @@ export default function AdminUserPermissions() {
     if (!selectedUser || !admin) return;
     setSaving(true);
 
-    // Delete all existing overrides for this user
-    await supabase.from("user_permission_overrides").delete().eq("user_id", selectedUser.user_id);
-
-    // Insert non-null overrides
-    const toInsert = Object.entries(overrides)
+    const payload = Object.entries(overrides)
       .filter(([, v]) => v !== null)
       .map(([key, is_allowed]) => ({
-        user_id: selectedUser.user_id,
         permission_key: key,
         is_allowed: is_allowed as boolean,
-        granted_by: admin.id,
       }));
-
-    if (toInsert.length > 0) {
-      const { error } = await supabase.from("user_permission_overrides").insert(toInsert);
-      if (error) { toast.error(error.message); setSaving(false); return; }
-    }
+    await utils.admin.replaceUserPermissionOverrides.fetch({
+      userId: selectedUser.user_id,
+      grantedBy: admin.id,
+      overrides: payload,
+    });
 
     toast.success("Permissions saved");
     setSaving(false);

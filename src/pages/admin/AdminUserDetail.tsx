@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,10 +17,12 @@ import {
   ExternalLink, Calendar, Mail,
 } from "lucide-react";
 import { CreatorLinkSummary } from "@/components/admin/CreatorLinkSummary";
+import { trpc } from "@/lib/trpc";
 
 export default function AdminUserDetail() {
   const { type, id } = useParams<{ type: string; id: string }>();
   const navigate = useNavigate();
+  const utils = trpc.useUtils();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [record, setRecord] = useState<any>(null);
@@ -39,64 +40,51 @@ export default function AdminUserDetail() {
   const [form, setForm] = useState<any>({});
 
   const isCreator = type === "author" || type === "narrator" || type === "publisher";
-  const tableName = type === "author" ? "authors" : type === "narrator" ? "narrators" : type === "publisher" ? "publishers" : "";
 
   useEffect(() => {
     loadData();
   }, [type, id]);
 
   const loadData = async () => {
+    if (!type || !id) return;
     setLoading(true);
     try {
+      const data = await utils.admin.getAdminUserDetailPage.fetch({
+        type: type as "user" | "author" | "narrator" | "publisher",
+        id,
+      });
+      setRecord(data?.record || null);
+      setProfile(data?.profile || null);
+      setRoles(data?.roles || []);
+      setAuthMeta(data?.authMeta || null);
+      setApplication(data?.application || null);
+      setBooks(data?.books || []);
+      setEarnings(data?.earnings || []);
+      setWithdrawals(data?.withdrawals || []);
+
       if (type === "user") {
-        // Load profile by user_id (id param is user_id from profiles)
-        const { data: prof } = await supabase.from("profiles").select("user_id, display_name, avatar_url, bio, preferred_language, is_active, full_name, genre, specialty, experience, referral_code, website_url, facebook_url, instagram_url, youtube_url, portfolio_url, created_at, updated_at").eq("user_id", id!).single();
-        setProfile(prof);
-        setRecord(prof);
+        const prof = data?.profile;
         setForm({
           display_name: prof?.display_name || "",
           bio: prof?.bio || "",
           avatar_url: prof?.avatar_url || "",
         });
-        // Load roles
-        const { data: r } = await supabase.from("user_roles").select("role").eq("user_id", id!) as any;
-        setRoles((r || []).map((x: any) => x.role));
-        // Load auth meta via edge function
-        loadAuthMeta(id!);
-      } else if (isCreator && tableName) {
-        // Use admin RPC functions to access all columns including PII
-        const rpcName = `admin_get_${type}s` as any;
-        const { data: allRecords } = await supabase.rpc(rpcName);
-        const data = (allRecords || []).find((r: any) => r.id === id) || null;
-        setRecord(data);
+      } else {
+        const rec = data?.record;
         setForm({
-          name: data?.name || "",
-          name_en: data?.name_en || "",
-          bio: data?.bio || data?.description || "",
-          email: data?.email || "",
-          avatar_url: data?.avatar_url || data?.logo_url || "",
-          status: data?.status || "active",
-          priority: data?.priority || 0,
-          is_featured: data?.is_featured || false,
-          is_trending: data?.is_trending || false,
-          ...(type === "author" && { genre: data?.genre || "" }),
-          ...(type === "narrator" && { specialty: data?.specialty || "", rating: data?.rating || 0 }),
-          ...(type === "publisher" && { is_verified: data?.is_verified || false }),
+          name: rec?.name || "",
+          name_en: rec?.name_en || "",
+          bio: rec?.bio || rec?.description || "",
+          email: rec?.email || "",
+          avatar_url: rec?.avatar_url || rec?.logo_url || "",
+          status: rec?.status || "active",
+          priority: rec?.priority || 0,
+          is_featured: rec?.is_featured || false,
+          is_trending: rec?.is_trending || false,
+          ...(type === "author" && { genre: rec?.genre || "" }),
+          ...(type === "narrator" && { specialty: rec?.specialty || "", rating: rec?.rating || 0 }),
+          ...(type === "publisher" && { is_verified: rec?.is_verified || false }),
         });
-        // Load profile if user_id exists
-        if (data?.user_id) {
-          const { data: prof } = await supabase.from("profiles").select("user_id, display_name, avatar_url, bio, preferred_language, is_active, full_name, genre, specialty, experience, referral_code, website_url, facebook_url, instagram_url, youtube_url, portfolio_url, created_at, updated_at").eq("user_id", data.user_id).single();
-          setProfile(prof);
-          const { data: r } = await supabase.from("user_roles").select("role").eq("user_id", data.user_id) as any;
-          setRoles((r || []).map((x: any) => x.role));
-          loadAuthMeta(data.user_id);
-          // Load application
-          const roleMap: Record<string, string> = { author: "writer", narrator: "narrator", publisher: "publisher" };
-          const { data: app } = await supabase.from("role_applications").select("*").eq("user_id", data.user_id).eq("requested_role", roleMap[type!] as any).order("created_at", { ascending: false }).limit(1) as any;
-          if (app?.length) setApplication(app[0]);
-          // Load business data
-          loadBusinessData(data.user_id);
-        }
       }
     } catch (err) {
       console.error(err);
@@ -104,37 +92,20 @@ export default function AdminUserDetail() {
     setLoading(false);
   };
 
-  const loadAuthMeta = async (userId: string) => {
-    try {
-      const { data, error } = await supabase.functions.invoke("admin-manage-user", {
-        body: { action: "get_user_meta", userId },
-      });
-      if (!error && data) setAuthMeta(data);
-    } catch {}
-  };
-
-  const loadBusinessData = async (userId: string) => {
-    const [booksRes, earningsRes, withdrawalsRes] = await Promise.all([
-      supabase.from("books").select("id, title, cover_url, submission_status, created_at").eq("submitted_by", userId).order("created_at", { ascending: false }).limit(20),
-      supabase.from("contributor_earnings").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(50),
-      supabase.from("withdrawal_requests").select("*").eq("user_id", userId).order("created_at", { ascending: false }).limit(20),
-    ]);
-    setBooks(booksRes.data || []);
-    setEarnings(earningsRes.data || []);
-    setWithdrawals(withdrawalsRes.data || []);
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {
       if (type === "user") {
-        await supabase.from("profiles").update({
+        await utils.admin.updateAdminUserProfile.fetch({
+          userId: id!,
           display_name: form.display_name,
           bio: form.bio,
           avatar_url: form.avatar_url,
-        }).eq("user_id", id!);
-      } else if (isCreator && tableName) {
-        const payload: any = {
+        });
+      } else if (isCreator && id) {
+        await utils.admin.updateAdminCreatorProfile.fetch({
+          type: type as "author" | "narrator" | "publisher",
+          id,
           name: form.name,
           name_en: form.name_en,
           email: form.email,
@@ -142,22 +113,13 @@ export default function AdminUserDetail() {
           priority: Number(form.priority) || 0,
           is_featured: form.is_featured,
           is_trending: form.is_trending,
-        };
-        if (type === "author") {
-          payload.bio = form.bio;
-          payload.avatar_url = form.avatar_url;
-          payload.genre = form.genre;
-        } else if (type === "narrator") {
-          payload.bio = form.bio;
-          payload.avatar_url = form.avatar_url;
-          payload.specialty = form.specialty;
-          payload.rating = Number(form.rating) || 0;
-        } else if (type === "publisher") {
-          payload.description = form.bio;
-          payload.logo_url = form.avatar_url;
-          payload.is_verified = form.is_verified;
-        }
-        await supabase.from(tableName).update(payload).eq("id", id!) as any;
+          bio: form.bio,
+          avatar_url: form.avatar_url,
+          genre: form.genre,
+          specialty: form.specialty,
+          rating: Number(form.rating) || 0,
+          is_verified: !!form.is_verified,
+        });
       }
       toast.success("Saved successfully");
       loadData();
@@ -168,26 +130,19 @@ export default function AdminUserDetail() {
   };
 
   const handlePasswordReset = async () => {
-    const userId = type === "user" ? id! : record?.user_id;
-    if (!userId) return toast.error("No linked user account");
-    const { data, error } = await supabase.functions.invoke("admin-manage-user", {
-      body: { action: "send_password_reset", userId },
-    });
-    if (error || data?.error) toast.error(data?.error || "Failed");
-    else toast.success("Password reset email sent");
+    toast.error("Password reset email is not configured yet.");
   };
 
   const handleSetTempPassword = async () => {
     const userId = type === "user" ? id! : record?.user_id;
     if (!userId) return toast.error("No linked user account");
-    const { data, error } = await supabase.functions.invoke("admin-manage-user", {
-      body: { action: "set_temp_password", userId, tempPassword },
-    });
-    if (error || data?.error) toast.error(data?.error || "Failed");
-    else {
+    try {
+      await utils.admin.setUserTempPassword.fetch({ userId, tempPassword });
       toast.success("Temporary password set");
       setPasswordDialog(false);
       setTempPassword("");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed");
     }
   };
 
