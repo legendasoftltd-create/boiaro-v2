@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,7 @@ const FORMAT_CONFIG = [
 ];
 
 export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
+  const utils = trpc.useUtils();
   const [defaults, setDefaults] = useState<Record<string, any>>({});
   const [splits, setSplits] = useState<Record<string, SplitState>>({
     ebook: { useDefault: true, writer_percentage: 65, publisher_percentage: 0, narrator_percentage: 0, platform_percentage: 35, fulfillment_cost_percentage: 0 },
@@ -50,18 +51,14 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
   useEffect(() => { load(); }, [bookId]);
 
   const load = async () => {
-    const [d, s] = await Promise.all([
-      supabase.from("default_revenue_rules").select("*"),
-      supabase.from("format_revenue_splits").select("*").eq("book_id", bookId),
-    ]);
-
+    const data = await utils.admin.getBookRevenueSplit.fetch({ bookId });
     const defaultMap: Record<string, any> = {};
-    (d.data || []).forEach(r => { defaultMap[r.format] = r; });
+    (data.defaults || []).forEach((r: any) => { defaultMap[r.format] = r; });
     setDefaults(defaultMap);
 
     const newSplits: Record<string, SplitState> = {};
     ["ebook", "audiobook"].forEach(format => {
-      const override = (s.data || []).find(r => r.format === format);
+      const override = (data.overrides || []).find((r: any) => r.format === format);
       const def = defaultMap[format] || {};
       if (override) {
         newSplits[format] = {
@@ -120,7 +117,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
     setSaving(format);
     if (split.useDefault) {
       if (split.id) {
-        await supabase.from("format_revenue_splits").delete().eq("id", split.id);
+        await utils.admin.deleteRevenueOverride.fetch({ id: split.id });
       }
       toast.success(`${format} using default rules`);
     } else {
@@ -132,8 +129,13 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
         platform_percentage: split.platform_percentage,
         fulfillment_cost_percentage: split.fulfillment_cost_percentage,
       };
-      const { error } = await supabase.from("format_revenue_splits").upsert(payload, { onConflict: "book_id,format" });
-      if (error) { toast.error(error.message); setSaving(null); return; }
+      try {
+        await utils.admin.upsertRevenueOverride.fetch(payload);
+      } catch (error: any) {
+        toast.error(error?.message || "Failed to save revenue split");
+        setSaving(null);
+        return;
+      }
       toast.success(`${format} revenue split saved`);
     }
     setSaving(null);
