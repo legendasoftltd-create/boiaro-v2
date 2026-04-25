@@ -315,6 +315,7 @@ The first REST endpoints added are:
 - `GET /api/v1/books/:id`
 - `GET /api/v1/homepage`
 - `GET /api/v1/footer`
+- `GET /api/v1/profile`
 
 More endpoints can be added gradually using the same pattern without affecting the existing web tRPC client.
 
@@ -364,4 +365,19 @@ Current `homepage` Response Structure:
 Current `homepage` Response Structure:
 {
   "footerData"[]
+}
+
+## Fetch User Profile Data. Example request:
+
+`GET /api/v1/profile`
+
+method: "GET",
+headers: {
+  "Content-Type": "application/json",
+  "Authorization": "Bearer YOUR_TOKEN_HERE"
+}
+
+Current `profile` Response Structure:
+{
+  "userProfile"{}
 }
