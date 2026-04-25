@@ -316,3 +316,29 @@ The first REST endpoints added are:
 - `GET /api/v1/homepage`
 
 More endpoints can be added gradually using the same pattern without affecting the existing web tRPC client.
+
+
+## Fetch Homepage Data. Example request:
+
+`GET /api/v1/homepage`
+
+Current `homepage` Response Structure:
+{
+  "continueReading": "Development pending",
+  "popularBooks": "Development pending",
+  "BecauseYouRead": "Development pending",
+  "editorsPick": [],
+  "appDownload": [],
+  "trendingNow": {},
+  "popularAudiobooks": [],
+  "popularHardCopies": [],
+  "popularEbooks": [],
+  "topTenMostRead": [],
+  "slider": {},
+  "allCategory": [],
+  "allAuthor": [],
+  "allNarrators": [],
+  "countsValue": {},
+  "NewReleases": {},
+  "FreeBooks": []
+}
