@@ -314,6 +314,9 @@ The first REST endpoints added are:
 - `GET /api/v1/books`
 - `GET /api/v1/books/:id`
 - `GET /api/v1/homepage`
+- `GET /api/v1/footer`
+- `GET /api/v1/profile`
+- `PATCH /api/v1/profile`
 
 More endpoints can be added gradually using the same pattern without affecting the existing web tRPC client.
 
@@ -322,11 +325,23 @@ More endpoints can be added gradually using the same pattern without affecting t
 
 `GET /api/v1/homepage`
 
+method: 'GET',
+  headers: {
+    'Content-Type': 'application/json',
+    userId
+  },
+
 Current `homepage` Response Structure:
 {
-  "continueReading": "Development pending",
-  "popularBooks": "Development pending",
-  "BecauseYouRead": "Development pending",
+  currentUser{},
+  continueListening[],
+  continueReading[],
+  radio: {
+      station,
+      liveSession
+  },
+  popularBooks[],
+  BecauseYouRead[],
   "editorsPick": [],
   "appDownload": [],
   "trendingNow": {},
@@ -341,4 +356,61 @@ Current `homepage` Response Structure:
   "countsValue": {},
   "NewReleases": {},
   "FreeBooks": []
+}
+
+
+## Fetch Footer Data. Example request:
+
+`GET /api/v1/footer`
+
+Current `homepage` Response Structure:
+{
+  "footerData"[]
+}
+
+## Fetch User Profile Data. Example request:
+
+`GET /api/v1/profile`
+
+method: "GET",
+headers: {
+  "Content-Type": "application/json",
+  "Authorization": "Bearer YOUR_TOKEN_HERE"
+}
+
+Current `profile` Response Structure:
+{
+  "userProfile"{}
+}
+
+
+## Update User Profile Data. Example request:
+
+`PATCH /api/v1/profile`
+
+{
+  method: "PATCH",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer YOUR_TOKEN_HERE"
+  },
+  body: JSON.stringify({
+    display_name: "Rakib ",
+    full_name: "Md. Rakib ",
+    bio: "Full Stack Web Developer & Tech Enthusiast",
+    preferred_language: "bn",
+    avatar_url: "https://your-storage-url.com/profile.jpg"
+  })
+}
+
+Current `profile update` Response Structure:
+{
+    "success": true,
+    "message": "Profile updated"
+}
+
+error response :
+{
+    "success": false,
+    "message": "Invalid fields: display_name11. Please only use allowed fields."
 }
