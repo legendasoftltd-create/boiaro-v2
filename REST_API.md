@@ -322,11 +322,23 @@ More endpoints can be added gradually using the same pattern without affecting t
 
 `GET /api/v1/homepage`
 
+method: 'GET',
+  headers: {
+    'Content-Type': 'application/json',
+    userId
+  },
+
 Current `homepage` Response Structure:
 {
-  "continueReading": "Development pending",
-  "popularBooks": "Development pending",
-  "BecauseYouRead": "Development pending",
+  currentUser{},
+  continueListening[],
+  continueReading[],
+  radio: {
+      station,
+      liveSession
+  },
+  popularBooks[],
+  BecauseYouRead[],
   "editorsPick": [],
   "appDownload": [],
   "trendingNow": {},

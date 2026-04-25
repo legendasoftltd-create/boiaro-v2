@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 
-export const getHomepageData = async (limit) => {
+export const getHomepageData = async (limit, userId?: string) => {
     const takeLimit = Number(limit) || 50;
 
     const allBooks = await prisma.book.findMany({
@@ -137,14 +137,93 @@ export const getHomepageData = async (limit) => {
         },
     });
 
-    const continueReading = 'Development pending';
-    const popularBooks = 'Development pending';
-    const BecauseYouRead = 'Development pending';
 
-    const editorsPick = allBooks.filter(book => book.is_featured).slice(0,5);
+    const popularBooks = [...allBooks]
+        .filter((book) => book.total_reads !== null)
+        .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0));
+
+    const BecauseYouRead = popularBooks;
+
+    const editorsPick = allBooks.filter(book => book.is_featured).slice(0, 5);
+
+
+    let currentUser = null;
+    let continueReading = [];
+
+    if (userId) {
+
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            include: { profile: true }
+        });
+
+        if (user) {
+            currentUser = {
+                id: user.id,
+                email: user.email,
+                profile: user.profile
+            };
+
+
+            const progressData = await prisma.readingProgress.findMany({
+                where: { user_id: userId, percentage: { lt: 100 } },
+                orderBy: { updated_at: 'desc' },
+                take: 10
+            });
+
+            continueReading = progressData.map(p => ({
+                ...p,
+                book: allBooks.find(b => b.id === p.book_id)
+            })).filter(item => item.book);
+        }
+    }
+
+    let continueListening = [];
+
+    const listeningData = await prisma.listeningProgress.findMany({
+        where: {
+            user_id: userId,
+            percentage: { lt: 100 }
+        },
+        orderBy: { updated_at: 'desc' },
+        take: 10
+    });
+
+
+    continueListening = listeningData.map(p => {
+        const book = allBooks.find(b => b.id === p.book_id);
+        if (!book) return null;
+
+        return {
+            ...p,
+            percentage: Number(p.percentage) || 0,
+            book: book
+        };
+    }).filter(Boolean);
+
+    // live radio station 
+    const station = await prisma.radioStation.findFirst({
+        where: { is_active: true },
+        orderBy: { sort_order: 'asc' }
+    });
+
+    const liveSession = await prisma.liveSession.findFirst({
+        where: {
+           
+            status: "live",
+            ended_at: null
+        },
+    });
+
 
     return {
+        currentUser,
+        continueListening,
         continueReading,
+        radio: {
+            station,
+            liveSession
+        },
         popularBooks,
         BecauseYouRead,
         editorsPick,
@@ -166,7 +245,7 @@ export const getHomepageData = async (limit) => {
         allCategory,
         allAuthor,
         allNarrators,
-        "countsValue": {counts, totalNarrators},
+        "countsValue": { counts, totalNarrators },
         "NewReleases": {
             "all": allBooks.slice(0, takeLimit),
             "ebooks": allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "ebook")).slice(0, takeLimit),
