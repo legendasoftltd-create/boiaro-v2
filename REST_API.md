@@ -316,6 +316,7 @@ The first REST endpoints added are:
 - `GET /api/v1/homepage`
 - `GET /api/v1/footer`
 - `GET /api/v1/profile`
+- `PATCH /api/v1/profile`
 
 More endpoints can be added gradually using the same pattern without affecting the existing web tRPC client.
 
@@ -380,4 +381,36 @@ headers: {
 Current `profile` Response Structure:
 {
   "userProfile"{}
+}
+
+
+## Update User Profile Data. Example request:
+
+`PATCH /api/v1/profile`
+
+{
+  method: "PATCH",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer YOUR_TOKEN_HERE"
+  },
+  body: JSON.stringify({
+    display_name: "Rakib ",
+    full_name: "Md. Rakib ",
+    bio: "Full Stack Web Developer & Tech Enthusiast",
+    preferred_language: "bn",
+    avatar_url: "https://your-storage-url.com/profile.jpg"
+  })
+}
+
+Current `profile update` Response Structure:
+{
+    "success": true,
+    "message": "Profile updated"
+}
+
+error response :
+{
+    "success": false,
+    "message": "Invalid fields: display_name11. Please only use allowed fields."
 }
