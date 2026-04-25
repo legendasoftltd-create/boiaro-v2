@@ -314,6 +314,7 @@ The first REST endpoints added are:
 - `GET /api/v1/books`
 - `GET /api/v1/books/:id`
 - `GET /api/v1/homepage`
+- `GET /api/v1/footer`
 
 More endpoints can be added gradually using the same pattern without affecting the existing web tRPC client.
 
@@ -353,4 +354,14 @@ Current `homepage` Response Structure:
   "countsValue": {},
   "NewReleases": {},
   "FreeBooks": []
+}
+
+
+## Fetch Footer Data. Example request:
+
+`GET /api/v1/footer`
+
+Current `homepage` Response Structure:
+{
+  "footerData"[]
 }
