@@ -58,6 +58,7 @@ export default function AdminUsers() {
     limit: 500,
     search: search || undefined,
   });
+  const { data: statsData, isLoading: statsLoading } = trpc.admin.getUserStats.useQuery();
   const updateUserStatusMutation = trpc.admin.updateUserStatus.useMutation();
   const softDeleteUserMutation = trpc.admin.softDeleteUser.useMutation();
   const restoreUserMutation = trpc.admin.restoreUser.useMutation();
@@ -105,7 +106,7 @@ export default function AdminUsers() {
 
   const filtered = applyFilters(tab === "active" ? activeUsers : deletedUsers);
 
-  const stats = {
+  const stats = statsData ?? {
     total: activeUsers.length,
     creators: activeUsers.filter((u) => u.roles.some((r) => ["writer", "publisher", "narrator"].includes(r))).length,
     verified: activeUsers.filter((u) => u.email_confirmed_at).length,
@@ -148,6 +149,7 @@ export default function AdminUsers() {
       return;
     }
     setUsers(prev => prev.map(x => x.user_id === u.user_id ? { ...x, is_active: true } : x));
+    await utils.admin.getUserStats.invalidate();
     toast.success("User activated");
   };
 
@@ -167,6 +169,7 @@ export default function AdminUsers() {
       return;
     }
     setUsers(prev => prev.map(x => x.user_id === u.user_id ? { ...x, is_active: false } : x));
+    await utils.admin.getUserStats.invalidate();
     setDeactivateTarget(null);
     toast.success("User deactivated");
   };
@@ -192,6 +195,7 @@ export default function AdminUsers() {
       toast.success("User moved to deleted list");
       setDeleteTarget(null);
       setDeleteReason("");
+      await utils.admin.getUserStats.invalidate();
       await utils.admin.listUsers.invalidate();
     } catch (err: any) {
       toast.error(err.message || "Failed to delete user");
@@ -213,6 +217,7 @@ export default function AdminUsers() {
       });
 
       toast.success("User restored successfully");
+      await utils.admin.getUserStats.invalidate();
       await utils.admin.listUsers.invalidate();
     } catch (err: any) {
       toast.error(err.message || "Failed to restore user");
@@ -244,6 +249,7 @@ export default function AdminUsers() {
       riskLevel: "high",
     });
     setUsers(prev => prev.map(x => ids.includes(x.user_id) ? { ...x, is_active: active } : x));
+    await utils.admin.getUserStats.invalidate();
     setSelected(new Set());
     toast.success(`${ids.length} user(s) ${active ? "activated" : "deactivated"}`);
   };
@@ -396,7 +402,7 @@ export default function AdminUsers() {
                 <s.icon className={`w-5 h-5 ${s.color}`} />
               </div>
               <div>
-                <p className="text-2xl font-bold">{loading ? "—" : s.value}</p>
+                <p className="text-2xl font-bold">{statsLoading ? "—" : s.value}</p>
                 <p className="text-[12px] text-muted-foreground">{s.label}</p>
               </div>
             </CardContent>
@@ -490,6 +496,7 @@ export default function AdminUsers() {
             module: "users",
             riskLevel: toAdd.includes("admin") || toRemove.includes("admin") ? "high" : "medium",
           });
+          await utils.admin.getUserStats.invalidate();
           await utils.admin.listUsers.invalidate();
         }}
       />
