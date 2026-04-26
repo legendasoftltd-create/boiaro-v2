@@ -382,6 +382,8 @@ Current REST endpoints:
 - `GET /api/v1/ narrators`
 - `GET /api/v1/ publishers`
 - `GET /api/v1 /search?q={params}`
+- `POST /api/v1/access/check`
+- `GET /api/v1/access/preview-eligibility?book_id={query_params}&format={query_params}`
 
 
 ## Flutter notes
@@ -557,5 +559,63 @@ Error Response:
 ```json
 {
     "error": "Search query too short (min 2 chars)"
+}
+```
+
+
+### `POST /access/check`
+Authorization: Bearer your_token_here
+Content-Type: application/json
+
+Body json: 
+{
+  "book_id": "69c040ba54ff6332302bda2d",
+  "format": ["ebook", "audiobook"]
+}
+
+Success Response:
+
+```json
+{
+    "has_access": true,
+    "access_method": "free",
+    "is_free": true,
+    "has_subscription": false,
+    "has_purchase": false,
+    "has_unlock": false
+}
+```
+
+Error Response:
+
+```json
+{
+    "error": "Book not found"
+}
+```
+
+
+
+### `GET /access/preview-eligibility?book_id={query_params}&format={query_params}`
+Authorization: Bearer your_token_here
+Content-Type: application/json
+
+Success Response:
+
+```json
+{
+    "is_free": false,
+    "preview_percentage": 0,
+    "preview_chapters": 0,
+    "price": 100,
+    "guest_preview_allowed": true
+}
+```
+
+Error Response:
+
+```json
+{
+    "error": "Book not found"
 }
 ```
