@@ -377,6 +377,9 @@ Current REST endpoints:
 - `GET /api/v1/me/bookmarks`
 - `GET /api/v1/profile/roles`
 - `GET /api/v1/categories`
+- `GET /api/v1/authors?limit=20&offset=0`
+- `GET /api/v1/ authors/{id}`
+
 
 ## Flutter notes
 
@@ -426,5 +429,56 @@ Response:
       "priority": 1
     }
   ]
+}
+```
+
+
+### `GET /authors?limit=20&offset=0`
+
+Response:
+
+```json
+{
+  "authors": [
+    {
+      "id": "68e91b04729e14c22e0e4ebe",
+      "name": "Final Author",
+      "name_en": "Final Author",
+      "avatar_url": "/uploads/1760174074099-top-10-living-writers-of-the-world.webp",
+      "bio": "<p>Testing Author</p>",
+      "genre": null,
+      "is_featured": false,
+      "is_trending": false,
+      "priority": 0
+    }
+  ],
+  "total": 42,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+### `GET /authors/{id}`
+
+Success Response:
+
+```json
+{
+    "id": "68e91b04729e14c22e0e4ebe",
+    "name": "Final Author",
+    "name_en": "Final Author",
+    "avatar_url": "/uploads/1760174074099-top-10-living-writers-of-the-world.webp",
+    "bio": "<p>Testing Author</p>",
+    "genre": null,
+    "is_featured": false,
+    "is_trending": false
+}
+```
+
+Error Response: 
+
+```json
+{
+    "error": "Author not found"
 }
 ```
