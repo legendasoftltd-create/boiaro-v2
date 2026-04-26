@@ -5,6 +5,7 @@ import {homepageRestRouter} from './homepage.js';
 import {footerRestRouter} from './footer.js';
 import { profileRestRouter } from "./profile.js";
 import { meRestRouter } from "./me.js";
+import { profileRolesRestRouter } from "./profile-roles.js";
 
 export const restRouter = Router();
 
@@ -14,3 +15,4 @@ restRouter.use("/homepage", homepageRestRouter);
 restRouter.use("/footer", footerRestRouter);
 restRouter.use("/profile", profileRestRouter);
 restRouter.use("/me", meRestRouter);
+restRouter.use("/profile/roles", profileRolesRestRouter);
