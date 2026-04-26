@@ -6,6 +6,7 @@ import {footerRestRouter} from './footer.js';
 import { profileRestRouter } from "./profile.js";
 import { meRestRouter } from "./me.js";
 import { profileRolesRestRouter } from "./profile-roles.js";
+import { categoriesRestRouter } from "./categories.js";
 
 export const restRouter = Router();
 
@@ -16,3 +17,4 @@ restRouter.use("/footer", footerRestRouter);
 restRouter.use("/profile", profileRestRouter);
 restRouter.use("/me", meRestRouter);
 restRouter.use("/profile/roles", profileRolesRestRouter);
+restRouter.use("/categories", categoriesRestRouter);

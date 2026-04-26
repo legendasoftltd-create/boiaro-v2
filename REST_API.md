@@ -376,6 +376,7 @@ Current REST endpoints:
 - `POST /api/v1/books/:id/bookmark`
 - `GET /api/v1/me/bookmarks`
 - `GET /api/v1/profile/roles`
+- `GET /api/v1/categories`
 
 ## Flutter notes
 
@@ -389,12 +390,10 @@ Current REST endpoints:
 ### `GET /profile/roles`
 
 Protected.
-
 Allowed request fields:
 
 Authorization: Bearer your_token_here
 Content-Type: application/json
-
 
 Response:
 
@@ -403,5 +402,29 @@ Response:
     "roles": [
         "user"
     ]
+}
+```
+
+
+### `GET /categories`
+
+Response:
+
+```json
+{
+  "categories": [
+    {
+      "id": "cat-uuid",
+      "name": "উপন্যাস",
+      "name_bn": "উপন্যাস",
+      "name_en": "Novel",
+      "icon": "BookOpen",
+      "color": "from-amber-50 to-orange-50",
+      "slug": "novel",
+      "is_featured": true,
+      "is_trending": false,
+      "priority": 1
+    }
+  ]
 }
 ```
