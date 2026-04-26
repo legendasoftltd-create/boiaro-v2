@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ interface CoinTransaction {
 }
 
 export default function AdminWallets() {
+  const utils = trpc.useUtils();
   const [wallets, setWallets] = useState<UserWallet[]>([]);
   const [transactions, setTransactions] = useState<CoinTransaction[]>([]);
   const [search, setSearch] = useState("");
@@ -48,11 +49,7 @@ export default function AdminWallets() {
   const [stats, setStats] = useState({ totalDistributed: 0, totalSpent: 0, totalUsers: 0, avgBalance: 0 });
 
   const fetchWallets = async () => {
-    const { data } = await supabase
-      .from("user_coins" as any)
-      .select("*, profiles(display_name, avatar_url)")
-      .order("balance", { ascending: false })
-      .limit(200);
+    const data = await utils.admin.listWallets.fetch({ limit: 200 });
     const w = (data as any[] || []) as UserWallet[];
     setWallets(w);
     if (w.length > 0) {
@@ -65,11 +62,7 @@ export default function AdminWallets() {
   };
 
   const fetchTransactions = async () => {
-    const { data } = await supabase
-      .from("coin_transactions")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200);
+    const data = await utils.admin.listCoinTransactions.fetch({ limit: 200 });
     setTransactions((data as CoinTransaction[]) || []);
   };
 
@@ -77,12 +70,7 @@ export default function AdminWallets() {
 
   const openDetail = async (w: UserWallet) => {
     setSelectedWallet(w);
-    const { data } = await supabase
-      .from("coin_transactions")
-      .select("*")
-      .eq("user_id", w.user_id)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const data = await utils.admin.listCoinTransactionsByUser.fetch({ userId: w.user_id, limit: 50 });
     setUserTxs((data as CoinTransaction[]) || []);
     setDetailOpen(true);
   };
@@ -98,14 +86,12 @@ export default function AdminWallets() {
     const coinChange = adjustType === "add" ? amt : -amt;
     const txType = adjustType === "add" ? "bonus" : "adjustment";
 
-    // Use secure RPC — admin role is validated server-side
-    const { error: rpcErr } = await supabase.rpc("adjust_user_coins", {
-      p_user_id: selectedWallet.user_id,
-      p_amount: coinChange,
-      p_type: txType,
-      p_description: adjustReason || `Admin ${adjustType}: ${amt} coins`,
+    await utils.admin.adjustUserCoins.fetch({
+      userId: selectedWallet.user_id,
+      amount: coinChange,
+      type: txType,
+      description: adjustReason || `Admin ${adjustType}: ${amt} coins`,
     });
-    if (rpcErr) { toast.error(rpcErr.message); return; }
 
     toast.success(`${adjustType === "add" ? "Added" : "Deducted"} ${amt} coins`);
     setAdjustOpen(false);

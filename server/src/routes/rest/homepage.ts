@@ -7,8 +7,10 @@ export const homepageRestRouter = Router();
 
 homepageRestRouter.get("/", async (req, res) => {
   try {
-    const { limit } = req.query;
-    const userId = req.headers.userid;
+    const rawLimit = req.query.limit;
+    const limit = Array.isArray(rawLimit) ? rawLimit[0] : rawLimit;
+    const rawUserId = req.headers.userid;
+    const userId = Array.isArray(rawUserId) ? rawUserId[0] : rawUserId;
     const result = await getHomepageData(limit, userId);
     // Returns the parent level section keys as requested
     res.json(result);

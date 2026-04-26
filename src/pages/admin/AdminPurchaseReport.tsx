@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -42,74 +42,23 @@ function filterByPeriod(dateStr: string, period: PeriodType, dateFrom?: string, 
 }
 
 export default function AdminPurchaseReport() {
+  const utils = trpc.useUtils();
   const [period, setPeriod] = useState<PeriodType>("this_month");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
-  // Fetch ledger entries for inventory_purchase and cost_of_goods_sold
-  const { data: ledgerEntries = [], isLoading: ledgerLoading } = useQuery({
-    queryKey: ["purchase-report-ledger"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("accounting_ledger")
-        .select("id, type, category, amount, entry_date, order_id, book_id, description, reference_type")
-        .in("category", ["inventory_purchase", "cost_of_goods_sold"])
-        .order("entry_date", { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
+  const { data: reportData, isLoading } = useQuery({
+    queryKey: ["purchase-report-data"],
+    queryFn: () => utils.admin.financialReportData.fetch(),
+    staleTime: 60_000,
   });
-
-  // Fetch ALL hardcopy orders for profit calculation (verified revenue ones)
-  const { data: allOrders = [], isLoading: ordersLoading } = useQuery({
-    queryKey: ["purchase-report-all-orders"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("orders")
-        .select("id, total_amount, status, created_at, purchase_cost_per_unit, is_purchased, order_number, payment_method, cod_payment_status, packaging_cost, fulfillment_cost, shipping_cost")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Fetch order items (hardcopy only) with unit_cost via book_formats
-  const { data: allOrderItems = [] } = useQuery({
-    queryKey: ["purchase-report-all-order-items"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("order_items")
-        .select("id, order_id, book_id, format, quantity, unit_price")
-        .eq("format", "hardcopy");
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Fetch book_formats for unit_cost (stock-based cost)
-  const { data: bookFormats = [] } = useQuery({
-    queryKey: ["purchase-report-book-formats"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("book_formats")
-        .select("book_id, unit_cost, original_price, publisher_commission_percent")
-        .eq("format", "hardcopy");
-      if (error) throw error;
-      return data || [];
-    },
-  });
-
-  // Fetch books for names
-  const { data: books = [] } = useQuery({
-    queryKey: ["purchase-report-books"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("books")
-        .select("id, title");
-      if (error) throw error;
-      return data || [];
-    },
-  });
+  const ledgerEntries = (reportData?.ledger || []).filter((e: any) =>
+    ["inventory_purchase", "cost_of_goods_sold"].includes(e.category)
+  );
+  const allOrders = reportData?.orders || [];
+  const allOrderItems = (reportData?.orderItems || []).filter((i: any) => i.format === "hardcopy");
+  const bookFormats = (reportData?.bookFormats || []).filter((b: any) => b.format === "hardcopy");
+  const books = reportData?.books || [];
 
   const bookMap = useMemo(() => {
     const m: Record<string, string> = {};
@@ -274,8 +223,6 @@ export default function AdminPurchaseReport() {
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  const isLoading = ledgerLoading || ordersLoading;
 
   return (
     <div className="space-y-6">

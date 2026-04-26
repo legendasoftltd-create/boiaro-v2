@@ -1,1 +1,0 @@
-ALTER TABLE public.book_formats ADD COLUMN IF NOT EXISTS default_packaging_cost numeric DEFAULT 0;

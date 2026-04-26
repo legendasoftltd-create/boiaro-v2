@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Bell, CheckCircle2, AlertTriangle, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 interface SystemAlert {
   id: string;
@@ -28,27 +28,16 @@ function severityBadge(s: string) {
 
 export default function AdminAlerts() {
   const qc = useQueryClient();
+  const utils = trpc.useUtils();
 
   const { data: alerts = [], isLoading, refetch } = useQuery({
     queryKey: ["system-alerts"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("system_alerts")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      return data as SystemAlert[];
-    },
+    queryFn: () => utils.admin.listSystemAlerts.fetch() as Promise<SystemAlert[]>,
     refetchInterval: 30_000,
   });
 
   const runCheck = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("system-alerts-check", { body: {} });
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: () => utils.admin.runSystemAlertCheck.fetch(),
     onSuccess: (d) => {
       toast.success(`Check complete: ${d.alerts_found} issues found, ${d.alerts_inserted} new alerts`);
       refetch();
@@ -57,13 +46,7 @@ export default function AdminAlerts() {
   });
 
   const resolve = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("system_alerts")
-        .update({ is_resolved: true, resolved_at: new Date().toISOString() } as any)
-        .eq("id", id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => utils.admin.resolveSystemAlert.fetch({ id }),
     onSuccess: () => { toast.success("Alert resolved"); qc.invalidateQueries({ queryKey: ["system-alerts"] }); },
   });
 

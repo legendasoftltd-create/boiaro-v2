@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,49 +12,48 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { ArrowLeft, Send, User, Shield, Lock, Paperclip, Clock } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 export default function AdminTicketDetail() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const qc = useQueryClient();
+  const utils = trpc.useUtils();
   const [replyText, setReplyText] = useState("");
   const [isInternal, setIsInternal] = useState(false);
 
   const { data: ticket, isLoading } = useQuery({
     queryKey: ["support-ticket", id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("support_tickets").select("*").eq("id", id!).single();
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => utils.admin.getSupportTicketDetail.fetch({ id: id! }),
     enabled: !!id,
   });
 
   const { data: replies = [] } = useQuery({
     queryKey: ["ticket-replies", id],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("ticket_replies").select("*").eq("ticket_id", id!).order("created_at");
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => utils.admin.listSupportTicketReplies.fetch({ ticketId: id! }),
     enabled: !!id,
   });
 
   const updateMutation = useMutation({
     mutationFn: async (updates: Record<string, string>) => {
-      const { error } = await supabase.from("support_tickets").update(updates).eq("id", id!);
-      if (error) throw error;
+      await utils.admin.updateSupportTicket.fetch({
+        id: id!,
+        status: updates.status,
+        priority: updates.priority,
+        assigned_to: updates.assigned_to,
+      });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["support-ticket", id] }); toast({ title: "Updated" }); },
   });
 
   const replyMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("ticket_replies").insert({
-        ticket_id: id!, user_id: user!.id, message: replyText, is_internal: isInternal,
-        is_admin: true, sender_name: "Admin",
+      await utils.admin.addSupportTicketReply.fetch({
+        ticketId: id!,
+        userId: user!.id,
+        message: replyText,
+        isInternal,
       });
-      if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ticket-replies", id] });

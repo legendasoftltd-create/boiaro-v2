@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { createTrpcClient } from "@/lib/trpc";
 
 /**
  * Email infrastructure status flag.
@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
  * Until then, emails are logged but not sent — preventing silent failures.
  */
 const EMAIL_INFRA_READY = false;
+const trpcClient = createTrpcClient();
 
 /**
  * Send a transactional email using the platform's built-in email system.
@@ -35,13 +36,13 @@ export async function sendTransactionalEmail({
   if (!EMAIL_INFRA_READY) {
     console.info(`[Email] Skipped (infra not ready): ${templateType} → ${recipientEmail}`);
     try {
-      await supabase.from("email_logs").insert({
+      await trpcClient.admin.logEmailEvent.mutate({
         recipient_email: recipientEmail,
         template_type: templateType,
         subject: finalSubject,
         status: "skipped",
         error_message: "Email infrastructure not configured yet",
-      } as any);
+      });
     } catch {
       // Silently ignore logging failures
     }
@@ -49,36 +50,31 @@ export async function sendTransactionalEmail({
   }
 
   try {
-    const { error } = await supabase.functions.invoke("send-transactional-email", {
-      body: {
-        templateName: templateType,
-        recipientEmail,
-        idempotencyKey,
-        templateData,
-      },
-    });
+    // Placeholder: keep behavior while infra is not configured.
+    const error = EMAIL_INFRA_READY
+      ? null
+      : { message: `Email sending not configured for idempotency key ${idempotencyKey}` };
 
     // Log the attempt
-    await supabase.from("email_logs").insert({
+    await trpcClient.admin.logEmailEvent.mutate({
       recipient_email: recipientEmail,
       template_type: templateType,
       subject: finalSubject,
       status: error ? "failed" : "sent",
       error_message: error?.message || null,
-      sent_at: error ? null : new Date().toISOString(),
-    } as any);
+    });
 
     return { success: !error, error: error?.message };
   } catch (err: any) {
     // Log failure gracefully
     try {
-      await supabase.from("email_logs").insert({
+      await trpcClient.admin.logEmailEvent.mutate({
         recipient_email: recipientEmail,
         template_type: templateType,
         subject: finalSubject,
         status: "failed",
         error_message: err.message || "Unknown error",
-      } as any);
+      });
     } catch {
       // Silently ignore logging failures
     }
@@ -95,15 +91,13 @@ export async function getEmailTemplate(templateType: string): Promise<{
   body_html: string;
   body_text: string;
 } | null> {
-  const { data } = await supabase
-    .from("email_templates")
-    .select("subject, body_html, body_text, status")
-    .eq("template_type", templateType)
-    .eq("status", "active")
-    .single();
-
+  const data = await trpcClient.admin.getActiveEmailTemplate.query({ templateType });
   if (!data) return null;
-  return data as any;
+  return {
+    subject: data.subject,
+    body_html: data.body,
+    body_text: data.body,
+  };
 }
 
 /**

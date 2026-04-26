@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +25,7 @@ const COLORS = ["hsl(var(--primary))", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6
 const chartTooltipStyle = { background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 };
 
 export default function AdminInvestorReport() {
+  const utils = trpc.useUtils();
   const [orders, setOrders] = useState<any[]>([]);
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [ledger, setLedger] = useState<any[]>([]);
@@ -34,25 +36,22 @@ export default function AdminInvestorReport() {
   const [periodFilter, setPeriodFilter] = useState<RevenuePeriod>("all");
   const [presentationMode, setPresentationMode] = useState(false);
 
+  const { data } = useQuery({
+    queryKey: ["admin-investor-report-data"],
+    queryFn: () => utils.admin.investorReportData.fetch(),
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
-    Promise.all([
-      supabase.from("orders").select("id, total_amount, status, created_at, packaging_cost, fulfillment_cost, shipping_cost, payment_method, cod_payment_status, user_id, purchase_cost_per_unit, is_purchased"),
-      supabase.from("order_items").select("order_id, book_id, format, unit_price, quantity, books(title)"),
-      supabase.from("accounting_ledger" as any).select("*").order("entry_date", { ascending: false }),
-      supabase.from("contributor_earnings").select("book_id, format, role, earned_amount, sale_amount, status, created_at"),
-      supabase.from("profiles").select("id, created_at").limit(1000),
-      supabase.from("withdrawal_requests" as any).select("id, amount, status, created_at, payment_method").order("created_at", { ascending: false }),
-      supabase.from("book_formats").select("book_id, format, unit_cost, original_price, publisher_commission_percent"),
-    ]).then(([o, oi, l, e, p, w, bf]) => {
-      setOrders(o.data || []);
-      setOrderItems(oi.data || []);
-      setLedger((l.data as any[]) || []);
-      setEarnings(e.data || []);
-      setProfiles(p.data || []);
-      setWithdrawals((w.data as any[]) || []);
-      setBookFormatCosts((bf.data as any[]) || []);
-    });
-  }, []);
+    if (!data) return;
+    setOrders(data.orders || []);
+    setOrderItems(data.orderItems || []);
+    setLedger((data.ledger as any[]) || []);
+    setEarnings(data.earnings || []);
+    setProfiles(data.profiles || []);
+    setWithdrawals((data.withdrawals as any[]) || []);
+    setBookFormatCosts((data.bookFormats as any[]) || []);
+  }, [data]);
 
   const filterByPeriod = (dateStr: string) => isInPeriod(dateStr, periodFilter);
   const paidOrders = useMemo(() => orders.filter(o => isVerifiedRevenueOrder(o as RevenueOrder) && filterByPeriod(o.created_at)), [orders, periodFilter]);

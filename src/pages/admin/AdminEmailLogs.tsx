@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,7 @@ interface EmailLog {
 }
 
 export default function AdminEmailLogs() {
+  const utils = trpc.useUtils();
   const [logs, setLogs] = useState<EmailLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -31,11 +32,7 @@ export default function AdminEmailLogs() {
   const [templateFilter, setTemplateFilter] = useState("all");
 
   const fetchLogs = async () => {
-    const { data } = await supabase
-      .from("email_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200);
+    const data = await utils.admin.listEmailLogs.fetch({ limit: 200 });
     setLogs((data as any[]) || []);
     setLoading(false);
   };
