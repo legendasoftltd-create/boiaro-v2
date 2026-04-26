@@ -393,7 +393,7 @@ export default function AdminDbHealth() {
               </li>
               <li className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                No SET session variables (Supabase client uses none)
+                No SET session variables (client uses none)
               </li>
               <li className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />

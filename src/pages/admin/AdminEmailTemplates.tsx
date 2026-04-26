@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Mail, Plus, Search, Edit, Eye, Trash2, FileText, ShoppingCart, CreditCard, Users, Key, Crown, Wallet } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 interface EmailTemplate {
   id: string; name: string; template_type: string; subject: string;
@@ -36,6 +36,7 @@ const TYPE_LABELS: Record<string, { label: string; icon: any }> = {
 };
 
 export default function AdminEmailTemplates() {
+  const utils = trpc.useUtils();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -46,7 +47,7 @@ export default function AdminEmailTemplates() {
   const [form, setForm] = useState({ name: "", template_type: "", subject: "", body_html: "", body_text: "", status: "active" });
 
   const fetchTemplates = async () => {
-    const { data } = await supabase.from("email_templates").select("*").order("created_at", { ascending: true });
+    const data = await utils.admin.listEmailTemplates.fetch();
     setTemplates((data as any[]) || []);
     setLoading(false);
   };
@@ -70,12 +71,10 @@ export default function AdminEmailTemplates() {
     }
     const payload = { name: form.name, template_type: form.template_type, subject: form.subject, body_html: form.body_html, body_text: form.body_text, status: form.status };
     if (selected) {
-      const { error } = await supabase.from("email_templates").update(payload).eq("id", selected.id);
-      if (error) return toast.error(error.message);
+      await utils.admin.upsertEmailTemplate.fetch({ id: selected.id, ...payload });
       toast.success("Template updated");
     } else {
-      const { error } = await supabase.from("email_templates").insert(payload);
-      if (error) return toast.error(error.message);
+      await utils.admin.upsertEmailTemplate.fetch(payload);
       toast.success("Template created");
     }
     setEditOpen(false);
@@ -84,14 +83,22 @@ export default function AdminEmailTemplates() {
 
   const deleteTemplate = async (id: string) => {
     if (!confirm("Delete this template?")) return;
-    await supabase.from("email_templates").delete().eq("id", id);
+    await utils.admin.deleteEmailTemplate.fetch({ id });
     toast.success("Template deleted");
     fetchTemplates();
   };
 
   const toggleStatus = async (t: EmailTemplate) => {
     const newStatus = t.status === "active" ? "inactive" : "active";
-    await supabase.from("email_templates").update({ status: newStatus }).eq("id", t.id);
+    await utils.admin.upsertEmailTemplate.fetch({
+      id: t.id,
+      name: t.name,
+      template_type: t.template_type,
+      subject: t.subject,
+      body_html: t.body_html || "",
+      body_text: t.body_text || "",
+      status: newStatus as "active" | "inactive",
+    });
     toast.success(`Template ${newStatus === "active" ? "activated" : "deactivated"}`);
     fetchTemplates();
   };

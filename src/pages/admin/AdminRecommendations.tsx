@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,7 @@ const DEFAULT_VALUES: Record<string, string> = {
 };
 
 export default function AdminRecommendations() {
+  const utils = trpc.useUtils();
   const [settings, setSettings] = useState<Record<string, string>>(DEFAULT_VALUES);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -45,76 +47,75 @@ export default function AdminRecommendations() {
   const [topSearches, setTopSearches] = useState<any[]>([]);
   const [activityStats, setActivityStats] = useState({ totalViews: 0, totalSearches: 0, uniqueUsers: 0, avgActions: 0 });
 
+  const { data: recommendationData } = useQuery({
+    queryKey: ["admin-recommendation-settings-analytics"],
+    queryFn: async () => {
+      const [platformSettings, analytics] = await Promise.all([
+        utils.admin.getPlatformSettings.fetch(),
+        utils.admin.readingAnalyticsData.fetch(),
+      ]);
+      return { platformSettings, analytics };
+    },
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
-    const load = async () => {
-      // Load settings
-      const { data: settingsData } = await supabase
-        .from("platform_settings")
-        .select("*")
-        .like("key", "rec_%");
-      const map: Record<string, string> = { ...DEFAULT_VALUES };
-      ((settingsData as any[]) || []).forEach((s: any) => { map[s.key] = s.value; });
-      setSettings(map);
-
-      // Load analytics from activity logs
-      const { data: activityData } = await supabase
-        .from("user_activity_logs" as any)
-        .select("event_type, book_id, metadata, user_id")
-        .order("created_at", { ascending: false })
-        .limit(1000);
-
-      const logs = (activityData as any[]) || [];
-      const views = logs.filter(l => l.event_type === "book_view");
-      const searches = logs.filter(l => l.event_type === "search");
-      const uniqueUserIds = new Set(logs.map(l => l.user_id));
-
-      setActivityStats({
-        totalViews: views.length,
-        totalSearches: searches.length,
-        uniqueUsers: uniqueUserIds.size,
-        avgActions: uniqueUserIds.size > 0 ? Math.round(logs.length / uniqueUserIds.size) : 0,
+    if (!recommendationData) return;
+    const map: Record<string, string> = { ...DEFAULT_VALUES };
+    (recommendationData.platformSettings || [])
+      .filter((s: any) => s.key?.startsWith("rec_"))
+      .forEach((s: any) => {
+        map[s.key] = s.value;
       });
+    setSettings(map);
 
-      // Top viewed books
-      const viewCounts: Record<string, { count: number; title: string }> = {};
-      views.forEach((v: any) => {
-        if (v.book_id) {
-          if (!viewCounts[v.book_id]) viewCounts[v.book_id] = { count: 0, title: v.metadata?.title || v.book_id.slice(0, 8) };
-          viewCounts[v.book_id].count++;
-        }
-      });
-      const sortedViews = Object.entries(viewCounts)
+    const logs = (recommendationData.analytics?.logs || []) as any[];
+    const views = logs.filter((l) => l.event_type === "book_view");
+    const searches = logs.filter((l) => l.event_type === "search");
+    const uniqueUserIds = new Set(logs.map((l) => l.user_id));
+
+    setActivityStats({
+      totalViews: views.length,
+      totalSearches: searches.length,
+      uniqueUsers: uniqueUserIds.size,
+      avgActions: uniqueUserIds.size > 0 ? Math.round(logs.length / uniqueUserIds.size) : 0,
+    });
+
+    const viewCounts: Record<string, { count: number; title: string }> = {};
+    views.forEach((v: any) => {
+      if (!v.book_id) return;
+      if (!viewCounts[v.book_id]) {
+        viewCounts[v.book_id] = { count: 0, title: v.metadata?.title || v.book_id.slice(0, 8) };
+      }
+      viewCounts[v.book_id].count++;
+    });
+    setTopViewed(
+      Object.entries(viewCounts)
         .sort((a, b) => b[1].count - a[1].count)
         .slice(0, 10)
-        .map(([id, data]) => ({ id, ...data }));
-      setTopViewed(sortedViews);
+        .map(([id, data]) => ({ id, ...data }))
+    );
 
-      // Top searches
-      const searchCounts: Record<string, number> = {};
-      searches.forEach((s: any) => {
-        const q = s.metadata?.query;
-        if (q) { searchCounts[q] = (searchCounts[q] || 0) + 1; }
-      });
-      const sortedSearches = Object.entries(searchCounts)
+    const searchCounts: Record<string, number> = {};
+    searches.forEach((s: any) => {
+      const query = s.metadata?.query;
+      if (query) searchCounts[query] = (searchCounts[query] || 0) + 1;
+    });
+    setTopSearches(
+      Object.entries(searchCounts)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 10)
-        .map(([query, count]) => ({ query, count }));
-      setTopSearches(sortedSearches);
-
-      setLoading(false);
-    };
-    load();
-  }, []);
+        .map(([query, count]) => ({ query, count }))
+    );
+    setLoading(false);
+  }, [recommendationData]);
 
   const handleSave = async () => {
     setSaving(true);
-    for (const [key, value] of Object.entries(settings)) {
-      if (key.startsWith("rec_")) {
-        await supabase
-          .from("platform_settings")
-          .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
-      }
-    }
+    const pairs = Object.entries(settings)
+      .filter(([key]) => key.startsWith("rec_"))
+      .map(([key, value]) => ({ key, value }));
+    await utils.admin.bulkSetPlatformSettings.fetch({ pairs });
     toast.success("Recommendation settings saved");
     setSaving(false);
   };

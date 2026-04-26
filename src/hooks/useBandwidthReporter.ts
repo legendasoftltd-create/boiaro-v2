@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { getMediaMetrics, resetMediaMetrics } from "@/hooks/useSecureContent";
 
 /**
- * No-op stub — bandwidth reporting to Supabase Edge Functions is removed.
+ * No-op stub — bandwidth reporting to legacy edge functions is removed.
  * Media metrics are still collected locally via useSecureContent for future use.
  */
 export function useBandwidthReporter() {

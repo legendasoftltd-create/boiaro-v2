@@ -1,1 +1,0 @@
-ALTER TABLE public.book_formats ADD COLUMN IF NOT EXISTS preview_percentage integer DEFAULT NULL;

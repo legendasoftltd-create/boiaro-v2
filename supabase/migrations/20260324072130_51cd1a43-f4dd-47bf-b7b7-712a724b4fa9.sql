@@ -1,1 +1,0 @@
-ALTER TABLE public.listening_progress ADD CONSTRAINT listening_progress_user_book_unique UNIQUE (user_id, book_id);
