@@ -19,6 +19,7 @@ import {
   BookOpen, Users, ShoppingCart, CreditCard, Bell, Settings, Wallet,
   Megaphone, HeadphonesIcon, Sparkles, LayoutDashboard, Calendar,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 /* ── Types ───────────────────────────────── */
 
@@ -44,7 +45,7 @@ interface LogEntry {
 
 /* ── Constants ───────────────────────────── */
 
-const MODULE_ICONS: Record<string, any> = {
+const MODULE_ICONS: Record<string, LucideIcon> = {
   books: BookOpen, users: Users, orders: ShoppingCart, payments: CreditCard,
   notifications: Bell, settings: Settings, wallet: Wallet, ads: Megaphone,
   support: HeadphonesIcon, recommendations: Sparkles, auth: LogIn,
@@ -270,7 +271,7 @@ export default function AdminActivityLogs() {
                 <TableBody>
                   {isLoading ? (
                     <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
-                  ) : logs.length === 0 ? (
+                  ) : filteredLogs.length === 0 ? (
                     <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No logs found</TableCell></TableRow>
                   ) : (
                     pagedLogs.map((l) => (

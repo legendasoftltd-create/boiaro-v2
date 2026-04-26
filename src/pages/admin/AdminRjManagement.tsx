@@ -42,20 +42,38 @@ export default function AdminRjManagement() {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [rjData, liveData, recentData, users] = await Promise.all([
-      utils.admin.listRjProfiles.fetch(),
-      utils.admin.listLiveSessions.fetch({ status: "live", limit: 20 }),
-      utils.admin.listLiveSessions.fetch({ limit: 20 }),
-      utils.admin.listUsers.fetch({ limit: 500 }),
-    ])
+    try {
+      const [rjData, liveData, recentData, usersResponse] = await Promise.all([
+        utils.admin.listRjProfiles.fetch(),
+        utils.admin.listLiveSessions.fetch({ status: "live", limit: 20 }),
+        utils.admin.listLiveSessions.fetch({ limit: 20 }),
+        utils.admin.listUsers.fetch({ limit: 500 }),
+      ])
 
-    const emailMap = new Map((users || []).map((u: any) => [u.user_id, u.display_name || "Unknown"]))
-    ;(rjData as RjRow[]).forEach(r => { r.profile_email = emailMap.get(r.user_id) || "Unknown" })
+      const users = usersResponse?.users ?? []
+      const userLabelMap = new Map(
+        users.map((u: any) => [
+          u.id,
+          u.profile?.display_name?.trim() || u.email || "Unknown",
+        ]),
+      )
+      const nextRjs = ((rjData || []) as RjRow[]).map((rj) => ({
+        ...rj,
+        profile_email: userLabelMap.get(rj.user_id) || "Unknown",
+      }))
 
-    setRjs((rjData || []) as RjRow[])
-    setLiveSessions((liveData || []) as LiveSessionRow[])
-    setRecentSessions((recentData || []) as LiveSessionRow[])
-    setLoading(false)
+      setRjs(nextRjs)
+      setLiveSessions((liveData || []) as LiveSessionRow[])
+      setRecentSessions((recentData || []) as LiveSessionRow[])
+    } catch (error: any) {
+      console.error("Failed to load RJ management data", error)
+      toast.error(error?.message || "Failed to load RJ management data")
+      setRjs([])
+      setLiveSessions([])
+      setRecentSessions([])
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchAll() }, [])

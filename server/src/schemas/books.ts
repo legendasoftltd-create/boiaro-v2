@@ -16,3 +16,16 @@ export const bookListSchema = z.object({
 export const bookByIdSchema = z.object({
   id: z.string(),
 });
+
+export const bookBySlugSchema = z.object({
+  slug: z.string().min(1),
+});
+
+export const bookReviewsQuerySchema = z.object({
+  limit: z.coerce.number().min(1).max(100).default(50),
+});
+
+export const postReviewSchema = z.object({
+  rating: z.number().min(1).max(5),
+  comment: z.string().optional(),
+});
