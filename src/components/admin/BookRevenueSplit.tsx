@@ -109,6 +109,8 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
     split.writer_percentage + split.publisher_percentage + split.narrator_percentage +
     split.platform_percentage + split.fulfillment_cost_percentage;
 
+  const upsertRevenueOverride = trpc.admin.upsertRevenueOverride.useMutation();
+
   const saveSplit = async (format: string) => {
     const split = splits[format];
     const total = getTotal(split);
@@ -130,7 +132,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
         fulfillment_cost_percentage: split.fulfillment_cost_percentage,
       };
       try {
-        await utils.admin.upsertRevenueOverride.fetch(payload);
+        await upsertRevenueOverride.mutateAsync(payload);
       } catch (error: any) {
         toast.error(error?.message || "Failed to save revenue split");
         setSaving(null);
