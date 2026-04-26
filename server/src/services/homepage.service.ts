@@ -180,26 +180,28 @@ export const getHomepageData = async (limit, userId?: string) => {
 
     let continueListening = [];
 
-    const listeningData = await prisma.listeningProgress.findMany({
-        where: {
-            user_id: userId,
-            percentage: { lt: 100 }
-        },
-        orderBy: { updated_at: 'desc' },
-        take: 10
-    });
+    if (userId) {
+        const listeningData = await prisma.listeningProgress.findMany({
+            where: {
+                user_id: userId,
+                percentage: { lt: 100 }
+            },
+            orderBy: { updated_at: 'desc' },
+            take: 10
+        });
 
 
-    continueListening = listeningData.map(p => {
-        const book = allBooks.find(b => b.id === p.book_id);
-        if (!book) return null;
+        continueListening = listeningData.map(p => {
+            const book = allBooks.find(b => b.id === p.book_id);
+            if (!book) return null;
 
-        return {
-            ...p,
-            percentage: Number(p.percentage) || 0,
-            book: book
-        };
-    }).filter(Boolean);
+            return {
+                ...p,
+                percentage: Number(p.percentage) || 0,
+                book: book
+            };
+        }).filter(Boolean);
+    }
 
     // live radio station 
     const station = await prisma.radioStation.findFirst({

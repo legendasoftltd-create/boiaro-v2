@@ -2,6 +2,7 @@ import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
 import { getUserProfile, updateUserProfile } from "../../services/profile.service.js";
 import { AuthenticatedRequest, requireAuth } from "../../middleware/auth.js";
+import { profileUpdateSchema } from "../../schemas/profile.js";
 
 export const profileRestRouter = Router();
 
@@ -21,7 +22,7 @@ profileRestRouter.get("/",requireAuth, async (req: AuthenticatedRequest, res) =>
 profileRestRouter.patch("/",requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.auth.userId;
-    const updateData = req.body;
+    const updateData = profileUpdateSchema.parse(req.body);
 
     const result = await updateUserProfile(userId, updateData);
 
