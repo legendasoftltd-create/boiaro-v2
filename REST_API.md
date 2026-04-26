@@ -379,6 +379,7 @@ Current REST endpoints:
 - `GET /api/v1/categories`
 - `GET /api/v1/authors?limit=20&offset=0`
 - `GET /api/v1/ authors/{id}`
+- `GET /api/v1/ narrators`
 
 
 ## Flutter notes
@@ -480,5 +481,27 @@ Error Response:
 ```json
 {
     "error": "Author not found"
+}
+```
+
+### `GET /narrators`
+
+Response:
+
+```json
+{
+  "narrators": [
+    {
+      "id": "narrator-uuid",
+      "name": "ফিউরেলা নূর পায়েল",
+      "name_en": "Fiurella Noor Payel",
+      "avatar_url": "https://example.com/avatar.jpg",
+      "bio": "পেশাদার অডিওবুক বর্ণনাকারী...",
+      "specialty": "Fiction, Drama",
+      "rating": 4.8,
+      "is_featured": true,
+      "is_trending": false
+    }
+  ]
 }
 ```

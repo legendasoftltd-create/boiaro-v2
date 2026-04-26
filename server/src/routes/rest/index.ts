@@ -8,6 +8,7 @@ import { meRestRouter } from "./me.js";
 import { profileRolesRestRouter } from "./profile-roles.js";
 import { categoriesRestRouter } from "./categories.js";
 import { authorsRestRouter } from "./authors.js";
+import { narratorsRestRouter } from "./narrators.js";
 
 export const restRouter = Router();
 
@@ -20,3 +21,4 @@ restRouter.use("/me", meRestRouter);
 restRouter.use("/profile/roles", profileRolesRestRouter);
 restRouter.use("/categories", categoriesRestRouter);
 restRouter.use("/authors", authorsRestRouter);
+restRouter.use("/narrators", narratorsRestRouter);
