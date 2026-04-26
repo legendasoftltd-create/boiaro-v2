@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -34,6 +34,7 @@ interface LiveSessionRow {
 }
 
 export default function AdminRjManagement() {
+  const utils = trpc.useUtils()
   const [rjs, setRjs] = useState<RjRow[]>([])
   const [liveSessions, setLiveSessions] = useState<LiveSessionRow[]>([])
   const [recentSessions, setRecentSessions] = useState<LiveSessionRow[]>([])
@@ -41,83 +42,52 @@ export default function AdminRjManagement() {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [rjRes, liveRes, recentRes] = await Promise.all([
-      supabase.from("rj_profiles").select("*").order("created_at", { ascending: false }),
-      supabase.from("live_sessions").select("*").eq("status", "live"),
-      supabase.from("live_sessions").select("*").order("started_at", { ascending: false }).limit(20),
+    const [rjData, liveData, recentData, users] = await Promise.all([
+      utils.admin.listRjProfiles.fetch(),
+      utils.admin.listLiveSessions.fetch({ status: "live", limit: 20 }),
+      utils.admin.listLiveSessions.fetch({ limit: 20 }),
+      utils.admin.listUsers.fetch({ limit: 500 }),
     ])
 
-    // Fetch profile emails
-    const rjData = (rjRes.data || []) as RjRow[]
-    if (rjData.length > 0) {
-      const userIds = rjData.map(r => r.user_id)
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, display_name")
-        .in("user_id", userIds)
-      
-      const emailMap = new Map((profiles || []).map(p => [p.user_id, p.display_name]))
-      rjData.forEach(r => { r.profile_email = emailMap.get(r.user_id) || "Unknown" })
-    }
+    const emailMap = new Map((users || []).map((u: any) => [u.user_id, u.display_name || "Unknown"]))
+    ;(rjData as RjRow[]).forEach(r => { r.profile_email = emailMap.get(r.user_id) || "Unknown" })
 
-    setRjs(rjData)
-    setLiveSessions((liveRes.data || []) as LiveSessionRow[])
-    setRecentSessions((recentRes.data || []) as LiveSessionRow[])
+    setRjs((rjData || []) as RjRow[])
+    setLiveSessions((liveData || []) as LiveSessionRow[])
+    setRecentSessions((recentData || []) as LiveSessionRow[])
     setLoading(false)
   }
 
   useEffect(() => { fetchAll() }, [])
 
   const toggleApproval = async (rj: RjRow) => {
-    const { error } = await supabase
-      .from("rj_profiles")
-      .update({ is_approved: !rj.is_approved, updated_at: new Date().toISOString() })
-      .eq("id", rj.id)
-
-    if (error) {
+    try {
+      await utils.admin.updateRjProfile.fetch({ id: rj.id, is_approved: !rj.is_approved })
+    } catch {
       toast.error("Failed to update")
-    } else {
-      toast.success(rj.is_approved ? "RJ approval revoked" : "RJ approved!")
-      fetchAll()
+      return
     }
+    toast.success(rj.is_approved ? "RJ approval revoked" : "RJ approved!")
+    fetchAll()
   }
 
   const toggleActive = async (rj: RjRow) => {
-    const { error } = await supabase
-      .from("rj_profiles")
-      .update({ is_active: !rj.is_active, updated_at: new Date().toISOString() })
-      .eq("id", rj.id)
-
-    if (error) {
+    try {
+      await utils.admin.updateRjProfile.fetch({ id: rj.id, is_active: !rj.is_active })
+    } catch {
       toast.error("Failed to update")
-    } else {
-      toast.success(rj.is_active ? "RJ deactivated" : "RJ activated!")
-      fetchAll()
+      return
     }
+    toast.success(rj.is_active ? "RJ deactivated" : "RJ activated!")
+    fetchAll()
   }
 
   const forceEndSession = async (session: LiveSessionRow) => {
-    const { error } = await supabase
-      .from("live_sessions")
-      .update({ status: "ended", ended_at: new Date().toISOString(), disconnect_reason: "admin_force_stop" })
-      .eq("id", session.id)
-
-    if (error) {
+    try {
+      await utils.admin.forceEndLiveSession.fetch({ sessionId: session.id })
+    } catch {
       toast.error("Failed to end session")
       return
-    }
-
-    // Deactivate radio station
-    const { data: stations } = await supabase
-      .from("radio_stations")
-      .select("id")
-      .limit(1)
-      .maybeSingle()
-    if (stations) {
-      await supabase
-        .from("radio_stations")
-        .update({ is_active: false, updated_at: new Date().toISOString() })
-        .eq("id", stations.id)
     }
 
     toast.success("Live session force-ended")
@@ -273,6 +243,7 @@ export default function AdminRjManagement() {
 }
 
 function CreateRjDialog({ onCreated }: { onCreated: () => void }) {
+  const utils = trpc.useUtils()
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [stageName, setStageName] = useState("")
@@ -286,51 +257,15 @@ function CreateRjDialog({ onCreated }: { onCreated: () => void }) {
 
     setCreating(true)
 
-    // Find user by email via profiles
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("user_id, display_name")
-      .ilike("display_name", email.trim())
-      .limit(1)
-      .maybeSingle()
-
-    if (!profile) {
-      // Try matching by looking at user_id pattern - search profiles
-      toast.error("User not found. Make sure the user has registered first.")
+    try {
+      await utils.admin.createRjProfileFromDisplayName.fetch({
+        displayName: email.trim(),
+        stageName: stageName.trim(),
+      })
+    } catch (error: any) {
+      toast.error("Failed to create RJ profile: " + (error?.message || "Unknown error"))
       setCreating(false)
       return
-    }
-
-    // Check if already has rj role
-    const { data: existingRole } = await supabase
-      .from("user_roles")
-      .select("id")
-      .eq("user_id", profile.user_id)
-      .eq("role", "rj")
-      .maybeSingle()
-
-    if (!existingRole) {
-      // Add rj role
-      await supabase.from("user_roles").insert({ user_id: profile.user_id, role: "rj" })
-    }
-
-    // Check if rj_profile exists
-    const { data: existingProfile } = await supabase
-      .from("rj_profiles")
-      .select("id")
-      .eq("user_id", profile.user_id)
-      .maybeSingle()
-
-    if (!existingProfile) {
-      const { error } = await supabase
-        .from("rj_profiles")
-        .insert({ user_id: profile.user_id, stage_name: stageName.trim(), is_approved: true })
-
-      if (error) {
-        toast.error("Failed to create RJ profile: " + error.message)
-        setCreating(false)
-        return
-      }
     }
 
     toast.success(`${stageName} is now an approved RJ!`)

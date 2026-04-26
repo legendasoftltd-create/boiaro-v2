@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { Eye, Search, CheckCircle2, XCircle, DollarSign, Clock, CreditCard, Banknote } from "lucide-react";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+import { trpc } from "@/lib/trpc";
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400",
@@ -22,6 +22,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function AdminPayments() {
+  const utils = trpc.useUtils();
   const [payments, setPayments] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [methodFilter, setMethodFilter] = useState("all");
@@ -31,30 +32,8 @@ export default function AdminPayments() {
   const { log } = useAdminLogger();
 
   const load = async () => {
-    const { data } = await supabase
-      .from("payments")
-      .select("*, orders(id, order_number, shipping_name, shipping_phone, shipping_address, shipping_city, status, total_amount, payment_method, cod_payment_status, user_id)")
-      .order("created_at", { ascending: false });
-
-    // For payments without shipping_name (digital-only), fetch profile display names
-    const missingNameUserIds = (data || [])
-      .filter(p => !p.orders?.shipping_name && p.user_id)
-      .map(p => p.user_id);
-    const uniqueIds = [...new Set(missingNameUserIds)];
-    let profileMap: Record<string, { display_name: string | null; phone: string | null }> = {};
-    if (uniqueIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, display_name, phone")
-        .in("user_id", uniqueIds);
-      (profiles || []).forEach(p => { profileMap[p.user_id] = p; });
-    }
-
-    setPayments((data || []).map(p => ({
-      ...p,
-      _customerName: p.orders?.shipping_name || profileMap[p.user_id]?.display_name || p.user_id?.slice(0, 8) || "Unknown",
-      _customerPhone: p.orders?.shipping_phone || profileMap[p.user_id]?.phone || null,
-    })));
+    const data = await utils.admin.listPayments.fetch();
+    setPayments(data || []);
   };
 
   useEffect(() => { load(); }, []);
@@ -80,11 +59,7 @@ export default function AdminPayments() {
   const confirmCodPayment = async (payment: any) => {
     setConfirming(true);
     try {
-      await supabase.from("payments").update({ status: "paid" } as any).eq("id", payment.id);
-      await supabase.from("orders").update({ status: "confirmed" }).eq("id", payment.order_id);
-      try {
-        await supabase.functions.invoke("calculate-earnings", { body: { order_id: payment.order_id } });
-      } catch (e) { console.error("Earnings calc failed:", e); }
+      if (payment.order_id) await utils.admin.markCodPaid.fetch({ orderId: payment.order_id });
       await log({ module: "payments", action: "COD payment confirmed", actionType: "approve", targetType: "payment", targetId: payment.id, details: `Confirmed payment ৳${payment.amount} for order ${payment.order_id?.slice(0, 8)}`, riskLevel: "high" });
       toast.success("Payment confirmed & earnings calculated");
       setSelected(null);
@@ -312,7 +287,7 @@ export default function AdminPayments() {
                     {confirming ? "Confirming..." : "Confirm COD Payment"}
                   </Button>
                   <Button variant="destructive" className="gap-2" onClick={async () => {
-                    await supabase.from("payments").update({ status: "failed" } as any).eq("id", selected.id);
+                    await utils.admin.markPaymentFailed.fetch({ paymentId: selected.id });
                     toast.success("Marked as failed");
                     setSelected(null);
                     load();

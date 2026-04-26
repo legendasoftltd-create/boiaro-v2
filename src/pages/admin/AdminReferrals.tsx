@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 interface Referral {
@@ -36,6 +36,7 @@ interface ReferralSettings {
 }
 
 export default function AdminReferrals() {
+  const utils = trpc.useUtils();
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [settings, setSettings] = useState<ReferralSettings>({
     referral_enabled: true,
@@ -57,11 +58,7 @@ export default function AdminReferrals() {
   }, []);
 
   const loadReferrals = async () => {
-    const { data } = await supabase
-      .from("referrals")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200);
+    const data = await utils.admin.listReferrals.fetch({ limit: 200 });
     if (data) {
       setReferrals(data as Referral[]);
       const completed = data.filter((r) => r.status === "completed").length;
@@ -79,10 +76,9 @@ export default function AdminReferrals() {
 
   const loadSettings = async () => {
     const keys = Object.keys(settings);
-    const { data } = await supabase.from("platform_settings").select("key, value").in("key", keys);
+    const data = await utils.admin.getPlatformSettings.fetch({ keys });
     if (data) {
-      const map: Record<string, string> = {};
-      data.forEach((r) => (map[r.key] = r.value));
+      const map = data as Record<string, string>;
       setSettings({
         referral_enabled: map.referral_enabled !== "false",
         referral_signup_reward: parseInt(map.referral_signup_reward) || 10,
@@ -97,13 +93,8 @@ export default function AdminReferrals() {
 
   const handleSave = async () => {
     setSaving(true);
-    const entries = Object.entries(settings).map(([key, val]) =>
-      supabase.from("platform_settings").upsert(
-        { key, value: String(val), updated_at: new Date().toISOString() },
-        { onConflict: "key" }
-      )
-    );
-    await Promise.all(entries);
+    const entries = Object.entries(settings).map(([key, val]) => ({ key, value: String(val) }));
+    await utils.admin.bulkSetPlatformSettings.fetch(entries);
     toast.success("Referral settings saved");
     setSaving(false);
   };

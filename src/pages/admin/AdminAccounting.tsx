@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ const LEDGER_CATEGORIES = ["creator_payout", "gateway_fee", "server_cost", "mark
 
 export default function AdminAccounting() {
   const { user } = useAuth();
+  const utils = trpc.useUtils();
   const { log } = useAdminLogger();
   const [entries, setEntries] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
@@ -36,13 +37,7 @@ export default function AdminAccounting() {
   });
 
   const load = async () => {
-    const { data, error } = await supabase
-      .from("accounting_ledger")
-      .select("*")
-      .order("entry_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error) { console.error("[Ledger] Load error:", error); }
+    const data = await utils.admin.listAccountingLedgerEntries.fetch({ limit: 500 });
     setEntries(data || []);
   };
 
@@ -58,15 +53,12 @@ export default function AdminAccounting() {
       description: form.description || null,
       amount: Number(form.amount),
       entry_date: form.entry_date,
-      source: "manual",
-      created_by: user.id,
       reference_type: "manual_entry",
     };
 
     console.log("[Ledger] Creating manual entry:", payload, "user:", user.id);
 
-    const { data, error } = await supabase.from("accounting_ledger").insert(payload).select();
-    if (error) { console.error("[Ledger] Insert error:", error); toast.error(error.message); return; }
+    const data = await utils.admin.createAccountingLedgerEntry.fetch(payload as any);
 
     console.log("[Ledger] Entry created successfully:", data);
 
@@ -92,20 +84,7 @@ export default function AdminAccounting() {
 
     setReversingId(entry.id);
 
-    const reversalType = entry.type;
-    const { error } = await supabase.from("accounting_ledger").insert({
-      type: reversalType,
-      category: entry.category,
-      description: `REVERSAL: ${entry.description || entry.category} (original: ${entry.id.slice(0, 8)})`,
-      amount: -(Number(entry.amount)),
-      entry_date: new Date().toISOString().split("T")[0],
-      source: "manual",
-      created_by: user.id,
-      reference_type: "reversal",
-      reference_id: entry.id,
-    });
-
-    if (error) { toast.error(error.message); setReversingId(null); return; }
+    await utils.admin.reverseAccountingLedgerEntry.fetch({ entryId: entry.id });
 
     await log({
       module: "accounting",

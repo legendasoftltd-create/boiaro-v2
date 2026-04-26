@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,16 +32,16 @@ interface RolloutConfig {
 interface DayMetrics {
   stat_date: string;
   r2_requests: number;
-  supabase_requests: number;
+  origin_requests: number;
   r2_errors: number;
-  supabase_errors: number;
+  origin_errors: number;
   r2_signed_url_failures: number;
   playback_successes: number;
   playback_failures: number;
   rollout_percent: number;
   auto_adjusted: boolean;
   error_rate_r2: number;
-  error_rate_supabase: number;
+  error_rate_origin: number;
   fallback_count: number;
   circuit_breaker_tripped?: boolean;
   circuit_breaker_safe_percent?: number | null;
@@ -59,29 +59,19 @@ function fmtNum(n: number) {
 }
 
 export default function AdminR2Dashboard() {
+  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
   const [pendingPercent, setPendingPercent] = useState<number | null>(null);
 
   const { data: status, isLoading, refetch } = useQuery({
     queryKey: ["r2-rollout-status"],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke("r2-rollout-controller", {
-        body: { action: "get_status" },
-      });
-      if (error) throw error;
-      return data as StatusResponse;
-    },
+    queryFn: () => utils.admin.r2RolloutStatus.fetch() as Promise<StatusResponse>,
     refetchInterval: 30_000,
   });
 
   const updateConfig = useMutation({
-    mutationFn: async (updates: Partial<RolloutConfig>) => {
-      const { data, error } = await supabase.functions.invoke("r2-rollout-controller", {
-        body: { action: "set_config", ...updates },
-      });
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: async (updates: Partial<RolloutConfig> & { reset_circuit_breaker?: boolean }) =>
+      utils.admin.updateR2RolloutConfig.fetch(updates as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["r2-rollout-status"] });
       toast.success("R2 config updated");
@@ -91,13 +81,7 @@ export default function AdminR2Dashboard() {
   });
 
   const triggerAutoAdjust = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke("r2-rollout-controller", {
-        body: { action: "auto_adjust" },
-      });
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: () => utils.admin.autoAdjustR2Rollout.fetch(),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["r2-rollout-status"] });
       if (data.adjusted) {
@@ -113,8 +97,8 @@ export default function AdminR2Dashboard() {
   const history = status?.history || [];
   const currentPercent = pendingPercent ?? config?.current_percent ?? 0;
 
-  const totalRequestsToday = (todayData?.r2_requests || 0) + (todayData?.supabase_requests || 0);
-  const totalErrorsToday = (todayData?.r2_errors || 0) + (todayData?.supabase_errors || 0);
+  const totalRequestsToday = (todayData?.r2_requests || 0) + (todayData?.origin_requests || 0);
+  const totalErrorsToday = (todayData?.r2_errors || 0) + (todayData?.origin_errors || 0);
   const overallErrorRate = totalRequestsToday > 0 ? (totalErrorsToday / totalRequestsToday) * 100 : 0;
   const playbackTotal = (todayData?.playback_successes || 0) + (todayData?.playback_failures || 0);
   const playbackSuccessRate = playbackTotal > 0 ? (todayData!.playback_successes / playbackTotal) * 100 : 100;
@@ -237,7 +221,7 @@ export default function AdminR2Dashboard() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground w-20">Supabase</span>
+            <span className="text-sm text-muted-foreground w-20">Origin</span>
             <div className="flex-1">
               <Slider
                 value={[currentPercent]}
@@ -254,7 +238,7 @@ export default function AdminR2Dashboard() {
               <Badge variant={currentPercent === 0 ? "secondary" : currentPercent < 50 ? "outline" : "default"}>
                 {currentPercent}% → R2
               </Badge>
-              <Badge variant="secondary">{100 - currentPercent}% → Supabase</Badge>
+              <Badge variant="secondary">{100 - currentPercent}% → Origin</Badge>
             </div>
             {pendingPercent !== null && pendingPercent !== config?.current_percent && (
               <Button size="sm" onClick={() => updateConfig.mutate({ current_percent: pendingPercent })} disabled={updateConfig.isPending}>
@@ -372,24 +356,24 @@ export default function AdminR2Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Server className="w-4 h-4 text-green-500" /> Supabase Performance
+              <Server className="w-4 h-4 text-green-500" /> Origin Performance
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span>Requests</span>
-              <span className="font-mono">{fmtNum(todayData?.supabase_requests || 0)}</span>
+              <span className="font-mono">{fmtNum(todayData?.origin_requests || 0)}</span>
             </div>
             <div className="flex justify-between">
               <span>Errors</span>
-              <span className="font-mono text-destructive">{fmtNum(todayData?.supabase_errors || 0)}</span>
+              <span className="font-mono text-destructive">{fmtNum(todayData?.origin_errors || 0)}</span>
             </div>
             <div className="flex justify-between">
               <span>Error Rate</span>
               <Badge variant={
-                (todayData?.error_rate_supabase || 0) > 3 ? "destructive" : "default"
+                (todayData?.error_rate_origin || 0) > 3 ? "destructive" : "default"
               }>
-                {todayData?.error_rate_supabase?.toFixed(2) || "0.00"}%
+                {todayData?.error_rate_origin?.toFixed(2) || "0.00"}%
               </Badge>
             </div>
             <div className="flex justify-between">
@@ -431,7 +415,7 @@ export default function AdminR2Dashboard() {
                       <TableRow key={row.stat_date}>
                         <TableCell className="font-mono text-xs">{row.stat_date}</TableCell>
                         <TableCell className="text-right font-mono">{fmtNum(row.r2_requests)}</TableCell>
-                        <TableCell className="text-right font-mono">{fmtNum(row.supabase_requests)}</TableCell>
+                        <TableCell className="text-right font-mono">{fmtNum(row.origin_requests)}</TableCell>
                         <TableCell className="text-right">
                           <Badge variant={row.error_rate_r2 > 3 ? "destructive" : row.error_rate_r2 > 1 ? "secondary" : "default"} className="text-xs">
                             {row.error_rate_r2.toFixed(1)}%

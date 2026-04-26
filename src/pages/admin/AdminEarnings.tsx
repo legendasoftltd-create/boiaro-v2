@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -10,8 +9,10 @@ import { Input } from "@/components/ui/input";
 import { DollarSign, CheckCircle2, Clock, Users, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+import { trpc } from "@/lib/trpc";
 
 export default function AdminEarnings() {
+  const utils = trpc.useUtils();
   const [earnings, setEarnings] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -24,19 +25,14 @@ export default function AdminEarnings() {
   useEffect(() => { load(); }, []);
 
   const load = async () => {
-    const { data } = await supabase
-      .from("contributor_earnings")
-      .select("*, books(title)")
-      .order("created_at", { ascending: false })
-      .limit(500);
-    const rows = data || [];
+    const rows = await utils.admin.listEarnings.fetch({ limit: 500 });
     setEarnings(rows);
 
     const userIds = [...new Set(rows.map(e => e.user_id).filter(id => id !== "00000000-0000-0000-0000-000000000000"))];
     if (userIds.length > 0) {
-      const { data: profs } = await supabase.from("profiles").select("user_id, display_name").in("user_id", userIds);
+      const profs = await utils.admin.listUsers.fetch({ limit: 1000 });
       const map: Record<string, string> = {};
-      (profs || []).forEach(p => { map[p.user_id] = p.display_name || "Unknown"; });
+      (profs?.users || []).forEach((u: any) => { map[u.id] = u.profile?.display_name || "Unknown"; });
       setProfiles(map);
     }
   };
@@ -61,9 +57,8 @@ export default function AdminEarnings() {
 
   const confirmEarnings = async (ids: string[]) => {
     if (!ids.length) return;
-    const { data, error } = await supabase.rpc("admin_confirm_earnings", { p_earning_ids: ids });
-    if (error) { toast.error(error.message); return; }
-    const count = (data as any)?.confirmed_count || ids.length;
+    const data = await utils.admin.confirmEarnings.fetch({ earningIds: ids });
+    const count = data?.confirmed_count || ids.length;
     await log({ module: "earnings", action: `${count} earnings confirmed`, actionType: "approve", targetType: "earnings", details: `Bulk confirmed ${count} earnings`, riskLevel: "medium" });
     toast.success(`${count} earning(s) confirmed`);
     setSelectedIds([]);

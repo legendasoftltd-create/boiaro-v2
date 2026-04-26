@@ -1,57 +1,28 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Gauge, RefreshCw, AlertTriangle, CheckCircle2, Zap } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 
 export default function AdminPerformance() {
-  // Edge function performance from analytics
-  const { data: edgeLogs = [], refetch } = useQuery({
-    queryKey: ["admin-edge-perf"],
-    queryFn: async () => {
-      // Use system_performance_logs if available
-      const { data } = await supabase
-        .from("system_performance_logs")
-        .select("function_name, response_time_ms, status_code, created_at")
-        .order("created_at", { ascending: false })
-        .limit(500);
-      return data || [];
-    },
+  const utils = trpc.useUtils();
+  const { data, refetch } = useQuery({
+    queryKey: ["admin-performance-data"],
+    queryFn: () => utils.admin.performanceData.fetch(),
     staleTime: 30_000,
   });
-
-  // System logs errors (last 24h)
-  const { data: errorLogs = [] } = useQuery({
-    queryKey: ["admin-error-rates"],
-    queryFn: async () => {
-      const oneDayAgo = new Date(Date.now() - 86400000).toISOString();
-      const { data } = await supabase
-        .from("system_logs")
-        .select("level, created_at, module")
-        .in("level", ["error", "critical"])
-        .gte("created_at", oneDayAgo)
-        .order("created_at", { ascending: true });
-      if (!data) return [];
-      const byHour: Record<string, number> = {};
-      data.forEach(r => {
-        const h = r.created_at.slice(0, 13);
-        byHour[h] = (byHour[h] || 0) + 1;
-      });
-      return Object.entries(byHour).map(([hour, count]) => ({ hour: hour.slice(11) + ":00", errors: count }));
-    },
-    staleTime: 60_000,
-  });
-
-  // DB health quick check
-  const { data: dbHealth } = useQuery({
-    queryKey: ["admin-perf-db"],
-    queryFn: async () => {
-      const { data } = await supabase.functions.invoke("db-health-check", { body: {} });
-      return data;
-    },
-    staleTime: 30_000,
-  });
+  const edgeLogs = data?.edgeLogs || [];
+  const rawErrorLogs = data?.errorLogs || [];
+  const dbHealth = data?.dbHealth;
+  const errorLogs = (() => {
+    const byHour: Record<string, number> = {};
+    rawErrorLogs.forEach((r: any) => {
+      const hourValue = new Date(r.created_at).toISOString().slice(0, 13);
+      byHour[hourValue] = (byHour[hourValue] || 0) + 1;
+    });
+    return Object.entries(byHour).map(([hour, count]) => ({ hour: hour.slice(11) + ":00", errors: count }));
+  })();
 
   // Aggregate edge function stats
   const fnStats: Record<string, { count: number; avgMs: number; errors: number }> = {};
