@@ -1,11 +1,9 @@
 # REST API
 
-This server now supports both:
+This project supports both:
 
 - `tRPC` for the web app at `/trpc`
 - `REST` for mobile clients at `/api/v1`
-
-The REST endpoints below reuse the same core service logic as the matching tRPC procedures, so web and mobile stay aligned.
 
 Base URL in local development:
 
@@ -13,25 +11,23 @@ Base URL in local development:
 http://localhost:3001/api/v1
 ```
 
-Base ULR in production:
+Base URL in staging:
 
-```test
-https://stating.boiaro.com/api/v1
+```text
+https://staging.boiaro.com/api/v1
 ```
 
 ## Authentication
 
-Protected endpoints require a bearer token:
+Protected endpoints require:
 
 ```http
 Authorization: Bearer <accessToken>
 ```
 
-Access and refresh tokens are returned by the login endpoint.
+## Error format
 
-## Error Format
-
-REST endpoints return JSON errors in this shape:
+Application errors:
 
 ```json
 {
@@ -40,7 +36,7 @@ REST endpoints return JSON errors in this shape:
 }
 ```
 
-Validation errors return:
+Validation errors:
 
 ```json
 {
@@ -54,13 +50,11 @@ Validation errors return:
 }
 ```
 
-## Endpoints
+## Auth
 
 ### `POST /auth/login`
 
-Authenticate a user with email and password.
-
-Request body:
+Request:
 
 ```json
 {
@@ -69,36 +63,26 @@ Request body:
 }
 ```
 
-Success response:
+Response:
 
 ```json
 {
   "accessToken": "jwt-access-token",
   "refreshToken": "jwt-refresh-token",
   "user": {
-    "id": "clx123",
+    "id": "user_id",
     "email": "user@example.com",
     "roles": ["user"],
     "profile": {
-      "id": "profile_1",
-      "display_name": "User",
-      "avatar_url": null
+      "display_name": "User"
     }
   }
 }
 ```
 
-Possible errors:
-
-- `401 UNAUTHORIZED` if credentials are invalid
-- `403 FORBIDDEN` if the account is deleted or inactive
-- `400 BAD_REQUEST` if the request body is invalid
-
 ### `POST /auth/refresh`
 
-Exchange a refresh token for a new access token pair.
-
-Request body:
+Request:
 
 ```json
 {
@@ -106,7 +90,7 @@ Request body:
 }
 ```
 
-Success response:
+Response:
 
 ```json
 {
@@ -115,46 +99,109 @@ Success response:
 }
 ```
 
-Possible errors:
-
-- `401 UNAUTHORIZED` if the refresh token is invalid
-- `400 BAD_REQUEST` if the request body is invalid
-
 ### `GET /auth/me`
 
-Get the currently authenticated user.
+Protected.
 
-Headers:
-
-```http
-Authorization: Bearer <accessToken>
-```
-
-Success response:
+Response:
 
 ```json
 {
-  "id": "clx123",
+  "id": "user_id",
   "email": "user@example.com",
   "roles": ["user"],
   "profile": {
-    "id": "profile_1",
-    "display_name": "User",
-    "avatar_url": null
+    "display_name": "User"
   }
 }
 ```
 
-Possible errors:
+## Homepage and footer
 
-- `401 UNAUTHORIZED` if the token is missing or invalid
-- `404 NOT_FOUND` if the user no longer exists
+### `GET /homepage`
+
+Returns aggregated mobile home data. If the caller is authenticated, personalized sections such as `currentUser`, `continueReading`, and `continueListening` are included for that same user only.
+
+Optional query params:
+
+- `limit` number, optional, default `50`
+
+### `GET /footer`
+
+Returns footer/site setting data for mobile or web consumers.
+
+Response shape:
+
+```json
+{
+  "footerData": [
+    {
+      "key": "brand_name",
+      "value": "BoiAro"
+    }
+  ]
+}
+```
+
+## Profile
+
+### `GET /profile`
+
+Protected.
+
+Response:
+
+```json
+{
+  "userProfile": {
+    "id": "user_id",
+    "email": "user@example.com",
+    "roles": [{ "role": "user" }],
+    "profile": {
+      "display_name": "User"
+    },
+    "created_at": "2026-01-01T00:00:00.000Z"
+  }
+}
+```
+
+### `PATCH /profile`
+
+Protected.
+
+Allowed request fields:
+
+- `display_name`
+- `full_name`
+- `avatar_url`
+- `bio`
+- `preferred_language`
+
+Example:
+
+```json
+{
+  "display_name": "Akram",
+  "bio": "Reader and writer"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "Profile updated"
+}
+```
+
+## Books
 
 ### `GET /books`
 
-List approved books with optional filters.
+List approved books.
 
-Query parameters:
+Query params:
 
 - `limit` number, optional, default `20`, max `100`
 - `cursor` string, optional
@@ -167,250 +214,172 @@ Query parameters:
 - `authorId` string, optional
 - `publisherId` string, optional
 
-Example request:
+Example:
 
 ```http
 GET /api/v1/books?limit=10&search=novel&isFeatured=true
 ```
 
-Success response:
+Response:
 
 ```json
 {
-  "books": [
-    {
-      "id": "book_1",
-      "title": "Example Book",
-      "title_en": "Example Book",
-      "author": {
-        "id": "author_1",
-        "name": "Author Name",
-        "name_en": "Author Name",
-        "avatar_url": null,
-        "bio": null,
-        "genre": null,
-        "is_featured": false
-      },
-      "publisher": {
-        "id": "publisher_1",
-        "name": "Publisher Name",
-        "name_en": "Publisher Name",
-        "logo_url": null,
-        "description": null,
-        "is_verified": true
-      },
-      "category": {
-        "id": "category_1",
-        "name": "Fiction",
-        "name_bn": "Fiction",
-        "slug": "fiction",
-        "icon": null,
-        "color": null
-      },
-      "formats": [
-        {
-          "id": "format_1",
-          "format": "ebook",
-          "price": 120,
-          "original_price": 150,
-          "discount": 20,
-          "coin_price": null,
-          "pages": 220,
-          "duration": null,
-          "in_stock": true,
-          "is_available": true,
-          "narrator_id": null,
-          "binding": null,
-          "audio_quality": null,
-          "file_size": null,
-          "chapters_count": null,
-          "preview_chapters": null,
-          "dimensions": null,
-          "weight": null,
-          "delivery_days": null,
-          "stock_count": null
-        }
-      ]
-    }
-  ],
-  "nextCursor": "book_10"
+  "books": [],
+  "nextCursor": "book_id"
 }
 ```
-
-Notes:
-
-- If there are no more records, `nextCursor` is omitted or `null`
-- Use `cursor` from the previous response to fetch the next page
-
-Possible errors:
-
-- `400 BAD_REQUEST` if any query parameter has an invalid type or value
 
 ### `GET /books/:id`
 
-Fetch one book by database id.
+Get one approved book by database id.
 
-Path params:
+### `GET /books/slug/:slug`
 
-- `id` string, required
+Get one approved book by slug.
 
-Example request:
+Example:
 
 ```http
-GET /api/v1/books/book_1
+GET /api/v1/books/slug/দুর্গেশনন্দিনী-6945b4c0
 ```
 
-Success response:
+### `GET /books/categories/list`
+
+Get active categories.
+
+Response:
+
+```json
+[
+  {
+    "id": "category_id",
+    "name": "Fiction",
+    "slug": "fiction"
+  }
+]
+```
+
+### `GET /books/:id/reviews`
+
+Get approved reviews for a book.
+
+Query params:
+
+- `limit` number, optional, default `50`, max `100`
+
+Response:
+
+```json
+[
+  {
+    "id": "review_id",
+    "rating": 5,
+    "comment": "Great book",
+    "display_name": "Akram"
+  }
+]
+```
+
+### `POST /books/:id/reviews`
+
+Protected.
+
+Create or update the current user's review for a book. Existing reviews are updated and returned to `pending`.
+
+Request:
 
 ```json
 {
-  "id": "book_1",
-  "title": "Example Book",
-  "description": "Book description",
-  "author": {
-    "id": "author_1",
-    "name": "Author Name"
-  },
-  "publisher": {
-    "id": "publisher_1",
-    "name": "Publisher Name"
-  },
-  "category": {
-    "id": "category_1",
-    "name": "Fiction"
-  },
-  "formats": [
-    {
-      "id": "format_1",
-      "format": "audiobook",
-      "narrator": {
-        "id": "narrator_1",
-        "name": "Narrator Name",
-        "avatar_url": null
-      }
-    }
-  ]
+  "rating": 5,
+  "comment": "Excellent read"
 }
 ```
 
-Possible errors:
+### `GET /books/:id/bookmark`
 
-- `404 NOT_FOUND` if the book does not exist
+Protected.
 
-## Flutter Notes
+Response:
 
-- Store `accessToken` and `refreshToken` securely
-- Send `Authorization: Bearer <accessToken>` for protected endpoints
-- If a protected request returns `401`, call `/auth/refresh` and retry
-- Use `/books` for list screens and `/books/:id` for details screens
+```json
+{
+  "bookmarked": true
+}
+```
 
-## Current Scope
+### `POST /books/:id/bookmark`
 
-The first REST endpoints added are:
+Protected.
+
+Toggles bookmark state.
+
+Response:
+
+```json
+{
+  "bookmarked": true
+}
+```
+
+## Me
+
+### `GET /me/bookmarks`
+
+Protected.
+
+Returns the authenticated user's bookmarks with book summary data.
+
+Response:
+
+```json
+[
+  {
+    "id": "bookmark_id",
+    "book_id": "book_id",
+    "book": {
+      "id": "book_id",
+      "title": "Book Name",
+      "author": {
+        "id": "author_id",
+        "name": "Author Name"
+      },
+      "formats": [
+        {
+          "id": "format_id",
+          "format": "ebook",
+          "price": 120
+        }
+      ]
+    }
+  }
+]
+```
+
+## Endpoint list
+
+Current REST endpoints:
 
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `GET /api/v1/auth/me`
-- `GET /api/v1/books`
-- `GET /api/v1/books/:id`
 - `GET /api/v1/homepage`
 - `GET /api/v1/footer`
 - `GET /api/v1/profile`
 - `PATCH /api/v1/profile`
+- `GET /api/v1/books`
+- `GET /api/v1/books/:id`
+- `GET /api/v1/books/slug/:slug`
+- `GET /api/v1/books/categories/list`
+- `GET /api/v1/books/:id/reviews`
+- `POST /api/v1/books/:id/reviews`
+- `GET /api/v1/books/:id/bookmark`
+- `POST /api/v1/books/:id/bookmark`
+- `GET /api/v1/me/bookmarks`
 
-More endpoints can be added gradually using the same pattern without affecting the existing web tRPC client.
+## Flutter notes
 
-
-## Fetch Homepage Data. Example request:
-
-`GET /api/v1/homepage`
-
-method: 'GET',
-  headers: {
-    'Content-Type': 'application/json',
-    userId
-  },
-
-Current `homepage` Response Structure:
-{
-  currentUser{},
-  continueListening[],
-  continueReading[],
-  radio: {
-      station,
-      liveSession
-  },
-  popularBooks[],
-  BecauseYouRead[],
-  "editorsPick": [],
-  "appDownload": [],
-  "trendingNow": {},
-  "popularAudiobooks": [],
-  "popularHardCopies": [],
-  "popularEbooks": [],
-  "topTenMostRead": [],
-  "slider": {},
-  "allCategory": [],
-  "allAuthor": [],
-  "allNarrators": [],
-  "countsValue": {},
-  "NewReleases": {},
-  "FreeBooks": []
-}
-
-
-## Fetch Footer Data. Example request:
-
-`GET /api/v1/footer`
-
-Current `homepage` Response Structure:
-{
-  "footerData"[]
-}
-
-## Fetch User Profile Data. Example request:
-
-`GET /api/v1/profile`
-
-method: "GET",
-headers: {
-  "Content-Type": "application/json",
-  "Authorization": "Bearer YOUR_TOKEN_HERE"
-}
-
-Current `profile` Response Structure:
-{
-  "userProfile"{}
-}
-
-
-## Update User Profile Data. Example request:
-
-`PATCH /api/v1/profile`
-
-{
-  method: "PATCH",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer YOUR_TOKEN_HERE"
-  },
-  body: JSON.stringify({
-    display_name: "Rakib ",
-    full_name: "Md. Rakib ",
-    bio: "Full Stack Web Developer & Tech Enthusiast",
-    preferred_language: "bn",
-    avatar_url: "https://your-storage-url.com/profile.jpg"
-  })
-}
-
-Current `profile update` Response Structure:
-{
-    "success": true,
-    "message": "Profile updated"
-}
-
-error response :
-{
-    "success": false,
-    "message": "Invalid fields: display_name11. Please only use allowed fields."
-}
+- Store `accessToken` and `refreshToken` securely
+- Send `Authorization: Bearer <accessToken>` for protected endpoints
+- If a protected request returns `401`, call `/auth/refresh` and retry
+- Use `/books` for listing, `/books/slug/:slug` or `/books/:id` for detail screens
+- Use `/books/:id/bookmark` and `/me/bookmarks` for save/bookmark flows
