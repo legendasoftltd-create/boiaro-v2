@@ -380,6 +380,7 @@ Current REST endpoints:
 - `GET /api/v1/authors?limit=20&offset=0`
 - `GET /api/v1/ authors/{id}`
 - `GET /api/v1/ narrators`
+- `GET /api/v1/ publishers`
 
 
 ## Flutter notes
@@ -501,6 +502,26 @@ Response:
       "rating": 4.8,
       "is_featured": true,
       "is_trending": false
+    }
+  ]
+}
+```
+
+### `GET /publishers`
+
+Response:
+
+```json
+{
+  "publishers": [
+    {
+      "id": "6921459b1180471ba4d15343",
+      "name": "প্রতীক প্রকাশনা সংস্থা",
+      "name_en": null,
+      "logo_url": "/uploads/1763788187269-274075300_1984119001761576_5103067599681579653_n.webp",
+      "description": "<p><br></p>",
+      "is_verified": false,
+      "is_featured": false
     }
   ]
 }
