@@ -332,6 +332,128 @@ export const adminRouter = router({
       })
     ),
 
+  listAccountingLedgerEntries: adminProcedure
+    .input(z.object({ limit: z.number().min(1).max(1000).default(500) }).optional())
+    .query(({ input }) =>
+      prisma.accountingLedger.findMany({
+        orderBy: [{ entry_date: "desc" }, { created_at: "desc" }],
+        take: input?.limit ?? 500,
+      })
+    ),
+
+  reverseAccountingLedgerEntry: adminProcedure
+    .input(z.object({ entryId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const entry = await prisma.accountingLedger.findUnique({ where: { id: input.entryId } });
+      if (!entry) throw new TRPCError({ code: "NOT_FOUND", message: "Ledger entry not found" });
+      return prisma.accountingLedger.create({
+        data: {
+          type: entry.type,
+          category: entry.category,
+          description: `REVERSAL: ${entry.description || entry.category} (original: ${entry.id.slice(0, 8)})`,
+          amount: -Math.abs(Number(entry.amount || 0)),
+          entry_date: new Date(),
+          source: "manual",
+          created_by: ctx.userId,
+          reference_type: "reversal",
+          reference_id: entry.id,
+          book_id: entry.book_id,
+          order_id: entry.order_id,
+        },
+      });
+    }),
+
+  listWallets: adminProcedure
+    .input(z.object({ limit: z.number().min(1).max(1000).default(200) }).optional())
+    .query(async ({ input }) => {
+      const wallets = await prisma.userCoin.findMany({
+        orderBy: { balance: "desc" },
+        take: input?.limit ?? 200,
+      });
+      const userIds = [...new Set(wallets.map((w) => w.user_id))];
+      const profiles = userIds.length
+        ? await prisma.profile.findMany({
+            where: { user_id: { in: userIds } },
+            select: { user_id: true, display_name: true, avatar_url: true },
+          })
+        : [];
+      const profileMap = Object.fromEntries(
+        profiles.map((profile) => [profile.user_id, { display_name: profile.display_name, avatar_url: profile.avatar_url }])
+      );
+      return wallets.map((wallet) => ({
+        ...wallet,
+        profiles: profileMap[wallet.user_id] || null,
+      }));
+    }),
+
+  listCoinTransactions: adminProcedure
+    .input(z.object({ limit: z.number().min(1).max(1000).default(200) }).optional())
+    .query(({ input }) =>
+      prisma.coinTransaction.findMany({
+        orderBy: { created_at: "desc" },
+        take: input?.limit ?? 200,
+      })
+    ),
+
+  listCoinTransactionsByUser: adminProcedure
+    .input(z.object({ userId: z.string(), limit: z.number().min(1).max(500).default(50) }).optional())
+    .query(({ input }) =>
+      prisma.coinTransaction.findMany({
+        where: { user_id: input?.userId },
+        orderBy: { created_at: "desc" },
+        take: input?.limit ?? 50,
+      })
+    ),
+
+  adjustUserCoins: adminProcedure
+    .input(
+      z.object({
+        userId: z.string(),
+        amount: z.number().int(),
+        type: z.string().default("adjustment"),
+        description: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      return prisma.$transaction(async (tx) => {
+        const wallet = await tx.userCoin.findUnique({ where: { user_id: input.userId } });
+        if (!wallet) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
+        }
+        const newBalance = wallet.balance + input.amount;
+        if (newBalance < 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient balance" });
+        }
+        const updatedWallet = await tx.userCoin.update({
+          where: { user_id: input.userId },
+          data: {
+            balance: newBalance,
+            total_earned: input.amount > 0 ? wallet.total_earned + input.amount : wallet.total_earned,
+            total_spent: input.amount < 0 ? wallet.total_spent + Math.abs(input.amount) : wallet.total_spent,
+          },
+        });
+        await tx.coinTransaction.create({
+          data: {
+            user_id: input.userId,
+            amount: input.amount,
+            type: input.type,
+            description: input.description || `Admin adjustment: ${input.amount}`,
+            source: "admin",
+          },
+        });
+        return updatedWallet;
+      });
+    }),
+
+  listReferrals: adminProcedure
+    .input(z.object({ limit: z.number().min(1).max(1000).default(200) }).optional())
+    .query(({ input }) =>
+      prisma.referral.findMany({
+        orderBy: { created_at: "desc" },
+        take: input?.limit ?? 200,
+      })
+    ),
+
   approveBook: adminProcedure
     .input(z.object({ bookId: z.string() }))
     .mutation(({ input }) =>
@@ -1601,6 +1723,267 @@ export const adminRouter = router({
   deleteNotificationTemplate: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.notificationTemplate.delete({ where: { id: input.id } })),
+
+  listSupportTickets: adminProcedure.query(async () => {
+    const tickets = await prisma.supportTicket.findMany({
+      orderBy: { created_at: "desc" },
+      include: { replies: { select: { id: true } } },
+    });
+    const userIds = [...new Set(tickets.map((t) => t.user_id).filter(Boolean))];
+    const [users, profiles] = await Promise.all([
+      userIds.length ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true } }) : [],
+      userIds.length ? prisma.profile.findMany({ where: { user_id: { in: userIds } }, select: { user_id: true, display_name: true, phone: true } }) : [],
+    ]);
+    const userEmailById = Object.fromEntries(users.map((u) => [u.id, u.email]));
+    const profileByUserId = Object.fromEntries(profiles.map((p) => [p.user_id, p]));
+    return tickets.map((t) => ({
+      ...t,
+      ticket_number: `TKT-${t.id.slice(0, 8).toUpperCase()}`,
+      type: "ticket",
+      message: t.description,
+      user_name: profileByUserId[t.user_id]?.display_name || "User",
+      user_email: userEmailById[t.user_id] || null,
+      user_phone: profileByUserId[t.user_id]?.phone || null,
+      replies_count: t.replies.length,
+    }));
+  }),
+
+  getSupportTicketDetail: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      const ticket = await prisma.supportTicket.findUnique({ where: { id: input.id } });
+      if (!ticket) return null;
+      const [user, profile] = await Promise.all([
+        prisma.user.findUnique({ where: { id: ticket.user_id }, select: { email: true } }),
+        prisma.profile.findUnique({ where: { user_id: ticket.user_id }, select: { display_name: true, phone: true } }),
+      ]);
+      return {
+        ...ticket,
+        ticket_number: `TKT-${ticket.id.slice(0, 8).toUpperCase()}`,
+        type: "ticket",
+        message: ticket.description,
+        attachment_url: null,
+        user_name: profile?.display_name || "User",
+        user_email: user?.email || null,
+        user_phone: profile?.phone || null,
+      };
+    }),
+
+  listSupportTicketReplies: adminProcedure
+    .input(z.object({ ticketId: z.string() }))
+    .query(async ({ input }) => {
+      const replies = await prisma.ticketReply.findMany({
+        where: { ticket_id: input.ticketId },
+        orderBy: { created_at: "asc" },
+      });
+      const userIds = [...new Set(replies.map((r) => r.user_id).filter(Boolean))];
+      const profiles = userIds.length
+        ? await prisma.profile.findMany({
+            where: { user_id: { in: userIds } },
+            select: { user_id: true, display_name: true },
+          })
+        : [];
+      const profileMap = Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || "User"]));
+      return replies.map((r) => ({
+        ...r,
+        is_admin: r.is_staff,
+        is_internal: r.is_staff && (r.message || "").startsWith("[Internal] "),
+        sender_name: r.is_staff ? "Admin" : profileMap[r.user_id] || "User",
+        message: r.is_staff && (r.message || "").startsWith("[Internal] ") ? (r.message || "").replace(/^\[Internal\]\s*/, "") : r.message,
+      }));
+    }),
+
+  updateSupportTicket: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        status: z.string().optional(),
+        priority: z.string().optional(),
+        assigned_to: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      return prisma.supportTicket.update({
+        where: { id },
+        data,
+      });
+    }),
+
+  addSupportTicketReply: adminProcedure
+    .input(
+      z.object({
+        ticketId: z.string(),
+        userId: z.string(),
+        message: z.string().min(1),
+        isInternal: z.boolean().default(false),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.ticketReply.create({
+        data: {
+          ticket_id: input.ticketId,
+          user_id: input.userId,
+          message: input.isInternal ? `[Internal] ${input.message}` : input.message,
+          is_staff: true,
+        },
+      })
+    ),
+
+  listEmailTemplates: adminProcedure.query(async () => {
+    const rows = await prisma.emailTemplate.findMany({ orderBy: { created_at: "asc" } });
+    return rows.map((row) => ({
+      ...row,
+      body_html: row.body,
+      body_text: row.body,
+      status: row.is_active ? "active" : "inactive",
+    }));
+  }),
+
+  upsertEmailTemplate: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        name: z.string().min(1),
+        template_type: z.string().min(1),
+        subject: z.string().min(1),
+        body_html: z.string().default(""),
+        body_text: z.string().default(""),
+        status: z.enum(["active", "inactive"]).default("active"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const variables = Array.from(new Set((input.body_html.match(/\{\{(.*?)\}\}/g) || []).map((s) => s.replace(/[{}]/g, "").trim())));
+      const data = {
+        name: input.name,
+        template_type: input.template_type,
+        subject: input.subject,
+        body: input.body_html || input.body_text || "",
+        variables,
+        is_active: input.status === "active",
+      };
+      if (input.id) {
+        return prisma.emailTemplate.update({ where: { id: input.id }, data });
+      }
+      return prisma.emailTemplate.create({ data });
+    }),
+
+  deleteEmailTemplate: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.emailTemplate.delete({ where: { id: input.id } })),
+
+  getActiveEmailTemplate: adminProcedure
+    .input(z.object({ templateType: z.string().min(1) }))
+    .query(({ input }) =>
+      prisma.emailTemplate.findFirst({
+        where: { template_type: input.templateType, is_active: true },
+        select: { subject: true, body: true },
+      })
+    ),
+
+  logEmailEvent: adminProcedure
+    .input(
+      z.object({
+        recipient_email: z.string().email(),
+        template_type: z.string().min(1),
+        subject: z.string().min(1),
+        status: z.string().default("sent"),
+        error_message: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.emailLog.create({
+        data: {
+          recipient_email: input.recipient_email,
+          template_type: input.template_type,
+          subject: input.subject,
+          status: input.status,
+          error_message: input.error_message ?? null,
+          sent_at: input.status === "sent" ? new Date() : null,
+        },
+      })
+    ),
+
+  listEmailLogs: adminProcedure
+    .input(z.object({ limit: z.number().min(1).max(500).default(200) }).optional())
+    .query(({ input }) =>
+      prisma.emailLog.findMany({
+        orderBy: { created_at: "desc" },
+        take: input?.limit ?? 200,
+      })
+    ),
+
+  sendTestEmail: adminProcedure
+    .input(z.object({ recipientEmail: z.string().email() }))
+    .mutation(async ({ input }) => {
+      const now = new Date();
+      await prisma.emailLog.create({
+        data: {
+          recipient_email: input.recipientEmail,
+          template_type: "test-email",
+          subject: "BoiAro Email Test",
+          status: "sent",
+          sent_at: now,
+        },
+      });
+      return { success: true };
+    }),
+
+  listSystemAlerts: adminProcedure.query(async () => {
+    const logs = await prisma.systemLog.findMany({
+      where: { level: { in: ["warn", "error", "critical"] } },
+      orderBy: { created_at: "desc" },
+      take: 100,
+    });
+    return logs.map((log) => {
+      const meta = (log.metadata || {}) as Record<string, any>;
+      const severity = log.level === "critical" ? "critical" : log.level === "error" ? "warning" : "info";
+      return {
+        id: log.id,
+        alert_type: log.module || "system",
+        severity,
+        title: meta.title || `${(log.module || "System").toUpperCase()} alert`,
+        message: log.message,
+        metric_value: typeof meta.metric_value === "number" ? meta.metric_value : null,
+        threshold: typeof meta.threshold === "number" ? meta.threshold : null,
+        is_resolved: Boolean(meta.is_resolved),
+        resolved_at: meta.resolved_at || null,
+        created_at: log.created_at,
+      };
+    });
+  }),
+
+  resolveSystemAlert: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const current = await prisma.systemLog.findUnique({
+        where: { id: input.id },
+        select: { metadata: true },
+      });
+      if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Alert not found" });
+      const existing = (current.metadata || {}) as Record<string, any>;
+      return prisma.systemLog.update({
+        where: { id: input.id },
+        data: {
+          metadata: {
+            ...existing,
+            is_resolved: true,
+            resolved_at: new Date().toISOString(),
+          } as any,
+        },
+      });
+    }),
+
+  runSystemAlertCheck: adminProcedure.mutation(async () => {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const errorCount = await prisma.systemLog.count({
+      where: { created_at: { gte: oneHourAgo }, level: { in: ["error", "critical"] } },
+    });
+    return {
+      alerts_found: errorCount,
+      alerts_inserted: 0,
+    };
+  }),
 
   // ── User detail + role update ─────────────────────────────────────────────────
   getAdminUserDetailPage: adminProcedure
@@ -3098,6 +3481,439 @@ export const adminRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.formatRevenueSplit.delete({ where: { id: input.id } })),
 
+  listPayments: adminProcedure.query(async () => {
+    const payments = await prisma.payment.findMany({
+      orderBy: { created_at: "desc" },
+      include: {
+        order: {
+          select: {
+            id: true,
+            order_number: true,
+            shipping_name: true,
+            shipping_phone: true,
+            shipping_address: true,
+            shipping_district: true,
+            status: true,
+            total_amount: true,
+            payment_method: true,
+            cod_payment_status: true,
+            user_id: true,
+          },
+        },
+      },
+    });
+    const missingNameUserIds = [
+      ...new Set(payments.filter((p) => !p.order?.shipping_name && !!p.user_id).map((p) => p.user_id)),
+    ];
+    const profiles = missingNameUserIds.length
+      ? await prisma.profile.findMany({
+          where: { user_id: { in: missingNameUserIds } },
+          select: { user_id: true, display_name: true, phone: true },
+        })
+      : [];
+    const profileMap = Object.fromEntries(
+      profiles.map((profile) => [profile.user_id, { display_name: profile.display_name ?? null, phone: profile.phone ?? null }])
+    );
+    return payments.map((payment) => ({
+      ...payment,
+      orders: payment.order ?? null,
+      _customerName:
+        payment.order?.shipping_name ||
+        profileMap[payment.user_id]?.display_name ||
+        payment.user_id?.slice(0, 8) ||
+        "Unknown",
+      _customerPhone: payment.order?.shipping_phone || profileMap[payment.user_id]?.phone || null,
+    }));
+  }),
+
+  markPaymentFailed: adminProcedure
+    .input(z.object({ paymentId: z.string() }))
+    .mutation(({ input }) =>
+      prisma.payment.update({
+        where: { id: input.paymentId },
+        data: { status: "failed" },
+      })
+    ),
+
+  listPaymentGateways: adminProcedure.query(() =>
+    prisma.paymentGateway.findMany({
+      orderBy: [{ sort_priority: "asc" }, { created_at: "asc" }],
+    })
+  ),
+
+  updatePaymentGateway: adminProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        label: z.string().min(1),
+        is_enabled: z.boolean(),
+        mode: z.string().nullable().optional(),
+        sort_priority: z.number().int().default(0),
+        config: z.record(z.any()).default({}),
+        notes: z.string().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.paymentGateway.update({
+        where: { id: input.id },
+        data: {
+          label: input.label,
+          is_enabled: input.is_enabled,
+          mode: input.mode ?? null,
+          sort_priority: input.sort_priority,
+          config: input.config as any,
+          notes: input.notes ?? null,
+        },
+      })
+    ),
+
+  revenueAuditOrder: adminProcedure
+    .input(z.object({ query: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const query = input.query.trim();
+      const order =
+        (await prisma.order.findUnique({ where: { id: query } })) ||
+        (await prisma.order.findFirst({ where: { order_number: query } }));
+      if (!order) return null;
+
+      const [payment, ledgerEntries, orderItems, books] = await Promise.all([
+        prisma.payment.findFirst({ where: { order_id: order.id }, orderBy: { created_at: "desc" } }),
+        prisma.accountingLedger.findMany({ where: { order_id: order.id }, orderBy: { created_at: "desc" } }),
+        prisma.orderItem.findMany({ where: { order_id: order.id } }),
+        prisma.book.findMany({
+          where: { id: { in: [...new Set((await prisma.orderItem.findMany({ where: { order_id: order.id }, select: { book_id: true } })).map((i) => i.book_id).filter(Boolean) as string[])] } },
+          select: { id: true, title: true },
+        }),
+      ]);
+
+      const bookMap = Object.fromEntries(books.map((b) => [b.id, b]));
+      const paidStatuses = new Set(["paid", "confirmed", "completed", "access_granted", "delivered"]);
+      const revenueIncluded =
+        order.payment_method === "cod"
+          ? paidStatuses.has(order.status) && /settled|paid/i.test(order.cod_payment_status || "")
+          : paidStatuses.has(order.status);
+
+      const incomeEntries = ledgerEntries.filter((e) => e.type === "income" && e.category === "book_sale");
+      let exclusionReason: string | null = null;
+      if (!revenueIncluded) {
+        exclusionReason = order.payment_method === "cod" ? "cod_not_settled_or_status_not_verified" : "status_not_verified";
+      }
+
+      const issues: string[] = [];
+      if (incomeEntries.length === 0 && revenueIncluded) issues.push("Order is verified revenue but missing ledger income entry");
+      if (incomeEntries.length > 1) issues.push(`Duplicate ledger income entries found: ${incomeEntries.length}`);
+      if (!payment && order.payment_method !== "cod") issues.push("No payment record found for non-COD order");
+      if (payment?.status === "paid" && !revenueIncluded) issues.push("Payment paid but order excluded from revenue");
+      if (order.payment_method === "cod" && order.status === "delivered" && !/settled/i.test(order.cod_payment_status || "")) {
+        issues.push("COD delivered but cod_payment_status not settled");
+      }
+
+      return {
+        order,
+        payment,
+        ledgerEntries,
+        orderItems: orderItems.map((item) => ({ ...item, books: item.book_id ? bookMap[item.book_id] || null : null })),
+        revenueIncluded,
+        exclusionReason,
+        issues,
+      };
+    }),
+
+  revenueAuditFixOrder: adminProcedure
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const order = await prisma.order.findUnique({ where: { id: input.orderId } });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+      const paidStatuses = new Set(["paid", "confirmed", "completed", "access_granted", "delivered"]);
+      const verified =
+        order.payment_method === "cod"
+          ? paidStatuses.has(order.status) && /settled|paid/i.test(order.cod_payment_status || "")
+          : paidStatuses.has(order.status);
+
+      const existingIncome = await prisma.accountingLedger.findFirst({
+        where: { order_id: order.id, type: "income", category: "book_sale", amount: { gt: 0 } },
+      });
+      const fixes: string[] = [];
+      if (verified && !existingIncome) {
+        await prisma.accountingLedger.create({
+          data: {
+            type: "income",
+            category: "book_sale",
+            amount: Number(order.total_amount || 0),
+            entry_date: new Date(),
+            order_id: order.id,
+            reference_type: "order",
+            reference_id: order.id,
+            description: `Auto-fix: revenue ledger for order ${order.order_number || order.id.slice(0, 8)}`,
+            source: "system",
+            created_by: ctx.userId,
+          },
+        });
+        fixes.push("created_missing_income_ledger");
+      }
+      return { fixes };
+    }),
+
+  revenueConsistencyCheck: adminProcedure.query(async () => {
+    const [orders, ledger] = await Promise.all([
+      prisma.order.findMany({
+        select: { id: true, order_number: true, total_amount: true, status: true, payment_method: true, cod_payment_status: true, created_at: true },
+      }),
+      prisma.accountingLedger.findMany({
+        where: { type: "income", category: "book_sale" },
+      }),
+    ]);
+    const paidStatuses = new Set(["paid", "confirmed", "completed", "access_granted", "delivered"]);
+    const verifiedOrders = orders.filter((o) =>
+      o.payment_method === "cod"
+        ? paidStatuses.has(o.status) && /settled|paid/i.test(o.cod_payment_status || "")
+        : paidStatuses.has(o.status)
+    );
+    const orderRevenue = verifiedOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+    const positiveLedger = ledger.filter((e) => Number(e.amount) > 0);
+    const ledgerIncome = positiveLedger.reduce((s, e) => s + Number(e.amount || 0), 0);
+    const ledgerOrderIds = new Set(positiveLedger.map((e) => e.order_id).filter(Boolean));
+    const missingFromLedger = verifiedOrders.filter((o) => !ledgerOrderIds.has(o.id));
+    const seen = new Set<string>();
+    const duplicateInLedger: any[] = [];
+    positiveLedger.forEach((e) => {
+      if (!e.order_id) return;
+      if (seen.has(e.order_id)) duplicateInLedger.push(e);
+      seen.add(e.order_id);
+    });
+    return {
+      orderRevenue,
+      ledgerIncome,
+      mismatch: Math.abs(orderRevenue - ledgerIncome) > 0.01,
+      missingFromLedger,
+      duplicateInLedger,
+    };
+  }),
+
+  weeklyReportData: adminProcedure.query(async () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const start = new Date(now);
+    start.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+    start.setHours(0, 0, 0, 0);
+    const startDay = start.toISOString().slice(0, 10);
+
+    const [newUsersCount, weekOrders, weekLedger, topBooks, consumption, alerts] = await Promise.all([
+      prisma.profile.count({ where: { created_at: { gte: start } } }),
+      prisma.order.findMany({
+        where: { created_at: { gte: start }, status: { in: ["paid", "confirmed", "completed", "access_granted", "delivered"] } },
+        select: { total_amount: true },
+      }),
+      prisma.accountingLedger.findMany({ where: { entry_date: { gte: new Date(startDay) } }, select: { type: true, amount: true, category: true } }),
+      prisma.book.findMany({ select: { title: true, total_reads: true }, orderBy: { total_reads: "desc" }, take: 5 }),
+      prisma.contentConsumptionTime.findMany({ where: { created_at: { gte: start } }, select: { format: true, seconds: true } }),
+      prisma.systemLog.findMany({ where: { created_at: { gte: start }, level: { in: ["warn", "error", "critical"] } }, select: { level: true, metadata: true } }),
+    ]);
+
+    const income = weekLedger.filter((e) => e.type === "income").reduce((s, e) => s + Number(e.amount || 0), 0);
+    const expense = weekLedger.filter((e) => e.type === "expense").reduce((s, e) => s + Number(e.amount || 0), 0);
+    const ebookHours = consumption.filter((c) => c.format === "ebook").reduce((s, c) => s + Number(c.seconds || 0), 0) / 3600;
+    const audioHours = consumption.filter((c) => c.format === "audiobook").reduce((s, c) => s + Number(c.seconds || 0), 0) / 3600;
+    const normalizedAlerts = alerts.map((a) => {
+      const meta = (a.metadata || {}) as Record<string, any>;
+      const isResolved = Boolean(meta.is_resolved);
+      return { severity: a.level === "critical" ? "critical" : a.level === "error" ? "warning" : "info", is_resolved: isResolved };
+    });
+
+    return {
+      newUsers: newUsersCount,
+      totalOrders: weekOrders.length,
+      totalRevenue: weekOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0),
+      income,
+      expense,
+      netProfit: income - expense,
+      topBooks: topBooks.map((b) => ({ title: b.title, reads: b.total_reads || 0 })),
+      ebookHours: Number(ebookHours.toFixed(1)),
+      audioHours: Number(audioHours.toFixed(1)),
+      alertsTotal: normalizedAlerts.length,
+      alertsCritical: normalizedAlerts.filter((a) => a.severity === "critical").length,
+      alertsResolved: normalizedAlerts.filter((a) => a.is_resolved).length,
+      alertsUnresolved: normalizedAlerts.filter((a) => !a.is_resolved).length,
+      pool: { saturation_pct: null, active: null, idle: null },
+    };
+  }),
+
+  financialReportData: adminProcedure.query(async () => {
+    const [orders, orderItems, ledger, earnings, bookFormats, books] = await Promise.all([
+      prisma.order.findMany({
+        select: {
+          id: true,
+          total_amount: true,
+          status: true,
+          created_at: true,
+          packaging_cost: true,
+          fulfillment_cost: true,
+          shipping_cost: true,
+          payment_method: true,
+          cod_payment_status: true,
+          purchase_cost_per_unit: true,
+          is_purchased: true,
+          order_number: true,
+        },
+      }),
+      prisma.orderItem.findMany({
+        select: {
+          id: true,
+          order_id: true,
+          book_id: true,
+          format: true,
+          price: true,
+          quantity: true,
+        },
+      }),
+      prisma.accountingLedger.findMany({
+        orderBy: [{ entry_date: "desc" }, { created_at: "desc" }],
+      }),
+      prisma.contributorEarning.findMany({
+        select: {
+          book_id: true,
+          format: true,
+          role: true,
+          earned_amount: true,
+          sale_amount: true,
+          status: true,
+          created_at: true,
+        },
+      }),
+      prisma.bookFormat.findMany({
+        select: {
+          book_id: true,
+          format: true,
+          original_price: true,
+          discount: true,
+          publisher_commission_percent: true,
+          unit_cost: true,
+        },
+      }),
+      prisma.book.findMany({ select: { id: true, title: true } }),
+    ]);
+
+    const bookMap = Object.fromEntries(books.map((b) => [b.id, b]));
+    return {
+      orders,
+      orderItems: orderItems.map((item) => ({
+        ...item,
+        unit_price: item.price,
+        books: item.book_id ? bookMap[item.book_id] || null : null,
+      })),
+      ledger,
+      earnings: earnings.map((e) => ({
+        ...e,
+        books: e.book_id ? bookMap[e.book_id] || null : null,
+      })),
+      bookFormats,
+      books,
+    };
+  }),
+
+  investorReportData: adminProcedure.query(async () => {
+    const [orders, orderItems, ledger, earnings, profiles, withdrawals, bookFormats, books] = await Promise.all([
+      prisma.order.findMany({
+        select: {
+          id: true,
+          total_amount: true,
+          status: true,
+          created_at: true,
+          packaging_cost: true,
+          fulfillment_cost: true,
+          shipping_cost: true,
+          payment_method: true,
+          cod_payment_status: true,
+          user_id: true,
+          purchase_cost_per_unit: true,
+          is_purchased: true,
+        },
+      }),
+      prisma.orderItem.findMany({
+        select: { order_id: true, book_id: true, format: true, price: true, quantity: true },
+      }),
+      prisma.accountingLedger.findMany({ orderBy: [{ entry_date: "desc" }, { created_at: "desc" }] }),
+      prisma.contributorEarning.findMany({
+        select: { book_id: true, format: true, role: true, earned_amount: true, sale_amount: true, status: true, created_at: true },
+      }),
+      prisma.profile.findMany({ select: { id: true, created_at: true }, take: 1000 }),
+      prisma.withdrawalRequest.findMany({
+        select: { id: true, amount: true, status: true, created_at: true },
+        orderBy: { created_at: "desc" },
+      }),
+      prisma.bookFormat.findMany({ select: { book_id: true, format: true, unit_cost: true, original_price: true, publisher_commission_percent: true } }),
+      prisma.book.findMany({ select: { id: true, title: true } }),
+    ]);
+    const bookMap = Object.fromEntries(books.map((b) => [b.id, b]));
+    return {
+      orders,
+      orderItems: orderItems.map((item) => ({
+        ...item,
+        unit_price: item.price,
+        books: item.book_id ? bookMap[item.book_id] || null : null,
+      })),
+      ledger,
+      earnings,
+      profiles,
+      withdrawals,
+      bookFormats,
+    };
+  }),
+
+  performanceData: adminProcedure.query(async () => {
+    const oneDayAgo = new Date(Date.now() - 86400000);
+    const [perfLogs, errorLogs, dbStats] = await Promise.all([
+      prisma.systemLog.findMany({
+        where: { module: { in: ["api", "trpc", "rest", "db"] } },
+        orderBy: { created_at: "desc" },
+        take: 500,
+        select: { module: true, metadata: true, created_at: true },
+      }),
+      prisma.systemLog.findMany({
+        where: { level: { in: ["error", "critical"] }, created_at: { gte: oneDayAgo } },
+        orderBy: { created_at: "asc" },
+        select: { level: true, created_at: true, module: true },
+      }),
+      prisma.platformSetting.findMany({
+        where: { key: { in: ["db_pool_saturation_pct", "db_pool_active", "db_pool_idle", "db_slow_queries_count", "db_health_score", "db_health_status"] } },
+        select: { key: true, value: true },
+      }),
+    ]);
+    const settingMap = Object.fromEntries(dbStats.map((s) => [s.key, s.value]));
+
+    const edgeLogs = perfLogs.map((log, idx) => {
+      const meta = (log.metadata || {}) as Record<string, any>;
+      return {
+        id: `perf-${idx}`,
+        function_name: String(meta.function_name || log.module || "unknown"),
+        response_time_ms: Number(meta.response_time_ms || meta.duration_ms || 0),
+        status_code: Number(meta.status_code || 200),
+        created_at: log.created_at,
+      };
+    });
+
+    return {
+      edgeLogs,
+      errorLogs,
+      dbHealth: {
+        health: {
+          score: Number(settingMap.db_health_score || 0),
+          status: settingMap.db_health_status || "unknown",
+        },
+        connections: {
+          active: Number(settingMap.db_pool_active || 0),
+          idle: Number(settingMap.db_pool_idle || 0),
+        },
+        slow_queries: {
+          count: Number(settingMap.db_slow_queries_count || 0),
+        },
+        pool: {
+          saturation_pct: Number(settingMap.db_pool_saturation_pct || 0),
+        },
+      },
+    };
+  }),
+
   listEarnings: adminProcedure
     .input(z.object({ limit: z.number().default(50) }).optional())
     .query(async ({ input }) => {
@@ -3109,6 +3925,71 @@ export const adminRouter = router({
       const bookMap = Object.fromEntries(books.map(b => [b.id, b]));
       return earnings.map(e => ({ ...e, books: e.book_id ? bookMap[e.book_id] || null : null }));
     }),
+
+  confirmEarnings: adminProcedure
+    .input(z.object({ earningIds: z.array(z.string()).min(1) }))
+    .mutation(async ({ input }) => {
+      const result = await prisma.contributorEarning.updateMany({
+        where: { id: { in: input.earningIds }, status: "pending" },
+        data: { status: "confirmed" },
+      });
+      return { confirmed_count: result.count };
+    }),
+
+  revenueDashboardData: adminProcedure.query(async () => {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+    const paidStatuses = ["paid", "completed", "access_granted", "delivered"];
+    const [incomeRows, paidOrders, paidItems, books, profiles] = await Promise.all([
+      prisma.accountingLedger.findMany({
+        where: { type: "income", entry_date: { gte: thirtyDaysAgo } },
+        select: { entry_date: true, amount: true },
+        orderBy: { entry_date: "asc" },
+      }),
+      prisma.order.findMany({
+        where: { status: { in: paidStatuses } },
+        select: { user_id: true, total_amount: true },
+      }),
+      prisma.orderItem.findMany({
+        where: { order: { status: { in: paidStatuses } } },
+        select: { book_id: true, format: true, price: true, quantity: true },
+      }),
+      prisma.book.findMany({ select: { id: true, title: true } }),
+      prisma.profile.findMany({ select: { user_id: true, display_name: true } }),
+    ]);
+
+    const dailyByDate: Record<string, number> = {};
+    incomeRows.forEach((row) => {
+      const key = row.entry_date.toISOString().slice(0, 10);
+      dailyByDate[key] = (dailyByDate[key] || 0) + Number(row.amount || 0);
+    });
+    const dailyRevenue = Object.entries(dailyByDate).map(([date, amount]) => ({ date, amount: Math.round(amount) }));
+
+    const formatByName: Record<string, number> = {};
+    const revenueByBookId: Record<string, number> = {};
+    paidItems.forEach((item) => {
+      const total = Number(item.price || 0) * Number(item.quantity || 1);
+      formatByName[item.format || "unknown"] = (formatByName[item.format || "unknown"] || 0) + total;
+      if (item.book_id) revenueByBookId[item.book_id] = (revenueByBookId[item.book_id] || 0) + total;
+    });
+    const formatRevenue = Object.entries(formatByName).map(([name, value]) => ({ name, value: Math.round(value) }));
+    const bookTitleById = Object.fromEntries(books.map((b) => [b.id, b.title]));
+    const topBooks = Object.entries(revenueByBookId)
+      .map(([bookId, revenue]) => ({ title: bookTitleById[bookId] || "Unknown", revenue: Math.round(revenue) }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    const profileNameByUserId = Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || "User"]));
+    const spentByUserId: Record<string, number> = {};
+    paidOrders.forEach((order) => {
+      spentByUserId[order.user_id] = (spentByUserId[order.user_id] || 0) + Number(order.total_amount || 0);
+    });
+    const topUsers = Object.entries(spentByUserId)
+      .map(([userId, spent]) => ({ name: profileNameByUserId[userId] || "User", spent: Math.round(spent) }))
+      .sort((a, b) => b.spent - a.spent)
+      .slice(0, 10);
+
+    return { dailyRevenue, formatRevenue, topBooks, topUsers };
+  }),
 
   revenueStats: adminProcedure.query(async () => {
     const [earnings, withdrawals] = await Promise.all([
@@ -3284,6 +4165,483 @@ export const adminRouter = router({
         take: input?.limit ?? 20,
       })
     ),
+
+  updateRjProfile: adminProcedure
+    .input(z.object({ id: z.string(), is_approved: z.boolean().optional(), is_active: z.boolean().optional() }))
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      return prisma.rjProfile.update({ where: { id }, data });
+    }),
+
+  createRjProfileFromDisplayName: adminProcedure
+    .input(z.object({ displayName: z.string().min(1), stageName: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const profile = await prisma.profile.findFirst({
+        where: { display_name: { contains: input.displayName, mode: "insensitive" } },
+        select: { user_id: true },
+      });
+      if (!profile) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+
+      await prisma.userRole.upsert({
+        where: { user_id_role: { user_id: profile.user_id, role: "rj" } },
+        create: { user_id: profile.user_id, role: "rj" },
+        update: {},
+      });
+
+      const existing = await prisma.rjProfile.findUnique({ where: { user_id: profile.user_id } });
+      if (existing) {
+        return prisma.rjProfile.update({
+          where: { user_id: profile.user_id },
+          data: { stage_name: input.stageName, is_approved: true },
+        });
+      }
+      return prisma.rjProfile.create({
+        data: { user_id: profile.user_id, stage_name: input.stageName, is_approved: true },
+      });
+    }),
+
+  forceEndLiveSession: adminProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ input }) => {
+      const session = await prisma.liveSession.update({
+        where: { id: input.sessionId },
+        data: { status: "ended", ended_at: new Date(), disconnect_reason: "admin_force_stop" },
+      });
+      const station = await prisma.radioStation.findFirst({ select: { id: true } });
+      if (station) {
+        await prisma.radioStation.update({
+          where: { id: station.id },
+          data: { is_active: false },
+        });
+      }
+      return session;
+    }),
+
+  listRadioStations: adminProcedure.query(() =>
+    prisma.radioStation.findMany({ orderBy: [{ sort_order: "asc" }, { created_at: "asc" }] })
+  ),
+
+  upsertRadioStation: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        name: z.string().min(1),
+        stream_url: z.string().min(1),
+        artwork_url: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
+        is_active: z.boolean().default(true),
+        sort_order: z.number().int().default(0),
+      })
+    )
+    .mutation(({ input }) => {
+      const data = {
+        name: input.name,
+        stream_url: input.stream_url,
+        artwork_url: input.artwork_url ?? null,
+        description: input.description ?? null,
+        is_active: input.is_active,
+        sort_order: input.sort_order,
+      };
+      if (input.id) return prisma.radioStation.update({ where: { id: input.id }, data });
+      return prisma.radioStation.create({ data });
+    }),
+
+  setRadioStationActive: adminProcedure
+    .input(z.object({ id: z.string(), is_active: z.boolean() }))
+    .mutation(({ input }) =>
+      prisma.radioStation.update({ where: { id: input.id }, data: { is_active: input.is_active } })
+    ),
+
+  gamificationData: adminProcedure.query(async () => {
+    const [badges, streakUsers, earnedBadges, pointsAgg, activeGoals] = await Promise.all([
+      prisma.badgeDefinition.findMany({ orderBy: [{ sort_order: "asc" }, { created_at: "desc" }] }),
+      prisma.userStreak.count(),
+      prisma.userBadge.count(),
+      prisma.gamificationPoint.aggregate({ _sum: { points: true } }),
+      prisma.userGoal.count({ where: { status: "active" } }),
+    ]);
+    return {
+      badges,
+      stats: {
+        totalStreakUsers: streakUsers,
+        totalBadgesEarned: earnedBadges,
+        totalPoints: pointsAgg._sum.points ?? 0,
+        activeGoals,
+      },
+    };
+  }),
+
+  upsertBadgeDefinition: adminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        key: z.string().min(1),
+        title: z.string().min(1),
+        description: z.string().nullable().optional(),
+        category: z.string().default("general"),
+        condition_type: z.string().default("manual"),
+        condition_value: z.number().int().nullable().optional(),
+        coin_reward: z.number().int().nullable().optional(),
+        sort_order: z.number().int().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) => {
+      const data = {
+        key: input.key,
+        title: input.title,
+        description: input.description ?? null,
+        category: input.category,
+        condition_type: input.condition_type,
+        condition_value: input.condition_value ?? 0,
+        coin_reward: input.coin_reward ?? 0,
+        sort_order: input.sort_order ?? 0,
+      };
+      if (input.id) return prisma.badgeDefinition.update({ where: { id: input.id }, data });
+      return prisma.badgeDefinition.create({ data });
+    }),
+
+  setBadgeDefinitionActive: adminProcedure
+    .input(z.object({ id: z.string(), is_active: z.boolean() }))
+    .mutation(({ input }) =>
+      prisma.badgeDefinition.update({ where: { id: input.id }, data: { is_active: input.is_active } })
+    ),
+
+  smsRecipientsByGroup: adminProcedure
+    .input(z.object({ group: z.enum(["authors", "narrators", "publishers", "users", "rj"]) }))
+    .query(async ({ input }) => {
+      if (input.group === "authors") {
+        const rows = await prisma.author.findMany({ select: { name: true, phone: true } });
+        return rows.filter((r) => !!r.phone).map((r) => ({ phone: r.phone!, name: r.name, group: "authors" }));
+      }
+      if (input.group === "narrators") {
+        const rows = await prisma.narrator.findMany({ select: { name: true, phone: true } });
+        return rows.filter((r) => !!r.phone).map((r) => ({ phone: r.phone!, name: r.name, group: "narrators" }));
+      }
+      if (input.group === "publishers") {
+        const rows = await prisma.publisher.findMany({ select: { name: true, phone: true } });
+        return rows.filter((r) => !!r.phone).map((r) => ({ phone: r.phone!, name: r.name, group: "publishers" }));
+      }
+      if (input.group === "users") {
+        const rows = await prisma.profile.findMany({ select: { display_name: true, phone: true } });
+        return rows.filter((r) => !!r.phone).map((r) => ({ phone: r.phone!, name: r.display_name || "Unknown", group: "users" }));
+      }
+      const rows = await prisma.rjProfile.findMany({ select: { stage_name: true, phone: true } });
+      return rows.filter((r) => !!r.phone).map((r) => ({ phone: r.phone!, name: r.stage_name, group: "rj" }));
+    }),
+
+  listSmsLogs: adminProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional())
+    .query(({ input }) =>
+      prisma.smsLog.findMany({ orderBy: { created_at: "desc" }, take: input?.limit ?? 100 })
+    ),
+
+  listSmsTemplates: adminProcedure.query(() =>
+    prisma.smsTemplate.findMany({ orderBy: { created_at: "desc" } })
+  ),
+
+  createSmsTemplate: adminProcedure
+    .input(z.object({ name: z.string().min(1), body: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const templateKey = input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const existing = await prisma.smsTemplate.findUnique({ where: { template_key: templateKey } });
+      if (existing) {
+        return prisma.smsTemplate.update({
+          where: { template_key: templateKey },
+          data: { name: input.name.trim(), body: input.body.trim() },
+        });
+      }
+      return prisma.smsTemplate.create({
+        data: {
+          name: input.name.trim(),
+          body: input.body.trim(),
+          template_key: templateKey,
+          variables: [],
+          is_active: true,
+        },
+      });
+    }),
+
+  sendSms: adminProcedure
+    .input(z.object({ recipients: z.array(z.object({ phone: z.string().min(1), name: z.string().optional(), group: z.string().optional() })), message: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      if (!input.recipients.length) return { sent: 0, failed: 0, skipped: 0 };
+      const normalized = input.recipients.map((r) => ({ ...r, phone: r.phone.trim() })).filter((r) => r.phone.length > 0);
+      const rows = normalized.map((r) => ({
+        phone_number: r.phone,
+        message: input.message,
+        provider: "app",
+        status: "sent",
+      }));
+      await prisma.smsLog.createMany({ data: rows });
+      return { sent: rows.length, failed: 0, skipped: input.recipients.length - rows.length };
+    }),
+
+  liveMonitoringData: adminProcedure
+    .input(z.object({ from: z.string(), format: z.string().optional() }))
+    .query(async ({ input }) => {
+      const from = new Date(input.from);
+      const [payments, paymentEvents, coinTransactions, contentUnlocks, orders, orderItems, ledger, systemLogs] = await Promise.all([
+        prisma.payment.findMany({ where: { created_at: { gte: from } }, orderBy: { created_at: "desc" }, take: 500 }),
+        prisma.paymentEvent.findMany({ where: { created_at: { gte: from } }, orderBy: { created_at: "desc" }, take: 200 }),
+        prisma.coinTransaction.findMany({ where: { created_at: { gte: from } }, orderBy: { created_at: "desc" }, take: 500 }),
+        prisma.contentUnlock.findMany({
+          where: {
+            created_at: { gte: from },
+            ...(input.format && input.format !== "all" ? { format: input.format } : {}),
+          },
+          orderBy: { created_at: "desc" },
+          take: 500,
+        }),
+        prisma.order.findMany({
+          where: { created_at: { gte: from } },
+          select: {
+            id: true, status: true, total_amount: true, payment_method: true, cod_payment_status: true, created_at: true, shipping_cost: true,
+          },
+          orderBy: { created_at: "desc" },
+          take: 1000,
+        }),
+        prisma.orderItem.findMany({
+          select: { order_id: true, format: true, quantity: true, price: true },
+          take: 1000,
+        }),
+        prisma.accountingLedger.findMany({
+          where: { entry_date: { gte: from } },
+          select: { id: true, order_id: true, type: true, category: true, amount: true, entry_date: true },
+          take: 1000,
+        }),
+        prisma.systemLog.findMany({ where: { created_at: { gte: from } }, orderBy: { created_at: "desc" }, take: 200 }),
+      ]);
+      return {
+        payments,
+        paymentEvents,
+        coinTransactions,
+        contentUnlocks,
+        orders,
+        orderItems: orderItems.map((item) => ({ ...item, unit_price: item.price })),
+        ledger,
+        systemLogs,
+      };
+    }),
+
+  r2RolloutStatus: adminProcedure.query(async () => {
+    const keys = [
+      "r2_rollout_current_percent",
+      "r2_rollout_auto_scale_enabled",
+      "r2_rollout_min_percent",
+      "r2_rollout_max_percent",
+      "r2_rollout_scale_up_threshold",
+      "r2_rollout_scale_down_threshold",
+      "r2_rollout_step_size",
+      "r2_rollout_last_adjusted_at",
+      "r2_rollout_last_adjustment_reason",
+      "r2_rollout_circuit_breaker_tripped",
+      "r2_rollout_circuit_breaker_safe_percent",
+    ];
+    const settings = await prisma.platformSetting.findMany({ where: { key: { in: keys } } });
+    const map = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+
+    const now = new Date();
+    const todayStart = new Date(now.toISOString().slice(0, 10));
+    const sevenDaysAgo = new Date(now);
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const [events, r2Logs] = await Promise.all([
+      prisma.paymentEvent.findMany({ where: { created_at: { gte: sevenDaysAgo } }, select: { created_at: true, status: true } }),
+      prisma.systemLog.findMany({
+        where: { created_at: { gte: sevenDaysAgo }, module: { in: ["r2", "media", "storage"] } },
+        select: { created_at: true, level: true, metadata: true, message: true, module: true },
+      }),
+    ]);
+
+    const dayMap: Record<string, any> = {};
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sevenDaysAgo);
+      d.setDate(sevenDaysAgo.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      dayMap[key] = {
+        stat_date: key,
+        r2_requests: 0,
+        origin_requests: 0,
+        r2_errors: 0,
+        origin_errors: 0,
+        r2_signed_url_failures: 0,
+        playback_successes: 0,
+        playback_failures: 0,
+        rollout_percent: Number(map.r2_rollout_current_percent || 0),
+        auto_adjusted: false,
+        error_rate_r2: 0,
+        error_rate_origin: 0,
+        fallback_count: 0,
+      };
+    }
+
+    r2Logs.forEach((log) => {
+      const key = log.created_at.toISOString().slice(0, 10);
+      if (!dayMap[key]) return;
+      const meta = (log.metadata || {}) as Record<string, any>;
+      const provider = String(meta.provider || "").toLowerCase();
+      const isR2 = provider.includes("r2") || String(log.module).toLowerCase() === "r2";
+      if (isR2) dayMap[key].r2_requests += 1;
+      else dayMap[key].origin_requests += 1;
+      if (["error", "critical"].includes(log.level)) {
+        if (isR2) dayMap[key].r2_errors += 1;
+        else dayMap[key].origin_errors += 1;
+      }
+      if (String(log.message || "").toLowerCase().includes("signed url")) dayMap[key].r2_signed_url_failures += 1;
+      if (String(log.message || "").toLowerCase().includes("fallback")) dayMap[key].fallback_count += 1;
+    });
+    events.forEach((event) => {
+      const key = event.created_at.toISOString().slice(0, 10);
+      if (!dayMap[key]) return;
+      if (event.status === "paid") dayMap[key].playback_successes += 1;
+      else if (event.status === "failed") dayMap[key].playback_failures += 1;
+    });
+    Object.values(dayMap).forEach((d: any) => {
+      d.error_rate_r2 = d.r2_requests > 0 ? (d.r2_errors / d.r2_requests) * 100 : 0;
+      d.error_rate_origin = d.origin_requests > 0 ? (d.origin_errors / d.origin_requests) * 100 : 0;
+    });
+
+    const todayKey = todayStart.toISOString().slice(0, 10);
+    const history = Object.values(dayMap).sort((a: any, b: any) => a.stat_date.localeCompare(b.stat_date));
+    const today = history.find((d: any) => d.stat_date === todayKey) || null;
+
+    return {
+      config: {
+        current_percent: Number(map.r2_rollout_current_percent || 0),
+        auto_scale_enabled: map.r2_rollout_auto_scale_enabled === "true",
+        min_percent: Number(map.r2_rollout_min_percent || 0),
+        max_percent: Number(map.r2_rollout_max_percent || 100),
+        scale_up_threshold: Number(map.r2_rollout_scale_up_threshold || 1),
+        scale_down_threshold: Number(map.r2_rollout_scale_down_threshold || 3),
+        step_size: Number(map.r2_rollout_step_size || 10),
+        last_adjusted_at: map.r2_rollout_last_adjusted_at || null,
+        last_adjustment_reason: map.r2_rollout_last_adjustment_reason || null,
+      },
+      today,
+      history,
+      circuit_breaker: {
+        tripped: map.r2_rollout_circuit_breaker_tripped === "true",
+        safe_percent: map.r2_rollout_circuit_breaker_safe_percent ? Number(map.r2_rollout_circuit_breaker_safe_percent) : null,
+      },
+    };
+  }),
+
+  updateR2RolloutConfig: adminProcedure
+    .input(
+      z.object({
+        current_percent: z.number().int().min(0).max(100).optional(),
+        auto_scale_enabled: z.boolean().optional(),
+        min_percent: z.number().int().min(0).max(100).optional(),
+        max_percent: z.number().int().min(0).max(100).optional(),
+        scale_up_threshold: z.number().min(0).max(100).optional(),
+        scale_down_threshold: z.number().min(0).max(100).optional(),
+        step_size: z.number().int().min(1).max(100).optional(),
+        reset_circuit_breaker: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const keyMap: Record<string, string> = {
+        current_percent: "r2_rollout_current_percent",
+        auto_scale_enabled: "r2_rollout_auto_scale_enabled",
+        min_percent: "r2_rollout_min_percent",
+        max_percent: "r2_rollout_max_percent",
+        scale_up_threshold: "r2_rollout_scale_up_threshold",
+        scale_down_threshold: "r2_rollout_scale_down_threshold",
+        step_size: "r2_rollout_step_size",
+      };
+      const pairs = Object.entries(input)
+        .filter(([k, v]) => k in keyMap && v !== undefined)
+        .map(([k, v]) => ({ key: keyMap[k], value: String(v) }));
+      if (input.reset_circuit_breaker) {
+        pairs.push({ key: "r2_rollout_circuit_breaker_tripped", value: "false" });
+      }
+      await prisma.$transaction(
+        pairs.map((pair) =>
+          prisma.platformSetting.upsert({
+            where: { key: pair.key },
+            create: pair,
+            update: { value: pair.value },
+          })
+        )
+      );
+      return { ok: true };
+    }),
+
+  autoAdjustR2Rollout: adminProcedure.mutation(async () => {
+    const status = await prisma.platformSetting.findMany({
+      where: {
+        key: {
+          in: [
+            "r2_rollout_current_percent",
+            "r2_rollout_auto_scale_enabled",
+            "r2_rollout_min_percent",
+            "r2_rollout_max_percent",
+            "r2_rollout_scale_up_threshold",
+            "r2_rollout_scale_down_threshold",
+            "r2_rollout_step_size",
+          ],
+        },
+      },
+    });
+    const map = Object.fromEntries(status.map((s) => [s.key, s.value]));
+    const autoEnabled = map.r2_rollout_auto_scale_enabled !== "false";
+    const oldPercent = Number(map.r2_rollout_current_percent || 0);
+    if (!autoEnabled) return { adjusted: false, old_percent: oldPercent, new_percent: oldPercent, reason: "auto-scale disabled" };
+
+    const start = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const logs = await prisma.systemLog.findMany({
+      where: { created_at: { gte: start }, module: { in: ["r2", "media", "storage"] } },
+      select: { level: true, module: true, metadata: true },
+    });
+    let r2Requests = 0;
+    let r2Errors = 0;
+    logs.forEach((log) => {
+      const meta = (log.metadata || {}) as Record<string, any>;
+      const provider = String(meta.provider || "").toLowerCase();
+      const isR2 = provider.includes("r2") || String(log.module).toLowerCase() === "r2";
+      if (!isR2) return;
+      r2Requests += 1;
+      if (["error", "critical"].includes(log.level)) r2Errors += 1;
+    });
+    const errorRate = r2Requests > 0 ? (r2Errors / r2Requests) * 100 : 0;
+    const upThreshold = Number(map.r2_rollout_scale_up_threshold || 1);
+    const downThreshold = Number(map.r2_rollout_scale_down_threshold || 3);
+    const step = Number(map.r2_rollout_step_size || 10);
+    const minPercent = Number(map.r2_rollout_min_percent || 0);
+    const maxPercent = Number(map.r2_rollout_max_percent || 100);
+
+    let newPercent = oldPercent;
+    let reason = "within thresholds";
+    if (errorRate > downThreshold) {
+      newPercent = Math.max(minPercent, oldPercent - step);
+      reason = `error rate ${errorRate.toFixed(2)}% > ${downThreshold}%`;
+    } else if (errorRate < upThreshold) {
+      newPercent = Math.min(maxPercent, oldPercent + step);
+      reason = `error rate ${errorRate.toFixed(2)}% < ${upThreshold}%`;
+    }
+    const adjusted = newPercent !== oldPercent;
+    if (adjusted) {
+      await prisma.$transaction([
+        prisma.platformSetting.upsert({
+          where: { key: "r2_rollout_current_percent" },
+          create: { key: "r2_rollout_current_percent", value: String(newPercent) },
+          update: { value: String(newPercent) },
+        }),
+        prisma.platformSetting.upsert({
+          where: { key: "r2_rollout_last_adjusted_at" },
+          create: { key: "r2_rollout_last_adjusted_at", value: new Date().toISOString() },
+          update: { value: new Date().toISOString() },
+        }),
+        prisma.platformSetting.upsert({
+          where: { key: "r2_rollout_last_adjustment_reason" },
+          create: { key: "r2_rollout_last_adjustment_reason", value: reason },
+          update: { value: reason },
+        }),
+      ]);
+    }
+    return { adjusted, old_percent: oldPercent, new_percent: newPercent, reason };
+  }),
 
   addRjRole: adminProcedure
     .input(z.object({ userId: z.string() }))

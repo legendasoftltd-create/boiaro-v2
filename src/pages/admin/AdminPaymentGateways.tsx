@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +63,7 @@ const gatewayConfigFields: Record<string, { key: string; label: string; secret?:
 };
 
 export default function AdminPaymentGateways() {
+  const utils = trpc.useUtils();
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -70,7 +71,7 @@ export default function AdminPaymentGateways() {
   const { log } = useAdminLogger();
 
   const load = async () => {
-    const { data } = await supabase.rpc("admin_get_payment_gateways" as any);
+    const data = await utils.admin.listPaymentGateways.fetch();
     setGateways((data as any[]) || []);
   };
 
@@ -78,20 +79,22 @@ export default function AdminPaymentGateways() {
 
   const updateGateway = async (gw: Gateway) => {
     setSaving(gw.id);
-    const { error } = await supabase
-      .from("payment_gateways")
-      .update({
+    try {
+      await utils.admin.updatePaymentGateway.fetch({
+        id: gw.id,
         label: gw.label,
         is_enabled: gw.is_enabled,
-        mode: gw.mode,
+        mode: gw.mode || null,
         sort_priority: gw.sort_priority,
         config: gw.config,
-        notes: gw.notes,
-        updated_at: new Date().toISOString(),
-      } as any)
-      .eq("id", gw.id);
+        notes: gw.notes || null,
+      });
+    } catch {
+      setSaving(null);
+      toast.error("Failed to save");
+      return;
+    }
     setSaving(null);
-    if (error) { toast.error("Failed to save"); return; }
     await log({ module: "payments", action: `Gateway ${gw.label} updated`, actionType: "update", targetType: "payment_gateway", targetId: gw.id, details: `Updated gateway: ${gw.gateway_key} (${gw.is_enabled ? "enabled" : "disabled"}, ${gw.mode})`, riskLevel: "high" });
     toast.success(`${gw.label} settings saved`);
   };

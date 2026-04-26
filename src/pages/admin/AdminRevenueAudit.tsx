@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -7,10 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Search, ShieldCheck, AlertTriangle, CheckCircle2, XCircle, Wrench } from "lucide-react";
 import { toast } from "sonner";
-import {
-  isVerifiedRevenueOrder,
-  type RevenueOrder,
-} from "@/hooks/useUnifiedRevenue";
 
 interface AuditResult {
   order: any | null;
@@ -23,6 +19,7 @@ interface AuditResult {
 }
 
 function OrderAuditTool() {
+  const utils = trpc.useUtils();
   const [orderId, setOrderId] = useState("");
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState(false);
@@ -35,75 +32,13 @@ function OrderAuditTool() {
     setResult(null);
 
     try {
-      // Find order by id or order_number
-      let orderData: any = null;
-      const { data: byId } = await supabase.from("orders").select("*").eq("id", q).maybeSingle();
-      if (byId) {
-        orderData = byId;
-      } else {
-        const { data: byNum } = await supabase.from("orders").select("*").eq("order_number", q).maybeSingle();
-        orderData = byNum;
-      }
-
-      if (!orderData) {
+      const auditData = await utils.admin.revenueAuditOrder.fetch({ query: q });
+      if (!auditData) {
         toast.error("Order not found");
         setLoading(false);
         return;
       }
-
-      // Fetch payment, ledger, items in parallel
-      const [payRes, ledRes, itemRes] = await Promise.all([
-        supabase.from("payments").select("*").eq("order_id", orderData.id),
-        supabase.from("accounting_ledger" as any).select("*").eq("order_id", orderData.id),
-        supabase.from("order_items").select("*, books(title)").eq("order_id", orderData.id),
-      ]);
-
-      const payment = (payRes.data || [])[0] || null;
-      const ledgerEntries = (ledRes.data as any[]) || [];
-      const orderItems = itemRes.data || [];
-
-      // Check revenue inclusion using centralized logic
-      const revenueOrder: RevenueOrder = {
-        id: orderData.id,
-        total_amount: orderData.total_amount,
-        status: orderData.status,
-        created_at: orderData.created_at,
-        payment_method: orderData.payment_method,
-        cod_payment_status: orderData.cod_payment_status,
-      };
-
-      // Capture exclusion reason via console
-      let exclusionReason: string | null = null;
-      const origDebug = console.debug;
-      console.debug = (...args: any[]) => {
-        if (args[0] === "[revenue_exclude]" && args[1]) {
-          exclusionReason = args[1].reason || null;
-        }
-        origDebug(...args);
-      };
-      const revenueIncluded = isVerifiedRevenueOrder(revenueOrder, true);
-      console.debug = origDebug;
-
-      // Detect issues
-      const issues: string[] = [];
-      const incomeEntries = ledgerEntries.filter(e => e.type === "income" && e.category === "book_sale");
-      if (incomeEntries.length === 0 && revenueIncluded) {
-        issues.push("Order is verified revenue but has NO ledger income entry — missing ledger sync");
-      }
-      if (incomeEntries.length > 1) {
-        issues.push(`Duplicate ledger income entries found: ${incomeEntries.length} entries (expected 1)`);
-      }
-      if (!payment && orderData.payment_method !== "cod") {
-        issues.push("No payment record found for non-COD order");
-      }
-      if (payment && payment.status === "paid" && !revenueIncluded) {
-        issues.push("Payment is 'paid' but order is excluded from revenue — order status mismatch");
-      }
-      if (orderData.payment_method === "cod" && orderData.status === "delivered" && !orderData.cod_payment_status?.includes("settled")) {
-        issues.push("COD order delivered but cod_payment_status not settled");
-      }
-
-      setResult({ order: orderData, payment, ledgerEntries, orderItems, revenueIncluded, exclusionReason, issues });
+      setResult(auditData as any);
     } catch (err: any) {
       toast.error(err.message || "Audit failed");
     } finally {
@@ -115,10 +50,7 @@ function OrderAuditTool() {
     if (!result?.order) return;
     setFixing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("revenue-audit-fix", {
-        body: { action: "fix_order", order_id: result.order.id },
-      });
-      if (error) throw error;
+      const data = await utils.admin.revenueAuditFixOrder.fetch({ orderId: result.order.id });
       const fixes = data?.fixes || [];
       if (fixes.length === 0) {
         toast.info("No auto-fixable issues found");
@@ -319,6 +251,7 @@ function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 /** Daily consistency check: orders revenue vs ledger income */
 function ConsistencyCheck() {
+  const utils = trpc.useUtils();
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [result, setResult] = useState<{
@@ -332,63 +265,8 @@ function ConsistencyCheck() {
   const runCheck = async () => {
     setLoading(true);
     try {
-      const [ordRes, ledRes] = await Promise.all([
-        supabase.from("orders").select("id, total_amount, status, payment_method, cod_payment_status, created_at, order_number"),
-        supabase.from("accounting_ledger" as any).select("*").eq("type", "income").eq("category", "book_sale"),
-      ]);
-
-      const orders = ordRes.data || [];
-      const ledger = (ledRes.data as any[]) || [];
-
-      // Verified revenue orders
-      const verifiedOrders = orders.filter(o =>
-        isVerifiedRevenueOrder({
-          id: o.id, total_amount: o.total_amount, status: o.status,
-          created_at: o.created_at, payment_method: o.payment_method,
-          cod_payment_status: o.cod_payment_status,
-        })
-      );
-      const orderRevenue = verifiedOrders.reduce((s, o) => s + Number(o.total_amount), 0);
-
-      // Ledger income (only positive, exclude reversals)
-      const positiveLedger = ledger.filter(e => Number(e.amount) > 0);
-      const ledgerIncome = positiveLedger.reduce((s, e) => s + Number(e.amount), 0);
-
-      // Find orders missing from ledger
-      const ledgerOrderIds = new Set(positiveLedger.map(e => e.order_id).filter(Boolean));
-      const missingFromLedger = verifiedOrders.filter(o => !ledgerOrderIds.has(o.id));
-
-      // Find duplicate ledger entries
-      const seen = new Map<string, any>();
-      const duplicateInLedger: any[] = [];
-      positiveLedger.forEach(e => {
-        if (e.order_id) {
-          if (seen.has(e.order_id)) {
-            duplicateInLedger.push(e);
-          } else {
-            seen.set(e.order_id, e);
-          }
-        }
-      });
-
-      const mismatch = Math.abs(orderRevenue - ledgerIncome) > 0.01;
-      setResult({ orderRevenue, ledgerIncome, mismatch, missingFromLedger, duplicateInLedger });
-
-      // Log mismatch to system_logs
-      if (mismatch) {
-        await supabase.from("system_logs").insert({
-          level: "warning",
-          module: "revenue_audit",
-          message: `Revenue mismatch: orders=৳${orderRevenue}, ledger=৳${ledgerIncome}, diff=৳${Math.abs(orderRevenue - ledgerIncome)}`,
-          fingerprint: "rev_audit_" + new Date().toISOString().slice(0, 10),
-          metadata: {
-            order_revenue: orderRevenue,
-            ledger_income: ledgerIncome,
-            missing_count: missingFromLedger.length,
-            duplicate_count: duplicateInLedger.length,
-          },
-        });
-      }
+      const check = await utils.admin.revenueConsistencyCheck.fetch();
+      setResult(check as any);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -442,15 +320,11 @@ function ConsistencyCheck() {
                 onClick={async () => {
                   setFixing(true);
                   try {
-                    const { data, error } = await supabase.functions.invoke("revenue-audit-fix", {
-                      body: {
-                        action: "bulk_fix",
-                        missing_orders: result.missingFromLedger.map(o => ({ id: o.id, order_number: o.order_number, total_amount: o.total_amount })),
-                        duplicate_ledger_ids: result.duplicateInLedger.map(e => e.id),
-                      },
-                    });
-                    if (error) throw error;
-                    const fixes = data?.fixes || [];
+                    const fixes: string[] = [];
+                    for (const missingOrder of result.missingFromLedger) {
+                      const fixed = await utils.admin.revenueAuditFixOrder.fetch({ orderId: missingOrder.id });
+                      if (fixed?.fixes?.length) fixes.push(...fixed.fixes);
+                    }
                     toast.success(`Bulk fix complete: ${fixes.length} fix(es) applied`);
                     await runCheck();
                   } catch (err: any) {

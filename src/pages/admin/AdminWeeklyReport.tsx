@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -15,49 +15,12 @@ function getWeekRange() {
 }
 
 export default function AdminWeeklyReport() {
+  const utils = trpc.useUtils();
   const week = getWeekRange();
 
   const { data, isLoading } = useQuery({
     queryKey: ["weekly-report", week.start],
-    queryFn: async () => {
-      const [
-        newUsers, weekOrders, weekLedger, topBooksRes,
-        consumptionRes, alertsRes, poolRes,
-      ] = await Promise.all([
-        supabase.from("profiles").select("user_id", { count: "exact", head: true }).gte("created_at", week.start),
-        supabase.from("orders").select("total_amount, status, created_at").gte("created_at", week.start).in("status", ["paid", "confirmed", "completed", "access_granted", "delivered"]),
-        supabase.from("accounting_ledger" as any).select("type, amount, category").gte("entry_date", week.start.split("T")[0]),
-        supabase.from("books").select("title, total_reads").order("total_reads", { ascending: false }).limit(5),
-        supabase.from("content_consumption_time").select("format, duration_seconds").gte("session_date", week.start.split("T")[0]),
-        supabase.from("system_alerts").select("id, severity, is_resolved").gte("created_at", week.start),
-        supabase.rpc("get_connection_pool_stats"),
-      ]);
-
-      const ledger = (weekLedger.data as any[]) || [];
-      const income = ledger.filter((e: any) => e.type === "income").reduce((s: number, e: any) => s + Number(e.amount), 0);
-      const expense = ledger.filter((e: any) => e.type === "expense").reduce((s: number, e: any) => s + Number(e.amount), 0);
-
-      const consumption = consumptionRes.data || [];
-      const ebookHours = consumption.filter((c: any) => c.format === "ebook").reduce((s: number, c: any) => s + (c.duration_seconds || 0), 0) / 3600;
-      const audioHours = consumption.filter((c: any) => c.format === "audiobook").reduce((s: number, c: any) => s + (c.duration_seconds || 0), 0) / 3600;
-
-      const alerts = alertsRes.data || [];
-
-      return {
-        newUsers: newUsers.count || 0,
-        totalOrders: (weekOrders.data || []).length,
-        totalRevenue: (weekOrders.data || []).reduce((s: number, o: any) => s + (o.total_amount || 0), 0),
-        income, expense, netProfit: income - expense,
-        topBooks: (topBooksRes.data || []).map((b: any) => ({ title: b.title, reads: b.total_reads || 0 })),
-        ebookHours: ebookHours.toFixed(1),
-        audioHours: audioHours.toFixed(1),
-        alertsTotal: alerts.length,
-        alertsCritical: alerts.filter((a: any) => a.severity === "critical").length,
-        alertsResolved: alerts.filter((a: any) => a.is_resolved).length,
-        alertsUnresolved: alerts.filter((a: any) => !a.is_resolved).length,
-        pool: poolRes.data,
-      };
-    },
+    queryFn: () => utils.admin.weeklyReportData.fetch(),
   });
 
   if (isLoading) return <div className="space-y-4 animate-pulse"><div className="h-8 w-64 bg-muted rounded" /><div className="h-40 bg-muted rounded-lg" /></div>;

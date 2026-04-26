@@ -39,7 +39,7 @@ async function seedSiteSettings(summary: SeedSummary) {
     }
     const value = row.setting_value ?? "";
     if (key.includes("logo") || key.includes("favicon") || key.includes("image")) {
-      if (value.includes("supabase.co")) mediaUrlWarningCount++;
+      if (value.includes(".co/")) mediaUrlWarningCount++;
     }
 
     if (DRY_RUN) {
@@ -66,7 +66,7 @@ async function seedSiteSettings(summary: SeedSummary) {
   summary[name] = counters;
   if (mediaUrlWarningCount > 0) {
     console.warn(
-      `[seed warning] site_settings has ${mediaUrlWarningCount} media URL values pointing to Supabase; verify for current environment.`
+      `[seed warning] site_settings has ${mediaUrlWarningCount} media URL values from a legacy host; verify for current environment.`
     );
   }
 }

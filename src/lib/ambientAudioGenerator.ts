@@ -4,7 +4,7 @@
  * Priority: Real MP3 from storage → Synthetic oscillator fallback
  *
  * Real audio files are expected at:
- *   {SUPABASE_URL}/storage/v1/object/public/background-music/{genre}.mp3
+ *   {MEDIA_BASE_URL}/storage/v1/object/public/background-music/{genre}.mp3
  *
  * If the file doesn't exist or fails to load, the system falls back to
  * the original Web Audio API oscillator-based ambient sound.
@@ -55,13 +55,13 @@ export function isAudioUnlocked(): boolean {
 
 /* ── Storage URL helper ────────────────────────────────────────── */
 
-function getSupabaseUrl(): string {
+function getMediaBaseUrl(): string {
   // Background music storage not configured — falls back to oscillator
   return "";
 }
 
 function getMusicFileUrl(genre: AmbientGenre): string {
-  const base = getSupabaseUrl();
+  const base = getMediaBaseUrl();
   if (!base) return "";
   return `${base}/storage/v1/object/public/background-music/${genre}.mp3`;
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -24,6 +25,7 @@ const chartTooltipStyle = {
 };
 
 export default function AdminFinancialReports() {
+  const utils = trpc.useUtils();
   const [orders, setOrders] = useState<any[]>([]);
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [ledger, setLedger] = useState<any[]>([]);
@@ -32,22 +34,21 @@ export default function AdminFinancialReports() {
   const [bookFormatCosts, setBookFormatCosts] = useState<any[]>([]);
   const [periodFilter, setPeriodFilter] = useState<RevenuePeriod>("all");
 
+  const { data } = useQuery({
+    queryKey: ["admin-financial-report-data"],
+    queryFn: () => utils.admin.financialReportData.fetch(),
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
-    Promise.all([
-      supabase.from("orders").select("id, total_amount, status, created_at, packaging_cost, fulfillment_cost, shipping_cost, payment_method, cod_payment_status, purchase_cost_per_unit, is_purchased"),
-      supabase.from("order_items").select("order_id, book_id, format, unit_price, quantity, books(title)"),
-      supabase.from("accounting_ledger" as any).select("*").order("entry_date", { ascending: false }),
-      supabase.from("contributor_earnings").select("book_id, format, role, earned_amount, sale_amount, status, created_at, books(title)"),
-      supabase.from("book_formats").select("book_id, format, original_price, discount, publisher_commission_percent, unit_cost"),
-    ]).then(([o, oi, l, e, f]) => {
-      setOrders(o.data || []);
-      setOrderItems(oi.data || []);
-      setLedger((l.data as any[]) || []);
-      setEarnings(e.data || []);
-      setFormats(f.data || []);
-      setBookFormatCosts(f.data || []);
-    });
-  }, []);
+    if (!data) return;
+    setOrders(data.orders || []);
+    setOrderItems(data.orderItems || []);
+    setLedger((data.ledger as any[]) || []);
+    setEarnings(data.earnings || []);
+    setFormats(data.bookFormats || []);
+    setBookFormatCosts(data.bookFormats || []);
+  }, [data]);
 
   const filterByPeriod = (dateStr: string) => isInPeriod(dateStr, periodFilter);
 

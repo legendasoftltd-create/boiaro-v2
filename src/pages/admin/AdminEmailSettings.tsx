@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Mail, Send, Settings, CheckCircle, Info } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 
 export default function AdminEmailSettings() {
+  const utils = trpc.useUtils();
   const [testEmail, setTestEmail] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -16,20 +17,8 @@ export default function AdminEmailSettings() {
     if (!testEmail) return toast.error("Please enter an email address");
     setSending(true);
     try {
-      // Use the platform's built-in email to send a test
-      const { error } = await supabase.functions.invoke("send-transactional-email", {
-        body: {
-          templateName: "test-email",
-          recipientEmail: testEmail,
-          idempotencyKey: `test-${Date.now()}`,
-          templateData: { user_name: "Admin" },
-        },
-      });
-      if (error) {
-        toast.error("Failed to send test email. Set up email domain.");
-      } else {
-        toast.success("Test email sent!");
-      }
+      await utils.admin.sendTestEmail.fetch({ recipientEmail: testEmail });
+      toast.success("Test email sent!");
     } catch {
       toast.error("Error sending email");
     }

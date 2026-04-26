@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,7 @@ function Stat({ label, value, icon: Icon, accent }: { label: string; value: stri
 
 /* ═══════════════════════════════════════════════ */
 export default function AdminLiveMonitoring() {
+  const utils = trpc.useUtils();
   const [range, setRange] = useState<TimeRange>("today");
   const [formatFilter, setFormatFilter] = useState("all");
   const [userIdFilter, setUserIdFilter] = useState("");
@@ -77,80 +78,19 @@ export default function AdminLiveMonitoring() {
 
   const dateFrom = getDateFrom(range);
 
-  /* ─── QUERIES (parallel) ─── */
-  const { data: payments, isLoading: loadP } = useQuery({
-    queryKey: ["mon-payments", dateFrom],
-    queryFn: async () => {
-      const { data } = await supabase.from("payments").select("id,order_id,status,amount,method,created_at").gte("created_at", dateFrom).order("created_at", { ascending: false }).limit(500);
-      return data || [];
-    },
+  const { data: monitorData, isLoading: loadP } = useQuery({
+    queryKey: ["admin-live-monitoring-data", dateFrom, formatFilter],
+    queryFn: () => utils.admin.liveMonitoringData.fetch({ from: dateFrom, format: formatFilter }),
     refetchInterval: 30_000,
   });
-
-  const { data: paymentEvents } = useQuery({
-    queryKey: ["mon-payment-events", dateFrom],
-    queryFn: async () => {
-      const { data } = await supabase.from("payment_events").select("*").gte("created_at", dateFrom).order("created_at", { ascending: false }).limit(200);
-      return data || [];
-    },
-    refetchInterval: 30_000,
-  });
-
-  const { data: coinTx } = useQuery({
-    queryKey: ["mon-coins", dateFrom],
-    queryFn: async () => {
-      const { data } = await supabase.from("coin_transactions").select("*").gte("created_at", dateFrom).order("created_at", { ascending: false }).limit(500);
-      return data || [];
-    },
-    refetchInterval: 30_000,
-  });
-
-  const { data: unlocks } = useQuery({
-    queryKey: ["mon-unlocks", dateFrom, formatFilter],
-    queryFn: async () => {
-      let q = supabase.from("content_unlocks").select("*").gte("created_at", dateFrom).order("created_at", { ascending: false }).limit(500);
-      if (formatFilter !== "all") q = q.eq("format", formatFilter);
-      const { data } = await q;
-      return data || [];
-    },
-    refetchInterval: 30_000,
-  });
-
-  const { data: orders } = useQuery({
-    queryKey: ["mon-orders", dateFrom],
-    queryFn: async () => {
-      const { data } = await supabase.from("orders").select("id,status,total_amount,payment_method,cod_payment_status,created_at,shipping_cost").gte("created_at", dateFrom).order("created_at", { ascending: false }).limit(1000);
-      return data || [];
-    },
-    refetchInterval: 30_000,
-  });
-
-  const { data: orderItems } = useQuery({
-    queryKey: ["mon-order-items", dateFrom],
-    queryFn: async () => {
-      const { data } = await supabase.from("order_items").select("order_id,format,quantity,unit_price").limit(1000);
-      return data || [];
-    },
-    refetchInterval: 60_000,
-  });
-
-  const { data: ledger } = useQuery({
-    queryKey: ["mon-ledger", dateFrom],
-    queryFn: async () => {
-      const { data } = await supabase.from("accounting_ledger").select("id,order_id,type,category,amount,entry_date").gte("entry_date", dateFrom).limit(1000);
-      return data || [];
-    },
-    refetchInterval: 30_000,
-  });
-
-  const { data: sysLogs } = useQuery({
-    queryKey: ["mon-syslogs", dateFrom],
-    queryFn: async () => {
-      const { data } = await supabase.from("system_logs").select("*").gte("created_at", dateFrom).order("created_at", { ascending: false }).limit(200);
-      return data || [];
-    },
-    refetchInterval: 30_000,
-  });
+  const payments = monitorData?.payments || [];
+  const paymentEvents = monitorData?.paymentEvents || [];
+  const coinTx = monitorData?.coinTransactions || [];
+  const unlocks = monitorData?.contentUnlocks || [];
+  const orders = monitorData?.orders || [];
+  const orderItems = monitorData?.orderItems || [];
+  const ledger = monitorData?.ledger || [];
+  const sysLogs = monitorData?.systemLogs || [];
 
   /* ─── DERIVED METRICS ─── */
   const paymentStats = useMemo(() => {

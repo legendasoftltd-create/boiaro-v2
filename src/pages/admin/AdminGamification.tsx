@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ interface BadgeDef {
 }
 
 export default function AdminGamification() {
+  const utils = trpc.useUtils();
   const { toast } = useToast();
   const [badges, setBadges] = useState<BadgeDef[]>([]);
   const [stats, setStats] = useState({ totalStreakUsers: 0, totalBadgesEarned: 0, totalPoints: 0, activeGoals: 0 });
@@ -32,20 +33,9 @@ export default function AdminGamification() {
   useEffect(() => { load(); }, []);
 
   const load = async () => {
-    const [b, s, ub, p, g] = await Promise.all([
-      supabase.from("badge_definitions").select("*").order("sort_order"),
-      supabase.from("user_streaks").select("id", { count: "exact", head: true }),
-      supabase.from("user_badges").select("id", { count: "exact", head: true }),
-      supabase.from("gamification_points").select("points"),
-      supabase.from("user_goals").select("id", { count: "exact", head: true }).eq("status", "active"),
-    ]);
-    setBadges((b.data as any) || []);
-    setStats({
-      totalStreakUsers: s.count || 0,
-      totalBadgesEarned: ub.count || 0,
-      totalPoints: ((p.data as any) || []).reduce((s: number, r: any) => s + (r.points || 0), 0),
-      activeGoals: g.count || 0,
-    });
+    const data = await utils.admin.gamificationData.fetch();
+    setBadges((data.badges as any) || []);
+    setStats(data.stats || { totalStreakUsers: 0, totalBadgesEarned: 0, totalPoints: 0, activeGoals: 0 });
     setLoading(false);
   };
 
@@ -64,9 +54,9 @@ export default function AdminGamification() {
   const saveBadge = async () => {
     const payload = { key: form.key, title: form.title, description: form.description || null, category: form.category, condition_type: form.condition_type, condition_value: parseInt(form.condition_value), coin_reward: parseInt(form.coin_reward), sort_order: parseInt(form.sort_order) };
     if (editBadge) {
-      await supabase.from("badge_definitions").update(payload).eq("id", editBadge.id);
+      await utils.admin.upsertBadgeDefinition.fetch({ ...payload, id: editBadge.id });
     } else {
-      await supabase.from("badge_definitions").insert(payload);
+      await utils.admin.upsertBadgeDefinition.fetch(payload);
     }
     setShowForm(false);
     toast({ title: editBadge ? "Badge updated" : "Badge created" });
@@ -74,7 +64,7 @@ export default function AdminGamification() {
   };
 
   const toggleBadge = async (id: string, active: boolean) => {
-    await supabase.from("badge_definitions").update({ is_active: active }).eq("id", id);
+    await utils.admin.setBadgeDefinitionActive.fetch({ id, is_active: active });
     setBadges(prev => prev.map(b => b.id === id ? { ...b, is_active: active } : b));
   };
 

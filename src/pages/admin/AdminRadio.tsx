@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { supabase } from "@/integrations/supabase/client"
+import { trpc } from "@/lib/trpc"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -49,6 +49,7 @@ function validateStreamUrl(url: string): { valid: boolean; warning?: string } {
 }
 
 export default function AdminRadio() {
+  const utils = trpc.useUtils()
   const [station, setStation] = useState<RadioStation | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -75,17 +76,7 @@ export default function AdminRadio() {
 
   const loadStation = async () => {
     setLoading(true)
-    const { data: rows, error } = await supabase
-      .from("radio_stations")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .limit(2)
-
-    if (error) {
-      toast.error("Failed to load station: " + error.message)
-      setLoading(false)
-      return
-    }
+    const rows = await utils.admin.listRadioStations.fetch()
 
     if (rows && rows.length > 1) {
       console.warn("[AdminRadio] Multiple radio_stations rows detected", {
@@ -148,44 +139,47 @@ export default function AdminRadio() {
     })
 
     let error
-    let targetStationId = station?.id ?? null
+    let savedStation: RadioStation | null = null
     if (station) {
-      const res = await supabase
-        .from("radio_stations")
-        .update(payload)
-        .eq("id", station.id)
-        .select("id")
-        .single()
-      error = res.error
+      try {
+        savedStation = await utils.admin.upsertRadioStation.fetch({
+          id: station.id,
+          name: payload.name,
+          stream_url: payload.stream_url,
+          artwork_url: payload.artwork_url,
+          description: payload.description,
+          is_active: payload.is_active,
+          sort_order: station.sort_order ?? 0,
+        }) as any
+      } catch (e: any) {
+        error = e
+      }
     } else {
-      const res = await supabase
-        .from("radio_stations")
-        .insert({ ...payload, sort_order: 0 })
-        .select("id")
-        .single()
-      targetStationId = res.data?.id ?? null
-      error = res.error
+      try {
+        savedStation = await utils.admin.upsertRadioStation.fetch({
+          name: payload.name,
+          stream_url: payload.stream_url,
+          artwork_url: payload.artwork_url,
+          description: payload.description,
+          is_active: payload.is_active,
+          sort_order: 0,
+        }) as any
+      } catch (e: any) {
+        error = e
+      }
     }
 
     setSaving(false)
     if (error) {
-      toast.error("Failed to save: " + error.message)
+      toast.error("Failed to save: " + (error as any).message)
     } else {
-      if (targetStationId) {
-        const { data: saved } = await supabase
-          .from("radio_stations")
-          .select("*")
-          .eq("id", targetStationId)
-          .maybeSingle()
-
-        if (saved) {
-          const s = saved as RadioStation
-          console.info("[AdminRadio] Save verification", {
-            databaseSavedValue: s.is_active,
-            frontendFetchedValue: s.is_active,
-            stationId: s.id,
-          })
-        }
+      if (savedStation) {
+        const s = savedStation as RadioStation
+        console.info("[AdminRadio] Save verification", {
+          databaseSavedValue: s.is_active,
+          frontendFetchedValue: s.is_active,
+          stationId: s.id,
+        })
       }
 
       toast.success(form.is_active ? "Radio station is now LIVE on your website!" : "Radio station saved (currently OFF)")
@@ -205,12 +199,13 @@ export default function AdminRadio() {
         stationId: station.id,
       })
 
-      const { data: updatedRow, error } = await supabase
-        .from("radio_stations")
-        .update(payload)
-        .eq("id", station.id)
-        .select("*")
-        .single()
+      let updatedRow: RadioStation | null = null
+      let error: any = null
+      try {
+        updatedRow = await utils.admin.setRadioStationActive.fetch({ id: station.id, is_active: active }) as any
+      } catch (e: any) {
+        error = e
+      }
       
       if (error) {
         toast.error("Failed to toggle: " + error.message)

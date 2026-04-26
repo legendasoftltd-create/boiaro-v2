@@ -1,91 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DollarSign, RefreshCw, TrendingUp, BookOpen, Users } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { trpc } from "@/lib/trpc";
 
 const COLORS = ["hsl(var(--primary))", "hsl(var(--chart-2))", "hsl(var(--chart-3))", "hsl(var(--chart-4))"];
 
 export default function AdminRevenueDashboard() {
-  // Daily revenue (last 30 days from accounting_ledger)
-  const { data: dailyRevenue = [], refetch } = useQuery({
-    queryKey: ["admin-daily-revenue"],
-    queryFn: async () => {
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-      const { data } = await supabase
-        .from("accounting_ledger")
-        .select("entry_date, amount, type")
-        .eq("type", "income")
-        .gte("entry_date", thirtyDaysAgo)
-        .order("entry_date", { ascending: true });
-      if (!data) return [];
-      const byDate: Record<string, number> = {};
-      data.forEach(r => {
-        byDate[r.entry_date] = (byDate[r.entry_date] || 0) + r.amount;
-      });
-      return Object.entries(byDate).map(([date, amount]) => ({ date, amount: Math.round(amount) }));
-    },
+  const utils = trpc.useUtils();
+  const { data, refetch } = useQuery({
+    queryKey: ["admin-revenue-dashboard-data"],
+    queryFn: () => utils.admin.revenueDashboardData.fetch(),
     staleTime: 60_000,
   });
-
-  // Revenue by format (from order_items)
-  const { data: formatRevenue = [] } = useQuery({
-    queryKey: ["admin-format-revenue"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("order_items")
-        .select("format, price, quantity, orders!inner(status)")
-        .in("orders.status", ["paid", "completed", "access_granted", "delivered"]);
-      if (!data) return [];
-      const byFormat: Record<string, number> = {};
-      data.forEach((r: any) => {
-        const total = (r.price || 0) * (r.quantity || 1);
-        byFormat[r.format] = (byFormat[r.format] || 0) + total;
-      });
-      return Object.entries(byFormat).map(([name, value]) => ({ name, value: Math.round(value) }));
-    },
-    staleTime: 120_000,
-  });
-
-  // Top books by revenue
-  const { data: topBooks = [] } = useQuery({
-    queryKey: ["admin-top-books-revenue"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("order_items")
-        .select("book_id, price, quantity, books!inner(title), orders!inner(status)")
-        .in("orders.status", ["paid", "completed", "access_granted", "delivered"]);
-      if (!data) return [];
-      const byBook: Record<string, { title: string; revenue: number }> = {};
-      data.forEach((r: any) => {
-        const rev = (r.price || 0) * (r.quantity || 1);
-        if (!byBook[r.book_id]) byBook[r.book_id] = { title: r.books?.title || "Unknown", revenue: 0 };
-        byBook[r.book_id].revenue += rev;
-      });
-      return Object.values(byBook).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-    },
-    staleTime: 120_000,
-  });
-
-  // Top spending users
-  const { data: topUsers = [] } = useQuery({
-    queryKey: ["admin-top-spenders"],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("orders")
-        .select("user_id, total_amount, profiles!inner(display_name)")
-        .in("status", ["paid", "completed", "access_granted", "delivered"]);
-      if (!data) return [];
-      const byUser: Record<string, { name: string; spent: number }> = {};
-      data.forEach((r: any) => {
-        if (!byUser[r.user_id]) byUser[r.user_id] = { name: r.profiles?.display_name || "User", spent: 0 };
-        byUser[r.user_id].spent += r.total_amount || 0;
-      });
-      return Object.values(byUser).sort((a, b) => b.spent - a.spent).slice(0, 10);
-    },
-    staleTime: 120_000,
-  });
+  const dailyRevenue = data?.dailyRevenue || [];
+  const formatRevenue = data?.formatRevenue || [];
+  const topBooks = data?.topBooks || [];
+  const topUsers = data?.topUsers || [];
 
   const totalRevenue = dailyRevenue.reduce((s, d) => s + d.amount, 0);
   const todayRev = dailyRevenue.length > 0 ? dailyRevenue[dailyRevenue.length - 1]?.amount ?? 0 : 0;

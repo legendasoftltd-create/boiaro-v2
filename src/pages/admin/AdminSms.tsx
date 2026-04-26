@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -24,6 +24,7 @@ interface Recipient {
 }
 
 export default function AdminSms() {
+  const utils = trpc.useUtils();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [recipientGroup, setRecipientGroup] = useState<RecipientGroup>("custom");
@@ -33,25 +34,7 @@ export default function AdminSms() {
   // Fetch group recipients
   const fetchGroupRecipients = async (group: RecipientGroup): Promise<Recipient[]> => {
     if (group === "custom") return [];
-    const tableMap: Record<string, string> = {
-      authors: "authors",
-      narrators: "narrators",
-      publishers: "publishers",
-      users: "profiles",
-      rj: "rj_profiles",
-    };
-    const table = tableMap[group];
-    const nameCol = group === "users" ? "display_name" : "name";
-
-    const { data, error } = await (supabase.from(table as any).select(`phone, ${nameCol}`) as any);
-    if (error) throw error;
-    return (data || [])
-      .filter((r: any) => r.phone?.trim())
-      .map((r: any) => ({
-        phone: r.phone,
-        name: r[nameCol] || "Unknown",
-        group,
-      }));
+    return utils.admin.smsRecipientsByGroup.fetch({ group }) as Promise<Recipient[]>;
   };
 
   const groupQuery = useQuery({
@@ -62,37 +45,16 @@ export default function AdminSms() {
 
   const logsQuery = useQuery({
     queryKey: ["sms-logs"],
-    queryFn: async () => {
-      const { data, error } = await (supabase
-        .from("sms_logs" as any)
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(100) as any);
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => utils.admin.listSmsLogs.fetch({ limit: 100 }),
   });
 
   const templatesQuery = useQuery({
     queryKey: ["sms-templates"],
-    queryFn: async () => {
-      const { data, error } = await (supabase
-        .from("sms_templates" as any)
-        .select("*")
-        .order("created_at", { ascending: false }) as any);
-      if (error) throw error;
-      return data || [];
-    },
+    queryFn: () => utils.admin.listSmsTemplates.fetch(),
   });
 
   const sendMutation = useMutation({
-    mutationFn: async (payload: { recipients: Recipient[]; message: string }) => {
-      const { data, error } = await supabase.functions.invoke("send-sms", {
-        body: payload,
-      });
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: (payload: { recipients: Recipient[]; message: string }) => utils.admin.sendSms.fetch(payload),
     onSuccess: (data) => {
       toast.success(`SMS sent: ${data.sent} success, ${data.failed} failed, ${data.skipped} skipped`);
       queryClient.invalidateQueries({ queryKey: ["sms-logs"] });
@@ -106,12 +68,8 @@ export default function AdminSms() {
   });
 
   const saveTemplateMutation = useMutation({
-    mutationFn: async (payload: { name: string; content: string }) => {
-      const { error } = await (supabase
-        .from("sms_templates" as any)
-        .insert(payload) as any);
-      if (error) throw error;
-    },
+    mutationFn: (payload: { name: string; content: string }) =>
+      utils.admin.createSmsTemplate.fetch({ name: payload.name, body: payload.content }),
     onSuccess: () => {
       toast.success("Template saved");
       queryClient.invalidateQueries({ queryKey: ["sms-templates"] });
@@ -268,9 +226,9 @@ export default function AdminSms() {
                     <TableBody>
                       {(logsQuery.data as any[]).map((log: any) => (
                         <TableRow key={log.id}>
-                          <TableCell className="font-mono text-xs">{log.recipient_phone}</TableCell>
-                          <TableCell className="text-sm">{log.recipient_name || "—"}</TableCell>
-                          <TableCell><Badge variant="outline" className="text-xs">{log.recipient_group || "custom"}</Badge></TableCell>
+                        <TableCell className="font-mono text-xs">{log.phone_number}</TableCell>
+                        <TableCell className="text-sm">—</TableCell>
+                        <TableCell><Badge variant="outline" className="text-xs">custom</Badge></TableCell>
                           <TableCell className="max-w-[200px] truncate text-sm">{log.message}</TableCell>
                           <TableCell>
                             {log.status === "sent" ? (
@@ -306,9 +264,9 @@ export default function AdminSms() {
                     <div key={t.id} className="flex items-center justify-between border rounded-md p-3">
                       <div>
                         <p className="font-medium text-sm">{t.name}</p>
-                        <p className="text-xs text-muted-foreground truncate max-w-md">{t.content}</p>
+                        <p className="text-xs text-muted-foreground truncate max-w-md">{t.body}</p>
                       </div>
-                      <Button size="sm" variant="outline" onClick={() => setMessage(t.content)}>Use</Button>
+                      <Button size="sm" variant="outline" onClick={() => setMessage(t.body)}>Use</Button>
                     </div>
                   ))}
                 </div>
