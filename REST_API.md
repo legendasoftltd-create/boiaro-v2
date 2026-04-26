@@ -381,6 +381,7 @@ Current REST endpoints:
 - `GET /api/v1/ authors/{id}`
 - `GET /api/v1/ narrators`
 - `GET /api/v1/ publishers`
+- `GET /api/v1 /search?q={params}`
 
 
 ## Flutter notes
@@ -524,5 +525,37 @@ Response:
       "is_featured": false
     }
   ]
+}
+```
+
+
+### `GET /search?q={params}`
+
+Success Response:
+
+```json
+{
+    "results": [
+        {
+            "id": "691a13fac37fd4e7a6216e11",
+            "title": "সবার জন্য আইন",
+            "title_en": null,
+            "slug": "সবার-জন্য-আইন-691a13fa",
+            "cover_url": "/uploads/bookImages/1763316729900-sobar.webp",
+            "rating": null,
+            "is_free": false,
+            "author": {
+                "name": "এ কে আজাদ উজ্জ্বল"
+            }
+        }
+    ]
+}
+```
+
+Error Response:
+
+```json
+{
+    "error": "Search query too short (min 2 chars)"
 }
 ```
