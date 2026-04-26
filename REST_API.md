@@ -375,6 +375,7 @@ Current REST endpoints:
 - `GET /api/v1/books/:id/bookmark`
 - `POST /api/v1/books/:id/bookmark`
 - `GET /api/v1/me/bookmarks`
+- `GET /api/v1/profile/roles`
 
 ## Flutter notes
 
@@ -383,3 +384,24 @@ Current REST endpoints:
 - If a protected request returns `401`, call `/auth/refresh` and retry
 - Use `/books` for listing, `/books/slug/:slug` or `/books/:id` for detail screens
 - Use `/books/:id/bookmark` and `/me/bookmarks` for save/bookmark flows
+
+
+### `GET /profile/roles`
+
+Protected.
+
+Allowed request fields:
+
+Authorization: Bearer your_token_here
+Content-Type: application/json
+
+
+Response:
+
+```json
+{
+    "roles": [
+        "user"
+    ]
+}
+```
