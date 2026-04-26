@@ -1,4 +1,4 @@
-# Mobile App API Documentation
+# Web App API Documentation
 
 ## Overview
 
@@ -7,7 +7,7 @@ This API uses **tRPC v11** over HTTP. All requests are `POST` to a batch endpoin
 ### Base URL
 
 ```
-Production:  http://localhost:3001/trpc
+Production:  http://staging.boiaro.com/trpc
 Development: http://localhost:3001/trpc
 ```
 

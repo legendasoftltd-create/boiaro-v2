@@ -533,6 +533,55 @@ export const adminRouter = router({
       return { users: usersWithStats, nextCursor };
     }),
 
+  getUserStats: adminProcedure.query(async () => {
+    const [total, creators, verified, deleted] = await Promise.all([
+      prisma.user.count({
+        where: {
+          profile: {
+            is: {
+              deleted_at: null,
+            },
+          },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          profile: {
+            is: {
+              deleted_at: null,
+            },
+          },
+          roles: {
+            some: {
+              role: {
+                in: ["writer", "publisher", "narrator"],
+              },
+            },
+          },
+        },
+      }),
+      prisma.user.count({
+        where: {
+          email_verified: true,
+          profile: {
+            is: {
+              deleted_at: null,
+            },
+          },
+        },
+      }),
+      prisma.profile.count({
+        where: {
+          deleted_at: {
+            not: null,
+          },
+        },
+      }),
+    ]);
+
+    return { total, creators, verified, deleted };
+  }),
+
   updateUserBasic: adminProcedure
     .input(
       z.object({
