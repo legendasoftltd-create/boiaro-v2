@@ -384,6 +384,7 @@ Current REST endpoints:
 - `GET /api/v1 /search?q={params}`
 - `POST /api/v1/access/check`
 - `GET /api/v1/access/preview-eligibility?book_id={query_params}&format={query_params}`
+- `POST /api/v1/content/ebook-url`
 
 
 ## Flutter notes
@@ -617,5 +618,26 @@ Error Response:
 ```json
 {
     "error": "Book not found"
+}
+```
+
+### `POST /content/ebook-url`
+Authorization: Bearer your_token_here
+Content-Type: application/json
+
+Body json:
+```json
+{
+  "book_id": "692dbe324329a671e0b46d41"
+}
+```
+
+Success Response:
+
+```json
+{
+    "signed_url": "/uploads/bookPdf/1764605827810-abar_jokher_dhon______.epub?token=secure_token&expires=1777226514157",
+    "mime_type": "application/pdf",
+    "expires_in": 300
 }
 ```

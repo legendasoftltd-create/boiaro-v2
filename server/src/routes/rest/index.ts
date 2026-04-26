@@ -12,6 +12,7 @@ import { narratorsRestRouter } from "./narrators.js";
 import { publishersRestRouter } from "./publishers.js";
 import { searchRestRouter } from "./search.js";
 import { accessRestRouter } from "./access.js";
+import { contentRestRouter } from "./content.js";
 
 export const restRouter = Router();
 
@@ -28,3 +29,4 @@ restRouter.use("/narrators", narratorsRestRouter);
 restRouter.use("/publishers", publishersRestRouter);
 restRouter.use("/search", searchRestRouter);
 restRouter.use("/access", accessRestRouter);
+restRouter.use("/content", contentRestRouter);
