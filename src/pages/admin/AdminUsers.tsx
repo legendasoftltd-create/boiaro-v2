@@ -412,8 +412,12 @@ export default function AdminUsers() {
 
       <Tabs value={tab} onValueChange={(v) => { setTab(v); setSelected(new Set()); }}>
         <TabsList>
-          <TabsTrigger value="active">Active Users ({activeUsers.length})</TabsTrigger>
-          <TabsTrigger value="deleted">Deleted Users ({deletedUsers.length})</TabsTrigger>
+          <TabsTrigger value="active">
+            Active Users ({statsLoading ? "—" : stats.total})
+          </TabsTrigger>
+          <TabsTrigger value="deleted">
+            Deleted Users ({statsLoading ? "—" : stats.deleted})
+          </TabsTrigger>
         </TabsList>
 
         <div className="flex flex-wrap gap-3 items-center mt-4">
