@@ -68,7 +68,7 @@ export const booksRouter = router({
             publisher: { select: { id: true, name: true, name_en: true, logo_url: true, description: true, is_verified: true } },
             category: { select: { id: true, name: true, name_bn: true, slug: true, icon: true, color: true } },
             formats: {
-              where: { submission_status: "approved" },
+              where: { submission_status: "approved", is_available: true },
               include: {
                 narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true } },
               },
@@ -525,7 +525,7 @@ export const booksRouter = router({
           publisher: true,
           category: true,
           formats: {
-            where: { submission_status: "approved" },
+            where: { submission_status: "approved", is_available: true },
             orderBy: { created_at: "asc" },
             include: {
               narrator: true,
@@ -728,6 +728,7 @@ export const booksRouter = router({
           cover_url: input.coverUrl ?? null, language: input.language,
           tags: input.tags ?? [],
           submission_status: input.asDraft ? "draft" : "pending",
+          submitted_by: input.asDraft ? book.submitted_by : ctx.userId,
         },
       });
       const formatData = {
@@ -806,7 +807,7 @@ export const booksRouter = router({
       if (!book || book.submitted_by !== ctx.userId) throw new TRPCError({ code: "FORBIDDEN" });
       return prisma.book.update({
         where: { id: input.bookId },
-        data: { submission_status: "pending" },
+        data: { submission_status: "pending", submitted_by: ctx.userId },
       });
     }),
 

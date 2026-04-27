@@ -166,7 +166,7 @@ export const adminRouter = router({
         submission_status: z.string().optional().nullable(),
       })
     )
-    .mutation(({ input }) => {
+    .mutation(({ ctx, input }) => {
       const { id, author_id, category_id, publisher_id, ...data } = input;
       const normalizedTags =
         data.tags === undefined ? undefined : data.tags === null ? [] : data.tags;
@@ -182,6 +182,7 @@ export const adminRouter = router({
           where: { id },
           data: {
             ...data,
+            ...(data.submission_status === "pending" ? { submitted_by: ctx.userId } : {}),
             ...(normalizedTags !== undefined ? { tags: { set: normalizedTags } } : {}),
             ...relationData,
           } as any,
@@ -192,6 +193,7 @@ export const adminRouter = router({
         data: {
           ...data,
           submission_status: data.submission_status ?? "pending",
+          submitted_by: ctx.userId,
           ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
           ...(author_id ? { author: { connect: { id: author_id } } } : {}),
           ...(category_id ? { category: { connect: { id: category_id } } } : {}),
@@ -246,13 +248,22 @@ export const adminRouter = router({
         isbn: z.string().nullable().optional(),
       })
     )
-    .mutation(({ input }) => {
+    .mutation(({ ctx, input }) => {
       const { id, ...data } = input;
-      if (id) return prisma.bookFormat.update({ where: { id }, data: data as any });
+      if (id) {
+        return prisma.bookFormat.update({
+          where: { id },
+          data: {
+            ...data,
+            ...(data.submission_status === "pending" ? { submitted_by: data.submitted_by ?? ctx.userId } : {}),
+          } as any,
+        });
+      }
       return prisma.bookFormat.create({
         data: {
           ...data,
           submission_status: data.submission_status ?? "pending",
+          submitted_by: data.submitted_by ?? ctx.userId,
         } as any,
       });
     }),
@@ -3199,7 +3210,12 @@ export const adminRouter = router({
     .input(z.object({ status: z.string() }))
     .query(async ({ input }) => {
       const books = await prisma.book.findMany({
-        where: { submission_status: input.status, submitted_by: { not: null } },
+        where: {
+          OR: [
+            { submission_status: input.status },
+            { formats: { some: { submission_status: input.status } } },
+          ],
+        },
         orderBy: { created_at: "desc" },
         include: {
           category: { select: { name: true, name_bn: true } },
@@ -3212,14 +3228,37 @@ export const adminRouter = router({
         ? await prisma.profile.findMany({ where: { user_id: { in: userIds } }, select: { user_id: true, display_name: true } })
         : [];
       const profileMap = Object.fromEntries(profiles.map(p => [p.user_id, p.display_name || "Unknown"]));
-      return books.map(b => ({ ...b, _submitter: profileMap[b.submitted_by!] || "Unknown", book_formats: b.formats, book_contributors: b.contributors, categories: b.category }));
+      return books.map(b => ({
+        ...b,
+        _submitter: b.submitted_by ? (profileMap[b.submitted_by] || "Unknown") : "Admin",
+        book_formats: b.formats,
+        book_contributors: b.contributors,
+        categories: b.category,
+      }));
     }),
 
   updateSubmissionStatus: adminProcedure
     .input(z.object({ bookId: z.string(), status: z.enum(["approved", "rejected", "draft", "pending"]) }))
-    .mutation(({ input }) =>
-      prisma.book.update({ where: { id: input.bookId }, data: { submission_status: input.status } })
-    ),
+    .mutation(async ({ ctx, input }) => {
+      return prisma.$transaction(async (tx) => {
+        const updatedBook = await tx.book.update({
+          where: { id: input.bookId },
+          data: {
+            submission_status: input.status,
+            ...(input.status === "pending" ? { submitted_by: ctx.userId } : {}),
+          },
+        });
+
+        // Keep book + format review states aligned so a book does not appear
+        // in both pending and approved tabs at the same time.
+        await tx.bookFormat.updateMany({
+          where: { book_id: input.bookId },
+          data: { submission_status: input.status },
+        });
+
+        return updatedBook;
+      });
+    }),
 
   getAudiobookTracksForFormat: adminProcedure
     .input(z.object({ bookFormatId: z.string() }))
