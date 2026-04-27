@@ -163,6 +163,7 @@ export const adminRouter = router({
         is_free: z.boolean().optional(),
         language: z.string().optional().nullable(),
         tags: z.array(z.string()).nullable().optional(),
+        submission_status: z.string().optional().nullable(),
       })
     )
     .mutation(({ input }) => {
@@ -190,6 +191,7 @@ export const adminRouter = router({
       return prisma.book.create({
         data: {
           ...data,
+          submission_status: data.submission_status ?? "pending",
           ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
           ...(author_id ? { author: { connect: { id: author_id } } } : {}),
           ...(category_id ? { category: { connect: { id: category_id } } } : {}),
@@ -247,7 +249,12 @@ export const adminRouter = router({
     .mutation(({ input }) => {
       const { id, ...data } = input;
       if (id) return prisma.bookFormat.update({ where: { id }, data: data as any });
-      return prisma.bookFormat.create({ data: data as any });
+      return prisma.bookFormat.create({
+        data: {
+          ...data,
+          submission_status: data.submission_status ?? "pending",
+        } as any,
+      });
     }),
 
   setBookFormatAvailability: adminProcedure
@@ -940,18 +947,42 @@ export const adminRouter = router({
     .mutation(async ({ ctx, input }) => {
       const app = await prisma.roleApplication.findUnique({ where: { id: input.applicationId } });
       if (!app) throw new TRPCError({ code: "NOT_FOUND" });
+      const role = app.applied_role;
+      const userId = app.user_id;
+      const displayName = app.display_name || "Unknown";
 
-      return prisma.$transaction([
-        prisma.roleApplication.update({
+      await prisma.$transaction(async (tx) => {
+        await tx.roleApplication.update({
           where: { id: input.applicationId },
           data: { status: "approved", reviewed_by: ctx.userId, verified: true, reviewed_at: new Date() },
-        }),
-        prisma.userRole.upsert({
-          where: { user_id_role: { user_id: app.user_id, role: app.applied_role as any } },
-          create: { user_id: app.user_id, role: app.applied_role as any },
+        });
+        await tx.userRole.upsert({
+          where: { user_id_role: { user_id: userId, role: role as any } },
+          create: { user_id: userId, role: role as any },
           update: {},
-        }),
-      ]);
+        });
+      });
+
+      if (role === "writer") {
+        const existing = await prisma.author.findFirst({ where: { user_id: userId } });
+        if (!existing) await prisma.author.create({ data: { name: displayName, user_id: userId, status: "active" } });
+      } else if (role === "publisher") {
+        const existing = await prisma.publisher.findFirst({ where: { user_id: userId } });
+        if (!existing) await prisma.publisher.create({ data: { name: displayName, user_id: userId } });
+      } else if (role === "narrator") {
+        const existing = await prisma.narrator.findFirst({ where: { user_id: userId } });
+        if (!existing) await prisma.narrator.create({ data: { name: displayName, user_id: userId, status: "active" } });
+      } else if (role === "rj") {
+        const existing = await prisma.rjProfile.findFirst({ where: { user_id: userId } });
+        if (!existing) await prisma.rjProfile.create({ data: { user_id: userId, stage_name: displayName, is_approved: true } });
+        else await prisma.rjProfile.update({ where: { user_id: userId }, data: { is_approved: true } });
+      }
+
+      if (app.display_name) {
+        await prisma.profile.updateMany({ where: { user_id: userId }, data: { display_name: app.display_name } });
+      }
+
+      return { success: true };
     }),
 
   listAdminRoles: adminProcedure.query(() =>
@@ -4153,10 +4184,13 @@ export const adminRouter = router({
 
   // ── Platform Settings ──────────────────────────────────────────────────────
   getPlatformSettings: adminProcedure
-    .input(z.object({ keys: z.array(z.string()) }))
+    .input(z.object({ keys: z.array(z.string()).optional() }).optional())
     .query(async ({ input }) => {
-      const settings = await prisma.platformSetting.findMany({ where: { key: { in: input.keys } } });
-      return Object.fromEntries(settings.map(s => [s.key, s.value]));
+      const keys = input?.keys?.filter(Boolean);
+      const settings = await prisma.platformSetting.findMany({
+        where: keys && keys.length > 0 ? { key: { in: keys } } : undefined,
+      });
+      return Object.fromEntries(settings.map((s) => [s.key, s.value]));
     }),
 
   setPlatformSetting: adminProcedure
@@ -4170,15 +4204,23 @@ export const adminRouter = router({
     ),
 
   bulkSetPlatformSettings: adminProcedure
-    .input(z.array(z.object({ key: z.string(), value: z.string() })))
+    .input(
+      z.union([
+        z.array(z.object({ key: z.string(), value: z.string() })),
+        z.object({ pairs: z.array(z.object({ key: z.string(), value: z.string() })) }),
+      ])
+    )
     .mutation(async ({ input }) => {
-      await Promise.all(input.map(s =>
-        prisma.platformSetting.upsert({
-          where: { key: s.key },
-          create: { key: s.key, value: s.value },
-          update: { value: s.value },
-        })
-      ));
+      const pairs = Array.isArray(input) ? input : input.pairs;
+      await Promise.all(
+        pairs.map((s) =>
+          prisma.platformSetting.upsert({
+            where: { key: s.key },
+            create: { key: s.key, value: s.value },
+            update: { value: s.value },
+          })
+        )
+      );
       return { success: true };
     }),
 

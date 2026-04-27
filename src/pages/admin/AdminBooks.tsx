@@ -103,7 +103,7 @@ export default function AdminBooks() {
 
   const load = async () => {
     const [b, a, c, p, n, bc] = await Promise.all([
-      utils.admin.listBooks.fetch({ limit: 1000 }),
+      utils.admin.listBooks.fetch({ limit: 1000, status: "approved" }),
       utils.admin.listAuthors.fetch({}),
       utils.admin.listCategories.fetch(),
       utils.admin.listPublishers.fetch({}),
