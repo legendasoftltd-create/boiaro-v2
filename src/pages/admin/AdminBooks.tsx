@@ -383,10 +383,14 @@ export default function AdminBooks() {
 
   const deleteBook = async (id: string) => {
     if (!confirm("Delete this book and all its formats?")) return;
-    await deleteBookMutation.mutateAsync({ id });
-    await log({ module: "books", action: "Book deleted", actionType: "delete", targetType: "book", targetId: id, details: `Deleted book: ${id}`, riskLevel: "high" });
-    toast.success("Deleted");
-    load();
+    try {
+      await deleteBookMutation.mutateAsync({ id });
+      await log({ module: "books", action: "Book deleted", actionType: "delete", targetType: "book", targetId: id, details: `Deleted book: ${id}`, riskLevel: "high" });
+      toast.success("Deleted");
+      load();
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to delete book");
+    }
   };
 
   const openFormats = async (bookId: string) => {
