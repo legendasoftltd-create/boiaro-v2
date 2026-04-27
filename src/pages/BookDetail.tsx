@@ -51,9 +51,15 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
   } : { id: "", name: "", nameBn: "", icon: "📚", count: "0", color: "#888" }
 
   const formats: any[] = dbBook.formats || []
-  const ebookFmt = formats.find((f: any) => f.format === "ebook")
-  const audiobookFmt = formats.find((f: any) => f.format === "audiobook")
-  const hardcopyFmt = formats.find((f: any) => f.format === "hardcopy")
+  const pickFormat = (type: "ebook" | "audiobook" | "hardcopy") => {
+    const candidates = formats.filter((f: any) => f.format === type)
+    if (candidates.length === 0) return undefined
+    // Prefer available format if there are duplicate rows for same type.
+    return candidates.find((f: any) => f.is_available !== false) || candidates[0]
+  }
+  const ebookFmt = pickFormat("ebook")
+  const audiobookFmt = pickFormat("audiobook")
+  const hardcopyFmt = pickFormat("hardcopy")
 
   // Collect narrators
   const seen = new Set<string>()
