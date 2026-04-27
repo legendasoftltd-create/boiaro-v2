@@ -62,10 +62,10 @@ export default function AdminRecommendations() {
   useEffect(() => {
     if (!recommendationData) return;
     const map: Record<string, string> = { ...DEFAULT_VALUES };
-    (recommendationData.platformSettings || [])
-      .filter((s: any) => s.key?.startsWith("rec_"))
-      .forEach((s: any) => {
-        map[s.key] = s.value;
+    Object.entries(recommendationData.platformSettings || {})
+      .filter(([key]) => key.startsWith("rec_"))
+      .forEach(([key, value]) => {
+        map[key] = String(value ?? "");
       });
     setSettings(map);
 

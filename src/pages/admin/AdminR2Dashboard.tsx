@@ -58,6 +58,11 @@ function fmtNum(n: number) {
   return n.toLocaleString();
 }
 
+function toFiniteNumber(value: string, parser: (raw: string) => number): number | null {
+  const parsed = parser(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export default function AdminR2Dashboard() {
   const utils = trpc.useUtils();
   const queryClient = useQueryClient();
@@ -91,6 +96,16 @@ export default function AdminR2Dashboard() {
       }
     },
   });
+
+  const updateNumericConfig = (
+    field: keyof Pick<RolloutConfig, "scale_up_threshold" | "scale_down_threshold" | "step_size" | "max_percent">,
+    rawValue: string,
+    parser: (value: string) => number
+  ) => {
+    const parsed = toFiniteNumber(rawValue, parser);
+    if (parsed === null) return;
+    updateConfig.mutate({ [field]: parsed } as Partial<RolloutConfig>);
+  };
 
   const config = status?.config;
   const todayData = status?.today;
@@ -284,7 +299,7 @@ export default function AdminR2Dashboard() {
                 type="number"
                 step="0.5"
                 value={config?.scale_up_threshold ?? 1}
-                onChange={(e) => updateConfig.mutate({ scale_up_threshold: parseFloat(e.target.value) })}
+                onChange={(e) => updateNumericConfig("scale_up_threshold", e.target.value, Number.parseFloat)}
                 className="h-8 mt-1"
               />
             </div>
@@ -294,7 +309,7 @@ export default function AdminR2Dashboard() {
                 type="number"
                 step="0.5"
                 value={config?.scale_down_threshold ?? 3}
-                onChange={(e) => updateConfig.mutate({ scale_down_threshold: parseFloat(e.target.value) })}
+                onChange={(e) => updateNumericConfig("scale_down_threshold", e.target.value, Number.parseFloat)}
                 className="h-8 mt-1"
               />
             </div>
@@ -303,7 +318,7 @@ export default function AdminR2Dashboard() {
               <Input
                 type="number"
                 value={config?.step_size ?? 10}
-                onChange={(e) => updateConfig.mutate({ step_size: parseInt(e.target.value) })}
+                onChange={(e) => updateNumericConfig("step_size", e.target.value, Number.parseInt)}
                 className="h-8 mt-1"
               />
             </div>
@@ -312,7 +327,7 @@ export default function AdminR2Dashboard() {
               <Input
                 type="number"
                 value={config?.max_percent ?? 100}
-                onChange={(e) => updateConfig.mutate({ max_percent: parseInt(e.target.value) })}
+                onChange={(e) => updateNumericConfig("max_percent", e.target.value, Number.parseInt)}
                 className="h-8 mt-1"
               />
             </div>

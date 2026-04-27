@@ -35,12 +35,18 @@ export default function AdminRoleApplications() {
     },
     onError: (err) => toast.error(err.message),
   });
+  const rejectMutation = trpc.admin.rejectApplication.useMutation({
+    onSuccess: () => {
+      utils.admin.listRoleApplications.invalidate();
+      toast.success("Application rejected");
+      setSelected(null);
+    },
+    onError: (err) => toast.error(err.message),
+  });
 
   const handleReject = async () => {
     if (!selected) return;
-    // Direct DB update via updateUserStatus pattern — for now mark as rejected
-    // Full reject endpoint can be added later; use existing admin.logAction to track
-    toast.info("Reject endpoint coming soon — please update status in DB.");
+    await rejectMutation.mutateAsync({ applicationId: selected.id });
   };
 
   const handleApprove = async () => {
@@ -160,7 +166,7 @@ export default function AdminRoleApplications() {
                   <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700" onClick={handleApprove} disabled={approveMutation.isPending}>
                     <CheckCircle className="h-4 w-4 mr-2" /> Approve
                   </Button>
-                  <Button variant="outline" className="flex-1 text-destructive border-destructive/30" onClick={handleReject}>
+                  <Button variant="outline" className="flex-1 text-destructive border-destructive/30" onClick={handleReject} disabled={rejectMutation.isPending}>
                     <XCircle className="h-4 w-4 mr-2" /> Reject
                   </Button>
                 </div>

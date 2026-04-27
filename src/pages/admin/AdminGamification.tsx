@@ -52,7 +52,24 @@ export default function AdminGamification() {
   };
 
   const saveBadge = async () => {
-    const payload = { key: form.key, title: form.title, description: form.description || null, category: form.category, condition_type: form.condition_type, condition_value: parseInt(form.condition_value), coin_reward: parseInt(form.coin_reward), sort_order: parseInt(form.sort_order) };
+    const conditionValue = Number.parseInt(form.condition_value, 10);
+    const coinReward = Number.parseInt(form.coin_reward, 10);
+    const sortOrder = Number.parseInt(form.sort_order, 10);
+    if (!Number.isFinite(conditionValue) || !Number.isFinite(coinReward) || !Number.isFinite(sortOrder)) {
+      toast({ title: "Invalid numeric values", description: "Condition value, coin reward, and sort order must be valid numbers." });
+      return;
+    }
+
+    const payload = {
+      key: form.key,
+      title: form.title,
+      description: form.description || null,
+      category: form.category,
+      condition_type: form.condition_type,
+      condition_value: conditionValue,
+      coin_reward: coinReward,
+      sort_order: sortOrder,
+    };
     if (editBadge) {
       await utils.admin.upsertBadgeDefinition.fetch({ ...payload, id: editBadge.id });
     } else {

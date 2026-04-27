@@ -23,6 +23,7 @@ export default function AdminUserDetail() {
   const { type, id } = useParams<{ type: string; id: string }>();
   const navigate = useNavigate();
   const utils = trpc.useUtils();
+  const setUserTempPasswordMutation = trpc.admin.setUserTempPassword.useMutation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [record, setRecord] = useState<any>(null);
@@ -137,7 +138,7 @@ export default function AdminUserDetail() {
     const userId = type === "user" ? id! : record?.user_id;
     if (!userId) return toast.error("No linked user account");
     try {
-      await utils.admin.setUserTempPassword.fetch({ userId, tempPassword });
+      await setUserTempPasswordMutation.mutateAsync({ userId, tempPassword });
       toast.success("Temporary password set");
       setPasswordDialog(false);
       setTempPassword("");
