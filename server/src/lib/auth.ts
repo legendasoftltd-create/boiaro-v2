@@ -5,8 +5,10 @@ export interface AuthUser {
   userEmail: string | null;
 }
 
-const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN ?? "7d";
-const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN ?? "30d";
+const ACCESS_TOKEN_EXPIRES_IN: jwt.SignOptions["expiresIn"] =
+  (process.env.JWT_ACCESS_EXPIRES_IN ?? "7d") as jwt.SignOptions["expiresIn"];
+const REFRESH_TOKEN_EXPIRES_IN: jwt.SignOptions["expiresIn"] =
+  (process.env.JWT_REFRESH_EXPIRES_IN ?? "30d") as jwt.SignOptions["expiresIn"];
 
 export function getAuthUserFromAuthorizationHeader(
   authorization?: string | null
