@@ -61,7 +61,7 @@ export function EarningsDashboard({ role }: EarningsDashboardProps) {
     if (amount < minWithdrawal) { toast.error(`Minimum withdrawal is ৳${minWithdrawal}`); return; }
     if (amount > availableBalance) { toast.error("Insufficient balance"); return; }
     if (!withdrawForm.account_info.trim()) { toast.error("Enter account info"); return; }
-    requestMutation.mutate({ amount, method: withdrawForm.method as "bkash" | "nagad" | "bank", accountInfo: withdrawForm.account_info });
+    requestMutation.mutate({ amount, method: withdrawForm.method as "bkash" | "nagad" | "bank", accountInfo: withdrawForm.account_info, role });
   };
 
   const statusBadge = (status: string) => {

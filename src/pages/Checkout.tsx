@@ -15,6 +15,7 @@ import { useShippingCalculator } from "@/hooks/useShippingCalculator"
 import { useFreeShipping } from "@/hooks/useFreeShipping"
 import { trpc } from "@/lib/trpc"
 import { toast } from "sonner"
+import { toMediaUrl } from "@/lib/mediaUrl"
 import { z } from "zod"
 import { DISTRICTS, isDhakaArea } from "@/lib/bangladeshDistricts"
 
@@ -95,7 +96,7 @@ export default function Checkout() {
         const price = Number(fmt?.price) || 0
         const book: any = {
           id: dbBook.id, title: dbBook.title, titleEn: (dbBook as any).title_en || "",
-          slug: dbBook.slug, cover: dbBook.cover_url || "",
+          slug: dbBook.slug, cover: toMediaUrl(dbBook.cover_url) || "",
           description: (dbBook as any).description || "", descriptionBn: (dbBook as any).description_bn || "",
           rating: (dbBook as any).rating || 0, reviewsCount: (dbBook as any).reviews_count || 0,
           totalReads: String((dbBook as any).total_reads || 0), publishedDate: (dbBook as any).published_date || "",
@@ -209,9 +210,9 @@ export default function Checkout() {
         if (shipping.selectedMethod) {
           orderPayload.shippingMethodId = shipping.selectedMethod.id
           orderPayload.shippingMethodName = shipping.selectedMethod.name
-          orderPayload.shippingCarrier = shipping.selectedMethod.provider_code
+          orderPayload.shippingCarrier = shipping.selectedMethod.provider_code ?? null
           orderPayload.shippingCost = effectiveShippingCharge
-          orderPayload.estimatedDeliveryDays = String(shipping.selectedMethod.delivery_time)
+          orderPayload.estimatedDeliveryDays = String(shipping.selectedMethod.delivery_time ?? shipping.selectedMethod.delivery_days ?? "")
         }
       }
 
@@ -442,7 +443,7 @@ export default function Checkout() {
                             <div className="flex-1">
                               <p className="text-sm font-medium text-foreground">{sm.name}</p>
                               <p className="text-xs text-muted-foreground">
-                                {sm.provider_code && `${sm.provider_code} • `}{sm.delivery_time}
+                                {sm.provider_code && `${sm.provider_code} • `}{sm.delivery_time ?? sm.delivery_days}
                               </p>
                             </div>
                             <span className="text-sm font-semibold text-foreground">
@@ -562,7 +563,7 @@ export default function Checkout() {
                       {shipping.selectedMethod && (
                         <div className="flex justify-between text-xs">
                           <span className="text-muted-foreground">Delivery</span>
-                          <span className="text-muted-foreground">{shipping.selectedMethod.delivery_time}</span>
+                          <span className="text-muted-foreground">{shipping.selectedMethod.delivery_time ?? shipping.selectedMethod.delivery_days}</span>
                         </div>
                       )}
                     </>

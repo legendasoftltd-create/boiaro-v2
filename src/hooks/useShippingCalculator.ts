@@ -10,6 +10,8 @@ export interface ShippingMethod {
   zone: string | null;
   delivery_days: string | null;
   is_active: boolean;
+  provider_code?: string | null;
+  delivery_time?: string | null;
 }
 
 const DHAKA_DISTRICTS = ["dhaka", "ঢাকা"];

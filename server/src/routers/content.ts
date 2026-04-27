@@ -74,9 +74,7 @@ export const contentRouter = router({
           where: { book_format: { book_id: bookId }, track_number: trackNumber },
         });
         if (!track?.audio_url) return { url: null };
-        if (/^https?:\/\//i.test(track.audio_url)) return { url: track.audio_url };
-        // TODO: Generate R2/S3 signed URL when storage is configured
-        return { url: null };
+        return { url: track.audio_url };
       }
 
       return { url: null };
@@ -92,11 +90,7 @@ export const contentRouter = router({
 
       const urls: Record<number, string | null> = {};
       for (const t of tracks) {
-        if (t.audio_url && /^https?:\/\//i.test(t.audio_url)) {
-          urls[t.track_number] = t.audio_url;
-        } else {
-          urls[t.track_number] = null; // TODO: R2/S3 signed URL
-        }
+        urls[t.track_number] = t.audio_url || null;
       }
       return { urls };
     }),

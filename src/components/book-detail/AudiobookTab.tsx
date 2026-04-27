@@ -9,18 +9,12 @@ import { useAudiobookAccess } from "@/hooks/useAudiobookAccess"
 import { AudiobookChapterUnlock } from "@/components/book-detail/AudiobookChapterUnlock"
 import { AudiobookPaywallModal } from "@/components/audio-player/AudiobookPaywallModal"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
+import { durationToSeconds, formatDuration } from "@/lib/duration"
 
 interface Props {
   book: MasterBook
   audiobook: AudiobookFormat
   audioTracks?: AudioTrack[]
-}
-
-function parseDurToSeconds(dur: string): number {
-  const hMatch = dur.match(/(\d+)h/)
-  const mMatch = dur.match(/(\d+)m/)
-  const sMatch = dur.match(/(\d+)s/)
-  return (parseInt(hMatch?.[1] || "0") * 3600) + (parseInt(mMatch?.[1] || "0") * 60) + (parseInt(sMatch?.[1] || "0"))
 }
 
 export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
@@ -33,7 +27,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const { user } = useAuth()
 
   const isThisBookActive = activeBook?.id === book.id
-  const totalDurSec = parseDurToSeconds(audiobook.duration || "0")
+  const totalDurSec = durationToSeconds(audiobook.duration)
   const isFree = audiobook.price === 0
 
   // Pass live audio element duration so preview recalculates with actual metadata
@@ -123,7 +117,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
                 </p>
                 <p className="text-lg font-semibold text-foreground">{narratorName}</p>
                 <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {audiobook.duration || "N/A"}</span>
+                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDuration(audiobook.duration)}</span>
                   <span className="flex items-center gap-1"><Headphones className="w-3 h-3" /> {realTrackCount} episodes</span>
                   <span className="uppercase">{(audiobook.quality || "standard")}</span>
                 </div>

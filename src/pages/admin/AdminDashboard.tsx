@@ -8,7 +8,7 @@ import {
   BookOpen, Users, Mic2, ShoppingCart, DollarSign, Headphones, Package,
   TrendingUp, UserCheck, Star, Eye, CheckCircle, XCircle, Wallet,
   ArrowUpRight, ArrowDownRight, Activity, BarChart3, Coins, BookCopy,
-  AlertTriangle, Clock, Percent, Layers,
+  AlertTriangle, Clock, Percent, Layers, RefreshCw,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -88,8 +88,20 @@ export default function AdminDashboard() {
   const [activeAlerts, setActiveAlerts] = useState(0);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { data: dashboardData, isLoading } = trpc.admin.fullDashboard.useQuery();
-  const { data: pendingApps = [] } = trpc.admin.listRoleApplications.useQuery({ status: "pending" });
+  const { data: dashboardData, isLoading, dataUpdatedAt, refetch: refetchDashboard } = trpc.admin.fullDashboard.useQuery(
+    undefined,
+    { refetchInterval: 60_000, staleTime: 30_000 }
+  );
+  const { data: pendingApps = [], refetch: refetchApps } = trpc.admin.listRoleApplications.useQuery(
+    { status: "pending" },
+    { refetchInterval: 30_000, staleTime: 20_000 }
+  );
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+
+  const handleManualRefresh = async () => {
+    await Promise.all([refetchDashboard(), refetchApps()]);
+    setLastRefreshed(new Date());
+  };
   const approveMutation = trpc.admin.approveApplication.useMutation();
   const rejectMutation = trpc.admin.rejectApplication.useMutation();
   const utils = trpc.useUtils();
@@ -236,12 +248,30 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between animate-fade-in">
+        <div className="flex items-center justify-between animate-fade-in flex-wrap gap-2">
           <div>
             <h1 className="text-2xl font-bold">Business Dashboard</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Real-time business performance overview</p>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Auto-refreshes every 60s
+              {dataUpdatedAt > 0 && (
+                <span className="ml-2 text-xs text-muted-foreground/60">
+                  · Updated {new Date(dataUpdatedAt).toLocaleTimeString()}
+                </span>
+              )}
+            </p>
           </div>
-          <Badge variant="outline" className="text-xs">{new Date().toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })}</Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleManualRefresh}
+              className="gap-1.5 text-xs h-8"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh
+            </Button>
+            <Badge variant="outline" className="text-xs">{new Date().toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })}</Badge>
+          </div>
         </div>
 
         {/* === SECTION 1: Financial KPIs === */}

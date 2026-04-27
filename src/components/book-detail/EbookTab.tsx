@@ -16,7 +16,7 @@ export function EbookTab({ book, ebook }: Props) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { progress } = useReadingProgress(book.id)
-  const { hasFullAccess, previewLimit, loading: accessLoading } = useEbookAccess(book.id, isFree, ebook.pages || 100)
+  const { hasFullAccess, previewLimit, loading: accessLoading } = useEbookAccess(book.id, isFree, ebook.pages || 100, ebook.previewPercentage)
 
   const pct = progress?.percentage || 0
   const hasStarted = pct > 0
@@ -150,7 +150,9 @@ export function EbookTab({ book, ebook }: Props) {
             </div>
             <Progress value={pct} className="h-1.5" />
             <p className="text-[11px] text-muted-foreground mt-1.5">
-              Page {progress?.currentPage} of {progress?.totalPages || ebook.pages}
+              {pct >= 100
+                ? "Completed"
+                : `Page ${progress?.currentPage || 1} of ${progress?.totalPages || ebook.pages}`}
             </p>
           </CardContent>
         </Card>

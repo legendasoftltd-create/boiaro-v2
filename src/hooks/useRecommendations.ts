@@ -1,6 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import type { MasterBook } from "@/lib/types";
+import { toMediaUrl } from "@/lib/mediaUrl";
 
 export function useRecentlyViewed() {
   const { user } = useAuth();
@@ -13,7 +14,7 @@ export function useRecentlyViewed() {
     id: b.id,
     title: b.title,
     slug: b.slug,
-    cover_url: b.cover_url,
+    cover_url: toMediaUrl(b.cover_url),
     rating: b.rating,
     category_id: b.category_id,
     author_id: b.author_id,

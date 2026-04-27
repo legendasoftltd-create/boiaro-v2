@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Play, Clock, ChevronLeft, ChevronRight, Headphones, Star, User } from "lucide-react"
 import { useBooks } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
+import { formatDuration } from "@/lib/duration"
 
 export function Audiobooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -54,7 +55,7 @@ export function Audiobooks() {
                   </div>
                   <div className="absolute top-2.5 left-2.5 right-2.5 flex items-start justify-between">
                     <Badge className={`text-[11px] shadow-sm ${isFree ? "bg-green-600 text-foreground" : "bg-blue-500 text-foreground"}`}>{isFree ? "Free" : `৳${audiobook.price}`}</Badge>
-                    <Badge className="bg-background/70 backdrop-blur-sm text-foreground border-0 text-[11px]"><Clock className="w-3 h-3 mr-1" />{audiobook.duration}</Badge>
+                    <Badge className="bg-background/70 backdrop-blur-sm text-foreground border-0 text-[11px]"><Clock className="w-3 h-3 mr-1" />{formatDuration(audiobook.duration)}</Badge>
                   </div>
                   <div className="absolute bottom-0 left-0 right-0 p-2.5">
                     <div className="flex items-center gap-2">

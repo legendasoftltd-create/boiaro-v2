@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { calculateEarnings } from "../lib/earnings.js";
 
 export const walletRouter = router({
   coinPackages: publicProcedure.query(() =>
@@ -111,8 +112,14 @@ export const walletRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient coins" });
       }
 
-      await prisma.$transaction([
-        prisma.contentUnlock.upsert({
+      // Get the monetary value of this format (coin_price or price) for earnings calculation
+      const bookFormat = await prisma.bookFormat.findFirst({
+        where: { book_id: bookId, format: format as any },
+        select: { id: true, price: true, coin_price: true },
+      });
+
+      const unlock = await prisma.$transaction(async (tx) => {
+        const created = await tx.contentUnlock.upsert({
           where: {
             user_id_book_id_format: { user_id: ctx.userId, book_id: bookId, format },
           },
@@ -125,8 +132,8 @@ export const walletRouter = router({
             status: "active",
           },
           update: { status: "active", coins_spent: coinCost },
-        }),
-        prisma.coinTransaction.create({
+        });
+        await tx.coinTransaction.create({
           data: {
             user_id: ctx.userId,
             amount: -coinCost,
@@ -135,15 +142,27 @@ export const walletRouter = router({
             reference_id: bookId,
             source: "content_unlock",
           },
-        }),
-        prisma.userCoin.update({
+        });
+        await tx.userCoin.update({
           where: { user_id: ctx.userId },
           data: {
             balance: { decrement: coinCost },
             total_spent: { increment: coinCost },
           },
-        }),
-      ]);
+        });
+        return created;
+      });
+
+      // Calculate contributor earnings using the format's monetary price
+      const saleAmount = Number(bookFormat?.price ?? 0);
+      if (saleAmount > 0) {
+        await calculateEarnings({
+          bookId,
+          format,
+          saleAmount,
+          contentUnlockId: unlock.id,
+        });
+      }
 
       return { success: true };
     }),

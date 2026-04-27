@@ -165,7 +165,16 @@ function AdminGateway() {
 }
 
 const App = () => {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 30_000,          // data stays fresh for 30s — avoids redundant refetches
+        gcTime: 5 * 60_000,         // keep unused data in cache for 5 minutes
+        refetchOnWindowFocus: true,  // refetch when user returns to tab
+        retry: 1,                    // only retry once on failure
+      },
+    },
+  }));
   const [trpcClient] = useState(() => createTrpcClient());
   return (
   <SentryErrorBoundary fallback={<div className="min-h-screen flex items-center justify-center bg-background text-foreground"><div className="text-center space-y-4"><h1 className="text-2xl font-bold">Something went wrong</h1><p className="text-muted-foreground">An unexpected error occurred. Please refresh the page.</p><button onClick={() => window.location.reload()} className="px-4 py-2 bg-primary text-primary-foreground rounded-md">Refresh</button></div></div>}>

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { calculateEarnings } from "../lib/earnings.js";
 
 export const ordersRouter = router({
   myOrders: protectedProcedure
@@ -294,6 +295,16 @@ export const ordersRouter = router({
       // Fulfill digital items for demo/mobile payments
       const shouldFulfill = isDemo || isMobile;
       if (shouldFulfill) {
+        // Fetch created order items to link earnings to the correct item IDs
+        const createdItems = await prisma.orderItem.findMany({
+          where: { order_id: order.id },
+          select: { id: true, book_id: true, format: true, price: true },
+        });
+        const itemIdMap: Record<string, string> = {};
+        for (const ci of createdItems) {
+          itemIdMap[`${ci.book_id}:${ci.format}`] = ci.id;
+        }
+
         for (const item of digitalItems) {
           await prisma.userPurchase.create({
             data: { user_id: userId, book_id: item.bookId, format: item.format, amount: item.price, payment_method: input.paymentMethod, status: "active" },
@@ -302,6 +313,14 @@ export const ordersRouter = router({
             where: { user_id_book_id_format: { user_id: userId, book_id: item.bookId, format: item.format } },
             create: { user_id: userId, book_id: item.bookId, format: item.format, status: "active", unlock_method: "purchase" },
             update: { status: "active" },
+          });
+          // Calculate and record contributor earnings
+          await calculateEarnings({
+            bookId: item.bookId,
+            format: item.format,
+            saleAmount: item.price,
+            orderId: order.id,
+            orderItemId: itemIdMap[`${item.bookId}:${item.format}`] ?? null,
           });
         }
         await prisma.order.update({

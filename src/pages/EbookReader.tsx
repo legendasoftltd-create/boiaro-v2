@@ -27,6 +27,7 @@ import { useMediaSession } from "@/hooks/useMediaSession";
 import { usePresence } from "@/hooks/usePresence";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
 import { trpc } from "@/lib/trpc";
+import { toMediaUrl } from "@/lib/mediaUrl";
 
 type FileType = "pdf" | "epub";
 
@@ -59,6 +60,7 @@ export default function EbookReader() {
   const [previewPct, setPreviewPct] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const totalPagesRef = useRef(0);
   const [percentage, setPercentage] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [fontSize, setFontSize] = useState(18);
@@ -438,7 +440,7 @@ export default function EbookReader() {
         setIsFreeBook(Boolean(dbBook.is_free) || resolvedEbookPrice <= 0);
         setEbookPrice(resolvedEbookPrice);
         setPreviewPct((ebookFmt as any).preview_percentage ?? null);
-        setBookCover(dbBook.cover_url || null);
+        setBookCover(toMediaUrl(dbBook.cover_url) || null);
         // Only auto-detect genre if user hasn't manually chosen one
         if (!userOverrodeGenre) {
           try {
@@ -483,11 +485,18 @@ export default function EbookReader() {
 
   // Bookmark state is synced via trpc.books.isBookmarked query above
 
+  // Keep totalPagesRef in sync so EPUB location handler can read it without stale closure
+  useEffect(() => { totalPagesRef.current = totalPages; }, [totalPages]);
+
   // ──────── Resume progress ────────
   useEffect(() => {
     if (progress && progress.currentPage > 0) {
       setCurrentPage(progress.currentPage);
       setPercentage(progress.percentage);
+      // Restore EPUB position from saved CFI — EpubRenderer uses initialCfi prop
+      if (progress.lastReadCfi && fileType === "epub") {
+        setEpubCfi(progress.lastReadCfi);
+      }
     }
   }, [progress]);
 
@@ -496,10 +505,17 @@ export default function EbookReader() {
     if (!bookId || totalPages === 0) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveProgress(currentPage, totalPages);
+      if (fileType === "epub") {
+        // For EPUB: pass the actual displayed percentage and CFI directly.
+        // currentPage is estimated from percentage for display only — don't recalculate.
+        saveProgress(currentPage, totalPages, percentage, epubCfi || undefined);
+      } else {
+        // For PDF: percentage is derived accurately from page/total
+        saveProgress(currentPage, totalPages);
+      }
     }, 2000);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [currentPage, totalPages, saveProgress, bookId]);
+  }, [currentPage, totalPages, percentage, epubCfi, fileType, saveProgress, bookId]);
 
   // ──────── Controls auto-hide ────────
   const resetControlsTimer = useCallback(() => {
@@ -538,11 +554,18 @@ export default function EbookReader() {
   // ──────── EPUB location change handler with paywall check ────────
   const handleEpubLocationChange = useCallback(
     ({ percentage: pct, cfi, chapter }: { percentage: number; cfi: string; chapter?: string }) => {
-      setPercentage(pct);
+      // Clamp to 100 — epub.js may fire 99 on the last section due to partial-page rendering
+      const clampedPct = pct >= 98 ? 100 : pct;
+      setPercentage(clampedPct);
       setEpubCfi(cfi);
       if (chapter) setCurrentHref(chapter);
       const tocItem = tocItems.find((t) => chapter && t.href && chapter.includes(t.href));
       setChapterTitle(tocItem?.label || "");
+      // Estimate currentPage from percentage so the progress display in EbookTab and
+      // the auto-save both use a meaningful page number instead of always page 1
+      if (totalPagesRef.current > 0) {
+        setCurrentPage(Math.max(1, Math.round((clampedPct / 100) * totalPagesRef.current)));
+      }
 
       // Auto-trigger paywall if percentage exceeds preview limit
       if (shouldEnforcePreviewLimit && access.isPercentageBlocked(pct) && !showPaywall) {
@@ -731,7 +754,9 @@ export default function EbookReader() {
               zoom={zoom}
               onTotalPagesChange={(total) => {
                 setTotalPages(total);
-                setPercentage(Math.round((currentPage / total) * 100));
+                // Use resumed currentPage if already loaded; don't clobber with page 1
+                const page = currentPage > 1 ? currentPage : 1;
+                setPercentage(Math.round((page / total) * 100));
               }}
               onPageChange={(p) => goToPage(p)}
               onZoomChange={(z) => setZoom(z)}

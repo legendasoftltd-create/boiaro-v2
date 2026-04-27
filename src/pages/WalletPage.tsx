@@ -14,6 +14,7 @@ import {
   BookOpen, CheckCircle
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { toMediaUrl } from "@/lib/mediaUrl";
 
 export default function WalletPage() {
   const { user } = useAuth();
@@ -170,7 +171,7 @@ export default function WalletPage() {
                 <Card key={u.id} className="border-border/30">
                   <CardContent className="p-4 flex items-center gap-3">
                     {u.book?.cover_url ? (
-                      <img src={u.book.cover_url} alt="" className="w-12 h-16 rounded object-cover" />
+                      <img src={toMediaUrl(u.book.cover_url) || ""} alt="" className="w-12 h-16 rounded object-cover" />
                     ) : (
                       <div className="w-12 h-16 rounded bg-secondary/60 flex items-center justify-center">
                         <BookOpen className="w-5 h-5 text-muted-foreground" />

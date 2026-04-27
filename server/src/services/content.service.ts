@@ -68,18 +68,12 @@ export const getEbookSignedUrl = async (
     });
   }
 
-  /**
-   *  SIGNED URL GENERATION (mock / replace with S3 / Cloudflare / Supabase)
-   */
-
-  const expiresIn = 300; // 5 minutes
-  const expiresAt = Date.now() + expiresIn * 1000;
-
-  const signedUrl = `${ebookFormat.file_url}?token=secure_token&expires=${expiresAt}`;
+  // Return the file URL directly — local PostgreSQL/disk storage
+  const expiresIn = 300;
 
   return {
-    signed_url: signedUrl,
-    mime_type: "application/pdf",
+    signed_url: ebookFormat.file_url,
+    mime_type: ebookFormat.file_url?.toLowerCase().endsWith(".epub") ? "application/epub+zip" : "application/pdf",
     expires_in: expiresIn,
   };
 };

@@ -565,22 +565,23 @@ model ContentUnlock {
 }
 
 model ContributorEarning {
-  id                String   @id @default(uuid())
-  book_id           String
-  created_at        DateTime @default(now())
-  earned_amount     Float    @default(0)
-  format            String
-  fulfillment_amount Float   @default(0)
-  order_id          String
-  order_item_id     String
-  percentage        Float    @default(0)
-  role              String
-  sale_amount       Float    @default(0)
-  status            String   @default("pending")
-  user_id           String
+  id                 String   @id @default(uuid())
+  book_id            String
+  created_at         DateTime @default(now())
+  earned_amount      Float    @default(0)
+  format             String
+  fulfillment_amount Float    @default(0)
+  order_id           String?
+  order_item_id      String?
+  content_unlock_id  String?
+  percentage         Float    @default(0)
+  role               String
+  sale_amount        Float    @default(0)
+  status             String   @default("pending")
+  user_id            String
 
-  order      Order     @relation(fields: [order_id], references: [id])
-  order_item OrderItem @relation(fields: [order_item_id], references: [id])
+  order      Order?     @relation(fields: [order_id], references: [id])
+  order_item OrderItem? @relation(fields: [order_item_id], references: [id])
 
   @@map("contributor_earnings")
 }
@@ -1129,15 +1130,16 @@ model RadioStation {
 }
 
 model ReadingProgress {
-  id           String   @id @default(uuid())
-  book_id      String
-  created_at   DateTime @default(now())
-  current_page Int?
-  last_read_at DateTime?
-  percentage   Float?
-  total_pages  Int?
-  updated_at   DateTime @updatedAt
-  user_id      String
+  id            String    @id @default(uuid())
+  book_id       String
+  created_at    DateTime  @default(now())
+  current_page  Int?
+  last_read_at  DateTime?
+  last_read_cfi String?
+  percentage    Float?
+  total_pages   Int?
+  updated_at    DateTime  @updatedAt
+  user_id       String
 
   book Book @relation(fields: [book_id], references: [id])
 

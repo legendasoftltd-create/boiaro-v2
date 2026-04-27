@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import { useNavigate, Link } from "react-router-dom"
 import { useToast } from "@/hooks/use-toast"
+import { toMediaUrl } from "@/lib/mediaUrl"
 
 export default function Profile() {
   const { user, profile, signOut, updateProfile } = useAuth()
@@ -88,7 +89,7 @@ export default function Profile() {
           <Link to={`/book/${book.slug}`} className="shrink-0">
             <div className="w-[72px] h-[100px] bg-muted rounded-l-lg overflow-hidden">
               {book.cover_url ? (
-                <img src={book.cover_url} alt={book.title} className="w-full h-full object-cover" />
+                <img src={toMediaUrl(book.cover_url) || ""} alt={book.title} className="w-full h-full object-cover" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center"><BookCopy className="w-5 h-5 text-muted-foreground" /></div>
               )}
@@ -251,7 +252,7 @@ export default function Profile() {
                                 return (
                                   <div key={item.id} className="flex items-center gap-1.5 shrink-0 text-[13px]">
                                     <div className="w-7 h-10 bg-muted rounded overflow-hidden shrink-0">
-                                      {book?.cover_url && <img src={book.cover_url} alt="" className="w-full h-full object-cover" />}
+                                      {book?.cover_url && <img src={toMediaUrl(book.cover_url) || ""} alt="" className="w-full h-full object-cover" />}
                                     </div>
                                     <div>
                                       <p className="text-[11px] line-clamp-1">{book?.title || "Book"}</p>
