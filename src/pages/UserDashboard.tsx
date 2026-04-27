@@ -13,16 +13,17 @@ import {
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useUserRole } from "@/hooks/useUserRole"
+import { toMediaUrl } from "@/lib/mediaUrl"
 
 export default function UserDashboard() {
   const { user, profile } = useAuth()
   const { roles } = useUserRole()
 
-  // Real tRPC data
-  const { data: walletData } = trpc.wallet.balance.useQuery(undefined, { enabled: !!user })
-  const { data: ordersData } = trpc.orders.myOrders.useQuery(undefined, { enabled: !!user })
-  const { data: bookmarksData } = trpc.books.userBookmarks.useQuery(undefined, { enabled: !!user })
-  const { data: readingProgress } = trpc.profiles.readingProgress.useQuery(undefined, { enabled: !!user })
+  // Real tRPC data — refetch every 30 seconds for live stats
+  const { data: walletData } = trpc.wallet.balance.useQuery(undefined, { enabled: !!user, refetchInterval: 30_000, staleTime: 15_000 })
+  const { data: ordersData } = trpc.orders.myOrders.useQuery(undefined, { enabled: !!user, refetchInterval: 60_000, staleTime: 30_000 })
+  const { data: bookmarksData } = trpc.books.userBookmarks.useQuery(undefined, { enabled: !!user, refetchInterval: 60_000, staleTime: 30_000 })
+  const { data: readingProgress } = trpc.profiles.readingProgress.useQuery(undefined, { enabled: !!user, refetchInterval: 30_000, staleTime: 15_000 })
 
   if (!user) return null
 
@@ -155,7 +156,7 @@ export default function UserDashboard() {
                     className="flex items-center gap-3 p-2 rounded-lg hover:bg-secondary/40 transition-colors"
                   >
                     {item.books?.cover_url ? (
-                      <img src={item.books.cover_url} className="w-10 h-14 rounded object-cover" alt="" />
+                      <img src={toMediaUrl(item.books.cover_url) || ""} className="w-10 h-14 rounded object-cover" alt="" />
                     ) : (
                       <div className="w-10 h-14 rounded bg-secondary/60 flex items-center justify-center">
                         <BookOpen className="w-4 h-4 text-muted-foreground" />

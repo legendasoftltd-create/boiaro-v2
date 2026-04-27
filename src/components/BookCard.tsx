@@ -31,23 +31,9 @@ export function BookCard({ book, showFormats = true, showPrice = true, showRatin
      <div className={`group cursor-pointer ${fillWidth ? "w-full" : "flex-shrink-0 w-[120px] md:w-[190px] snap-start"}`} onClick={() => navigate(`/book/${book.slug}`)}>
        <div className="relative aspect-[2/3] rounded-lg md:rounded-2xl overflow-hidden mb-1.5 md:mb-3 bg-card shadow-md ring-1 ring-border/40 group-hover:ring-primary/30 group-hover:shadow-xl group-hover:shadow-primary/[0.06] transition-all duration-300">
 
-        {/* <img src={book.cover} alt={book.titleEn || book.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async" sizes="(max-width: 768px) 120px, 190px" /> */}
-
-       {!book?.cover && book?.cover_url && (
-        <img 
-        src={
-          book?.cover_url
-        }
-  alt={book.titleEn || book.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async" sizes="(max-width: 768px) 120px, 190px" />
-       )}
-
-       {!book?.cover_url && book?.cover && (
-        <img 
-        src={
-          book?.cover
-        }
-  alt={book.titleEn || book.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async" sizes="(max-width: 768px) 120px, 190px" />
-       )}
+        {book.cover && (
+          <img src={book.cover} alt={book.titleEn || book.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" decoding="async" sizes="(max-width: 768px) 120px, 190px" />
+        )}
         
 
         <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />

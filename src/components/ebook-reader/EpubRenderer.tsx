@@ -275,13 +275,27 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           if (timeoutId) clearTimeout(timeoutId);
           setLoaded(true);
 
+          // Generate locations for accurate percentage tracking (runs in background after first render)
+          book.locations.generate(1024).then(() => {
+            if (!destroyed) console.debug("[EpubRenderer] Locations generated:", book?.locations?.length());
+          }).catch(() => {});
+
           // Handle relocated event for progress tracking
           rendition.on("relocated", (location: any) => {
             if (destroyed) return;
             try {
-              const pct = book?.locations?.length()
-                ? Math.round((location.start?.percentage || 0) * 100)
-                : 0;
+              let pct: number;
+              if (book?.locations?.length()) {
+                // Accurate percentage once locations are generated
+                pct = Math.round((location.start?.percentage ?? 0) * 100);
+              } else {
+                // Spine-based estimate while locations are still generating
+                const spineItems = (book?.spine as any)?.items;
+                const spineLen = Array.isArray(spineItems) ? spineItems.length : 1;
+                const idx = location.start?.index ?? 0;
+                pct = Math.round((idx / Math.max(1, spineLen - 1)) * 100);
+              }
+              pct = Math.min(100, Math.max(0, pct));
               const cfi = location.start?.cfi || "";
               const chapter = location.start?.href || "";
               console.debug("[EpubRenderer] relocated → pct:", pct, "cfi:", cfi?.substring(0, 40));

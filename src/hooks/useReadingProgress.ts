@@ -7,6 +7,7 @@ interface ReadingProgressData {
   totalPages: number;
   percentage: number;
   lastReadAt: string | null;
+  lastReadCfi: string | null;
 }
 
 export function useReadingProgress(bookId: string | undefined) {
@@ -28,17 +29,28 @@ export function useReadingProgress(bookId: string | undefined) {
         totalPages: d.total_pages || 0,
         percentage: Number(d.percentage) || 0,
         lastReadAt: d.last_read_at || null,
+        lastReadCfi: d.last_read_cfi || null,
       });
     }
   }, [query.data]);
 
+  // percentageOverride: pass actual percentage directly (for EPUB where page numbers are unreliable)
+  // cfi: EPUB content fragment identifier for exact position restore
   const saveProgress = useCallback(
-    async (currentPage: number, totalPages: number) => {
+    async (currentPage: number, totalPages: number, percentageOverride?: number, cfi?: string) => {
       if (!user || !bookId) return;
-      const percentage = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
+      const percentage = percentageOverride !== undefined
+        ? Math.min(Math.round(percentageOverride), 100)
+        : totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
       const clamped = Math.min(percentage, 100);
 
-      setLocalProgress({ currentPage, totalPages, percentage: clamped, lastReadAt: new Date().toISOString() });
+      setLocalProgress({
+        currentPage,
+        totalPages,
+        percentage: clamped,
+        lastReadAt: new Date().toISOString(),
+        lastReadCfi: cfi ?? localProgress?.lastReadCfi ?? null,
+      });
 
       try {
         await updateMutation.mutateAsync({
@@ -46,12 +58,13 @@ export function useReadingProgress(bookId: string | undefined) {
           currentPage,
           totalPages,
           percentage: clamped,
+          cfi,
         });
       } catch {
         // Silent
       }
     },
-    [user, bookId, updateMutation]
+    [user, bookId, updateMutation, localProgress?.lastReadCfi]
   );
 
   const loadProgress = useCallback(async () => {

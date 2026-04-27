@@ -4,6 +4,8 @@ import { trpc } from "@/lib/trpc"
 import { useActivityTracker } from "@/hooks/useActivityTracker"
 import { useBookEngagement } from "@/hooks/useBookEngagement"
 import { books as staticBooks } from "@/lib/data"
+import { toMediaUrl } from "@/lib/mediaUrl"
+import { formatDuration } from "@/lib/duration"
 import { Navbar } from "@/components/Navbar"
 import { Footer } from "@/components/Footer"
 import { BookDetailHero } from "@/components/book-detail/BookDetailHero"
@@ -21,7 +23,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     id: dbBook.author_id || "",
     name: dbBook.author.name || "",
     nameEn: dbBook.author.name_en || "",
-    avatar: dbBook.author.avatar_url || "",
+    avatar: toMediaUrl(dbBook.author.avatar_url) || "",
     bio: dbBook.author.bio || "",
     genre: dbBook.author.genre || "",
     booksCount: 0,
@@ -33,7 +35,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     id: dbBook.publisher_id || "",
     name: dbBook.publisher.name || "",
     nameEn: dbBook.publisher.name_en || "",
-    logo: dbBook.publisher.logo_url || "",
+    logo: toMediaUrl(dbBook.publisher.logo_url) || "",
     description: dbBook.publisher.description || "",
     booksCount: 0,
     isVerified: dbBook.publisher.is_verified || false,
@@ -64,7 +66,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
   if (audiobookFmt?.narrator) {
     const n = audiobookFmt.narrator
     addNarrator({
-      id: n.id, name: n.name, nameEn: n.name_en || "", avatar: n.avatar_url || "",
+      id: n.id, name: n.name, nameEn: n.name_en || "", avatar: toMediaUrl(n.avatar_url) || "",
       bio: n.bio || "", specialty: n.specialty || "", audiobooksCount: 0,
       listeners: "0", rating: n.rating || 0, isFeatured: n.is_featured || false,
     })
@@ -79,7 +81,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
       id: contrib.user_id || "",
       name: contrib.display_name || "Narrator",
       nameEn: "",
-      avatar: contrib.avatar_url || "",
+      avatar: toMediaUrl(contrib.avatar_url) || "",
       bio: "",
       specialty: "",
       audiobooksCount: 0,
@@ -134,7 +136,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     bookFormats.audiobook = {
       available: audiobookFmt.is_available !== false,
       price: Number(audiobookFmt.price) || 0,
-      duration: audiobookFmt.duration || "0h 0m",
+      duration: formatDuration(audiobookFmt.duration),
       narrator: allNarrators[0] || { id: "", name: "Narrator not assigned", nameEn: "", avatar: "", bio: "", specialty: "", audiobooksCount: 0, listeners: "0", rating: 0, isFeatured: false },
       chapters: audioTracks.length || audiobookFmt.chapters_count || 0,
       quality: audiobookFmt.audio_quality || "standard",
@@ -166,7 +168,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     author,
     publisher,
     category,
-    cover: dbBook.cover_url || "",
+    cover: toMediaUrl(dbBook.cover_url) || "",
     description: dbBook.description || "",
     descriptionBn: dbBook.description_bn || dbBook.description || "",
     rating: Number(dbBook.rating) || 0,
@@ -298,20 +300,7 @@ function normalizeAudioMimeType(mimeType: string | null): string | null {
 function normalizeAudioSource(source: string | null): string | null {
   if (!source) return null
   const trimmed = source.trim()
-  if (/^https?:\/\//i.test(trimmed)) {
-    const markers = [
-      "/storage/v1/object/public/audiobooks/",
-      "/storage/v1/object/sign/audiobooks/",
-      "/storage/v1/object/authenticated/audiobooks/",
-    ]
-    for (const marker of markers) {
-      if (trimmed.includes(marker)) {
-        const split = trimmed.split(marker)[1]
-        if (!split) return null
-        return decodeURIComponent(split.split("?")[0] || "").replace(/^\/+/, "")
-      }
-    }
-    return trimmed
-  }
-  return trimmed.replace(/^\/+/, "")
+  if (!trimmed) return null
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return toMediaUrl(trimmed) || null
 }

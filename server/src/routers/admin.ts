@@ -5,6 +5,7 @@ import { initTRPC } from "@trpc/server";
 import type { Context } from "../context.js";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { calculateEarnings } from "../lib/earnings.js";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const role = await prisma.userRole.findFirst({
@@ -3983,6 +3984,36 @@ export const adminRouter = router({
         data: { status: "confirmed" },
       });
       return { confirmed_count: result.count };
+    }),
+
+  // Backfill earnings for an existing confirmed order that was placed before
+  // earnings calculation was implemented.
+  calculateOrderEarnings: adminProcedure
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ input }) => {
+      const order = await prisma.order.findUnique({
+        where: { id: input.orderId },
+        include: { items: { select: { id: true, book_id: true, format: true, price: true, quantity: true } } },
+      });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
+
+      let created = 0;
+      for (const item of order.items) {
+        const alreadyExists = await prisma.contributorEarning.findFirst({
+          where: { order_item_id: item.id },
+        });
+        if (alreadyExists) continue;
+
+        await calculateEarnings({
+          bookId: item.book_id,
+          format: item.format,
+          saleAmount: Number(item.price) * item.quantity,
+          orderId: order.id,
+          orderItemId: item.id,
+        });
+        created++;
+      }
+      return { created };
     }),
 
   revenueDashboardData: adminProcedure.query(async () => {

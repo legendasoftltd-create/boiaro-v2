@@ -20,6 +20,8 @@ export default function AdminEarnings() {
   const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [backfillOrderId, setBackfillOrderId] = useState("");
+  const [backfilling, setBackfilling] = useState(false);
   const { log } = useAdminLogger();
 
   useEffect(() => { load(); }, []);
@@ -71,6 +73,22 @@ export default function AdminEarnings() {
     if (!pending.length) { toast.info("No pending earnings to confirm"); return; }
     setSelectedIds(pending);
     setConfirmOpen(true);
+  };
+
+  const backfillOrder = async () => {
+    const id = backfillOrderId.trim();
+    if (!id) { toast.error("Enter an order ID"); return; }
+    setBackfilling(true);
+    try {
+      const result = await utils.admin.calculateOrderEarnings.fetch({ orderId: id });
+      toast.success(`Created ${result.created} earning record(s) for order`);
+      setBackfillOrderId("");
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Backfill failed");
+    } finally {
+      setBackfilling(false);
+    }
   };
 
   const toggleSelect = (id: string) => {
@@ -225,14 +243,34 @@ export default function AdminEarnings() {
         </CardContent>
       </Card>
 
+      {/* Backfill tool for existing orders */}
+      <Card className="border-amber-500/20 bg-amber-500/5">
+        <CardContent className="p-4 space-y-3">
+          <p className="text-sm font-medium flex items-center gap-1"><TrendingUp className="w-4 h-4 text-amber-400" /> Backfill Earnings for Existing Order</p>
+          <p className="text-xs text-muted-foreground">For orders placed before automatic commission calculation was enabled, enter the Order ID to generate earnings records.</p>
+          <div className="flex gap-2 max-w-md">
+            <Input
+              placeholder="Order ID (e.g. ORD-1234567-ABCD)"
+              value={backfillOrderId}
+              onChange={e => setBackfillOrderId(e.target.value)}
+              className="h-8 text-xs"
+            />
+            <Button size="sm" onClick={backfillOrder} disabled={backfilling} className="whitespace-nowrap">
+              {backfilling ? "Processing..." : "Calculate Earnings"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Info note */}
       <Card className="border-blue-500/20 bg-blue-500/5">
         <CardContent className="p-4 text-sm text-muted-foreground space-y-1">
           <p className="font-medium text-foreground flex items-center gap-1"><Users className="w-4 h-4" /> Earnings Pipeline</p>
-          <p>1. Order confirmed → <code>calculate-earnings</code> creates <strong>pending</strong> rows</p>
-          <p>2. Admin confirms earnings → status becomes <strong>confirmed</strong></p>
-          <p>3. Confirmed earnings are available for creator withdrawal</p>
-          <p>4. Creator submits withdrawal → admin processes payout</p>
+          <p>1. Order confirmed / coin unlock → earnings automatically created as <strong>pending</strong></p>
+          <p>2. Admin confirms earnings here → status becomes <strong>confirmed</strong></p>
+          <p>3. Confirmed earnings are available for creator withdrawal requests</p>
+          <p>4. Creator submits withdrawal → admin processes payout via Withdrawals panel</p>
+          <p className="mt-1 text-xs">Revenue splits: <strong>eBook</strong> Writer 60% / Publisher 20% / Platform 15% &nbsp;|&nbsp; <strong>Audiobook</strong> Writer 40% / Narrator 30% / Publisher 10% / Platform 15% &nbsp;|&nbsp; <strong>Hardcopy</strong> Writer 40% / Publisher 30% / Platform 10% / Fulfillment 15%</p>
         </CardContent>
       </Card>
 

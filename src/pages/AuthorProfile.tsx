@@ -7,6 +7,7 @@ import { BookOpen } from "lucide-react";
 import { FollowButton } from "@/components/FollowButton";
 import { trpc } from "@/lib/trpc";
 import { useBooks } from "@/hooks/useBooks";
+import { toMediaUrl } from "@/lib/mediaUrl";
 
 const AuthorProfile = () => {
   const { id } = useParams<{ id: string }>();
@@ -36,7 +37,7 @@ const AuthorProfile = () => {
       <div className="container mx-auto px-4 lg:px-8 pt-20 pb-10">
         <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-10">
           <div className="relative w-32 h-32 rounded-full overflow-hidden ring-2 ring-border/60 flex-shrink-0">
-            <img src={author.avatar_url || ""} alt={author.name} className="w-full h-full object-cover" />
+            <img src={toMediaUrl(author.avatar_url) || ""} alt={author.name} className="w-full h-full object-cover" />
           </div>
           <div className="text-center md:text-left">
             <div className="flex items-center gap-2 justify-center md:justify-start">

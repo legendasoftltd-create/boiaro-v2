@@ -88,12 +88,17 @@ export const profilesRouter = router({
         bookId: z.string(),
         currentPage: z.number().int().min(0),
         totalPages: z.number().int().min(0),
+        percentage: z.number().min(0).max(100).optional(),
+        cfi: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const percentage = input.totalPages > 0
-        ? Math.min((input.currentPage / input.totalPages) * 100, 100)
-        : 0;
+      // Use caller-supplied percentage (accurate for EPUB) or calculate from page numbers (PDF)
+      const percentage = input.percentage !== undefined
+        ? Math.min(input.percentage, 100)
+        : input.totalPages > 0
+          ? Math.min((input.currentPage / input.totalPages) * 100, 100)
+          : 0;
 
       return prisma.readingProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
@@ -104,12 +109,14 @@ export const profilesRouter = router({
           total_pages: input.totalPages,
           percentage,
           last_read_at: new Date(),
+          last_read_cfi: input.cfi ?? null,
         },
         update: {
           current_page: input.currentPage,
           total_pages: input.totalPages,
           percentage,
           last_read_at: new Date(),
+          ...(input.cfi !== undefined ? { last_read_cfi: input.cfi } : {}),
         },
       });
     }),
@@ -274,13 +281,27 @@ export const profilesRouter = router({
   creatorStats: protectedProcedure
     .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
     .query(async ({ ctx, input }) => {
-      const [contributors, earnings, withdrawals] = await Promise.all([
-        prisma.bookContributor.findMany({ where: { user_id: ctx.userId, role: input.role }, select: { book_id: true } }),
+      const [contributors, submittedBooks, earnings, withdrawals] = await Promise.all([
+        prisma.bookContributor.findMany({
+          where: { user_id: ctx.userId, role: input.role },
+          select: { book_id: true },
+        }),
+        // Also count books the creator submitted directly (e.g. via creator portal)
+        prisma.book.findMany({
+          where: { submitted_by: ctx.userId },
+          select: { id: true },
+        }),
         prisma.contributorEarning.findMany({ where: { user_id: ctx.userId, role: input.role } }),
         prisma.withdrawalRequest.findMany({ where: { user_id: ctx.userId } }),
       ]);
 
-      const bookCount = new Set(contributors.map(c => c.book_id)).size;
+      // Merge both sources for total book count
+      const allBookIds = new Set([
+        ...contributors.map((c) => c.book_id),
+        ...submittedBooks.map((b) => b.id),
+      ]);
+      const bookCount = allBookIds.size;
+
       const totalEarnings = earnings.reduce((s, e) => s + e.earned_amount, 0);
       const confirmed = earnings.filter(e => e.status === "confirmed").reduce((s, e) => s + e.earned_amount, 0);
       const withdrawn = withdrawals.filter(w => w.status === "paid").reduce((s, w) => s + w.amount, 0);
@@ -294,6 +315,7 @@ export const profilesRouter = router({
         availableBalance: Math.max(0, confirmed - withdrawn - pendingPayout),
         pendingPayout,
         withdrawn,
+        // salesByFormat = number of individual sales (earning records per format)
         salesByFormat: {
           ebook: earnings.filter(e => e.format === "ebook").length,
           audiobook: earnings.filter(e => e.format === "audiobook").length,
@@ -307,13 +329,35 @@ export const profilesRouter = router({
       };
     }),
 
-  mySubmittedBooks: protectedProcedure.query(({ ctx }) =>
-    prisma.book.findMany({
-      where: { submitted_by: ctx.userId },
-      select: { id: true, title: true, cover_url: true, submission_status: true, created_at: true },
-      orderBy: { created_at: "desc" },
-    })
-  ),
+  mySubmittedBooks: protectedProcedure.query(async ({ ctx }) => {
+    // Include both directly submitted books AND books the user is credited on
+    const [submittedBooks, contributorLinks] = await Promise.all([
+      prisma.book.findMany({
+        where: { submitted_by: ctx.userId },
+        select: { id: true, title: true, cover_url: true, submission_status: true, created_at: true },
+      }),
+      prisma.bookContributor.findMany({
+        where: { user_id: ctx.userId },
+        select: { book_id: true },
+      }),
+    ]);
+
+    const submittedIds = new Set(submittedBooks.map((b) => b.id));
+    const extraIds = [...new Set(contributorLinks.map((c) => c.book_id))].filter(
+      (id) => !submittedIds.has(id)
+    );
+
+    const extraBooks = extraIds.length > 0
+      ? await prisma.book.findMany({
+          where: { id: { in: extraIds } },
+          select: { id: true, title: true, cover_url: true, submission_status: true, created_at: true },
+        })
+      : [];
+
+    return [...submittedBooks, ...extraBooks].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }),
 
   myEarnings: protectedProcedure
     .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
@@ -343,8 +387,32 @@ export const profilesRouter = router({
       amount: z.number().positive(),
       method: z.enum(["bkash", "nagad", "bank"]),
       accountInfo: z.string().min(1),
+      role: z.enum(["writer", "narrator", "publisher"]),
     }))
     .mutation(async ({ ctx, input }) => {
+      // Verify available balance before creating request
+      const [earnings, existingWithdrawals] = await Promise.all([
+        prisma.contributorEarning.findMany({
+          where: { user_id: ctx.userId, role: input.role, status: "confirmed" },
+          select: { earned_amount: true },
+        }),
+        prisma.withdrawalRequest.findMany({
+          where: { user_id: ctx.userId, status: { in: ["pending", "approved"] } },
+          select: { amount: true },
+        }),
+      ]);
+
+      const confirmedTotal = earnings.reduce((s, e) => s + e.earned_amount, 0);
+      const pendingWithdrawn = existingWithdrawals.reduce((s, w) => s + w.amount, 0);
+      const available = confirmedTotal - pendingWithdrawn;
+
+      if (input.amount > available) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Insufficient balance. Available: ৳${available.toFixed(2)}, Requested: ৳${input.amount.toFixed(2)}`,
+        });
+      }
+
       const mobileMethod = input.method === "bkash" || input.method === "nagad";
       return prisma.withdrawalRequest.create({
         data: {

@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import type { MasterBook, Author, Publisher, Category } from "@/lib/types";
 import { toMediaUrl } from "@/lib/mediaUrl";
+import { formatDuration } from "@/lib/duration";
 
 export function trpcBookToMasterBook(book: any): MasterBook {
   const author: Author = book.author
@@ -50,17 +51,18 @@ export function trpcBookToMasterBook(book: any): MasterBook {
         pages: f.pages || 0,
         fileSize: f.file_size || "",
         previewChapters: f.preview_chapters ?? undefined,
+        previewPercentage: f.preview_percentage ?? null,
       };
     } else if (f.format === "audiobook") {
       const n = f.narrator;
       formats.audiobook = {
         available: f.is_available !== false,
         price: Number(f.price) || 0,
-        duration: f.duration || "",
+        duration: formatDuration(f.duration),
         narrator: n
           ? {
               id: n.id, name: n.name, nameEn: n.name_en || "",
-              avatar: n.avatar_url || "", bio: n.bio || "",
+              avatar: toMediaUrl(n.avatar_url) || "", bio: n.bio || "",
               specialty: n.specialty || "", audiobooksCount: 0,
               listeners: "0", rating: Number(n.rating) || 0,
               isFeatured: n.is_featured || false,
@@ -68,6 +70,7 @@ export function trpcBookToMasterBook(book: any): MasterBook {
           : { id: "", name: "", nameEn: "", avatar: "", bio: "", specialty: "", audiobooksCount: 0, listeners: "0", rating: 0, isFeatured: false },
         chapters: f.chapters_count || 0,
         quality: (f.audio_quality as "standard" | "hd") || "standard",
+        previewPercentage: (f as any).preview_percentage ?? null,
       };
     } else if (f.format === "hardcopy") {
       formats.hardcopy = {
@@ -210,7 +213,7 @@ export function useAuthors() {
     id: a.id,
     name: a.name,
     nameEn: a.name_en || "",
-    avatar: a.avatar_url || "",
+    avatar: toMediaUrl(a.avatar_url) || "",
     bio: a.bio || "",
     genre: a.genre || "",
     booksCount: a.booksCount || 0,
@@ -228,7 +231,7 @@ export function useNarrators() {
     id: n.id,
     name: n.name,
     nameEn: n.name_en || "",
-    avatar: n.avatar_url || "",
+    avatar: toMediaUrl(n.avatar_url) || "",
     bio: n.bio || "",
     specialty: n.specialty || "",
     audiobooksCount: n.audiobooksCount || 0,

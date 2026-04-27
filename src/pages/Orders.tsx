@@ -10,6 +10,7 @@ import { Footer } from "@/components/Footer"
 import { useAuth } from "@/contexts/AuthContext"
 import { trpc } from "@/lib/trpc"
 import { OrderInvoice } from "@/components/admin/OrderInvoice"
+import { toMediaUrl } from "@/lib/mediaUrl"
 
 // ─── Payment Status Config ───
 const paymentStatusConfig: Record<string, { label: string; color: string }> = {
@@ -143,7 +144,7 @@ export default function Orders() {
                       {oi.map((item: any) => (
                         <div key={item.id} className="flex flex-col items-center gap-0.5 shrink-0">
                           <div className="w-10 h-14 rounded bg-muted overflow-hidden">
-                            {item.books?.cover_url && <img src={item.books.cover_url} alt="" className="w-full h-full object-cover" />}
+                            {item.books?.cover_url && <img src={toMediaUrl(item.books.cover_url) || ""} alt="" className="w-full h-full object-cover" />}
                           </div>
                           <span className="text-[8px] text-muted-foreground flex items-center gap-0.5">
                             {item.format === "ebook" && <BookOpen className="w-2.5 h-2.5" />}

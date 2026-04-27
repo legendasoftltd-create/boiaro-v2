@@ -3,6 +3,7 @@ import { Star, BookOpen, Sparkles, Loader2 } from "lucide-react"
 import { trpc } from "@/lib/trpc"
 import type { MasterBook } from "@/lib/types"
 import { BookCard } from "@/components/BookCard"
+import { toMediaUrl } from "@/lib/mediaUrl"
 
 interface Props {
   book: MasterBook
@@ -29,7 +30,7 @@ export function RelatedBooks({ book, allBooks }: Props) {
     <Link key={b.id} to={`/book/${b.slug}`} className="shrink-0 w-[130px] md:w-[160px] group cursor-pointer block">
       <div className="aspect-[2/3] rounded-xl overflow-hidden bg-muted mb-2 ring-1 ring-border/50 group-hover:ring-primary/30 transition-all">
         {b.cover || b.cover_url ? (
-          <img src={b.cover || b.cover_url} alt={b.title} className="w-full h-full object-cover" />
+          <img src={b.cover || toMediaUrl(b.cover_url)} alt={b.title} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center"><BookOpen className="w-8 h-8 text-muted-foreground" /></div>
         )}
