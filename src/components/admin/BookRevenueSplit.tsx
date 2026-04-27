@@ -22,6 +22,23 @@ interface SplitState {
   id?: string;
 }
 
+const FALLBACK_SPLITS: Record<string, Omit<SplitState, "useDefault" | "id">> = {
+  ebook: {
+    writer_percentage: 65,
+    publisher_percentage: 0,
+    narrator_percentage: 0,
+    platform_percentage: 35,
+    fulfillment_cost_percentage: 0,
+  },
+  audiobook: {
+    writer_percentage: 0,
+    publisher_percentage: 0,
+    narrator_percentage: 60,
+    platform_percentage: 40,
+    fulfillment_cost_percentage: 0,
+  },
+};
+
 const FORMAT_CONFIG = [
   {
     format: "ebook",
@@ -43,8 +60,8 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
   const utils = trpc.useUtils();
   const [defaults, setDefaults] = useState<Record<string, any>>({});
   const [splits, setSplits] = useState<Record<string, SplitState>>({
-    ebook: { useDefault: true, writer_percentage: 65, publisher_percentage: 0, narrator_percentage: 0, platform_percentage: 35, fulfillment_cost_percentage: 0 },
-    audiobook: { useDefault: true, writer_percentage: 0, publisher_percentage: 0, narrator_percentage: 60, platform_percentage: 40, fulfillment_cost_percentage: 0 },
+    ebook: { useDefault: true, ...FALLBACK_SPLITS.ebook },
+    audiobook: { useDefault: true, ...FALLBACK_SPLITS.audiobook },
   });
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -60,23 +77,24 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
     ["ebook", "audiobook"].forEach(format => {
       const override = (data.overrides || []).find((r: any) => r.format === format);
       const def = defaultMap[format] || {};
+      const fallback = FALLBACK_SPLITS[format] || FALLBACK_SPLITS.ebook;
       if (override) {
         newSplits[format] = {
           useDefault: false, id: override.id,
-          writer_percentage: override.writer_percentage,
-          publisher_percentage: override.publisher_percentage,
-          narrator_percentage: override.narrator_percentage,
-          platform_percentage: override.platform_percentage,
-          fulfillment_cost_percentage: override.fulfillment_cost_percentage || 0,
+          writer_percentage: Number(override.writer_percentage ?? fallback.writer_percentage),
+          publisher_percentage: Number(override.publisher_percentage ?? fallback.publisher_percentage),
+          narrator_percentage: Number(override.narrator_percentage ?? fallback.narrator_percentage),
+          platform_percentage: Number(override.platform_percentage ?? fallback.platform_percentage),
+          fulfillment_cost_percentage: Number(override.fulfillment_cost_percentage ?? fallback.fulfillment_cost_percentage),
         };
       } else {
         newSplits[format] = {
           useDefault: true,
-          writer_percentage: def.writer_percentage || 0,
-          publisher_percentage: def.publisher_percentage || 0,
-          narrator_percentage: def.narrator_percentage || 0,
-          platform_percentage: def.platform_percentage || 0,
-          fulfillment_cost_percentage: def.fulfillment_cost_percentage || 0,
+          writer_percentage: Number(def.writer_percentage ?? fallback.writer_percentage),
+          publisher_percentage: Number(def.publisher_percentage ?? fallback.publisher_percentage),
+          narrator_percentage: Number(def.narrator_percentage ?? fallback.narrator_percentage),
+          platform_percentage: Number(def.platform_percentage ?? fallback.platform_percentage),
+          fulfillment_cost_percentage: Number(def.fulfillment_cost_percentage ?? fallback.fulfillment_cost_percentage),
         };
       }
     });
@@ -86,14 +104,15 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
   const toggleDefault = (format: string, useDefault: boolean) => {
     if (useDefault) {
       const def = defaults[format] || {};
+      const fallback = FALLBACK_SPLITS[format] || FALLBACK_SPLITS.ebook;
       setSplits(prev => ({
         ...prev, [format]: {
           ...prev[format], useDefault: true,
-          writer_percentage: def.writer_percentage || 0,
-          publisher_percentage: def.publisher_percentage || 0,
-          narrator_percentage: def.narrator_percentage || 0,
-          platform_percentage: def.platform_percentage || 0,
-          fulfillment_cost_percentage: def.fulfillment_cost_percentage || 0,
+          writer_percentage: Number(def.writer_percentage ?? fallback.writer_percentage),
+          publisher_percentage: Number(def.publisher_percentage ?? fallback.publisher_percentage),
+          narrator_percentage: Number(def.narrator_percentage ?? fallback.narrator_percentage),
+          platform_percentage: Number(def.platform_percentage ?? fallback.platform_percentage),
+          fulfillment_cost_percentage: Number(def.fulfillment_cost_percentage ?? fallback.fulfillment_cost_percentage),
         }
       }));
     } else {
@@ -105,15 +124,17 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
     setSplits(prev => ({ ...prev, [format]: { ...prev[format], [field]: value } }));
   };
 
-  const getTotal = (split: SplitState) =>
-    split.writer_percentage + split.publisher_percentage + split.narrator_percentage +
-    split.platform_percentage + split.fulfillment_cost_percentage;
+  const getTotal = (format: string, split: SplitState) => {
+    const config = FORMAT_CONFIG.find((f) => f.format === format);
+    const fields = config?.fields || [];
+    return fields.reduce((sum, field) => sum + Number((split as any)[field] || 0), 0);
+  };
 
   const upsertRevenueOverride = trpc.admin.upsertRevenueOverride.useMutation();
 
   const saveSplit = async (format: string) => {
     const split = splits[format];
-    const total = getTotal(split);
+    const total = getTotal(format, split);
     if (Math.abs(total - 100) > 0.01) { toast.error(`Total must be 100% (currently ${total}%)`); return; }
 
     setSaving(format);
@@ -155,7 +176,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
           {FORMAT_CONFIG.map(({ format, label, icon: Icon, fields, labels }) => {
             const split = splits[format];
             if (!split) return null;
-            const total = getTotal(split);
+            const total = getTotal(format, split);
             return (
               <div key={format} className="p-3 rounded-lg bg-secondary/50 space-y-3">
                 <div className="flex items-center justify-between">
