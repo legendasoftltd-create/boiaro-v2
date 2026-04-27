@@ -205,10 +205,66 @@ export const adminRouter = router({
   deleteBookWithFormats: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) =>
-      prisma.$transaction([
-        prisma.bookFormat.deleteMany({ where: { book_id: input.id } }),
-        prisma.book.delete({ where: { id: input.id } }),
-      ])
+      prisma.$transaction(async (tx) => {
+        const formatIds = (
+          await tx.bookFormat.findMany({
+            where: { book_id: input.id },
+            select: { id: true },
+          })
+        ).map((f) => f.id);
+
+        const commentIds = (
+          await tx.bookComment.findMany({
+            where: { book_id: input.id },
+            select: { id: true },
+          })
+        ).map((c) => c.id);
+
+        if (commentIds.length > 0) {
+          await tx.commentLike.deleteMany({ where: { comment_id: { in: commentIds } } });
+          await tx.bookComment.deleteMany({ where: { id: { in: commentIds } } });
+        }
+
+        // Clear nullable references first so historical orders and presence survive.
+        if (formatIds.length > 0) {
+          await tx.orderItem.updateMany({
+            where: { book_format_id: { in: formatIds } },
+            data: { book_format_id: null },
+          });
+        }
+        await tx.userPresence.updateMany({
+          where: { current_book_id: input.id },
+          data: { current_book_id: null },
+        });
+
+        // Remove direct book/format dependents.
+        await tx.bookmark.deleteMany({ where: { book_id: input.id } });
+        await tx.bookRead.deleteMany({ where: { book_id: input.id } });
+        await tx.review.deleteMany({ where: { book_id: input.id } });
+        await tx.readingProgress.deleteMany({ where: { book_id: input.id } });
+        await tx.listeningProgress.deleteMany({ where: { book_id: input.id } });
+        await tx.contentUnlock.deleteMany({ where: { book_id: input.id } });
+        await tx.dailyBookStat.deleteMany({ where: { book_id: input.id } });
+        await tx.bookContributor.deleteMany({ where: { book_id: input.id } });
+
+        // Best-effort cleanup for auxiliary tables keyed by book_id without Prisma relations.
+        await tx.accountingLedger.deleteMany({ where: { book_id: input.id } });
+        await tx.contentAccessLog.deleteMany({ where: { book_id: input.id } });
+        await tx.contentAccessToken.deleteMany({ where: { book_id: input.id } });
+        await tx.contentConsumptionTime.deleteMany({ where: { book_id: input.id } });
+        await tx.contentEditRequest.deleteMany({ where: { book_id: input.id } });
+        await tx.contributorEarning.deleteMany({ where: { book_id: input.id } });
+        await tx.formatRevenueSplit.deleteMany({ where: { book_id: input.id } });
+        await tx.userPurchase.deleteMany({ where: { book_id: input.id } });
+
+        if (formatIds.length > 0) {
+          await tx.audiobookTrack.deleteMany({ where: { book_format_id: { in: formatIds } } });
+          await tx.ebookChapter.deleteMany({ where: { book_format_id: { in: formatIds } } });
+          await tx.bookFormat.deleteMany({ where: { id: { in: formatIds } } });
+        }
+
+        await tx.book.delete({ where: { id: input.id } });
+      })
     ),
 
   upsertBookFormat: adminProcedure
@@ -3571,15 +3627,35 @@ export const adminRouter = router({
     ),
 
   // ── Revenue Splits ─────────────────────────────────────────────────────────
-  listDefaultRevenueRules: adminProcedure.query(() =>
-    prisma.defaultRevenueRule.findMany({ orderBy: { format: "asc" } })
-  ),
+  listDefaultRevenueRules: adminProcedure.query(async () => {
+    const rules = await prisma.defaultRevenueRule.findMany({ orderBy: { format: "asc" } });
+    return rules.map((r) => ({
+      id: r.id,
+      format: r.format,
+      writer_percentage: r.writer_pct,
+      publisher_percentage: r.publisher_pct,
+      narrator_percentage: r.narrator_pct,
+      platform_percentage: r.platform_pct,
+      fulfillment_cost_percentage: r.fulfillment_cost_pct,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    }));
+  }),
 
   updateDefaultRevenueRule: adminProcedure
     .input(z.object({ id: z.string(), writer_percentage: z.number(), publisher_percentage: z.number(), narrator_percentage: z.number(), platform_percentage: z.number(), fulfillment_cost_percentage: z.number() }))
     .mutation(({ input }) => {
       const { id, ...data } = input;
-      return prisma.defaultRevenueRule.update({ where: { id }, data });
+      return prisma.defaultRevenueRule.update({
+        where: { id },
+        data: {
+          writer_pct: data.writer_percentage,
+          publisher_pct: data.publisher_percentage,
+          narrator_pct: data.narrator_percentage,
+          platform_pct: data.platform_percentage,
+          fulfillment_cost_pct: data.fulfillment_cost_percentage,
+        },
+      });
     }),
 
   listRevenueOverrides: adminProcedure.query(async () => {
@@ -4319,7 +4395,17 @@ export const adminRouter = router({
         prisma.formatRevenueSplit.findMany({ where: { book_id: input.bookId } }),
       ]);
       return {
-        defaults,
+        defaults: defaults.map((d) => ({
+          id: d.id,
+          format: d.format,
+          writer_percentage: d.writer_pct,
+          publisher_percentage: d.publisher_pct,
+          narrator_percentage: d.narrator_pct,
+          platform_percentage: d.platform_pct,
+          fulfillment_cost_percentage: d.fulfillment_cost_pct,
+          created_at: d.created_at,
+          updated_at: d.updated_at,
+        })),
         overrides: overrides.map(s => ({
           id: s.id, format: s.format,
           writer_percentage: s.writer_pct, publisher_percentage: s.publisher_pct,
