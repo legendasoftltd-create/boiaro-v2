@@ -43,7 +43,15 @@ export function trpcBookToMasterBook(book: any): MasterBook {
     : { id: "", name: "", nameBn: "", icon: "BookOpen", count: "0", color: "primary" };
 
   const formats: MasterBook["formats"] = {};
+  const selectedByType: Record<string, any> = {};
   for (const f of book.formats || []) {
+    const current = selectedByType[f.format];
+    // Prefer an available format row when duplicates exist for the same type.
+    if (!current || (current.is_available === false && f.is_available !== false)) {
+      selectedByType[f.format] = f;
+    }
+  }
+  for (const f of Object.values(selectedByType)) {
     if (f.format === "ebook") {
       formats.ebook = {
         available: f.is_available !== false,
