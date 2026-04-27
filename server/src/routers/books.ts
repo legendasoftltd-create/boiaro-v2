@@ -743,7 +743,15 @@ export const booksRouter = router({
       if (input.formatId) {
         await prisma.bookFormat.update({ where: { id: input.formatId }, data: formatData });
       } else {
-        await prisma.bookFormat.create({ data: { ...formatData, book_id: input.bookId, format: input.format, submitted_by: ctx.userId } });
+        await prisma.bookFormat.create({
+          data: {
+            ...formatData,
+            book_id: input.bookId,
+            format: input.format,
+            submission_status: input.asDraft ? "draft" : "pending",
+            submitted_by: ctx.userId,
+          },
+        });
       }
       return { success: true };
     }),
