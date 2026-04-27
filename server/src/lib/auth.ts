@@ -5,6 +5,9 @@ export interface AuthUser {
   userEmail: string | null;
 }
 
+const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN ?? "7d";
+const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN ?? "30d";
+
 export function getAuthUserFromAuthorizationHeader(
   authorization?: string | null
 ): AuthUser {
@@ -30,12 +33,12 @@ export function getAuthUserFromAuthorizationHeader(
 
 export function signTokens(userId: string, email: string) {
   const accessToken = jwt.sign({ sub: userId, email }, process.env.JWT_SECRET!, {
-    expiresIn: "15m",
+    expiresIn: ACCESS_TOKEN_EXPIRES_IN,
   });
   const refreshToken = jwt.sign(
     { sub: userId, email },
     process.env.JWT_REFRESH_SECRET!,
-    { expiresIn: "30d" }
+    { expiresIn: REFRESH_TOKEN_EXPIRES_IN }
   );
 
   return { accessToken, refreshToken };

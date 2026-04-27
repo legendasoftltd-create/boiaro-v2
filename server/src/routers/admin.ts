@@ -3256,6 +3256,23 @@ export const adminRouter = router({
           data: { submission_status: input.status },
         });
 
+        if (input.status === "approved") {
+          const audiobookFormats = await tx.bookFormat.findMany({
+            where: { book_id: input.bookId, format: "audiobook" },
+            select: { id: true },
+          });
+          const audiobookFormatIds = audiobookFormats.map((f) => f.id);
+          if (audiobookFormatIds.length > 0) {
+            await tx.audiobookTrack.updateMany({
+              where: {
+                book_format_id: { in: audiobookFormatIds },
+                status: { in: ["draft", "pending"] },
+              },
+              data: { status: "active" },
+            });
+          }
+        }
+
         return updatedBook;
       });
     }),
