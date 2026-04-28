@@ -381,7 +381,13 @@ export const ordersRouter = router({
         }
 
         const frontendBaseUrl = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
-        const backendBaseUrl = (process.env.BACKEND_URL || `http://localhost:${process.env.PORT || "3001"}`).replace(/\/$/, "");
+        const backendBaseUrl = (
+          process.env.BACKEND_URL ||
+          process.env.SERVER_URL ||
+          process.env.PUBLIC_API_URL ||
+          process.env.FRONTEND_URL ||
+          `http://localhost:${process.env.PORT || "3001"}`
+        ).replace(/\/$/, "");
         const successUrl = resolveRedirectUrl(
           readConfigString(gatewayConfig, "success_url"),
           frontendBaseUrl,
