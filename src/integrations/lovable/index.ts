@@ -1,4 +1,4 @@
-type OAuthProvider = "google" | "apple"
+type OAuthProvider = "google" | "facebook" | "apple"
 
 type SignInOptions = {
   redirect_uri?: string
@@ -12,6 +12,14 @@ type OAuthResponse = {
 
 declare global {
   interface Window {
+    FB?: {
+      init: (params: { appId: string; version: string; xfbml?: boolean; cookie?: boolean }) => void
+      login: (
+        callback: (response: { authResponse?: { accessToken: string }; status: string }) => void,
+        options?: { scope?: string }
+      ) => void
+    }
+    fbAsyncInit?: () => void
     google?: {
       accounts?: {
         oauth2?: {
@@ -27,6 +35,56 @@ declare global {
       }
     }
   }
+}
+
+let facebookScriptPromise: Promise<void> | null = null
+
+function loadFacebookSDK(appId: string): Promise<void> {
+  if (facebookScriptPromise) return facebookScriptPromise
+  facebookScriptPromise = new Promise((resolve, reject) => {
+    if (window.FB) {
+      resolve()
+      return
+    }
+    window.fbAsyncInit = () => {
+      window.FB!.init({ appId, version: "v19.0", xfbml: false, cookie: false })
+      resolve()
+    }
+    const existing = document.getElementById("facebook-jssdk")
+    if (existing) return
+    const script = document.createElement("script")
+    script.id = "facebook-jssdk"
+    script.src = "https://connect.facebook.net/en_US/sdk.js"
+    script.async = true
+    script.defer = true
+    script.onerror = () => reject(new Error("Failed to load Facebook SDK."))
+    document.head.appendChild(script)
+  })
+  return facebookScriptPromise
+}
+
+async function signInWithFacebook(): Promise<OAuthResponse> {
+  const appId = import.meta.env.VITE_FACEBOOK_APP_ID as string | undefined
+  if (!appId) throw new Error("Facebook login is not configured. Missing VITE_FACEBOOK_APP_ID.")
+
+  await loadFacebookSDK(appId)
+
+  return new Promise((resolve, reject) => {
+    if (!window.FB) {
+      reject(new Error("Facebook SDK failed to initialize."))
+      return
+    }
+    window.FB.login(
+      (response) => {
+        if (response.authResponse?.accessToken) {
+          resolve({ provider: "facebook", accessToken: response.authResponse.accessToken })
+        } else {
+          reject(new Error("Facebook login was cancelled or denied."))
+        }
+      },
+      { scope: "email,public_profile" }
+    )
+  })
 }
 
 let googleScriptPromise: Promise<void> | null = null
@@ -98,6 +156,10 @@ export const lovable = {
       try {
         if (provider === "google") {
           const data = await signInWithGoogle()
+          return { data, error: null }
+        }
+        if (provider === "facebook") {
+          const data = await signInWithFacebook()
           return { data, error: null }
         }
         return { data: null, error: new Error("Apple login is not configured yet.") }
