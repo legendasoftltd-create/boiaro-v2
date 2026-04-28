@@ -128,78 +128,94 @@ paymentsRestRouter.post("/initiate", requireAuth, async (req: AuthenticatedReque
 });
 
 async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, status: "success" | "failed" | "cancelled") {
-  const payload = asObject(req.method === "POST" ? req.body : req.query);
-  const tranId = getString(payload, "tran_id");
-  const valId = getString(payload, "val_id");
-  const redirect = getString(asObject(req.query), "redirect") || `${process.env.FRONTEND_URL || "http://localhost:8080"}/payment/callback?status=${status}`;
+  const fallbackBase = process.env.FRONTEND_URL || "http://localhost:8080";
+  const redirect =
+    getString(asObject(req.query), "redirect") || `${fallbackBase}/payment/callback?status=${status}`;
 
-  const payment = tranId
-    ? await prisma.payment.findFirst({
-        where: { transaction_id: tranId },
-        include: { order: true },
-      })
-    : null;
+  try {
+    const payload = asObject(req.method === "POST" ? req.body : req.query);
+    const tranId = getString(payload, "tran_id");
+    const valId = getString(payload, "val_id");
 
-  const orderId = payment?.order_id;
-  const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
-  const gatewayConfig = asObject(gateway?.config);
-  const storeId = getString(gatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
-  const storePassword = getString(gatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
-  const mode = gateway?.mode === "live" ? "live" : "test";
+    const payment = tranId
+      ? await prisma.payment.findFirst({
+          where: { transaction_id: tranId },
+          include: { order: true },
+        })
+      : null;
 
-  let validationResponse: Record<string, unknown> | null = null;
-  if (status === "success" && valId && storeId && storePassword) {
-    const validationBase = mode === "live"
-      ? "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
-      : "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php";
-    const url = `${validationBase}?val_id=${encodeURIComponent(valId)}&store_id=${encodeURIComponent(storeId)}&store_passwd=${encodeURIComponent(storePassword)}&v=1&format=json`;
-    try {
-      const response = await fetch(url);
-      validationResponse = (await response.json()) as Record<string, unknown>;
-    } catch {
-      validationResponse = { status: "VALIDATION_FAILED" };
+    const orderId = payment?.order_id;
+    const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
+    const gatewayConfig = asObject(gateway?.config);
+    const storeId = getString(gatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
+    const storePassword = getString(gatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+    const mode = gateway?.mode === "live" ? "live" : "test";
+
+    let validationResponse: Record<string, unknown> | null = null;
+    if (status === "success" && valId && storeId && storePassword) {
+      const validationBase = mode === "live"
+        ? "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
+        : "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php";
+      const url = `${validationBase}?val_id=${encodeURIComponent(valId)}&store_id=${encodeURIComponent(storeId)}&store_passwd=${encodeURIComponent(storePassword)}&v=1&format=json`;
+      try {
+        const response = await fetch(url);
+        validationResponse = (await response.json()) as Record<string, unknown>;
+      } catch {
+        validationResponse = { status: "VALIDATION_FAILED" };
+      }
     }
-  }
 
-  await prisma.paymentEvent.create({
-    data: {
-      gateway: "sslcommerz",
-      event_type: `callback_${status}`,
-      order_id: orderId || null,
-      transaction_id: tranId || null,
-      status,
-      raw_response: {
-        payload,
-        validation: validationResponse,
-      } as any,
-    },
-  });
+    await prisma.paymentEvent.create({
+      data: {
+        gateway: "sslcommerz",
+        event_type: `callback_${status}`,
+        order_id: orderId || null,
+        transaction_id: tranId || null,
+        status,
+        raw_response: {
+          payload,
+          validation: validationResponse,
+        } as any,
+      },
+    });
 
-  if (status === "success" && orderId) {
-    const validationStatus = String(validationResponse?.status || "").toUpperCase();
-    const isValidated = !validationResponse || validationStatus === "VALID" || validationStatus === "VALIDATED";
-    if (isValidated) {
-      await finalizePaidOrder({
-        orderId,
-        paymentMethod: "sslcommerz",
-        transactionId: tranId,
+    if (status === "success" && orderId) {
+      const validationStatus = String(validationResponse?.status || "").toUpperCase();
+      const isValidated = !validationResponse || validationStatus === "VALID" || validationStatus === "VALIDATED";
+      if (isValidated) {
+        await finalizePaidOrder({
+          orderId,
+          paymentMethod: "sslcommerz",
+          transactionId: tranId,
+        });
+      }
+    } else if (orderId) {
+      await prisma.payment.updateMany({
+        where: { order_id: orderId },
+        data: { status: status === "cancelled" ? "cancelled" : "failed" },
       });
     }
-  } else if (orderId) {
-    await prisma.payment.updateMany({
-      where: { order_id: orderId },
-      data: { status: status === "cancelled" ? "cancelled" : "failed" },
-    });
-  }
 
-  const separator = redirect.includes("?") ? "&" : "?";
-  const finalUrl = `${redirect}${separator}order_id=${encodeURIComponent(orderId || "")}`;
-  res.redirect(finalUrl);
+    const separator = redirect.includes("?") ? "&" : "?";
+    const finalUrl = `${redirect}${separator}order_id=${encodeURIComponent(orderId || "")}`;
+    res.redirect(finalUrl);
+  } catch (error) {
+    console.error("SSLCommerz callback failed:", error);
+    const separator = redirect.includes("?") ? "&" : "?";
+    const fallbackUrl = `${redirect}${separator}status=failed&reason=callback_error`;
+    res.redirect(fallbackUrl);
+  }
 }
 
-paymentsRestRouter.all("/sslcommerz/success", async (req, res) => handleSslCommerzCallback(req as any, res, "success"));
-paymentsRestRouter.all("/sslcommerz/fail", async (req, res) => handleSslCommerzCallback(req as any, res, "failed"));
-paymentsRestRouter.all("/sslcommerz/cancel", async (req, res) => handleSslCommerzCallback(req as any, res, "cancelled"));
+paymentsRestRouter.all("/sslcommerz/success", async (req, res) => {
+  await handleSslCommerzCallback(req as any, res, "success");
+});
+paymentsRestRouter.all("/sslcommerz/fail", async (req, res) => {
+  await handleSslCommerzCallback(req as any, res, "failed");
+});
+paymentsRestRouter.all("/sslcommerz/cancel", async (req, res) => {
+  await handleSslCommerzCallback(req as any, res, "cancelled");
+});
 
 paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
   const payload = asObject(req.body);
