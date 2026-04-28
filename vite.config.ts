@@ -6,7 +6,7 @@ export default defineConfig(() => ({
   server: {
     host: "::",
     port: 8080,
-    allowedHosts: ['boiarov2.blocknots.com'],
+    allowedHosts: ['boiaro.com", "www.boiaro.com", "staging.boiaro.com'],
     hmr: {
       overlay: false,
     },
@@ -32,7 +32,7 @@ export default defineConfig(() => ({
   preview: {
     host: "::",
     port: 8080,
-    allowedHosts: ["boiarov2.blocknots.com", "staging.boiaro.com"],
+    allowedHosts: ["boiaro.com", "www.boiaro.com", "staging.boiaro.com"],
   },
   plugins: [react()],
   resolve: {
