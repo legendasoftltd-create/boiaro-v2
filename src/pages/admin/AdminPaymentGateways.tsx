@@ -64,6 +64,7 @@ const gatewayConfigFields: Record<string, { key: string; label: string; secret?:
 
 export default function AdminPaymentGateways() {
   const utils = trpc.useUtils();
+  const updatePaymentGatewayMutation = trpc.admin.updatePaymentGateway.useMutation();
   const [gateways, setGateways] = useState<Gateway[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -80,7 +81,7 @@ export default function AdminPaymentGateways() {
   const updateGateway = async (gw: Gateway) => {
     setSaving(gw.id);
     try {
-      await utils.admin.updatePaymentGateway.fetch({
+      await updatePaymentGatewayMutation.mutateAsync({
         id: gw.id,
         label: gw.label,
         is_enabled: gw.is_enabled,
@@ -95,6 +96,7 @@ export default function AdminPaymentGateways() {
       return;
     }
     setSaving(null);
+    await utils.admin.listPaymentGateways.invalidate();
     await log({ module: "payments", action: `Gateway ${gw.label} updated`, actionType: "update", targetType: "payment_gateway", targetId: gw.id, details: `Updated gateway: ${gw.gateway_key} (${gw.is_enabled ? "enabled" : "disabled"}, ${gw.mode})`, riskLevel: "high" });
     toast.success(`${gw.label} settings saved`);
   };
