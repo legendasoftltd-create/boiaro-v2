@@ -28,7 +28,7 @@ export function OrderInvoice({ order, items, onClose, customerEmail }: InvoicePr
     year: "numeric", month: "long", day: "numeric",
   });
 
-  const subtotal = items.reduce((s, i) => s + i.unit_price * (i.quantity || 1), 0);
+  const subtotal = items.reduce((s, i) => s + Number((i as any).unit_price ?? (i as any).price ?? 0) * (i.quantity || 1), 0);
   const shippingCost = order.shipping_cost || 0;
   const packagingCost = order.packaging_cost || 0;
   const discountAmount = order.discount_amount || 0;
@@ -216,8 +216,12 @@ export function OrderInvoice({ order, items, onClose, customerEmail }: InvoicePr
                     <span className="format-badge" style={{ display: "inline-block", fontSize: 10, padding: "1px 6px", background: "#f3f4f6", borderRadius: 4, color: "#555", marginLeft: 6, textTransform: "capitalize" }}>{item.format}</span>
                   </td>
                   <td style={{ padding: "10px 12px", fontSize: 13, borderBottom: "1px solid #f0f0f0", textAlign: "right" }}>{item.quantity || 1}</td>
-                  <td style={{ padding: "10px 12px", fontSize: 13, borderBottom: "1px solid #f0f0f0", textAlign: "right" }}>৳{item.unit_price}</td>
-                  <td style={{ padding: "10px 12px", fontSize: 13, borderBottom: "1px solid #f0f0f0", textAlign: "right" }}>৳{item.unit_price * (item.quantity || 1)}</td>
+                  <td style={{ padding: "10px 12px", fontSize: 13, borderBottom: "1px solid #f0f0f0", textAlign: "right" }}>
+                    ৳{Number((item as any).unit_price ?? (item as any).price ?? 0)}
+                  </td>
+                  <td style={{ padding: "10px 12px", fontSize: 13, borderBottom: "1px solid #f0f0f0", textAlign: "right" }}>
+                    ৳{Number((item as any).unit_price ?? (item as any).price ?? 0) * (item.quantity || 1)}
+                  </td>
                 </tr>
               ))}
             </tbody>

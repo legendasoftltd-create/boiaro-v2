@@ -1,0 +1,9 @@
+id,gateway_key,label,is_enabled,mode,sort_priority,config,notes,created_at,updated_at
+126e908e-1c92-4ab9-8752-a020193b6935,cod,Cash on Delivery,true,live,1,"{""note"":""Pay when you receive your order""}",,2026-03-24 22:31:18.477664+00,2026-04-01 09:02:31.782+00
+26cd633f-5e4e-4175-8c1a-3ab59f158561,paypal,PayPal,false,test,6,"{""client_id"":""""}",,2026-03-24 22:31:18.477664+00,2026-03-24 22:31:18.477664+00
+313ab4de-0f18-445e-923b-cc143e1c0c75,nagad,Nagad,false,live,3,"{""description"":""Mobile payment via Nagad""}",,2026-03-24 22:31:18.477664+00,2026-04-01 09:02:28.001+00
+34e03e2c-fb7f-4495-ab76-25294a64404a,stripe,Stripe,false,test,5,"{""publishable_key"":""""}",,2026-03-24 22:31:18.477664+00,2026-03-24 22:31:18.477664+00
+3e03e5e3-7d41-4b2b-9a38-dd10247149e7,sslcommerz,SSLCOMMERZ,false,test,4,"{""fail_url"":""/checkout/fail"",""cancel_url"":""/checkout/cancel"",""success_url"":""/checkout/success""}","Credentials stored in environment secrets (SSLCOMMERZ_STORE_ID, SSLCOMMERZ_STORE_PASSWORD). Switch mode to ""live"" only after entering production credentials.",2026-03-24 22:31:18.477664+00,2026-04-01 09:02:34.924+00
+4d676f21-72c4-434a-a5a0-86fcf06162af,bkash,bKash,false,live,2,"{""description"":""Mobile payment via bKash""}",,2026-03-24 22:31:18.477664+00,2026-04-01 18:29:50.814+00
+b48e1bd5-1816-478e-a594-571e996ae4d4,razorpay,Razorpay,false,test,7,"{""key_id"":""""}",,2026-03-24 22:31:18.477664+00,2026-03-24 22:31:18.477664+00
+f3c8e416-9eca-4530-b341-777cdfcb0cfd,demo,Demo Payment,true,test,99,"{""note"":""For testing only. Orders marked as demo."",""description"":""Demo/test payment - no real money charged""}",Demo payment gateway for testing purchase flows without real money. Enable only during testing.,2026-03-31 09:12:20.260602+00,2026-03-31 09:12:20.260602+00

@@ -22,7 +22,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "
 app.use(
   cors({
     origin: (origin, cb) => {
-      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+      if (!origin || origin === "null" || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
         cb(null, true);
       } else {
         cb(new Error(`CORS: ${origin} not allowed`));
@@ -42,6 +42,7 @@ app.use(
 );
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(attachAuth);
 app.use("/api/v1", restRouter);
 

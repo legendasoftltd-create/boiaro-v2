@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { authRestRouter } from "./auth.js";
 import { booksRestRouter } from "./books.js";
-import {homepageRestRouter} from './homepage.js';
-import {footerRestRouter} from './footer.js';
+import { homepageRestRouter } from "./homepage.js";
+import { footerRestRouter } from "./footer.js";
 import { profileRestRouter } from "./profile.js";
 import { meRestRouter } from "./me.js";
 import { profileRolesRestRouter } from "./profile-roles.js";
@@ -13,6 +13,14 @@ import { publishersRestRouter } from "./publishers.js";
 import { searchRestRouter } from "./search.js";
 import { accessRestRouter } from "./access.js";
 import { contentRestRouter } from "./content.js";
+import { progressRestRouter } from "./progress.js";
+import { walletRestRouter } from "./wallet.js";
+import { coinPackagesRestRouter } from "./coin-packages.js";
+import { libraryRestRouter } from "./library.js";
+import { subscriptionsRestRouter } from "./subscriptions.js";
+import { notificationsRestRouter } from "./notifications.js";
+import { ordersRestRouter } from "./orders.js";
+import { paymentsRestRouter } from "./payments.js";
 
 export const restRouter = Router();
 
@@ -30,3 +38,11 @@ restRouter.use("/publishers", publishersRestRouter);
 restRouter.use("/search", searchRestRouter);
 restRouter.use("/access", accessRestRouter);
 restRouter.use("/content", contentRestRouter);
+restRouter.use("/progress", progressRestRouter);
+restRouter.use("/wallet", walletRestRouter);
+restRouter.use("/coin-packages", coinPackagesRestRouter);
+restRouter.use("/library", libraryRestRouter);
+restRouter.use("/subscriptions", subscriptionsRestRouter);
+restRouter.use("/notifications", notificationsRestRouter);
+restRouter.use("/orders", ordersRestRouter);
+restRouter.use("/payments", paymentsRestRouter);

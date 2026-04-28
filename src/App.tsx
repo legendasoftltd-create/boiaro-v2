@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { trpc, createTrpcClient } from "@/lib/trpc";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -146,6 +146,13 @@ const AdminRjManagement = lazy(() => import("./pages/admin/AdminRjManagement.tsx
 const AdminSms = lazy(() => import("./pages/admin/AdminSms.tsx"));
 const TtsDemo = lazy(() => import("./pages/TtsDemo.tsx"));
 
+function LegacyCheckoutCallbackRedirect({ status }: { status: "success" | "failed" | "cancelled" }) {
+  const location = useLocation();
+  const existingQuery = location.search.startsWith("?") ? location.search.slice(1) : location.search;
+  const queryPrefix = existingQuery ? `${existingQuery}&` : "";
+  return <Navigate to={`/payment/callback?${queryPrefix}status=${status}`} replace />;
+}
+
 const SentryErrorBoundary = Sentry.ErrorBoundary;
 
 const PageLoader = () => (
@@ -216,6 +223,11 @@ const App = () => {
                 <Route path="/subscriptions" element={<Subscriptions />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/payment/callback" element={<PaymentCallback />} />
+                <Route path="/checkout/success" element={<LegacyCheckoutCallbackRedirect status="success" />} />
+                <Route path="/checkout/fail" element={<LegacyCheckoutCallbackRedirect status="failed" />} />
+                <Route path="/checkout/failed" element={<LegacyCheckoutCallbackRedirect status="failed" />} />
+                <Route path="/checkout/cancel" element={<LegacyCheckoutCallbackRedirect status="cancelled" />} />
+                <Route path="/checkout/cancelled" element={<LegacyCheckoutCallbackRedirect status="cancelled" />} />
                 <Route path="/page/:slug" element={<CmsPage />} />
                 <Route path="/blog" element={<BlogList />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
