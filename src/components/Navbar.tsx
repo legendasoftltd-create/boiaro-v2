@@ -1,10 +1,17 @@
 import { useState } from "react"
 import { useLocation } from "react-router-dom"
-import { Menu, X, Search, User, ShoppingBag, BookOpen, Headphones, Package, Layers, Radio } from "lucide-react"
+import { Menu, X, Search, User, ShoppingBag, BookOpen, Headphones, Package, Layers, Radio, LayoutDashboard, LogOut } from "lucide-react"
 import { useContentFilter, type ContentType } from "@/contexts/ContentFilterContext"
 import logoBoiaroFallback from "@/assets/logo_boiaro.png"
 import logoBoiaroShortFallback from "@/assets/logo_boiaro_short.png"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { useCart } from "@/contexts/CartContext"
@@ -18,6 +25,15 @@ import { useSiteSettings } from "@/hooks/useSiteSettings"
 import { useTheme } from "next-themes"
 import { toMediaUrl } from "@/lib/mediaUrl"
 
+const ROLE_DASHBOARD: Record<string, string> = {
+  admin: "/admin",
+  writer: "/creator",
+  publisher: "/creator",
+  narrator: "/creator",
+  rj: "/rj",
+  user: "/dashboard",
+}
+
 const navLinks = [
   { href: "/books?format=ebook", label: "eBooks", icon: BookOpen },
   { href: "/books?format=audiobook", label: "Audiobooks", icon: Headphones },
@@ -29,7 +45,13 @@ export function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const { globalFilter, setGlobalFilter } = useContentFilter()
-  const { user, profile } = useAuth()
+  const { user, profile, signOut } = useAuth()
+  const userRoles: string[] = (user?.roles as string[]) || []
+  const dashboardRoute = (() => {
+    const priority = ["admin", "writer", "publisher", "narrator", "rj"]
+    const role = priority.find(r => userRoles.includes(r)) || "user"
+    return ROLE_DASHBOARD[role]
+  })()
   const { totalItems, openCart } = useCart()
   const { data: radioStation } = useRadioStation()
   const { book: activeBook, isPlaying: radioPlaying } = useAudioPlayer()
@@ -100,12 +122,31 @@ export function Navbar() {
               </Button>
 
               {user ? (
-                <button onClick={() => navigate("/profile")} className="hidden md:flex ml-1">
-                  <Avatar className="w-8 h-8 border-2 border-primary/20 hover:border-primary/50 transition-colors">
-                    <AvatarImage src={profile?.avatar_url || undefined} />
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-serif font-semibold">{initials}</AvatarFallback>
-                  </Avatar>
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="hidden md:flex ml-1 outline-none">
+                      <Avatar className="w-8 h-8 border-2 border-primary/20 hover:border-primary/50 transition-colors cursor-pointer">
+                        <AvatarImage src={profile?.avatar_url || undefined} />
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-serif font-semibold">{initials}</AvatarFallback>
+                      </Avatar>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={() => navigate(dashboardRoute)} className="gap-2 cursor-pointer">
+                      <LayoutDashboard className="w-4 h-4" />
+                      Dashboard
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate("/profile")} className="gap-2 cursor-pointer">
+                      <User className="w-4 h-4" />
+                      Profile
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => { signOut(); navigate("/") }} className="gap-2 cursor-pointer text-destructive focus:text-destructive">
+                      <LogOut className="w-4 h-4" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               ) : (
                 <Button variant="ghost" size="icon" className="hidden md:flex text-muted-foreground hover:text-foreground rounded-full h-9 w-9" onClick={() => navigate("/auth")}>
                   <User className="w-[18px] h-[18px]" />
@@ -131,9 +172,17 @@ export function Navbar() {
                   </button>
                 ))}
                 {user ? (
-                  <Button onClick={() => { setIsOpen(false); navigate("/profile") }} variant="outline" className="mt-2 w-full gap-2 h-11 rounded-xl">
-                    <User className="w-4 h-4" /> My Profile
-                  </Button>
+                  <>
+                    <Button onClick={() => { setIsOpen(false); navigate(dashboardRoute) }} variant="outline" className="mt-2 w-full gap-2 h-11 rounded-xl">
+                      <LayoutDashboard className="w-4 h-4" /> Dashboard
+                    </Button>
+                    <Button onClick={() => { setIsOpen(false); navigate("/profile") }} variant="outline" className="w-full gap-2 h-11 rounded-xl">
+                      <User className="w-4 h-4" /> My Profile
+                    </Button>
+                    <Button onClick={() => { setIsOpen(false); signOut(); navigate("/") }} variant="outline" className="w-full gap-2 h-11 rounded-xl text-destructive border-destructive/30 hover:bg-destructive/10">
+                      <LogOut className="w-4 h-4" /> Logout
+                    </Button>
+                  </>
                 ) : (
                   <Button onClick={() => { setIsOpen(false); navigate("/auth") }} variant="outline" className="mt-2 w-full gap-2 h-11 rounded-xl">
                     <User className="w-4 h-4" /> Sign In
