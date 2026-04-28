@@ -1,0 +1,3 @@
+id,name,code,area_type,base_charge,base_weight_kg,extra_charge_per_kg,delivery_time,is_active,sort_order,provider_code,created_at,updated_at
+1a2043f1-4809-4800-8522-af056cacd3a4,ঢাকার বাইরে ডেলিভারি,OUTSIDE_STD,outside_dhaka,120,1,20,3-7 দিন,true,2,,2026-03-28 13:17:44.920247+00,2026-03-28 13:17:44.920247+00
+59569fd0-3391-4a93-b5c6-8f7b1b0920f1,ঢাকার ভিতরে ডেলিভারি,DHAKA_STD,inside_dhaka,60,1,10,1-3 দিন,true,1,,2026-03-28 13:17:44.920247+00,2026-03-28 13:17:44.920247+00
