@@ -8,7 +8,16 @@ import { trpc } from "@/lib/trpc";
 export default function PaymentCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const status = searchParams.get("status") || "unknown";
+  const rawStatus = (searchParams.get("status") || "unknown").toLowerCase();
+  const statusToken = rawStatus.split(/[/?#]/)[0];
+  const status =
+    statusToken === "success"
+      ? "success"
+      : statusToken === "failed" || statusToken === "fail"
+        ? "failed"
+        : statusToken === "cancelled" || statusToken === "canceled" || statusToken === "cancel"
+          ? "cancelled"
+          : "unknown";
   const orderId = searchParams.get("order_id");
   const isCoinPurchase = searchParams.get("type") === "coin";
   const [countdown, setCountdown] = useState(10);

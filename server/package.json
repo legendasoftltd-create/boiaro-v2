@@ -18,7 +18,10 @@
     "migrate:csv-publishers": "tsx scripts/migrate-publishers.ts",
     "migrate:csv-narrators": "tsx scripts/migrate-narrators.ts",
     "migrate:csv-books": "tsx scripts/migrate-books.ts",
-    "migrate:csv-all": "npm run migrate:csv-users && npm run migrate:csv-categories && npm run migrate:csv-authors && npm run migrate:csv-publishers && npm run migrate:csv-narrators && npm run migrate:csv-books",
+    "migrate:csv-payment-gateways": "tsx scripts/migrate-payment-gateways.ts",
+    "migrate:csv-role-permissions": "tsx scripts/migrate-role-permissions.ts",
+    "migrate:csv-shipping-methods": "tsx scripts/migrate-shipping-methods.ts",
+    "migrate:csv-all": "npm run migrate:csv-users && npm run migrate:csv-categories && npm run migrate:csv-authors && npm run migrate:csv-publishers && npm run migrate:csv-narrators && npm run migrate:csv-books && npm run migrate:csv-payment-gateways && npm run migrate:csv-role-permissions && npm run migrate:csv-shipping-methods",
     "seed:defaults": "prisma db seed",
     "seed:legacy": "npm run migrate:csv-all",
     "seed:all": "npm run seed:defaults && npm run seed:legacy"

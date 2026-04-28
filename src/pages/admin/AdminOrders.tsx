@@ -215,7 +215,12 @@ export default function AdminOrders() {
     setPurchaseCost(order.purchase_cost_per_unit ?? "");
     setOrderPackagingCost(order.packaging_cost ?? "");
     const data = await utils.admin.orderDetail.fetch({ orderId: order.id });
-    setItems(data.items || []);
+    setItems(
+      (data.items || []).map((item: any) => ({
+        ...item,
+        unit_price: Number(item.unit_price ?? item.price ?? 0),
+      }))
+    );
     setStatusHistory(data.statusHistory || []);
     setShipment(data.shipment || null);
     setShipmentEvents(data.shipmentEvents || []);
@@ -539,7 +544,7 @@ export default function AdminOrders() {
                       {i.format === "hardcopy" && <BookCopy className="w-3 h-3 text-orange-400" />}
                       {i.books?.title || "Book"} <Badge variant="outline" className="text-[10px] ml-1">{i.format}</Badge> × {i.quantity}
                     </span>
-                    <span>৳{i.unit_price * (i.quantity || 1)}</span>
+                    <span>৳{Number(i.unit_price ?? i.price ?? 0) * (i.quantity || 1)}</span>
                   </div>
                 ))}
                 <div className="border-t mt-2 pt-2 font-bold flex justify-between"><span>Total</span><span>৳{detail.total_amount}</span></div>
@@ -618,7 +623,9 @@ export default function AdminOrders() {
                     const uc = Number(purchaseCost) || 0;
                     const pkg = Number(orderPackagingCost) || 0;
                     const totalQty = items.filter((i: any) => i.format === "hardcopy").reduce((s: number, i: any) => s + (i.quantity || 1), 0);
-                    const totalSelling = items.filter((i: any) => i.format === "hardcopy").reduce((s: number, i: any) => s + i.unit_price * (i.quantity || 1), 0);
+                    const totalSelling = items
+                      .filter((i: any) => i.format === "hardcopy")
+                      .reduce((s: number, i: any) => s + Number(i.unit_price ?? i.price ?? 0) * (i.quantity || 1), 0);
                     const estimatedProfit = totalSelling - (uc * totalQty) - pkg;
                     if (uc <= 0) return null;
                     return (

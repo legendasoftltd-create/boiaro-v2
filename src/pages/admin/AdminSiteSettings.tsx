@@ -8,7 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Settings, Save, Eye, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { FooterPreview } from "@/components/admin/FooterPreview";
+import { SiteImageUpload } from "@/components/admin/SiteImageUpload";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+
+const IMAGE_KEYS = new Set([
+  "favicon_url",
+  "logo_url",
+  "logo_dark_url",
+  "logo_mobile_url",
+  "logo_footer_url",
+]);
 
 const REQUIRED_FIELDS: Record<string, string> = {
   brand_name: "Brand Name is required",
@@ -130,11 +139,19 @@ export default function AdminSiteSettings() {
           {settings.map((item) => (
             <div key={item.key} className="space-y-1.5">
               <Label className="text-sm font-mono text-muted-foreground">{item.key}</Label>
-              <Input
-                value={values[item.key] || ""}
-                onChange={(e) => handleChange(item.key, e.target.value)}
-                className={errors[item.key] ? "border-destructive" : ""}
-              />
+              {IMAGE_KEYS.has(item.key) ? (
+                <SiteImageUpload
+                  value={values[item.key] || ""}
+                  onChange={(url) => handleChange(item.key, url)}
+                  fieldKey={item.key}
+                />
+              ) : (
+                <Input
+                  value={values[item.key] || ""}
+                  onChange={(e) => handleChange(item.key, e.target.value)}
+                  className={errors[item.key] ? "border-destructive" : ""}
+                />
+              )}
               {errors[item.key] && (
                 <p className="text-xs text-destructive flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />{errors[item.key]}

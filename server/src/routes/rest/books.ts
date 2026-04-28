@@ -17,6 +17,7 @@ import {
   toggleBookBookmark,
   upsertBookReview,
 } from "../../services/books.service.js";
+import { prisma } from "../../lib/prisma.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { requireAuth } from "../../middleware/auth.js";
 
@@ -114,3 +115,33 @@ booksRestRouter.post(
     }
   }
 );
+
+booksRestRouter.get("/:book_id/tracks", async (req, res) => {
+  try {
+    const bookFormat = await prisma.bookFormat.findFirst({
+      where: { book_id: req.params.book_id, format: "audiobook" },
+      select: { id: true },
+    });
+    if (!bookFormat) {
+      res.json({ tracks: [] });
+      return;
+    }
+    const tracks = await prisma.audiobookTrack.findMany({
+      where: { book_format_id: bookFormat.id, status: "active" },
+      orderBy: { track_number: "asc" },
+      select: {
+        id: true,
+        track_number: true,
+        title: true,
+        duration: true,
+        is_preview: true,
+        media_type: true,
+        chapter_price: true,
+        status: true,
+      },
+    });
+    res.json({ tracks });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});

@@ -4,6 +4,27 @@ import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
 
+type GatewayConfig = Record<string, unknown>;
+
+function asGatewayConfig(value: unknown): GatewayConfig {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as GatewayConfig;
+  return {};
+}
+
+function readConfigString(config: GatewayConfig, key: string): string | undefined {
+  const value = config[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function resolveRedirectUrl(urlOrPath: string | undefined, baseOrigin: string, defaultAbsoluteUrl: string): string {
+  if (!urlOrPath) return defaultAbsoluteUrl;
+  if (/^https?:\/\//i.test(urlOrPath)) return urlOrPath;
+  const origin = baseOrigin.replace(/\/$/, "");
+  return `${origin}${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;
+}
+
 export const ordersRouter = router({
   myOrders: protectedProcedure
     .input(z.object({ limit: z.number().default(20), cursor: z.string().optional() }))
@@ -191,7 +212,7 @@ export const ordersRouter = router({
       shippingZip: z.string().optional(),
       shippingMethodId: z.string().optional(),
       shippingMethodName: z.string().optional(),
-      shippingCarrier: z.string().optional(),
+      shippingCarrier: z.string().nullish(),
       shippingCost: z.number().optional(),
       estimatedDeliveryDays: z.string().optional(),
       totalWeight: z.number().optional(),
@@ -346,7 +367,116 @@ export const ordersRouter = router({
         });
       }
 
-      // SSLCommerz: return null gateway URL until payment gateway is integrated (Phase 5)
+      if (isSSLCommerz) {
+        const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
+        if (!gateway || !gateway.is_enabled) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "SSLCommerz is not enabled" });
+        }
+        const gatewayConfig = asGatewayConfig(gateway.config);
+        const mode = gateway.mode === "live" ? "live" : "test";
+        const storeId = readConfigString(gatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
+        const storePassword = readConfigString(gatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+        if (!storeId || !storePassword) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "SSLCommerz credentials are missing" });
+        }
+
+        const frontendBaseUrl = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+        const backendBaseUrl = (process.env.BACKEND_URL || `http://localhost:${process.env.PORT || "3001"}`).replace(/\/$/, "");
+        const successUrl = resolveRedirectUrl(
+          readConfigString(gatewayConfig, "success_url"),
+          frontendBaseUrl,
+          `${frontendBaseUrl}/payment/callback?status=success`
+        );
+        const failUrl = resolveRedirectUrl(
+          readConfigString(gatewayConfig, "fail_url"),
+          frontendBaseUrl,
+          `${frontendBaseUrl}/payment/callback?status=failed`
+        );
+        const cancelUrl = resolveRedirectUrl(
+          readConfigString(gatewayConfig, "cancel_url"),
+          frontendBaseUrl,
+          `${frontendBaseUrl}/payment/callback?status=cancelled`
+        );
+        const ipnUrl = resolveRedirectUrl(
+          readConfigString(gatewayConfig, "ipn_url"),
+          backendBaseUrl,
+          `${backendBaseUrl}/api/v1/payments/sslcommerz/ipn`
+        );
+
+        const callbackSuccess = `${backendBaseUrl}/api/v1/payments/sslcommerz/success`;
+        const callbackFail = `${backendBaseUrl}/api/v1/payments/sslcommerz/fail`;
+        const callbackCancel = `${backendBaseUrl}/api/v1/payments/sslcommerz/cancel`;
+
+        const payload = new URLSearchParams({
+          store_id: storeId,
+          store_passwd: storePassword,
+          total_amount: String(input.grandTotal),
+          currency: "BDT",
+          tran_id: txnId || order.id,
+          success_url: `${callbackSuccess}?redirect=${encodeURIComponent(successUrl)}`,
+          fail_url: `${callbackFail}?redirect=${encodeURIComponent(failUrl)}`,
+          cancel_url: `${callbackCancel}?redirect=${encodeURIComponent(cancelUrl)}`,
+          ipn_url: ipnUrl,
+          product_name: order.order_number,
+          product_category: "Book",
+          product_profile: "general",
+          cus_name: input.shippingName || "Customer",
+          cus_email: `${ctx.userId}@boiaro.local`,
+          cus_add1: input.shippingAddress || "N/A",
+          cus_city: input.shippingCity || "N/A",
+          cus_postcode: input.shippingZip || "0000",
+          cus_country: "Bangladesh",
+          cus_phone: input.shippingPhone || "00000000000",
+          ship_name: input.shippingName || "Customer",
+          ship_add1: input.shippingAddress || "N/A",
+          ship_city: input.shippingCity || "N/A",
+          ship_state: input.shippingDistrict || input.shippingCity || "N/A",
+          ship_postcode: input.shippingZip || "0000",
+          ship_country: "Bangladesh",
+          shipping_method: input.shippingMethodName || "NO",
+          num_of_item: String(input.items.length),
+        });
+
+        const initUrl = mode === "live"
+          ? "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
+          : "https://sandbox.sslcommerz.com/gwprocess/v4/api.php";
+
+        const response = await fetch(initUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: payload.toString(),
+        });
+        const raw = await response.text();
+        let data: any = null;
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = { status: "FAILED", message: raw };
+        }
+
+        await prisma.paymentEvent.create({
+          data: {
+            order_id: order.id,
+            gateway: "sslcommerz",
+            event_type: "initiate",
+            status: String(data?.status || "unknown").toLowerCase(),
+            transaction_id: txnId || order.id,
+            amount: input.grandTotal,
+            raw_response: data,
+            currency: "BDT",
+          },
+        });
+
+        const gatewayUrl: string | undefined = data?.GatewayPageURL;
+        if (!response.ok || !gatewayUrl) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: data?.failedreason || data?.message || "Failed to initiate SSLCommerz payment",
+          });
+        }
+        return { orderId: order.id, gatewayUrl };
+      }
+
       return { orderId: order.id, gatewayUrl: null as string | null };
     }),
 });

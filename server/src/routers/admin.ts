@@ -4130,7 +4130,27 @@ export const adminRouter = router({
   listEarnings: adminProcedure
     .input(z.object({ limit: z.number().default(50) }).optional())
     .query(async ({ input }) => {
-      const earnings = await prisma.contributorEarning.findMany({ orderBy: { created_at: "desc" }, take: input?.limit ?? 50 });
+      const earnings = await prisma.contributorEarning.findMany({
+        orderBy: { created_at: "desc" },
+        take: input?.limit ?? 50,
+        // Select explicit columns for compatibility with older DBs
+        // that may not yet have newly added contributor_earnings fields.
+        select: {
+          id: true,
+          user_id: true,
+          book_id: true,
+          format: true,
+          role: true,
+          sale_amount: true,
+          earned_amount: true,
+          percentage: true,
+          fulfillment_amount: true,
+          order_id: true,
+          order_item_id: true,
+          status: true,
+          created_at: true,
+        },
+      });
       const bookIds = [...new Set(earnings.map(e => e.book_id).filter(Boolean) as string[])];
       const books = bookIds.length > 0
         ? await prisma.book.findMany({ where: { id: { in: bookIds } }, select: { id: true, title: true } })
@@ -4236,7 +4256,14 @@ export const adminRouter = router({
 
   revenueStats: adminProcedure.query(async () => {
     const [earnings, withdrawals] = await Promise.all([
-      prisma.contributorEarning.findMany(),
+      prisma.contributorEarning.findMany({
+        select: {
+          role: true,
+          earned_amount: true,
+          sale_amount: true,
+          order_id: true,
+        },
+      }),
       prisma.withdrawalRequest.findMany(),
     ]);
     const uniqueOrderSales = new Map<string, number>();

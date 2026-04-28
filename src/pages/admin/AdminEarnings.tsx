@@ -13,6 +13,8 @@ import { trpc } from "@/lib/trpc";
 
 export default function AdminEarnings() {
   const utils = trpc.useUtils();
+  const confirmEarningsMutation = trpc.admin.confirmEarnings.useMutation();
+  const calculateOrderEarningsMutation = trpc.admin.calculateOrderEarnings.useMutation();
   const [earnings, setEarnings] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -59,7 +61,7 @@ export default function AdminEarnings() {
 
   const confirmEarnings = async (ids: string[]) => {
     if (!ids.length) return;
-    const data = await utils.admin.confirmEarnings.fetch({ earningIds: ids });
+    const data = await confirmEarningsMutation.mutateAsync({ earningIds: ids });
     const count = data?.confirmed_count || ids.length;
     await log({ module: "earnings", action: `${count} earnings confirmed`, actionType: "approve", targetType: "earnings", details: `Bulk confirmed ${count} earnings`, riskLevel: "medium" });
     toast.success(`${count} earning(s) confirmed`);
@@ -80,7 +82,7 @@ export default function AdminEarnings() {
     if (!id) { toast.error("Enter an order ID"); return; }
     setBackfilling(true);
     try {
-      const result = await utils.admin.calculateOrderEarnings.fetch({ orderId: id });
+      const result = await calculateOrderEarningsMutation.mutateAsync({ orderId: id });
       toast.success(`Created ${result.created} earning record(s) for order`);
       setBackfillOrderId("");
       load();

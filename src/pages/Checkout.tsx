@@ -210,7 +210,7 @@ export default function Checkout() {
         if (shipping.selectedMethod) {
           orderPayload.shippingMethodId = shipping.selectedMethod.id
           orderPayload.shippingMethodName = shipping.selectedMethod.name
-          orderPayload.shippingCarrier = shipping.selectedMethod.provider_code ?? null
+          orderPayload.shippingCarrier = shipping.selectedMethod.provider_code ?? undefined
           orderPayload.shippingCost = effectiveShippingCharge
           orderPayload.estimatedDeliveryDays = String(shipping.selectedMethod.delivery_time ?? shipping.selectedMethod.delivery_days ?? "")
         }
