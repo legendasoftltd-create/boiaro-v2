@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ChangeEvent } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,9 @@ import { AttachToExistingBook } from "@/components/book-submission/AttachToExist
 import { VendorEarningsPreview } from "@/components/vendor/VendorEarningsPreview";
 import { AudiobookEpisodeManager } from "@/components/narrator/AudiobookEpisodeManager";
 import { useContentEditRequest } from "@/hooks/useContentEditRequest";
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+const MAX_COVER_SIZE = 5 * 1024 * 1024;
 
 const emptyForm = () => ({
   title: "", title_en: "", description: "", category_id: "", cover_url: "",
@@ -33,6 +36,7 @@ export default function NarratorAudiobooks() {
   const [mode, setMode] = useState<"choose" | "create" | "attach" | "attach-form">("choose");
   const [attachedBook, setAttachedBook] = useState<{ id: string; title: string; cover_url: string | null } | null>(null);
   const [form, setForm] = useState(emptyForm());
+  const [uploadingCover, setUploadingCover] = useState(false);
 
   const { data: books = [], isLoading } = trpc.books.myCreatorBooks.useQuery({ role: "narrator" });
   const { data: categories = [] } = trpc.books.categories.useQuery();
@@ -62,8 +66,44 @@ export default function NarratorAudiobooks() {
   const openEdit = (book: any) => {
     setEditBook(book); setAttachedBook(null); setMode("create");
     const fmt = (book.formats || []).find((f: any) => f.format === "audiobook");
-    setForm({ ...emptyForm(), title: book.title || "", description: book.description || "", price: fmt?.price?.toString() || "", duration: fmt?.duration || "", audio_quality: fmt?.audio_quality || "standard" });
+    setForm({ ...emptyForm(), title: book.title || "", description: book.description || "", cover_url: book.cover_url || "", price: fmt?.price?.toString() || "", duration: fmt?.duration || "", audio_quality: fmt?.audio_quality || "standard" });
     setOpen(true);
+  };
+
+  const uploadCover = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Only JPG, PNG, or WebP images are allowed");
+      return;
+    }
+    if (file.size > MAX_COVER_SIZE) {
+      toast.error("Cover must be under 5 MB");
+      return;
+    }
+    setUploadingCover(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = localStorage.getItem("access_token");
+      const response = await fetch(`${API_BASE}/upload`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({} as any));
+        throw new Error(err.error || response.statusText || "Upload failed");
+      }
+      const data = await response.json();
+      setForm((f) => ({ ...f, cover_url: data.url || "" }));
+      toast.success("Cover uploaded");
+    } catch (error: any) {
+      toast.error("Upload failed: " + (error.message || "Unknown error"));
+    } finally {
+      setUploadingCover(false);
+    }
   };
 
   const save = async (asDraft = false) => {
@@ -279,7 +319,21 @@ export default function NarratorAudiobooks() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <Label>Cover Image</Label>
-                  <p className="text-xs text-muted-foreground mt-1">Cover upload available in Phase 5 (storage provider pending)</p>
+                  <div className="mt-2 space-y-2">
+                    {form.cover_url && (
+                      <img src={form.cover_url} alt="Cover preview" className="w-16 h-24 object-cover rounded border border-border/40" />
+                    )}
+                    <div className="flex items-center gap-2">
+                      <Input value={form.cover_url} onChange={e => setForm(f => ({ ...f, cover_url: e.target.value }))} placeholder="https://..." />
+                      <Button type="button" variant="outline" className="shrink-0" disabled={uploadingCover}>
+                        <label className="cursor-pointer flex items-center gap-2">
+                          {uploadingCover ? <Loader2 className="h-4 w-4 animate-spin" /> : <Image className="h-4 w-4" />}
+                          Upload
+                          <input type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden" onChange={uploadCover} />
+                        </label>
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 <div className="col-span-2"><Label>Title *</Label><Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} /></div>
                 <div><Label>Title (English)</Label><Input value={form.title_en} onChange={e => setForm(f => ({ ...f, title_en: e.target.value }))} /></div>
