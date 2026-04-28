@@ -1,5 +1,4 @@
 import { RoleAuthPage } from "@/components/auth/RoleAuthPage"
-import { BookOpen, Headphones, Package } from "lucide-react"
 import { User } from "lucide-react"
 
 // Reader auth - the default /auth page
@@ -17,6 +16,7 @@ export default function Auth() {
         showSignup: true,
         showApply: false,
         showGoogle: true,
+        showFacebook: true,
       }}
     />
   )

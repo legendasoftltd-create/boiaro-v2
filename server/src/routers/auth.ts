@@ -141,6 +141,64 @@ export const authRouter = router({
       };
     }),
 
+  signInWithFacebook: publicProcedure
+    .input(z.object({ accessToken: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      const appId = process.env.FACEBOOK_APP_ID;
+      const appSecret = process.env.FACEBOOK_APP_SECRET;
+      if (!appId || !appSecret) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Facebook login is not configured on the server." });
+      }
+
+      // Verify the token is issued to our app
+      const debugRes = await fetch(
+        `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(input.accessToken)}&access_token=${encodeURIComponent(`${appId}|${appSecret}`)}`
+      );
+      if (!debugRes.ok) throw new TRPCError({ code: "UNAUTHORIZED", message: "Failed to verify Facebook token." });
+      const debug = (await debugRes.json()) as { data?: { is_valid?: boolean; app_id?: string } };
+      if (!debug.data?.is_valid || debug.data.app_id !== appId) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Facebook access token." });
+      }
+
+      // Fetch user profile
+      const meRes = await fetch(
+        `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${encodeURIComponent(input.accessToken)}`
+      );
+      if (!meRes.ok) throw new TRPCError({ code: "UNAUTHORIZED", message: "Failed to fetch Facebook profile." });
+      const me = (await meRes.json()) as { id?: string; name?: string; email?: string; picture?: { data?: { url?: string } } };
+
+      // Facebook may not return email if user uses phone or hasn't granted it
+      const email = me.email ? me.email.toLowerCase() : `fb_${me.id}@facebook.com`;
+      const avatarUrl = me.picture?.data?.url || null;
+
+      let user = await prisma.user.findUnique({ where: { email }, include: { profile: true, roles: true } });
+
+      if (!user) {
+        const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
+        const referral_code = generateReferralCode();
+        user = await prisma.user.create({
+          data: {
+            email,
+            password_hash,
+            email_verified: true,
+            profile: { create: { display_name: me.name || email.split("@")[0], avatar_url: avatarUrl, referral_code } },
+            roles: { create: { role: "user" } },
+          },
+          include: { profile: true, roles: true },
+        });
+      }
+
+      if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
+      if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
+
+      const { accessToken, refreshToken } = signTokens(user.id, user.email);
+      return {
+        accessToken,
+        refreshToken,
+        user: { id: user.id, email: user.email, roles: user.roles.map((r) => r.role), profile: user.profile },
+      };
+    }),
+
   refresh: publicProcedure
     .input(refreshTokenSchema)
     .mutation(async ({ input }) => refreshAuthTokens(input.refreshToken)),
