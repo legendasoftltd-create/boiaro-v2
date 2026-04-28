@@ -291,7 +291,24 @@ export const profilesRouter = router({
           where: { submitted_by: ctx.userId },
           select: { id: true },
         }),
-        prisma.contributorEarning.findMany({ where: { user_id: ctx.userId, role: input.role } }),
+        prisma.contributorEarning.findMany({
+          where: { user_id: ctx.userId, role: input.role },
+          select: {
+            id: true,
+            user_id: true,
+            book_id: true,
+            format: true,
+            role: true,
+            sale_amount: true,
+            earned_amount: true,
+            percentage: true,
+            fulfillment_amount: true,
+            order_id: true,
+            order_item_id: true,
+            status: true,
+            created_at: true,
+          },
+        }),
         prisma.withdrawalRequest.findMany({ where: { user_id: ctx.userId } }),
       ]);
 
@@ -365,6 +382,21 @@ export const profilesRouter = router({
       const earnings = await prisma.contributorEarning.findMany({
         where: { user_id: ctx.userId, role: input.role },
         orderBy: { created_at: "desc" },
+        select: {
+          id: true,
+          user_id: true,
+          book_id: true,
+          format: true,
+          role: true,
+          sale_amount: true,
+          earned_amount: true,
+          percentage: true,
+          fulfillment_amount: true,
+          order_id: true,
+          order_item_id: true,
+          status: true,
+          created_at: true,
+        },
       });
       const bookIds = [...new Set(earnings.map(e => e.book_id))];
       const books = await prisma.book.findMany({

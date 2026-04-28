@@ -59,7 +59,6 @@ export async function calculateEarnings(params: EarningParams): Promise<void> {
   if (!rule) return; // no rule defined — skip silently
 
   const fulfillmentAmount = (saleAmount * rule.fulfillment) / 100;
-  const netAmount = saleAmount - fulfillmentAmount;
 
   // Build per-role earnings map. Multiple contributors of the same role share equally.
   type Role = "writer" | "narrator" | "publisher";
@@ -86,13 +85,13 @@ export async function calculateEarnings(params: EarningParams): Promise<void> {
   }[] = [];
 
   for (const [role, list] of Object.entries(roleMap) as [Role, typeof contributors][]) {
-    if (list.length === 0) continue;
     const rolePct = rule[role];
     if (!rolePct || rolePct <= 0) continue;
+    if (list.length === 0) continue;
 
     // Split the role percentage equally among multiple contributors of the same role
     const perContributorPct = rolePct / list.length;
-    const perContributorAmount = (netAmount * perContributorPct) / 100;
+    const perContributorAmount = (saleAmount * perContributorPct) / 100;
 
     for (const contributor of list) {
       earningData.push({
@@ -103,7 +102,7 @@ export async function calculateEarnings(params: EarningParams): Promise<void> {
         sale_amount: saleAmount,
         earned_amount: Math.round(perContributorAmount * 100) / 100,
         percentage: perContributorPct,
-        fulfillment_amount: fulfillmentAmount / list.length,
+        fulfillment_amount: fulfillmentAmount,
         order_id: orderId ?? null,
         order_item_id: orderItemId ?? null,
         content_unlock_id: contentUnlockId ?? null,
@@ -112,7 +111,40 @@ export async function calculateEarnings(params: EarningParams): Promise<void> {
     }
   }
 
+  const platformUserId = "00000000-0000-0000-0000-000000000000";
+  const undistributedPct =
+    (roleMap.writer.length === 0 ? Number(rule.writer || 0) : 0) +
+    (roleMap.narrator.length === 0 ? Number(rule.narrator || 0) : 0) +
+    (roleMap.publisher.length === 0 ? Number(rule.publisher || 0) : 0);
+  const effectivePlatformPct = Number(rule.platform || 0) + undistributedPct;
+  if (effectivePlatformPct > 0) {
+    earningData.push({
+      user_id: platformUserId,
+      book_id: bookId,
+      format,
+      role: "platform",
+      sale_amount: saleAmount,
+      earned_amount: Math.round(((saleAmount * effectivePlatformPct) / 100) * 100) / 100,
+      percentage: effectivePlatformPct,
+      fulfillment_amount: fulfillmentAmount,
+      order_id: orderId ?? null,
+      order_item_id: orderItemId ?? null,
+      content_unlock_id: contentUnlockId ?? null,
+      status: "pending",
+    });
+  }
+
   if (earningData.length > 0) {
-    await prisma.contributorEarning.createMany({ data: earningData });
+    try {
+      await prisma.contributorEarning.createMany({ data: earningData });
+    } catch (error: any) {
+      const missingColumn = String(error?.meta?.driverAdapterError?.cause?.column || "");
+      if (error?.code === "P2022" && missingColumn.includes("content_unlock_id")) {
+        const fallbackData = earningData.map(({ content_unlock_id: _unused, ...rest }) => rest);
+        await prisma.contributorEarning.createMany({ data: fallbackData as any });
+        return;
+      }
+      throw error;
+    }
   }
 }
