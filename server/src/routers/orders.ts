@@ -385,7 +385,6 @@ export const ordersRouter = router({
           process.env.BACKEND_URL ||
           process.env.SERVER_URL ||
           process.env.PUBLIC_API_URL ||
-          process.env.FRONTEND_URL ||
           `http://localhost:${process.env.PORT || "3001"}`
         ).replace(/\/$/, "");
         const successUrl = resolveRedirectUrl(
