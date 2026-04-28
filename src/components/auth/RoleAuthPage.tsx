@@ -79,6 +79,14 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
       return
     }
 
+    if (actual === "user") {
+      const saved = sessionStorage.getItem("post_login_redirect")
+      sessionStorage.removeItem("post_login_redirect")
+      if (saved && saved !== "/" && saved !== "/auth") {
+        navigate(saved)
+        return
+      }
+    }
     navigate(ROLE_ROUTES[actual] || "/dashboard")
   }
 
