@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/akram/Public/Node/boiaro-v2 show --stat HEAD)",
+      "Bash(git -C /home/akram/Public/Node/boiaro-v2 push)",
+      "Bash(git -C /home/akram/Public/Node/boiaro-v2 push --set-upstream origin migration_1)"
+    ]
+  }
+}
