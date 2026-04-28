@@ -21,7 +21,15 @@ export function ProtectedRoute({ children, requiredRole, loginPath = "/auth", de
     );
   }
 
-  if (!user) return <Navigate to={loginPath} replace />;
+  if (!user) {
+    if (loginPath === "/auth") {
+      const dest = window.location.pathname + window.location.search
+      if (dest !== "/" && dest !== "/auth") {
+        sessionStorage.setItem("post_login_redirect", dest)
+      }
+    }
+    return <Navigate to={loginPath} replace />;
+  }
 
   if (requiredRole) {
     const roles = Array.isArray(requiredRole) ? requiredRole : [requiredRole];
