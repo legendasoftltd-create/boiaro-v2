@@ -421,6 +421,17 @@ export default function EbookReader() {
         console.warn("[EbookReader] Secure URL failed:", e);
       }
 
+      // If access was denied or URL not returned, allow preview if preview_percentage > 0.
+      // The client-side useEbookAccess hook enforces the page limit — no full access is granted.
+      const previewPct = Number((ebookFmt as any).preview_percentage ?? 0);
+      if (!resolvedUrl && previewPct > 0) {
+        const rawUrl = (ebookFmt as any).file_url || null;
+        if (rawUrl) {
+          resolvedUrl = rawUrl;
+          accessDenied = false;
+        }
+      }
+
       if (!resolvedUrl && !accessDenied) {
         if (!cancelled) {
           setBookId(dbBook.id);

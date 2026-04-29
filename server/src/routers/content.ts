@@ -23,7 +23,7 @@ export const contentRouter = router({
       });
       const formatRecord = await prisma.bookFormat.findFirst({
         where: { book_id: bookId, format: contentType, submission_status: "approved" },
-        select: { price: true, file_url: true },
+        select: { price: true, file_url: true, preview_percentage: true },
       });
       const isFreeContent = Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0;
 
@@ -57,6 +57,14 @@ export const contentRouter = router({
                 });
                 if (!chapterUnlock) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
               }
+            } else if (contentType === "ebook") {
+              // Allow the URL to be returned for preview if preview_percentage > 0.
+              // The client-side useEbookAccess hook enforces the page limit.
+              const previewPct = Number(formatRecord?.preview_percentage ?? 0);
+              if (previewPct <= 0) {
+                throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+              }
+              // previewPct > 0 → fall through and return the URL so the reader can show the preview
             } else {
               throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
             }
