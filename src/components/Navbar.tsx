@@ -72,6 +72,7 @@ export function Navbar() {
   // Use dark mode logo when in dark theme and available
   const effectiveDesktopLogo = resolvedTheme === "dark" && logoDark ? logoDark : logoDesktop
   const effectiveMobileLogo = resolvedTheme === "dark" && logoDark ? logoDark : logoMobile
+  const playStoreUrl = get("app_android_url") || get("google_play_url")
 
   return (
     <>
@@ -154,7 +155,7 @@ export function Navbar() {
               )}
 
               <div className="hidden md:flex items-center ml-1.5">
-                <Button className="btn-gold px-4 h-9 text-[13px] gap-2">Download App</Button>
+                <Button className="btn-gold px-4 h-9 text-[13px] gap-2"><a href={playStoreUrl || "#"} target="_blank" rel="noopener noreferrer">Download App</a></Button>
               </div>
               <button onClick={() => setIsOpen(!isOpen)} className="lg:hidden p-2 text-foreground rounded-lg hover:bg-secondary/50 transition-colors ml-0.5" aria-label="Toggle menu">
                 {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
