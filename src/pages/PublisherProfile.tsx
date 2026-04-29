@@ -7,6 +7,7 @@ import { BookOpen, CheckCircle } from "lucide-react";
 import { FollowButton } from "@/components/FollowButton";
 import { trpc } from "@/lib/trpc";
 import { useBooks } from "@/hooks/useBooks";
+import { stripHtml } from "@/lib/stripHtml";
 
 const PublisherProfile = () => {
   const { id } = useParams<{ id: string }>();
@@ -49,7 +50,7 @@ const PublisherProfile = () => {
               {publisher.is_featured && <Badge className="bg-primary text-primary-foreground text-xs">Featured</Badge>}
             </div>
             {publisher.name_en && <p className="text-sm text-muted-foreground">{publisher.name_en}</p>}
-            {publisher.description && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{publisher.description}</p>}
+            {publisher.description && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{stripHtml(publisher.description)}</p>}
             <div className="flex items-center gap-4 mt-4 justify-center md:justify-start">
               <span className="flex items-center gap-1 text-sm text-muted-foreground">
                 <BookOpen className="w-4 h-4" />{publisherBooks.length} books

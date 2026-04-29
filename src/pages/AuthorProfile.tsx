@@ -8,6 +8,7 @@ import { FollowButton } from "@/components/FollowButton";
 import { trpc } from "@/lib/trpc";
 import { useBooks } from "@/hooks/useBooks";
 import { toMediaUrl } from "@/lib/mediaUrl";
+import { stripHtml } from "@/lib/stripHtml";
 
 const AuthorProfile = () => {
   const { id } = useParams<{ id: string }>();
@@ -46,7 +47,7 @@ const AuthorProfile = () => {
             </div>
             {author.name_en && <p className="text-sm text-muted-foreground">{author.name_en}</p>}
             {author.genre && <p className="text-sm text-muted-foreground mt-1">{author.genre}</p>}
-            {author.bio && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{author.bio}</p>}
+            {author.bio && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{stripHtml(author.bio)}</p>}
             <div className="flex items-center gap-4 mt-4 justify-center md:justify-start">
               <span className="flex items-center gap-1 text-sm text-muted-foreground"><BookOpen className="w-4 h-4" />{authorBooks.length} books</span>
               <FollowButton profileId={author.id} profileType="author" />

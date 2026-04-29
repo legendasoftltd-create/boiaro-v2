@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { stripHtml } from "@/lib/stripHtml";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
@@ -105,7 +106,7 @@ export default function Subscriptions() {
                 <CardContent className="p-6 pt-8 space-y-4">
                   <div>
                     <h3 className="text-xl font-serif font-bold">{plan.name}</h3>
-                    {plan.description && <p className="text-sm text-muted-foreground mt-1">{plan.description}</p>}
+                    {plan.description && <p className="text-sm text-muted-foreground mt-1">{stripHtml(plan.description)}</p>}
                   </div>
                   <div className="flex items-baseline gap-1">
                     {isSelected && couponApplied && couponDiscount > 0 && (

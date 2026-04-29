@@ -7,6 +7,7 @@ import { trpc } from "@/lib/trpc"
 import { toast } from "sonner"
 import { FollowButton } from "@/components/FollowButton"
 import type { MasterBook } from "@/lib/types"
+import { stripHtml } from "@/lib/stripHtml"
 
 interface Props {
   book: MasterBook
@@ -164,7 +165,7 @@ export function BookDetailHero({ book, liveRating, liveReviewsCount, liveReads }
               )
             ))}
 
-            <p className="text-muted-foreground leading-relaxed max-w-2xl mb-6">{book.descriptionBn}</p>
+            <p className="text-muted-foreground leading-relaxed max-w-2xl mb-6">{stripHtml(book.descriptionBn)}</p>
 
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 mb-6">
               {book.tags.map((tag) => (

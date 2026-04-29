@@ -6,6 +6,7 @@ import { useCurrentLiveSession } from "@/hooks/useLiveSession"
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
+import { stripHtml } from "@/lib/stripHtml"
 
 export function LiveRadioSection() {
   const { data: station, isLoading } = useRadioStation()
@@ -245,7 +246,7 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
       <div className="flex-1 min-w-0">
         <h3 className="text-base md:text-lg font-serif font-bold text-foreground truncate">{station.name}</h3>
         {station.description && (
-          <p className="text-xs md:text-sm text-muted-foreground line-clamp-1 mt-0.5">{station.description}</p>
+          <p className="text-xs md:text-sm text-muted-foreground line-clamp-1 mt-0.5">{stripHtml(station.description)}</p>
         )}
         <div className="flex items-center gap-2 mt-1.5">
           {hasError ? (

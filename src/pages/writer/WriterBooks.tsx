@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent } from "react";
+import { stripHtml } from "@/lib/stripHtml";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -282,7 +283,7 @@ export default function WriterBooks() {
                     {statusBadge(book.submission_status || "pending")}
                   </div>
                   <p className="text-xs text-muted-foreground mb-2">{book.category?.name_bn || book.category?.name || "No category"}</p>
-                  <p className="text-xs text-muted-foreground line-clamp-2">{book.description || "No description"}</p>
+                  <p className="text-xs text-muted-foreground line-clamp-2">{stripHtml(book.description) || "No description"}</p>
                 </div>
                 <div className="shrink-0 flex flex-col gap-1.5">
                   {(book.formats || []).find((f: any) => f.format === "ebook") && (
