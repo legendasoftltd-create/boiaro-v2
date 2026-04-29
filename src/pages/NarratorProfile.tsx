@@ -6,6 +6,7 @@ import { Star, Headphones } from "lucide-react";
 import { FollowButton } from "@/components/FollowButton";
 import { trpc } from "@/lib/trpc";
 import { toMediaUrl } from "@/lib/mediaUrl";
+import { stripHtml } from "@/lib/stripHtml";
 
 const NarratorProfile = () => {
   const { id } = useParams<{ id: string }>();
@@ -44,7 +45,7 @@ const NarratorProfile = () => {
             </div>
             {narrator.name_en && <p className="text-sm text-muted-foreground">{narrator.name_en}</p>}
             {narrator.specialty && <p className="text-sm text-muted-foreground mt-1">{narrator.specialty}</p>}
-            {narrator.bio && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{narrator.bio}</p>}
+            {narrator.bio && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{stripHtml(narrator.bio)}</p>}
             <div className="flex items-center gap-4 mt-4 justify-center md:justify-start">
               {narrator.rating && <span className="flex items-center gap-1 text-sm text-muted-foreground"><Star className="w-4 h-4 fill-primary text-primary" />{narrator.rating}</span>}
               <FollowButton profileId={narrator.id} profileType="narrator" />
