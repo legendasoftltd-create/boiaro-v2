@@ -8,12 +8,14 @@ import {
   postReviewSchema,
 } from "../../schemas/books.js";
 import {
+  addBookBookmark,
   getBookBookmarkStatus,
-  getBookById,
-  getBookBySlug,
+  getBookByIdForRest,
+  getBookBySlugForRest,
   listBookCategories,
   listBookReviews,
   listBooks,
+  removeBookBookmark,
   toggleBookBookmark,
   upsertBookReview,
 } from "../../services/books.service.js";
@@ -22,6 +24,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 export const booksRestRouter = Router();
+const getOptionalUserId = (req: AuthenticatedRequest) => req.auth?.userId ?? null;
 
 booksRestRouter.get("/", async (req, res) => {
   try {
@@ -33,10 +36,13 @@ booksRestRouter.get("/", async (req, res) => {
   }
 });
 
-booksRestRouter.get("/slug/:slug", async (req, res) => {
+booksRestRouter.get("/slug/:slug", async (req: AuthenticatedRequest, res) => {
   try {
     const input = bookBySlugSchema.parse(req.params);
-    const result = await getBookBySlug(input.slug);
+    const result = await getBookBySlugForRest(
+      input.slug,
+      getOptionalUserId(req)
+    );
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);
@@ -52,10 +58,13 @@ booksRestRouter.get("/categories/list", async (_req, res) => {
   }
 });
 
-booksRestRouter.get("/:id", async (req, res) => {
+booksRestRouter.get("/:id", async (req: AuthenticatedRequest, res) => {
   try {
     const input = bookByIdSchema.parse(req.params);
-    const result = await getBookById(input.id);
+    const result = await getBookByIdForRest(
+      input.id,
+      getOptionalUserId(req)
+    );
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);
@@ -109,6 +118,48 @@ booksRestRouter.post(
     try {
       const params = bookByIdSchema.parse(req.params);
       const result = await toggleBookBookmark(req.auth.userId!, params.id);
+      res.json(result);
+    } catch (error) {
+      sendHttpError(res, error);
+    }
+  }
+);
+
+booksRestRouter.get(
+  "/:id/bookmarks",
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const params = bookByIdSchema.parse(req.params);
+      const result = await getBookBookmarkStatus(req.auth.userId!, params.id);
+      res.json(result);
+    } catch (error) {
+      sendHttpError(res, error);
+    }
+  }
+);
+
+booksRestRouter.post(
+  "/:id/bookmarks",
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const params = bookByIdSchema.parse(req.params);
+      const result = await addBookBookmark(req.auth.userId!, params.id);
+      res.json(result);
+    } catch (error) {
+      sendHttpError(res, error);
+    }
+  }
+);
+
+booksRestRouter.delete(
+  "/:id/bookmarks",
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const params = bookByIdSchema.parse(req.params);
+      const result = await removeBookBookmark(req.auth.userId!, params.id);
       res.json(result);
     } catch (error) {
       sendHttpError(res, error);
