@@ -21,7 +21,8 @@ publishersRestRouter.post(
   requireAuth,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const result = await followProfile(req.auth.userId!, req.params.id);
+      const profileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const result = await followProfile(req.auth.userId!, profileId);
       res.json(result);
     } catch (error) {
       sendHttpError(res, error);
@@ -34,7 +35,8 @@ publishersRestRouter.post(
   requireAuth,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const result = await unfollowProfile(req.auth.userId!, req.params.id);
+      const profileId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const result = await unfollowProfile(req.auth.userId!, profileId);
       res.json(result);
     } catch (error) {
       sendHttpError(res, error);
