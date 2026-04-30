@@ -1,10 +1,19 @@
 import { prisma } from "../lib/prisma.js";
 
-export const getHomepageData = async (limit, userId?: string) => {
+const normalizeFormatType = (type?: string) => {
+    if (!type) return null;
+    const value = type.trim().toLowerCase();
+    if (!value) return null;
+    if (value === "hardcopy" || value === "hardcopies" || value === "hardcover") return "hard";
+    return value;
+};
+
+export const getHomepageData = async (limit, userId?: string, type?: string) => {
     const parsedLimit = Number(limit);
     const takeLimit = Number.isFinite(parsedLimit) && parsedLimit > 0
         ? Math.min(Math.floor(parsedLimit), 50)
         : 10;
+    const normalizedType = normalizeFormatType(type);
 
     const allBooks = await prisma.book.findMany({
         where: { submission_status: "approved" },
@@ -121,6 +130,12 @@ export const getHomepageData = async (limit, userId?: string) => {
             book.formats?.some(f => f.format.toLowerCase().includes(formatName.toLowerCase()))
         );
     };
+    const filterBooksByType = (list) => {
+        if (!normalizedType) return list;
+        return list.filter(book =>
+            book.formats?.some(f => f.format.toLowerCase().includes(normalizedType))
+        );
+    };
 
     const appDownload = await prisma.siteSetting.findMany({
         where: {
@@ -141,14 +156,14 @@ export const getHomepageData = async (limit, userId?: string) => {
     });
 
 
-    const popularBooks = [...allBooks]
+    const popularBooks = filterBooksByType([...allBooks]
         .filter((book) => book.total_reads !== null)
         .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
-        .slice(0, takeLimit);
+        .slice(0, takeLimit));
 
-    const BecauseYouRead = popularBooks.slice(0, takeLimit);
+    const BecauseYouRead = filterBooksByType(popularBooks).slice(0, takeLimit);
 
-    const editorsPick = allBooks.filter(book => book.is_featured).slice(0, takeLimit);
+    const editorsPick = filterBooksByType(allBooks.filter(book => book.is_featured)).slice(0, takeLimit);
 
 
     let currentUser = null;
@@ -222,6 +237,15 @@ export const getHomepageData = async (limit, userId?: string) => {
     });
 
 
+    const filteredTrendingNow = filterBooksByType(trendingNow).slice(0, takeLimit);
+    const filteredTopMostRead = filterBooksByType(topTenMostRead).slice(0, takeLimit);
+    const filteredSlider = filterBooksByType(slider).slice(0, takeLimit);
+    const filteredFreeBooks = filterBooksByType(allBooks.filter(b => b.is_free === true)).slice(0, takeLimit);
+
+    const normalizedTypeIsAudiobook = normalizedType === "audiobook";
+    const normalizedTypeIsEbook = normalizedType === "ebook";
+    const normalizedTypeIsHardcopy = normalizedType === "hard";
+
     return {
         currentUser,
         continueListening,
@@ -235,30 +259,28 @@ export const getHomepageData = async (limit, userId?: string) => {
         editorsPick,
         appDownload,
         "trendingNow": {
-            trendingNow,
-            ebooks: getByFormat(trendingNow, "ebook"),
-            audiobooks: getByFormat(trendingNow, "audiobook"),
-            hardCopies: getByFormat(trendingNow, "hard"),
-            pdf: getByFormat(trendingNow, "pdf"),
+            trendingNow: filteredTrendingNow,
+            ebooks: getByFormat(filteredTrendingNow, "ebook"),
+            audiobooks: getByFormat(filteredTrendingNow, "audiobook"),
+            hardCopies: getByFormat(filteredTrendingNow, "hard"),
         },
-        popularAudiobooks,
-        popularHardCopies,
-        popularEbooks,
-        topTenMostRead,
+        popularAudiobooks: normalizedType && !normalizedTypeIsAudiobook ? [] : popularAudiobooks,
+        popularHardCopies: normalizedType && !normalizedTypeIsHardcopy ? [] : popularHardCopies,
+        popularEbooks: normalizedType && !normalizedTypeIsEbook ? [] : popularEbooks,
+        topTenMostRead: filteredTopMostRead,
         'slider': {
-            slider: slider.slice(0, takeLimit),
+            slider: filteredSlider,
         },
         allCategory: allCategory.slice(0, takeLimit),
         allAuthor: allAuthor.slice(0, takeLimit),
         allNarrators: allNarrators.slice(0, takeLimit),
         "countsValue": { counts, totalNarrators },
         "NewReleases": {
-            "all": allBooks.slice(0, takeLimit),
-            "ebooks": allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "ebook")).slice(0, takeLimit),
-            "audiobooks": allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "audiobook")).slice(0, takeLimit),
-            "pdf": allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "pdf")).slice(0, takeLimit),
+            "all": filterBooksByType(allBooks).slice(0, takeLimit),
+            "ebooks": filterBooksByType(allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "ebook"))).slice(0, takeLimit),
+            "audiobooks": filterBooksByType(allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "audiobook"))).slice(0, takeLimit),
         },
-        "FreeBooks": allBooks.filter(b => b.is_free === true).slice(0, takeLimit),
+        "FreeBooks": filteredFreeBooks,
     }
 
 };
