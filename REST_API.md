@@ -596,7 +596,10 @@ Search books by title. No auth required.
 
 Fetch all homepage sections in a single call. No auth required. If authenticated, includes `currentUser`, `continueReading`, and `continueListening`.
 
-**Query params:** `limit` (int, optional, default 10, max 50)
+**Query params:**
+
+- `limit` (int, optional, default 10, max 50)
+- `type` (string, optional): `ebook`, `audiobook`, `hardcopy`
 
 **Success (200):**
 ```json
@@ -609,7 +612,7 @@ Fetch all homepage sections in a single call. No auth required. If authenticated
   "BecauseYouRead": [],
   "editorsPick": [],
   "appDownload": [],
-  "trendingNow": { "trendingNow": [], "ebooks": [], "audiobooks": [], "hardCopies": [], "pdf": [] },
+  "trendingNow": { "trendingNow": [], "ebooks": [], "audiobooks": [], "hardCopies": [] },
   "popularAudiobooks": [],
   "popularHardCopies": [],
   "popularEbooks": [],
@@ -619,7 +622,7 @@ Fetch all homepage sections in a single call. No auth required. If authenticated
   "allAuthor": [],
   "allNarrators": [],
   "countsValue": { "counts": {}, "totalNarrators": 0 },
-  "NewReleases": { "all": [], "ebooks": [], "audiobooks": [], "pdf": [] },
+  "NewReleases": { "all": [], "ebooks": [], "audiobooks": [] },
   "FreeBooks": []
 }
 ```
@@ -630,7 +633,10 @@ Fetch all homepage sections in a single call. No auth required. If authenticated
 
 Fetch a single homepage section only. No auth required. If authenticated, user-specific sections (`currentUser`, `continueReading`, `continueListening`) are populated.
 
-**Query params:** `limit` (int, optional, default 10, max 50)
+**Query params:**
+
+- `limit` (int, optional, default 10, max 50)
+- `type` (string, optional): `ebook`, `audiobook`, `hardcopy`
 
 **Path params:** `section` (string, required)
 

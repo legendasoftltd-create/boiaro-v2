@@ -97,6 +97,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
           weight: true,
           delivery_days: true,
           stock_count: true,
+          narrator: { select: { id: true, name: true, avatar_url: true } },
         },
       },
     },
@@ -108,7 +109,15 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     nextCursor = next!.id;
   }
 
-  return { books, nextCursor };
+  const booksWithNarrators = books.map((book) => ({
+    ...book,
+    formats: book.formats.map((format) => ({
+      ...format,
+      narrators: format.narrator ?? null,
+    })),
+  }));
+
+  return { books: booksWithNarrators, nextCursor };
 }
 
 export async function getBookById(id: string) {

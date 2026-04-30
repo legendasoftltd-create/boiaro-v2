@@ -10,11 +10,24 @@ const getLimitFromQuery = (rawLimit: unknown) => {
   return rawLimit;
 };
 
+const getTypeFromQuery = (rawType: unknown) => {
+  if (Array.isArray(rawType)) return rawType[0];
+  return rawType;
+};
+
+const ALLOWED_HOMEPAGE_TYPES = new Set(["ebook", "audiobook", "hardcopy", "hardcover"]);
+
 homepageRestRouter.get("/", async (req: AuthenticatedRequest, res) => {
   try {
     const limit = getLimitFromQuery(req.query.limit);
+    const type = getTypeFromQuery(req.query.type);
+    if (typeof type === "string" && !ALLOWED_HOMEPAGE_TYPES.has(type.toLowerCase())) {
+      return res.status(400).json({
+        error: "Invalid type. Allowed values: ebook, audiobook, hardcopy",
+      });
+    }
     const userId = req.auth?.userId ?? undefined;
-    const result = await getHomepageData(limit, userId);
+    const result = await getHomepageData(limit, userId, typeof type === "string" ? type : undefined);
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);
@@ -24,8 +37,14 @@ homepageRestRouter.get("/", async (req: AuthenticatedRequest, res) => {
 homepageRestRouter.get("/:section", async (req: AuthenticatedRequest, res) => {
   try {
     const limit = getLimitFromQuery(req.query.limit);
+    const type = getTypeFromQuery(req.query.type);
+    if (typeof type === "string" && !ALLOWED_HOMEPAGE_TYPES.has(type.toLowerCase())) {
+      return res.status(400).json({
+        error: "Invalid type. Allowed values: ebook, audiobook, hardcopy",
+      });
+    }
     const userId = req.auth?.userId ?? undefined;
-    const homepageData = await getHomepageData(limit, userId);
+    const homepageData = await getHomepageData(limit, userId, typeof type === "string" ? type : undefined);
     const rawSection = req.params.section;
     const section = Array.isArray(rawSection) ? rawSection[0] : rawSection;
 
