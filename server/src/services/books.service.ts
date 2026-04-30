@@ -17,6 +17,9 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     isBestseller,
     isFree,
     language,
+    author,
+    publisher,
+    narrator,
     authorId,
     publisherId,
   } = input;
@@ -31,8 +34,17 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
       ...(isBestseller !== undefined && { is_bestseller: isBestseller }),
       ...(isFree !== undefined && { is_free: isFree }),
       ...(language && { language }),
-      ...(authorId && { author_id: authorId }),
-      ...(publisherId && { publisher_id: publisherId }),
+      ...((authorId || author) && { author_id: authorId ?? author }),
+      ...((publisherId || publisher) && { publisher_id: publisherId ?? publisher }),
+      ...(narrator && {
+        formats: {
+          some: {
+            narrator_id: narrator,
+            submission_status: "approved",
+            is_available: true,
+          },
+        },
+      }),
       ...(search && {
         OR: [
           { title: { contains: search, mode: "insensitive" } },
@@ -146,6 +158,68 @@ export async function getBookById(id: string) {
   return book;
 }
 
+function appendFollowedStatusToBookDetails(
+  book: any,
+  followedProfileIds: Set<string>
+) {
+  return {
+    ...book,
+    author: book.author
+      ? { ...book.author, followed: followedProfileIds.has(book.author.id) }
+      : null,
+    publisher: book.publisher
+      ? { ...book.publisher, followed: followedProfileIds.has(book.publisher.id) }
+      : null,
+    formats: book.formats.map((format: any) => ({
+      ...format,
+      narrator: format.narrator
+        ? {
+            ...format.narrator,
+            followed: followedProfileIds.has(format.narrator.id),
+          }
+        : null,
+    })),
+  };
+}
+
+async function getFollowedProfileIdsForBookDetails(
+  userId: string | null | undefined,
+  book: any
+) {
+  if (!userId) return new Set<string>();
+
+  const profileIds = new Set<string>();
+  if (book.author?.id) profileIds.add(book.author.id);
+  if (book.publisher?.id) profileIds.add(book.publisher.id);
+  for (const format of book.formats) {
+    if (format.narrator?.id) profileIds.add(format.narrator.id);
+  }
+
+  if (profileIds.size === 0) return new Set<string>();
+
+  const follows = await prisma.follow.findMany({
+    where: {
+      follower_id: userId,
+      followee_id: { in: Array.from(profileIds) },
+    },
+    select: { followee_id: true },
+  });
+
+  return new Set(follows.map((follow) => follow.followee_id));
+}
+
+export async function getBookByIdForRest(
+  id: string,
+  userId?: string | null
+) {
+  const book = await getBookById(id);
+  const followedProfileIds = await getFollowedProfileIdsForBookDetails(
+    userId,
+    book
+  );
+  return appendFollowedStatusToBookDetails(book, followedProfileIds);
+}
+
 export async function getBookBySlug(slug: string) {
   const book = await prisma.book.findFirst({
     where: {
@@ -170,6 +244,18 @@ export async function getBookBySlug(slug: string) {
   }
 
   return book;
+}
+
+export async function getBookBySlugForRest(
+  slug: string,
+  userId?: string | null
+) {
+  const book = await getBookBySlug(slug);
+  const followedProfileIds = await getFollowedProfileIdsForBookDetails(
+    userId,
+    book
+  );
+  return appendFollowedStatusToBookDetails(book, followedProfileIds);
 }
 
 export async function listBookCategories() {
@@ -213,6 +299,14 @@ export async function upsertBookReview(
   bookId: string,
   input: z.infer<typeof postReviewSchema>
 ) {
+  const book = await prisma.book.findFirst({
+    where: { id: bookId, submission_status: "approved" },
+    select: { id: true },
+  });
+  if (!book) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+  }
+
   const existing = await prisma.review.findFirst({
     where: { book_id: bookId, user_id: userId },
   });
@@ -240,6 +334,14 @@ export async function upsertBookReview(
 }
 
 export async function toggleBookBookmark(userId: string, bookId: string) {
+  const book = await prisma.book.findFirst({
+    where: { id: bookId, submission_status: "approved" },
+    select: { id: true },
+  });
+  if (!book) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+  }
+
   const existing = await prisma.bookmark.findFirst({
     where: { user_id: userId, book_id: bookId },
   });
@@ -257,11 +359,57 @@ export async function toggleBookBookmark(userId: string, bookId: string) {
 }
 
 export async function getBookBookmarkStatus(userId: string, bookId: string) {
+  const book = await prisma.book.findFirst({
+    where: { id: bookId, submission_status: "approved" },
+    select: { id: true },
+  });
+  if (!book) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+  }
+
   const bookmark = await prisma.bookmark.findFirst({
     where: { user_id: userId, book_id: bookId },
   });
 
   return { bookmarked: !!bookmark };
+}
+
+export async function addBookBookmark(userId: string, bookId: string) {
+  const book = await prisma.book.findFirst({
+    where: { id: bookId, submission_status: "approved" },
+    select: { id: true },
+  });
+  if (!book) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+  }
+
+  const existing = await prisma.bookmark.findFirst({
+    where: { user_id: userId, book_id: bookId },
+    select: { id: true },
+  });
+  if (!existing) {
+    await prisma.bookmark.create({
+      data: { user_id: userId, book_id: bookId },
+    });
+  }
+
+  return { bookmarked: true };
+}
+
+export async function removeBookBookmark(userId: string, bookId: string) {
+  const book = await prisma.book.findFirst({
+    where: { id: bookId, submission_status: "approved" },
+    select: { id: true },
+  });
+  if (!book) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+  }
+
+  await prisma.bookmark.deleteMany({
+    where: { user_id: userId, book_id: bookId },
+  });
+
+  return { bookmarked: false };
 }
 
 export async function getUserBookmarks(userId: string) {

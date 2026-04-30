@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 
-export const getAllNarrators = async () => {
+export const getAllNarrators = async (userId?: string | null) => {
   const narrators = await prisma.narrator.findMany({
     where: {
       status: "active",
@@ -32,7 +32,22 @@ export const getAllNarrators = async () => {
     },
   });
 
+  let followedNarratorIds = new Set<string>();
+  if (userId && narrators.length > 0) {
+    const follows = await prisma.follow.findMany({
+      where: {
+        follower_id: userId,
+        followee_id: { in: narrators.map((narrator) => narrator.id) },
+      },
+      select: { followee_id: true },
+    });
+    followedNarratorIds = new Set(follows.map((follow) => follow.followee_id));
+  }
+
   return {
-    narrators,
+    narrators: narrators.map((narrator) => ({
+      ...narrator,
+      followed: followedNarratorIds.has(narrator.id),
+    })),
   };
 };

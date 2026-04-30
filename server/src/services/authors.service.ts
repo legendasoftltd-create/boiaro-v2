@@ -1,10 +1,12 @@
 // services/authors.service.ts
 
-import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
-import { response } from "express";
 
-export const getAllAuthors = async (limit: number, offset: number) => {
+export const getAllAuthors = async (
+  limit: number,
+  offset: number,
+  userId?: string | null
+) => {
     const safeLimit = Math.min(limit, 50);
 
     const [authors, total] = await Promise.all([
@@ -42,8 +44,23 @@ export const getAllAuthors = async (limit: number, offset: number) => {
         }),
     ]);
 
+    let followedAuthorIds = new Set<string>();
+    if (userId && authors.length > 0) {
+      const follows = await prisma.follow.findMany({
+        where: {
+          follower_id: userId,
+          followee_id: { in: authors.map((author) => author.id) },
+        },
+        select: { followee_id: true },
+      });
+      followedAuthorIds = new Set(follows.map((follow) => follow.followee_id));
+    }
+
     return {
-        authors,
+        authors: authors.map((author) => ({
+          ...author,
+          followed: followedAuthorIds.has(author.id),
+        })),
         total,
         limit: safeLimit,
         offset,
