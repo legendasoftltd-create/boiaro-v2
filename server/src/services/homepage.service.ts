@@ -1,7 +1,10 @@
 import { prisma } from "../lib/prisma.js";
 
 export const getHomepageData = async (limit, userId?: string) => {
-    const takeLimit = Number(limit) || 50;
+    const parsedLimit = Number(limit);
+    const takeLimit = Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? Math.min(Math.floor(parsedLimit), 50)
+        : 10;
 
     const allBooks = await prisma.book.findMany({
         where: { submission_status: "approved" },
@@ -75,7 +78,7 @@ export const getHomepageData = async (limit, userId?: string) => {
 
     const topTenMostRead = [...allBooks]
         .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
-        .slice(0, 10);
+        .slice(0, takeLimit);
 
 
     const allAudiobooks = allBooks.filter(book =>
@@ -93,7 +96,7 @@ export const getHomepageData = async (limit, userId?: string) => {
     // popular audio books
     const popularAudiobooks = [...allAudiobooks]
         .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
-        .slice(0, 10);
+        .slice(0, takeLimit);
 
     // popular hard copy 
     const popularHardCopies = [...allHardCopies]
@@ -111,7 +114,7 @@ export const getHomepageData = async (limit, userId?: string) => {
             const scoreB = (b.total_reads * 5) + (b.is_featured ? 50 : 0);
             return scoreB - scoreA;
         })
-        .slice(0, 10);
+        .slice(0, takeLimit);
 
     const getByFormat = (list, formatName) => {
         return list.filter(book =>
@@ -140,11 +143,12 @@ export const getHomepageData = async (limit, userId?: string) => {
 
     const popularBooks = [...allBooks]
         .filter((book) => book.total_reads !== null)
-        .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0));
+        .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
+        .slice(0, takeLimit);
 
-    const BecauseYouRead = popularBooks;
+    const BecauseYouRead = popularBooks.slice(0, takeLimit);
 
-    const editorsPick = allBooks.filter(book => book.is_featured).slice(0, 5);
+    const editorsPick = allBooks.filter(book => book.is_featured).slice(0, takeLimit);
 
 
     let currentUser = null;
@@ -168,7 +172,7 @@ export const getHomepageData = async (limit, userId?: string) => {
             const progressData = await prisma.readingProgress.findMany({
                 where: { user_id: userId, percentage: { lt: 100 } },
                 orderBy: { updated_at: 'desc' },
-                take: 10
+                take: takeLimit
             });
 
             continueReading = progressData.map(p => ({
@@ -187,7 +191,7 @@ export const getHomepageData = async (limit, userId?: string) => {
                 percentage: { lt: 100 }
             },
             orderBy: { updated_at: 'desc' },
-            take: 10
+            take: takeLimit
         });
 
 
@@ -242,11 +246,11 @@ export const getHomepageData = async (limit, userId?: string) => {
         popularEbooks,
         topTenMostRead,
         'slider': {
-            slider,
+            slider: slider.slice(0, takeLimit),
         },
-        allCategory,
-        allAuthor,
-        allNarrators,
+        allCategory: allCategory.slice(0, takeLimit),
+        allAuthor: allAuthor.slice(0, takeLimit),
+        allNarrators: allNarrators.slice(0, takeLimit),
         "countsValue": { counts, totalNarrators },
         "NewReleases": {
             "all": allBooks.slice(0, takeLimit),
@@ -254,7 +258,7 @@ export const getHomepageData = async (limit, userId?: string) => {
             "audiobooks": allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "audiobook")).slice(0, takeLimit),
             "pdf": allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "pdf")).slice(0, takeLimit),
         },
-        "FreeBooks": allBooks.filter(b => b.is_free === true),
+        "FreeBooks": allBooks.filter(b => b.is_free === true).slice(0, takeLimit),
     }
 
 };

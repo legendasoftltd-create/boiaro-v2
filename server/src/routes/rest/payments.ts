@@ -19,6 +19,13 @@ function getString(obj: Record<string, unknown>, key: string): string | undefine
   return trimmed ? trimmed : undefined;
 }
 
+function resolveRedirectUrl(urlOrPath: string | undefined, baseOrigin: string, defaultAbsoluteUrl: string): string {
+  if (!urlOrPath) return defaultAbsoluteUrl;
+  if (/^https?:\/\//i.test(urlOrPath)) return urlOrPath;
+  const origin = baseOrigin.replace(/\/$/, "");
+  return `${origin}${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;
+}
+
 async function finalizePaidOrder(params: { orderId: string; paymentMethod: string; transactionId?: string }) {
   const order = await prisma.order.findUnique({
     where: { id: params.orderId },
@@ -117,11 +124,163 @@ paymentsRestRouter.post("/initiate", requireAuth, async (req: AuthenticatedReque
       res.status(404).json({ error: "Order not found" });
       return;
     }
-    // SSLCommerz integration placeholder — returns a stub gateway URL
-    const sessionKey = `SSSession-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    const gatewayUrl = `https://securepay.sslcommerz.com/gprocess/v4?session_key=${sessionKey}`;
-    await prisma.order.update({ where: { id: order_id }, data: { status: "awaiting_payment" } });
-    res.json({ success: true, gateway_url: gatewayUrl, session_key: sessionKey });
+
+    const gateway = await prisma.paymentGateway.findUnique({
+      where: { gateway_key: "sslcommerz" },
+    });
+    if (!gateway || !gateway.is_enabled) {
+      res.status(400).json({ error: "SSLCommerz is not enabled" });
+      return;
+    }
+
+    const gatewayConfig = asObject(gateway.config);
+    const mode = gateway.mode === "live" ? "live" : "test";
+    const storeId = getString(gatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
+    const storePassword = getString(gatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+    if (!storeId || !storePassword) {
+      res.status(400).json({ error: "SSLCommerz credentials are missing" });
+      return;
+    }
+
+    const frontendBaseUrl = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+    const backendBaseUrl = (
+      process.env.BACKEND_URL ||
+      process.env.SERVER_URL ||
+      process.env.PUBLIC_API_URL ||
+      `http://localhost:${process.env.PORT || "3001"}`
+    ).replace(/\/$/, "");
+
+    const successUrl = resolveRedirectUrl(
+      getString(gatewayConfig, "success_url"),
+      frontendBaseUrl,
+      `${frontendBaseUrl}/payment/callback?status=success`,
+    );
+    const failUrl = resolveRedirectUrl(
+      getString(gatewayConfig, "fail_url"),
+      frontendBaseUrl,
+      `${frontendBaseUrl}/payment/callback?status=failed`,
+    );
+    const cancelUrl = resolveRedirectUrl(
+      getString(gatewayConfig, "cancel_url"),
+      frontendBaseUrl,
+      `${frontendBaseUrl}/payment/callback?status=cancelled`,
+    );
+    const ipnUrl = resolveRedirectUrl(
+      getString(gatewayConfig, "ipn_url"),
+      backendBaseUrl,
+      `${backendBaseUrl}/api/v1/payments/sslcommerz/ipn`,
+    );
+
+    const callbackSuccess = `${backendBaseUrl}/api/v1/payments/sslcommerz/success`;
+    const callbackFail = `${backendBaseUrl}/api/v1/payments/sslcommerz/fail`;
+    const callbackCancel = `${backendBaseUrl}/api/v1/payments/sslcommerz/cancel`;
+    const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+    const payload = new URLSearchParams({
+      store_id: storeId,
+      store_passwd: storePassword,
+      total_amount: String(Number(order.total_amount ?? 0)),
+      currency: "BDT",
+      tran_id: transactionId,
+      success_url: `${callbackSuccess}?redirect=${encodeURIComponent(successUrl)}`,
+      fail_url: `${callbackFail}?redirect=${encodeURIComponent(failUrl)}`,
+      cancel_url: `${callbackCancel}?redirect=${encodeURIComponent(cancelUrl)}`,
+      ipn_url: ipnUrl,
+      product_name: order.order_number,
+      product_category: "Book",
+      product_profile: "general",
+      cus_name: order.shipping_name || "Customer",
+      cus_email: `${req.auth.userId}@boiaro.local`,
+      cus_add1: order.shipping_address || "N/A",
+      cus_city: order.shipping_city || "N/A",
+      cus_postcode: order.shipping_zip || "0000",
+      cus_country: "Bangladesh",
+      cus_phone: order.shipping_phone || "00000000000",
+      ship_name: order.shipping_name || "Customer",
+      ship_add1: order.shipping_address || "N/A",
+      ship_city: order.shipping_city || "N/A",
+      ship_state: order.shipping_city || "N/A",
+      ship_postcode: order.shipping_zip || "0000",
+      ship_country: "Bangladesh",
+      shipping_method: "NO",
+      num_of_item: "1",
+    });
+
+    const initUrl = mode === "live"
+      ? "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
+      : "https://sandbox.sslcommerz.com/gwprocess/v4/api.php";
+
+    const response = await fetch(initUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: payload.toString(),
+    });
+    const raw = await response.text();
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      data = { status: "FAILED", message: raw };
+    }
+
+    const gatewayUrl = typeof data.GatewayPageURL === "string" ? data.GatewayPageURL : undefined;
+    if (!response.ok || !gatewayUrl) {
+      res.status(400).json({
+        error: String(data.failedreason || data.message || "Failed to initiate SSLCommerz payment"),
+      });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: order_id },
+        data: { status: "awaiting_payment" },
+      });
+      const existingPayment = await tx.payment.findFirst({
+        where: { order_id },
+        select: { id: true },
+      });
+      if (existingPayment) {
+        await tx.payment.update({
+          where: { id: existingPayment.id },
+          data: {
+            method: "sslcommerz",
+            status: "awaiting_payment",
+            transaction_id: transactionId,
+          },
+        });
+      } else {
+        await tx.payment.create({
+          data: {
+            user_id: req.auth.userId!,
+            order_id,
+            amount: Number(order.total_amount ?? 0),
+            method: "sslcommerz",
+            status: "awaiting_payment",
+            transaction_id: transactionId,
+          },
+        });
+      }
+      await tx.paymentEvent.create({
+        data: {
+          order_id: order.id,
+          gateway: "sslcommerz",
+          event_type: "initiate",
+          status: String(data.status || "unknown").toLowerCase(),
+          transaction_id: transactionId,
+          amount: Number(order.total_amount ?? 0),
+          raw_response: data as any,
+          currency: "BDT",
+        },
+      });
+    });
+
+    res.json({
+      success: true,
+      gateway_url: gatewayUrl,
+      transaction_id: transactionId,
+      raw_status: data.status || null,
+    });
   } catch (error) {
     sendHttpError(res, error);
   }

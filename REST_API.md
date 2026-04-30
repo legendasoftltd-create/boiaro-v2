@@ -596,17 +596,76 @@ Search books by title. No auth required.
 
 Fetch all homepage sections in a single call. No auth required. If authenticated, includes `currentUser`, `continueReading`, and `continueListening`.
 
-**Query params:** `limit` (int, optional, default 50)
+**Query params:** `limit` (int, optional, default 10, max 50)
 
 **Success (200):**
 ```json
 {
-  "trending": [...],
-  "featured": [...],
-  "new_releases": [...],
-  "recommended": [...]
+  "currentUser": { "...": "..." },
+  "continueListening": [],
+  "continueReading": [],
+  "radio": { "station": {}, "liveSession": {} },
+  "popularBooks": [],
+  "BecauseYouRead": [],
+  "editorsPick": [],
+  "appDownload": [],
+  "trendingNow": { "trendingNow": [], "ebooks": [], "audiobooks": [], "hardCopies": [], "pdf": [] },
+  "popularAudiobooks": [],
+  "popularHardCopies": [],
+  "popularEbooks": [],
+  "topTenMostRead": [],
+  "slider": { "slider": [] },
+  "allCategory": [],
+  "allAuthor": [],
+  "allNarrators": [],
+  "countsValue": { "counts": {}, "totalNarrators": 0 },
+  "NewReleases": { "all": [], "ebooks": [], "audiobooks": [], "pdf": [] },
+  "FreeBooks": []
 }
 ```
+
+---
+
+### `GET /homepage/:section`
+
+Fetch a single homepage section only. No auth required. If authenticated, user-specific sections (`currentUser`, `continueReading`, `continueListening`) are populated.
+
+**Query params:** `limit` (int, optional, default 10, max 50)
+
+**Path params:** `section` (string, required)
+
+Supported section keys:
+
+- `slider`
+- `trendingNow`
+- `popularBooks`
+- `becauseYouRead`
+- `editorsPick`
+- `appDownload`
+- `popularAudiobooks`
+- `popularHardCopies`
+- `popularEbooks`
+- `topMostRead`
+- `allCategory`
+- `allAuthor`
+- `allNarrators`
+- `countsValue`
+- `newReleases`
+- `freeBooks`
+- `continueReading`
+- `continueListening`
+- `radio`
+- `currentUser`
+
+**Success (200):**
+```json
+{
+  "section": "popularBooks",
+  "data": []
+}
+```
+
+**Error (404):** `{ "error": "Homepage section not found" }`
 
 ---
 
@@ -1112,6 +1171,11 @@ Max 10 items, sorted by most recently listened.
 
 ## 10. Orders & Payments
 
+> SSLCommerz is supported in both integration styles:
+>
+> - REST: `POST /payments/initiate`
+> - tRPC: `orders.placeOrder` with `paymentMethod = "sslcommerz"`
+
 ### `POST /orders`
 
 Create a new order. 🔒 Auth required.
@@ -1196,7 +1260,7 @@ Get full order details with items. 🔒 Auth required.
 
 ### `POST /payments/initiate`
 
-Initiate SSLCommerz payment for an order. 🔒 Auth required.
+Initiate SSLCommerz payment for an order (real gateway initialization). 🔒 Auth required.
 
 **Request body:**
 ```json
@@ -1207,12 +1271,45 @@ Initiate SSLCommerz payment for an order. 🔒 Auth required.
 ```json
 {
   "success": true,
-  "gateway_url": "https://securepay.sslcommerz.com/gprocess/v4?...",
-  "session_key": "SSSession123..."
+  "gateway_url": "https://sandbox.sslcommerz.com/EasyCheckOut/testcde...",
+  "transaction_id": "TXN-1714481234567-AB12CD",
+  "raw_status": "SUCCESS"
 }
 ```
 
-Open `gateway_url` in a WebView. After payment, handle callback redirect.
+Open `gateway_url` in a WebView. After payment, SSLCommerz calls backend callback endpoints, then backend redirects to your frontend callback URL.
+
+**Error (400):**
+
+- `{ "error": "SSLCommerz is not enabled" }`
+- `{ "error": "SSLCommerz credentials are missing" }`
+- `{ "error": "Failed to initiate SSLCommerz payment" }`
+
+**Error (404):** `{ "error": "Order not found" }`
+
+---
+
+### `ALL /payments/sslcommerz/success`
+
+SSLCommerz success callback endpoint (gateway-facing). Backend validates payment (`val_id`), marks payment/order, fulfills digital access, then redirects to frontend callback URL.
+
+---
+
+### `ALL /payments/sslcommerz/fail`
+
+SSLCommerz failure callback endpoint (gateway-facing). Backend updates payment status and redirects to frontend callback URL.
+
+---
+
+### `ALL /payments/sslcommerz/cancel`
+
+SSLCommerz cancel callback endpoint (gateway-facing). Backend updates payment status and redirects to frontend callback URL.
+
+---
+
+### `POST /payments/sslcommerz/ipn`
+
+SSLCommerz IPN endpoint (gateway-facing). Logs payment event and finalizes order for valid IPN statuses.
 
 ---
 
@@ -1333,7 +1430,8 @@ Mark notifications as read. 🔒 Auth required.
 | POST | `/api/v1/auth/reset-password` | No | Request password reset |
 | POST | `/api/v1/auth/update-password` | Yes | Update password |
 | GET | `/api/v1/auth/me` | Yes | Get current user |
-| GET | `/api/v1/homepage` | No | Homepage sections |
+| GET | `/api/v1/homepage` | No | Homepage all sections (default limit 10) |
+| GET | `/api/v1/homepage/:section` | No | Homepage single section (default limit 10) |
 | GET | `/api/v1/footer` | No | Footer settings |
 | GET | `/api/v1/profile` | Yes | Get profile |
 | PATCH | `/api/v1/profile` | Yes | Update profile |
@@ -1376,6 +1474,10 @@ Mark notifications as read. 🔒 Auth required.
 | POST | `/api/v1/orders` | Yes | Create order |
 | GET | `/api/v1/orders/:order_id` | Yes | Get order details |
 | POST | `/api/v1/payments/initiate` | Yes | Initiate SSLCommerz payment |
+| ALL | `/api/v1/payments/sslcommerz/success` | No (Gateway callback) | SSLCommerz success callback |
+| ALL | `/api/v1/payments/sslcommerz/fail` | No (Gateway callback) | SSLCommerz fail callback |
+| ALL | `/api/v1/payments/sslcommerz/cancel` | No (Gateway callback) | SSLCommerz cancel callback |
+| POST | `/api/v1/payments/sslcommerz/ipn` | No (Gateway callback) | SSLCommerz IPN callback |
 | POST | `/api/v1/payments/demo` | Yes | Demo payment |
 | GET | `/api/v1/subscriptions/plans` | No | Subscription plans |
 | GET | `/api/v1/subscriptions/my` | Yes | My subscriptions |
@@ -1387,12 +1489,13 @@ Mark notifications as read. 🔒 Auth required.
 ## 14. Integration Flows
 
 ### Flow 1: Guest Browsing & Preview
-1. `GET /homepage` — Load home screen
-2. `GET /categories` — Category filters
-3. `GET /books` — Book listing
-4. `GET /books/:id` — Book details
-5. `GET /access/preview-eligibility` — Check preview
-6. `POST /content/audio-url` — Preview audio track
+1. `GET /homepage?limit=10` — Load home screen with capped homepage lists
+2. *(Optional, lazy loading)* `GET /homepage/:section?limit=10` — Load section-wise blocks
+3. `GET /categories` — Category filters
+4. `GET /books` — Book listing
+5. `GET /books/:id` — Book details
+6. `GET /access/preview-eligibility` — Check preview
+7. `POST /content/audio-url` — Preview audio track
 
 ### Flow 2: Authentication
 1. `POST /auth/signup` → Verify email
