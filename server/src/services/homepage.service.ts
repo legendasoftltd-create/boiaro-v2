@@ -168,73 +168,72 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
 
     let currentUser = null;
     let continueReading = [];
+    let continueListening = [];
 
     if (userId) {
+        try {
+            const user = await prisma.user.findUnique({
+                where: { id: userId },
+                include: { profile: true }
+            });
 
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            include: { profile: true }
-        });
+            if (user) {
+                currentUser = {
+                    id: user.id,
+                    email: user.email,
+                    profile: user.profile
+                };
 
-        if (user) {
-            currentUser = {
-                id: user.id,
-                email: user.email,
-                profile: user.profile
-            };
+                const progressData = await prisma.readingProgress.findMany({
+                    where: { user_id: userId, percentage: { lt: 100 } },
+                    orderBy: { updated_at: 'desc' },
+                    take: takeLimit
+                });
 
+                continueReading = progressData.map(p => ({
+                    ...p,
+                    book: allBooks.find(b => b.id === p.book_id)
+                })).filter(item => item.book);
+            }
+        } catch (e) {
+            console.error("Homepage: error fetching user reading progress:", e);
+        }
 
-            const progressData = await prisma.readingProgress.findMany({
+        try {
+            const listeningData = await prisma.listeningProgress.findMany({
                 where: { user_id: userId, percentage: { lt: 100 } },
                 orderBy: { updated_at: 'desc' },
                 take: takeLimit
             });
 
-            continueReading = progressData.map(p => ({
-                ...p,
-                book: allBooks.find(b => b.id === p.book_id)
-            })).filter(item => item.book);
+            continueListening = listeningData.map(p => {
+                const book = allBooks.find(b => b.id === p.book_id);
+                if (!book) return null;
+                return {
+                    ...p,
+                    percentage: Number(p.percentage) || 0,
+                    book: book
+                };
+            }).filter(Boolean);
+        } catch (e) {
+            console.error("Homepage: error fetching user listening progress:", e);
         }
     }
 
-    let continueListening = [];
-
-    if (userId) {
-        const listeningData = await prisma.listeningProgress.findMany({
-            where: {
-                user_id: userId,
-                percentage: { lt: 100 }
-            },
-            orderBy: { updated_at: 'desc' },
-            take: takeLimit
+    // live radio station
+    let station = null;
+    let liveSession = null;
+    try {
+        station = await prisma.radioStation.findFirst({
+            where: { is_active: true },
+            orderBy: { sort_order: 'asc' }
         });
-
-
-        continueListening = listeningData.map(p => {
-            const book = allBooks.find(b => b.id === p.book_id);
-            if (!book) return null;
-
-            return {
-                ...p,
-                percentage: Number(p.percentage) || 0,
-                book: book
-            };
-        }).filter(Boolean);
+        liveSession = await prisma.liveSession.findFirst({
+            where: { status: "live", ended_at: null },
+        });
+    } catch (e) {
+        console.error("Homepage: error fetching radio/live session:", e);
     }
-
-    // live radio station 
-    const station = await prisma.radioStation.findFirst({
-        where: { is_active: true },
-        orderBy: { sort_order: 'asc' }
-    });
-
-    const liveSession = await prisma.liveSession.findFirst({
-        where: {
-           
-            status: "live",
-            ended_at: null
-        },
-    });
 
 
     const filteredTrendingNow = filterBooksByType(trendingNow).slice(0, takeLimit);

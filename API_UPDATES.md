@@ -314,3 +314,319 @@ This document summarizes the API work completed in this update cycle, including 
 - Review submit endpoint behavior remains upsert-style:
   - existing review by same user is updated and set to `pending`
   - no existing review creates a new review with `pending` status
+
+## 10) Orders REST API
+
+> **Prior state:** `POST /api/v1/orders` and `GET /api/v1/orders/:order_id` already existed as basic stubs. `GET /api/v1/orders` (list) and `GET /api/v1/orders/payment-gateways` did not exist.
+
+### New endpoints
+
+- `GET /api/v1/orders` — paginated order list
+- `GET /api/v1/orders/payment-gateways` — available payment gateways (mirrors tRPC `orders.paymentGateways`)
+
+### Updated endpoints
+
+- `POST /api/v1/orders` — rewritten to fully mirror tRPC `orders.placeOrder`
+- `GET /api/v1/orders/:order_id` — now returns full order with `items → book`, `payments`, `status_history`
+
+### What changed — GET /api/v1/orders/payment-gateways
+
+- Returns all enabled payment gateways ordered by `sort_priority`.
+- No authentication required.
+- Direct mirror of tRPC `orders.paymentGateways`.
+
+### What changed — GET /api/v1/orders
+
+- Paginated order list for authenticated users.
+- Supports query params:
+  - `limit` (default `20`, max `100`)
+  - `cursor` (order ID for cursor-based pagination)
+- Returns raw Prisma response with same includes as tRPC `orders.myOrders`:
+  - `items → book_format → book (id, title, cover_url)`
+  - `payments` (full payment records)
+
+```json
+{
+  "orders": [...],
+  "nextCursor": "string | undefined"
+}
+```
+
+### What changed — POST /api/v1/orders
+
+Full port of tRPC `orders.placeOrder` logic into REST. Behaviour is identical.
+
+- **Stock validation** for hardcopy items — returns `400` if out of stock.
+- **Duplicate-purchase guard** for digital items — returns `400` if already purchased or coin-unlocked.
+- **`book_format_id` resolved from DB** — looked up per `book_id + format`, same as tRPC.
+- **Item `price` and `grand_total` trusted from client** — same as tRPC (client sends pre-calculated values).
+  - If `grand_total` is omitted, server calculates from items + shipping − coupon discount.
+- **Payment methods supported**: `cod`, `demo`, `bkash`, `nagad`, `sslcommerz`, `wallet` / `coins`.
+- **SSLCommerz** — full gateway initiation: reads config from DB/env, posts to sandbox/live URL, logs `PaymentEvent`, returns `{ orderId, gatewayUrl }`.
+- **Wallet / coins payment** (extension on top of tRPC):
+  - Requires `coin_amount` in request body.
+  - Validates sufficient coin balance before order creation.
+  - Deducts coins and logs `CoinTransaction` with `source: "order_payment"`.
+- **Digital fulfilment** (for `demo`, `bkash`, `nagad`, `wallet`):
+  - Creates `UserPurchase` record per digital item.
+  - Upserts `ContentUnlock` for immediate access.
+  - Calculates and records contributor earnings via `calculateEarnings`.
+  - Sets order status to `confirmed`.
+- **Coupon usage recorded** — creates `CouponUsage` row and increments `coupon.used_count` when `applied_coupon_id` + `coupon_discount` are provided.
+- **Response shape** — same as tRPC: `{ orderId, gatewayUrl }`.
+  - `gatewayUrl` is a string for SSLCommerz, `null` for all other methods.
+
+### What changed — GET /api/v1/orders/:order_id
+
+- Now returns full Prisma object matching tRPC `orders.byId`:
+  - `items → book_format → book` (full book record)
+  - `payments` (full records)
+  - `status_history` (ordered desc by `created_at`)
+
+### Request body — POST /api/v1/orders
+
+```json
+{
+  "items": [
+    {
+      "book_id": "string",
+      "format": "ebook | audiobook | hardcopy",
+      "quantity": 1,
+      "price": 150,
+      "book_title": "string (optional, used in error messages)"
+    }
+  ],
+  "payment_method": "cod | demo | bkash | nagad | sslcommerz | wallet | coins",
+  "grand_total": 210,
+  "coupon_code": "SAVE10",
+  "coupon_discount": 20,
+  "applied_coupon_id": "string (optional)",
+  "coin_amount": 500,
+  "shipping_name": "string",
+  "shipping_phone": "string",
+  "shipping_address": "string",
+  "shipping_city": "string",
+  "shipping_district": "string",
+  "shipping_area": "string",
+  "shipping_zip": "string",
+  "shipping_method_id": "string",
+  "shipping_method_name": "string",
+  "shipping_carrier": "string",
+  "shipping_cost": 60,
+  "estimated_delivery_days": "3-5",
+  "total_weight": 0.5,
+  "packaging_cost": 20
+}
+```
+
+### Response — POST /api/v1/orders
+
+```json
+{
+  "orderId": "string",
+  "gatewayUrl": "https://sandbox.sslcommerz.com/... | null"
+}
+```
+
+## 11) Subscriptions REST API
+
+### New endpoints
+
+- `GET /api/v1/subscriptions/active`
+- `POST /api/v1/subscriptions/subscribe`
+
+### What changed — GET /api/v1/subscriptions/active
+
+- Returns the authenticated user's current active subscription (or `null`).
+- Includes plan details: `name`, `description`, `features`, `duration_days`.
+
+### What changed — POST /api/v1/subscriptions/subscribe
+
+- Creates a new subscription for the authenticated user.
+- Validates the plan is active.
+- Supports optional coupon: if `coupon_code` is provided, validates and applies discount automatically.
+- Calculates `end_date` as `start_date + plan.duration_days`.
+- Records coupon usage in `CouponUsage` and increments `used_count`.
+- Returns the created subscription with plan details.
+
+### Request body — POST /api/v1/subscriptions/subscribe
+
+```json
+{
+  "plan_id": "string",
+  "coupon_code": "string (optional)",
+  "coupon_discount": 10,
+  "payment_method": "demo | sslcommerz | bkash | nagad (default: demo)"
+}
+```
+
+### Updated — GET /api/v1/subscriptions/plans and /my
+
+- `/plans` response now includes `is_featured` and `sort_order` fields.
+- `/my` response now includes `amount_paid`, `coupon_code`, `discount_amount`, and full plan `description` and `features`.
+
+## 12) Wallet REST API
+
+### New endpoint
+
+- `GET /api/v1/wallet/coin-settings`
+
+### What changed
+
+- Returns coin system configuration from `PlatformSetting` table.
+- No authentication required.
+- Response shape:
+
+```json
+{
+  "system_enabled": true,
+  "unlock_enabled": true,
+  "conversion_ratio": 0.10,
+  "ads_per_quick_unlock": 5,
+  "bonus_per_session": 5,
+  "coin_ad_reward": 1,
+  "daily_limit": 10,
+  "ad_cooldown_minutes": 5
+}
+```
+
+- `conversion_ratio` indicates the BDT value of 1 coin (e.g. `0.10` = 10 coins per ৳1).
+- Use this on the client to calculate how many coins are needed to pay for an order before submitting `payment_method: "wallet"`.
+
+## 13) Coupons REST API
+
+### New router — `/api/v1/coupons`
+
+#### New endpoints
+
+- `GET /api/v1/coupons/:code`
+- `POST /api/v1/coupons/validate`
+
+### GET /api/v1/coupons/:code
+
+- Public endpoint, no auth required.
+- Looks up a coupon by code (case-insensitive).
+- Returns `404` if not found or inactive.
+- Returns `400` if expired or usage limit reached.
+- Returns basic coupon info on success: `id`, `code`, `discount_type`, `discount_value`, `applies_to`, `description`, `min_order_amount`, `first_order_only`, `end_date`.
+
+### POST /api/v1/coupons/validate
+
+- Requires authentication.
+- Full coupon validation against order details.
+- Returns `discount_amount` and `final_amount` ready to use in order submission.
+
+### Request body — POST /api/v1/coupons/validate
+
+```json
+{
+  "code": "SAVE10",
+  "total_amount": 500,
+  "has_hardcopy": false,
+  "has_ebook": true,
+  "has_audiobook": false
+}
+```
+
+### Response — POST /api/v1/coupons/validate
+
+```json
+{
+  "valid": true,
+  "coupon_id": "string",
+  "code": "SAVE10",
+  "discount_type": "percentage | fixed",
+  "discount_value": 10,
+  "discount_amount": 50,
+  "final_amount": 450
+}
+```
+
+### Validation rules applied
+
+- Coupon must be `active`.
+- Must be within `start_date` / `end_date` window.
+- Must not exceed global `usage_limit`.
+- Must meet `min_order_amount` threshold.
+- `applies_to` must match order content types (`hardcopy`, `ebook`, `audiobook`, `all`).
+- `per_user_limit` checked per authenticated user.
+- `first_order_only` checked against confirmed order history.
+
+## 14) Wishlist (Bookmarks) REST API
+
+### New endpoint
+
+- `GET /api/v1/me/wishlist`
+
+### What changed
+
+- Added a dedicated wishlist endpoint as a structured alias for `/api/v1/me/bookmarks`.
+- Returns user's bookmarked books in a `{ wishlist, total }` envelope.
+- Each entry includes: `id`, `book_id`, `added_at`, and a full `book` object (with author and approved formats).
+
+### Response shape
+
+```json
+{
+  "wishlist": [
+    {
+      "id": "string",
+      "book_id": "string",
+      "added_at": "2025-01-01T00:00:00.000Z",
+      "book": {
+        "id": "string",
+        "title": "string",
+        "cover_url": "string",
+        "author": { "id": "string", "name": "string" },
+        "formats": [ { "id": "string", "format": "ebook", "price": 100 } ]
+      }
+    }
+  ],
+  "total": 3
+}
+```
+
+## 15) Access Check REST API
+
+### Updated endpoint
+
+- `POST /api/v1/access/check`
+
+### What changed
+
+- `has_unlock` is now computed correctly — was always `false` before.
+  - Now checks `ContentUnlock` table for an active coin-based unlock for the user + book + format.
+- Added preview fields to response for `ebook` and `audiobook` formats:
+  - `preview_available` — `true` if preview percentage or chapters are set, or book is free.
+  - `preview_percentage` — percentage of content unlocked as preview (from `BookFormat`).
+  - `preview_chapters` — number of chapters unlocked as preview (from `BookFormat`).
+- `format` in request body now used to scope purchase and unlock checks per-format.
+- Access check now runs purchase, subscription, and coin-unlock queries in parallel for performance.
+- **Bug fixed** — subscription check now correctly handles lifetime subscriptions (`end_date: null`).
+  - Was: `end_date: { gt: now }` — missed subscriptions with no expiry.
+  - Now: `OR: [{ end_date: null }, { end_date: { gte: now } }]` — matches tRPC `wallet.checkAccess` exactly.
+
+### Updated response shape
+
+```json
+{
+  "has_access": true,
+  "access_method": "coin | purchase | subscription | free | none",
+  "is_free": false,
+  "has_subscription": false,
+  "has_purchase": false,
+  "has_unlock": true,
+  "preview_available": true,
+  "preview_percentage": 20,
+  "preview_chapters": 2
+}
+```
+
+## 16) Homepage Service — Server Error Fix
+
+### What changed
+
+- User-specific homepage queries (reading progress, listening progress) are now wrapped in individual `try/catch` blocks.
+- Radio station and live session queries are also wrapped in `try/catch`.
+- Any failure in user-specific data no longer crashes the homepage response — the main homepage content is always returned even if personalization data fails.
+- Errors are logged to server console for debugging without surfacing to clients.

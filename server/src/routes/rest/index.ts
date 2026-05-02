@@ -22,6 +22,7 @@ import { notificationsRestRouter } from "./notifications.js";
 import { ordersRestRouter } from "./orders.js";
 import { paymentsRestRouter } from "./payments.js";
 import { shippingRestRouter } from "./shipping.js";
+import { couponsRestRouter } from "./coupons.js";
 
 export const restRouter = Router();
 
@@ -48,3 +49,4 @@ restRouter.use("/notifications", notificationsRestRouter);
 restRouter.use("/orders", ordersRestRouter);
 restRouter.use("/payments", paymentsRestRouter);
 restRouter.use("/shipping", shippingRestRouter);
+restRouter.use("/coupons", couponsRestRouter);
