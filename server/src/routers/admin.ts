@@ -6,6 +6,7 @@ import type { Context } from "../context.js";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
+import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const role = await prisma.userRole.findFirst({
@@ -471,12 +472,12 @@ export const adminRouter = router({
     ),
 
   listCoinTransactionsByUser: adminProcedure
-    .input(z.object({ userId: z.string(), limit: z.number().min(1).max(500).default(50) }).optional())
+    .input(z.object({ userId: z.string().min(1), limit: z.number().min(1).max(500).default(50) }))
     .query(({ input }) =>
       prisma.coinTransaction.findMany({
-        where: { user_id: input?.userId },
+        where: { user_id: input.userId },
         orderBy: { created_at: "desc" },
-        take: input?.limit ?? 50,
+        take: input.limit,
       })
     ),
 
@@ -908,6 +909,7 @@ export const adminRouter = router({
       });
       const totalQty = orderItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
       const totalCogs = totalQty * input.purchaseCostPerUnit;
+      const totalExpenseAmount = totalCogs + input.packagingCost;
       const bookIds = [...new Set(orderItems.map((item) => item.book_id).filter(Boolean) as string[])];
       const books = bookIds.length
         ? await prisma.book.findMany({
@@ -915,9 +917,10 @@ export const adminRouter = router({
             select: { title: true },
           })
         : [];
+      const packagingNote = input.packagingCost > 0 ? ` + packaging ৳${input.packagingCost}` : "";
       const description = `Order-based purchase: ${
         books.map((book) => book.title).join(", ") || "Book"
-      } — ${totalQty} × ৳${input.purchaseCostPerUnit} (Order #${order.order_number || input.orderId.slice(0, 8)})`;
+      } — ${totalQty} × ৳${input.purchaseCostPerUnit}${packagingNote} (Order #${order.order_number || input.orderId.slice(0, 8)})`;
 
       return prisma.$transaction([
         prisma.order.update({
@@ -933,7 +936,7 @@ export const adminRouter = router({
             type: "expense",
             category: "cost_of_goods_sold",
             description,
-            amount: totalCogs,
+            amount: totalExpenseAmount,
             entry_date: new Date(),
             order_id: input.orderId,
             reference_type: "order",
@@ -3800,16 +3803,13 @@ export const adminRouter = router({
       ]);
 
       const bookMap = Object.fromEntries(books.map((b) => [b.id, b]));
-      const paidStatuses = new Set(["paid", "confirmed", "completed", "access_granted", "delivered"]);
-      const revenueIncluded =
-        order.payment_method === "cod"
-          ? paidStatuses.has(order.status) && /settled|paid/i.test(order.cod_payment_status || "")
-          : paidStatuses.has(order.status);
+      const revenueIncluded = isVerifiedRevenueOrder(order);
 
       const incomeEntries = ledgerEntries.filter((e) => e.type === "income" && e.category === "book_sale");
       let exclusionReason: string | null = null;
       if (!revenueIncluded) {
-        exclusionReason = order.payment_method === "cod" ? "cod_not_settled_or_status_not_verified" : "status_not_verified";
+        exclusionReason =
+          order.payment_method === "cod" ? "cod_not_settled" : "order_status_not_counted_as_paid_revenue";
       }
 
       const issues: string[] = [];
@@ -3817,7 +3817,7 @@ export const adminRouter = router({
       if (incomeEntries.length > 1) issues.push(`Duplicate ledger income entries found: ${incomeEntries.length}`);
       if (!payment && order.payment_method !== "cod") issues.push("No payment record found for non-COD order");
       if (payment?.status === "paid" && !revenueIncluded) issues.push("Payment paid but order excluded from revenue");
-      if (order.payment_method === "cod" && order.status === "delivered" && !/settled/i.test(order.cod_payment_status || "")) {
+      if (order.payment_method === "cod" && order.status === "delivered" && !isVerifiedRevenueOrder(order)) {
         issues.push("COD delivered but cod_payment_status not settled");
       }
 
@@ -3837,11 +3837,7 @@ export const adminRouter = router({
     .mutation(async ({ ctx, input }) => {
       const order = await prisma.order.findUnique({ where: { id: input.orderId } });
       if (!order) throw new TRPCError({ code: "NOT_FOUND", message: "Order not found" });
-      const paidStatuses = new Set(["paid", "confirmed", "completed", "access_granted", "delivered"]);
-      const verified =
-        order.payment_method === "cod"
-          ? paidStatuses.has(order.status) && /settled|paid/i.test(order.cod_payment_status || "")
-          : paidStatuses.has(order.status);
+      const verified = isVerifiedRevenueOrder(order);
 
       const existingIncome = await prisma.accountingLedger.findFirst({
         where: { order_id: order.id, type: "income", category: "book_sale", amount: { gt: 0 } },
@@ -3876,12 +3872,7 @@ export const adminRouter = router({
         where: { type: "income", category: "book_sale" },
       }),
     ]);
-    const paidStatuses = new Set(["paid", "confirmed", "completed", "access_granted", "delivered"]);
-    const verifiedOrders = orders.filter((o) =>
-      o.payment_method === "cod"
-        ? paidStatuses.has(o.status) && /settled|paid/i.test(o.cod_payment_status || "")
-        : paidStatuses.has(o.status)
-    );
+    const verifiedOrders = orders.filter((o) => isVerifiedRevenueOrder(o));
     const orderRevenue = verifiedOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0);
     const positiveLedger = ledger.filter((e) => Number(e.amount) > 0);
     const ledgerIncome = positiveLedger.reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -3914,8 +3905,11 @@ export const adminRouter = router({
     const [newUsersCount, weekOrders, weekLedger, topBooks, consumption, alerts] = await Promise.all([
       prisma.profile.count({ where: { created_at: { gte: start } } }),
       prisma.order.findMany({
-        where: { created_at: { gte: start }, status: { in: ["paid", "confirmed", "completed", "access_granted", "delivered"] } },
-        select: { total_amount: true },
+        where: {
+          created_at: { gte: start },
+          status: { notIn: ["cancelled", "returned", "pending"] },
+        },
+        select: { total_amount: true, status: true, payment_method: true, cod_payment_status: true },
       }),
       prisma.accountingLedger.findMany({ where: { entry_date: { gte: new Date(startDay) } }, select: { type: true, amount: true, category: true } }),
       prisma.book.findMany({ select: { title: true, total_reads: true }, orderBy: { total_reads: "desc" }, take: 5 }),
@@ -3933,10 +3927,11 @@ export const adminRouter = router({
       return { severity: a.level === "critical" ? "critical" : a.level === "error" ? "warning" : "info", is_resolved: isResolved };
     });
 
+    const weekOrdersVerified = weekOrders.filter((o) => isVerifiedRevenueOrder(o));
     return {
       newUsers: newUsersCount,
-      totalOrders: weekOrders.length,
-      totalRevenue: weekOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0),
+      totalOrders: weekOrdersVerified.length,
+      totalRevenue: weekOrdersVerified.reduce((s, o) => s + Number(o.total_amount || 0), 0),
       income,
       expense,
       netProfit: income - expense,
@@ -4187,34 +4182,47 @@ export const adminRouter = router({
         });
         if (alreadyExists) continue;
 
-        await calculateEarnings({
+        const n = await calculateEarnings({
           bookId: item.book_id,
           format: item.format,
           saleAmount: Number(item.price) * item.quantity,
           orderId: order.id,
           orderItemId: item.id,
         });
-        created++;
+        if (n > 0) created++;
       }
       return { created };
     }),
 
   revenueDashboardData: adminProcedure.query(async () => {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
-    const paidStatuses = ["paid", "completed", "access_granted", "delivered"];
-    const [incomeRows, paidOrders, paidItems, books, profiles] = await Promise.all([
+    const [incomeRows, ordersForDash, paidItemsRaw, books, profiles] = await Promise.all([
       prisma.accountingLedger.findMany({
         where: { type: "income", entry_date: { gte: thirtyDaysAgo } },
         select: { entry_date: true, amount: true },
         orderBy: { entry_date: "asc" },
       }),
       prisma.order.findMany({
-        where: { status: { in: paidStatuses } },
-        select: { user_id: true, total_amount: true },
+        where: {
+          created_at: { gte: thirtyDaysAgo },
+          status: { notIn: ["cancelled", "returned", "pending"] },
+        },
+        select: { user_id: true, total_amount: true, status: true, payment_method: true, cod_payment_status: true },
       }),
       prisma.orderItem.findMany({
-        where: { order: { status: { in: paidStatuses } } },
-        select: { book_id: true, format: true, price: true, quantity: true },
+        where: {
+          order: {
+            created_at: { gte: thirtyDaysAgo },
+            status: { notIn: ["cancelled", "returned", "pending"] },
+          },
+        },
+        select: {
+          book_id: true,
+          format: true,
+          price: true,
+          quantity: true,
+          order: { select: { status: true, payment_method: true, cod_payment_status: true } },
+        },
       }),
       prisma.book.findMany({ select: { id: true, title: true } }),
       prisma.profile.findMany({ select: { user_id: true, display_name: true } }),
@@ -4226,6 +4234,9 @@ export const adminRouter = router({
       dailyByDate[key] = (dailyByDate[key] || 0) + Number(row.amount || 0);
     });
     const dailyRevenue = Object.entries(dailyByDate).map(([date, amount]) => ({ date, amount: Math.round(amount) }));
+
+    const paidOrders = ordersForDash.filter((o) => isVerifiedRevenueOrder(o));
+    const paidItems = paidItemsRaw.filter((row) => isVerifiedRevenueOrder(row.order));
 
     const formatByName: Record<string, number> = {};
     const revenueByBookId: Record<string, number> = {};
@@ -4948,6 +4959,20 @@ export const adminRouter = router({
   fullDashboard: adminProcedure.query(async () => {
     const today = new Date().toISOString().split("T")[0];
     const todayStart = new Date(today);
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+    const itemBuyingUnitCost = (fc: {
+      unit_cost?: number | null;
+      original_price?: number | null;
+      publisher_commission_percent?: number | null;
+    }) => {
+      const uc = Number(fc.unit_cost || 0);
+      if (uc > 0) return uc;
+      const orig = Number(fc.original_price || 0);
+      const comm = Number(fc.publisher_commission_percent || 0);
+      if (orig > 0 && comm > 0) return orig - (orig * comm) / 100;
+      return 0;
+    };
 
     const [
       bookCount, formatCounts, authorCount, narratorCount,
@@ -4955,13 +4980,28 @@ export const adminRouter = router({
       pendingApps, recentReviews, bookReads,
       ledgerAll, todayLedger, recentLedger,
       coinTxns, earnings, hardcopyFormats,
-      paidOrderUsers, orderItems, topRated,
+      orderItems, topRated, bookFormatsAll, onlineNow, readingNow, listeningNow,
     ] = await Promise.all([
       prisma.book.count(),
       prisma.bookFormat.groupBy({ by: ["format"], _count: { id: true } }),
       prisma.author.count(),
       prisma.narrator.count(),
-      prisma.order.findMany({ select: { id: true, total_amount: true, status: true, created_at: true, shipping_cost: true, payment_method: true } }),
+      prisma.order.findMany({
+        select: {
+          id: true,
+          total_amount: true,
+          status: true,
+          created_at: true,
+          shipping_cost: true,
+          payment_method: true,
+          cod_payment_status: true,
+          user_id: true,
+          is_purchased: true,
+          purchase_cost_per_unit: true,
+          packaging_cost: true,
+          fulfillment_cost: true,
+        },
+      }),
       prisma.profile.count(),
       prisma.book.findMany({ select: { title: true, total_reads: true }, orderBy: { total_reads: "desc" }, take: 5 }),
       prisma.order.findMany({ select: { id: true, total_amount: true, status: true, created_at: true }, orderBy: { created_at: "desc" }, take: 6 }),
@@ -4972,12 +5012,36 @@ export const adminRouter = router({
       prisma.accountingLedger.findMany({ where: { entry_date: { gte: todayStart } }, select: { type: true, amount: true } }),
       prisma.accountingLedger.findMany({ select: { description: true, amount: true, type: true, entry_date: true }, orderBy: { created_at: "desc" }, take: 5 }),
       prisma.coinTransaction.findMany({ select: { type: true, amount: true } }),
-      prisma.contributorEarning.findMany({ select: { role: true, earned_amount: true, sale_amount: true, format: true, order_id: true } }),
+      prisma.contributorEarning.findMany({
+        select: { role: true, earned_amount: true, sale_amount: true, format: true, order_id: true, status: true },
+      }),
       prisma.bookFormat.findMany({ where: { format: "hardcopy" }, select: { stock_count: true, book: { select: { title: true } } } }),
-      prisma.order.findMany({ where: { status: { not: "cancelled" } }, select: { user_id: true } }),
       prisma.orderItem.findMany({ select: { book_id: true, format: true, price: true, quantity: true, order_id: true } }),
       prisma.book.findMany({ where: { rating: { not: null } }, select: { title: true, rating: true, reviews_count: true }, orderBy: { rating: "desc" }, take: 5 }),
+      prisma.bookFormat.findMany({
+        select: {
+          book_id: true,
+          format: true,
+          unit_cost: true,
+          original_price: true,
+          publisher_commission_percent: true,
+        },
+      }),
+      prisma.userPresence.count({ where: { last_seen: { gte: fiveMinAgo } } }),
+      prisma.userPresence.count({ where: { last_seen: { gte: fiveMinAgo }, activity_type: "reading" } }),
+      prisma.userPresence.count({ where: { last_seen: { gte: fiveMinAgo }, activity_type: "listening" } }),
     ]);
+
+    const bookIdsForTitles = [...new Set(orderItems.map((i) => i.book_id).filter(Boolean) as string[])];
+    const booksById =
+      bookIdsForTitles.length > 0
+        ? Object.fromEntries(
+            (await prisma.book.findMany({
+              where: { id: { in: bookIdsForTitles } },
+              select: { id: true, title: true },
+            })).map((b) => [b.id, b.title])
+          )
+        : {};
 
     const fmtMap = Object.fromEntries(formatCounts.map(f => [f.format, f._count.id]));
     const ledgerEntries = ledgerAll;
@@ -5002,8 +5066,14 @@ export const adminRouter = router({
       .map(f => ({ title: f.book?.title || "Unknown", stock: f.stock_count || 0 }))
       .sort((a, b) => a.stock - b.stock).slice(0, 8);
 
-    const paidUserIds = new Set(paidOrderUsers.map(o => o.user_id));
-    const activeEarnings = earnings;
+    const verifiedOrders = orders.filter(isVerifiedRevenueOrder);
+    const verifiedOrderIds = new Set(verifiedOrders.map((o) => o.id));
+    const sellableAmount = (o: (typeof orders)[0]) => Number(o.total_amount || 0) - Number(o.shipping_cost || 0);
+
+    const paidUserIds = new Set(
+      verifiedOrders.map((o) => o.user_id).filter((id): id is string => Boolean(id))
+    );
+    const activeEarnings = earnings.filter((e) => e.status !== "reversed");
     const writerEarnings = activeEarnings.filter(e => e.role === "writer").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
     const narratorEarnings = activeEarnings.filter(e => e.role === "narrator").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
     const publisherEarnings = activeEarnings.filter(e => e.role === "publisher").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
@@ -5012,12 +5082,15 @@ export const adminRouter = router({
     const totalSaleAmount = Array.from(uniqueOrderSales.values()).reduce((s, v) => s + v, 0);
     const platformEarnings = Math.max(0, totalSaleAmount - writerEarnings - narratorEarnings - publisherEarnings);
 
-    const validOrders = orders.filter(o => o.status !== "cancelled");
+    const formatCostMap = Object.fromEntries(
+      bookFormatsAll.map((f) => [`${f.book_id}_${f.format}`, f])
+    );
+
     const monthMap: Record<string, { revenue: number; cost: number; profit: number }> = {};
-    validOrders.forEach(o => {
+    verifiedOrders.forEach((o) => {
       const key = new Date(o.created_at).toISOString().slice(0, 7);
       if (!monthMap[key]) monthMap[key] = { revenue: 0, cost: 0, profit: 0 };
-      monthMap[key].revenue += Number(o.total_amount || 0);
+      monthMap[key].revenue += sellableAmount(o);
     });
     ledgerEntries.forEach(e => {
       const key = e.entry_date ? new Date(e.entry_date).toISOString().slice(0, 7) : null;
@@ -5030,12 +5103,65 @@ export const adminRouter = router({
 
     const bookSales: Record<string, { title: string; sales: number; revenue: number }> = {};
     orderItems.forEach(item => {
-      if (!item.book_id) return;
-      if (!bookSales[item.book_id]) bookSales[item.book_id] = { title: "Unknown", sales: 0, revenue: 0 };
+      if (!item.book_id || !verifiedOrderIds.has(item.order_id)) return;
+      if (!bookSales[item.book_id]) bookSales[item.book_id] = { title: booksById[item.book_id] || "Unknown", sales: 0, revenue: 0 };
+      bookSales[item.book_id].title = booksById[item.book_id] || bookSales[item.book_id].title;
       bookSales[item.book_id].sales += item.quantity || 1;
       bookSales[item.book_id].revenue += Number(item.price || 0) * (item.quantity || 1);
     });
     const topSellingBooks = Object.values(bookSales).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+
+    const bookProfitAgg: Record<string, { revenue: number; cost: number }> = {};
+    orderItems.forEach((item) => {
+      if (!item.book_id || !verifiedOrderIds.has(item.order_id)) return;
+      const bid = item.book_id;
+      if (!bookProfitAgg[bid]) bookProfitAgg[bid] = { revenue: 0, cost: 0 };
+      const qty = item.quantity || 1;
+      bookProfitAgg[bid].revenue += Number(item.price || 0) * qty;
+      const fc = formatCostMap[`${item.book_id}_${item.format}`] || {};
+      bookProfitAgg[bid].cost += itemBuyingUnitCost(fc) * qty;
+    });
+    const topEarningBooks = Object.entries(bookProfitAgg)
+      .map(([bookId, v]) => ({
+        title: booksById[bookId] || "Unknown",
+        revenue: v.revenue,
+        profit: v.revenue - v.cost,
+      }))
+      .sort((a, b) => b.profit - a.profit)
+      .slice(0, 5);
+
+    const fmtProfitAgg: Record<string, { revenue: number; cost: number }> = {};
+    orderItems.forEach((item) => {
+      if (!verifiedOrderIds.has(item.order_id)) return;
+      const fmt = item.format || "unknown";
+      if (!fmtProfitAgg[fmt]) fmtProfitAgg[fmt] = { revenue: 0, cost: 0 };
+      const qty = item.quantity || 1;
+      fmtProfitAgg[fmt].revenue += Number(item.price || 0) * qty;
+      const fc = formatCostMap[`${item.book_id}_${item.format}`] || {};
+      fmtProfitAgg[fmt].cost += itemBuyingUnitCost(fc) * qty;
+    });
+    const formatProfit = Object.entries(fmtProfitAgg).map(([format, v]) => ({
+      format,
+      revenue: v.revenue,
+      profit: v.revenue - v.cost,
+    }));
+
+    const codOrders = orders.filter((o) => o.payment_method === "cod");
+    const codPending = codOrders
+      .filter((o) => ["cod_pending_collection", "unpaid"].includes(o.cod_payment_status || ""))
+      .reduce((s, o) => s + Number(o.total_amount || 0), 0);
+    const codCollected = codOrders
+      .filter((o) => o.cod_payment_status === "collected_by_courier")
+      .reduce((s, o) => s + Number(o.total_amount || 0), 0);
+    const codSettled = codOrders
+      .filter((o) => ["settled_to_merchant", "paid"].includes(o.cod_payment_status || ""))
+      .reduce((s, o) => s + Number(o.total_amount || 0), 0);
+
+    const verifiedSellableTotal = verifiedOrders.reduce((s, o) => s + sellableAmount(o), 0);
+    const creatorPayoutsTotal = activeEarnings
+      .filter((e) => e.role !== "platform")
+      .reduce((s, e) => s + Number(e.earned_amount || 0), 0);
+    const realNetProfit = verifiedSellableTotal - creatorPayoutsTotal - totalExpense;
 
     return {
       totalBooks: bookCount,
@@ -5045,8 +5171,8 @@ export const adminRouter = router({
       totalAuthors: authorCount,
       totalNarrators: narratorCount,
       totalUsers: profileCount,
-      totalOrders: orders.length,
-      totalRevenue: validOrders.reduce((s, o) => s + (Number(o.total_amount || 0) - Number(o.shipping_cost || 0)), 0),
+      totalOrders: orders.filter((o) => !["cancelled", "returned"].includes(o.status)).length,
+      totalRevenue: verifiedSellableTotal,
       totalIncome, totalExpense, netProfit: totalIncome - totalExpense,
       todayIncome, todayExpense, todayProfit: todayIncome - todayExpense,
       recentLedger: recentLedger.map(r => ({
@@ -5068,7 +5194,7 @@ export const adminRouter = router({
       writerEarnings, narratorEarnings, publisherEarnings, platformEarnings,
       totalViews: 0,
       totalReads: bookReads,
-      totalPurchases: validOrders.length,
+      totalPurchases: verifiedOrders.length,
       paidUsers: paidUserIds.size,
       pendingApplications: pendingApps.map(a => ({
         id: a.id.slice(0, 8), fullId: a.id, userId: a.user_id, role: a.applied_role,
@@ -5082,10 +5208,15 @@ export const adminRouter = router({
         id: o.id.slice(0, 8), total: Number(o.total_amount || 0),
         status: o.status || "pending", created: new Date(o.created_at).toLocaleDateString(),
       })),
-      onlineNow: 0, readingNow: 0, listeningNow: 0,
-      formatProfit: [], topEarningBooks: [],
-      codPending: 0, codCollected: 0, codSettled: 0,
-      realNetProfit: totalIncome - totalExpense,
+      onlineNow,
+      readingNow,
+      listeningNow,
+      formatProfit,
+      topEarningBooks,
+      codPending,
+      codCollected,
+      codSettled,
+      realNetProfit,
     };
   }),
 

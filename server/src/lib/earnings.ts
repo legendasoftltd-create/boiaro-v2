@@ -17,10 +17,10 @@ interface EarningParams {
  * Called after a digital purchase is confirmed (placeOrder) or a coin unlock.
  * For hardcopy, called when order status moves to confirmed/delivered.
  */
-export async function calculateEarnings(params: EarningParams): Promise<void> {
+export async function calculateEarnings(params: EarningParams): Promise<number> {
   const { bookId, format, saleAmount, orderId, orderItemId, contentUnlockId } = params;
 
-  if (saleAmount <= 0) return;
+  if (saleAmount <= 0) return 0;
 
   // 1. Get revenue split rule: per-book override → default rule
   const [override, defaultRule, contributors] = await Promise.all([
@@ -56,7 +56,7 @@ export async function calculateEarnings(params: EarningParams): Promise<void> {
       }
     : null;
 
-  if (!rule) return; // no rule defined — skip silently
+  if (!rule) return 0; // no rule defined — skip silently
 
   const fulfillmentAmount = (saleAmount * rule.fulfillment) / 100;
 
@@ -136,15 +136,17 @@ export async function calculateEarnings(params: EarningParams): Promise<void> {
 
   if (earningData.length > 0) {
     try {
-      await prisma.contributorEarning.createMany({ data: earningData });
+      const result = await prisma.contributorEarning.createMany({ data: earningData });
+      return result.count;
     } catch (error: any) {
       const missingColumn = String(error?.meta?.driverAdapterError?.cause?.column || "");
       if (error?.code === "P2022" && missingColumn.includes("content_unlock_id")) {
         const fallbackData = earningData.map(({ content_unlock_id: _unused, ...rest }) => rest);
-        await prisma.contributorEarning.createMany({ data: fallbackData as any });
-        return;
+        const result = await prisma.contributorEarning.createMany({ data: fallbackData as any });
+        return result.count;
       }
       throw error;
     }
   }
+  return 0;
 }
