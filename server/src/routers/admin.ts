@@ -3844,11 +3844,13 @@ export const adminRouter = router({
       });
       const fixes: string[] = [];
       if (verified && !existingIncome) {
+        // Sellable amount = total_amount - shipping_cost (shipping is customer pass-through)
+        const sellableAmount = Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
         await prisma.accountingLedger.create({
           data: {
             type: "income",
             category: "book_sale",
-            amount: Number(order.total_amount || 0),
+            amount: sellableAmount,
             entry_date: new Date(),
             order_id: order.id,
             reference_type: "order",
@@ -3866,14 +3868,15 @@ export const adminRouter = router({
   revenueConsistencyCheck: adminProcedure.query(async () => {
     const [orders, ledger] = await Promise.all([
       prisma.order.findMany({
-        select: { id: true, order_number: true, total_amount: true, status: true, payment_method: true, cod_payment_status: true, created_at: true },
+        select: { id: true, order_number: true, total_amount: true, shipping_cost: true, status: true, payment_method: true, cod_payment_status: true, created_at: true },
       }),
       prisma.accountingLedger.findMany({
         where: { type: "income", category: "book_sale" },
       }),
     ]);
     const verifiedOrders = orders.filter((o) => isVerifiedRevenueOrder(o));
-    const orderRevenue = verifiedOrders.reduce((s, o) => s + Number(o.total_amount || 0), 0);
+    // Use sellable amount (excludes shipping — customer pass-through, not platform revenue)
+    const orderRevenue = verifiedOrders.reduce((s, o) => s + Math.max(0, Number(o.total_amount || 0) - Number(o.shipping_cost || 0)), 0);
     const positiveLedger = ledger.filter((e) => Number(e.amount) > 0);
     const ledgerIncome = positiveLedger.reduce((s, e) => s + Number(e.amount || 0), 0);
     const ledgerOrderIds = new Set(positiveLedger.map((e) => e.order_id).filter(Boolean));
@@ -3909,7 +3912,7 @@ export const adminRouter = router({
           created_at: { gte: start },
           status: { notIn: ["cancelled", "returned", "pending"] },
         },
-        select: { total_amount: true, status: true, payment_method: true, cod_payment_status: true },
+        select: { total_amount: true, shipping_cost: true, status: true, payment_method: true, cod_payment_status: true },
       }),
       prisma.accountingLedger.findMany({ where: { entry_date: { gte: new Date(startDay) } }, select: { type: true, amount: true, category: true } }),
       prisma.book.findMany({ select: { title: true, total_reads: true }, orderBy: { total_reads: "desc" }, take: 5 }),
@@ -3931,7 +3934,7 @@ export const adminRouter = router({
     return {
       newUsers: newUsersCount,
       totalOrders: weekOrdersVerified.length,
-      totalRevenue: weekOrdersVerified.reduce((s, o) => s + Number(o.total_amount || 0), 0),
+      totalRevenue: weekOrdersVerified.reduce((s, o) => s + Math.max(0, Number(o.total_amount || 0) - Number(o.shipping_cost || 0)), 0),
       income,
       expense,
       netProfit: income - expense,

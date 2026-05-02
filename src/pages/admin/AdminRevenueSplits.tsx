@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,10 @@ export default function AdminRevenueSplits() {
     narrator_percentage: 0, platform_percentage: 35, fulfillment_cost_percentage: 0,
   });
 
-  const { data: defaultRules = [] } = trpc.admin.listDefaultRevenueRules.useQuery(undefined, {
-    onSuccess: (data) => setDefaults(data as any[]),
-  });
+  const { data: defaultRules = [] } = trpc.admin.listDefaultRevenueRules.useQuery();
+  useEffect(() => {
+    if (defaultRules.length > 0) setDefaults(defaultRules as any[]);
+  }, [defaultRules]);
   const { data: bookSplits = [] } = trpc.admin.listRevenueOverrides.useQuery();
   const { data: earnings = [] } = trpc.admin.listEarnings.useQuery({ limit: 50 });
   const { data: stats } = trpc.admin.revenueStats.useQuery();
