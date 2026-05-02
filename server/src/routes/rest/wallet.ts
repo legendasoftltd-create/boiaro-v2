@@ -102,6 +102,41 @@ walletRestRouter.post("/claim-ad", requireAuth, async (req: AuthenticatedRequest
   }
 });
 
+walletRestRouter.get("/coin-settings", async (_req, res) => {
+  try {
+    const settings = await prisma.platformSetting.findMany({
+      where: {
+        key: {
+          in: [
+            "coin_system_enabled",
+            "coin_unlock_enabled",
+            "coin_conversion_ratio",
+            "ads_per_quick_unlock",
+            "bonus_coin_per_ad_session",
+            "coin_ad_reward",
+            "coin_daily_limit",
+            "ad_cooldown_minutes",
+          ],
+        },
+      },
+    });
+    const map: Record<string, string> = {};
+    settings.forEach((s) => { map[s.key] = s.value as string; });
+    res.json({
+      system_enabled: map.coin_system_enabled !== "false",
+      unlock_enabled: map.coin_unlock_enabled !== "false",
+      conversion_ratio: parseFloat(map.coin_conversion_ratio || "0.10"),
+      ads_per_quick_unlock: parseInt(map.ads_per_quick_unlock || "5", 10),
+      bonus_per_session: parseInt(map.bonus_coin_per_ad_session || "5", 10),
+      coin_ad_reward: parseInt(map.coin_ad_reward || "1", 10),
+      daily_limit: parseInt(map.coin_daily_limit || "10", 10),
+      ad_cooldown_minutes: parseInt(map.ad_cooldown_minutes || "5", 10),
+    });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
 walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { book_id, format, coin_cost } = req.body;
