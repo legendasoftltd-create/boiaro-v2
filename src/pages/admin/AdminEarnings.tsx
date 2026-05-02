@@ -53,11 +53,12 @@ export default function AdminEarnings() {
     return true;
   });
 
-  const pendingCount = earnings.filter(e => e.status === "pending").length;
-  const totalPending = earnings.filter(e => e.status === "pending").reduce((s, e) => s + Number(e.earned_amount), 0);
-  const totalConfirmed = earnings.filter(e => e.status === "confirmed").reduce((s, e) => s + Number(e.earned_amount), 0);
-  const platformEarnings = earnings.filter(e => e.role === "platform").reduce((s, e) => s + Number(e.earned_amount), 0);
-  const creatorPayouts = earnings.filter(e => e.role !== "platform").reduce((s, e) => s + Number(e.earned_amount), 0);
+  const activeEarnings = earnings.filter(e => e.status !== "reversed");
+  const pendingCount = activeEarnings.filter(e => e.status === "pending").length;
+  const totalPending = activeEarnings.filter(e => e.status === "pending").reduce((s, e) => s + Number(e.earned_amount), 0);
+  const totalConfirmed = activeEarnings.filter(e => e.status === "confirmed").reduce((s, e) => s + Number(e.earned_amount), 0);
+  const platformEarnings = activeEarnings.filter(e => e.role === "platform").reduce((s, e) => s + Number(e.earned_amount), 0);
+  const creatorPayouts = activeEarnings.filter(e => e.role !== "platform").reduce((s, e) => s + Number(e.earned_amount), 0);
 
   const confirmEarnings = async (ids: string[]) => {
     if (!ids.length) return;
