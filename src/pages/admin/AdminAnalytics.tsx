@@ -16,7 +16,7 @@ import {
   PieChart, Pie, Cell, Legend, Area, AreaChart,
 } from "recharts";
 import { format } from "date-fns";
-import { isVerifiedRevenueOrder, isInDateRange, type RevenueOrder } from "@/hooks/useUnifiedRevenue";
+import { isVerifiedRevenueOrder, isInDateRange, getOrderSellableAmount, type RevenueOrder } from "@/hooks/useUnifiedRevenue";
 
 const COLORS = ["hsl(var(--primary))", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
@@ -74,21 +74,21 @@ export default function AdminAnalytics() {
 
   
 
-  // Only include items from verified revenue orders
-  const allVerifiedIds = useMemo(() => new Set(orders.filter(o => isVerifiedRevenueOrder(o as RevenueOrder)).map(o => o.id)), [orders]);
+  // Only include items from the currently filtered (date + verified) orders
+  const filteredOrderIds = useMemo(() => new Set(filteredOrders.map(o => o.id)), [filteredOrders]);
 
   const filteredItems = useMemo(() => {
     return orderItems.filter(item => {
-      // Only include items belonging to verified orders
-      if (!(item as any).order_id || !allVerifiedIds.has((item as any).order_id)) return false;
+      // Only include items belonging to date-filtered, verified orders
+      if (!(item as any).order_id || !filteredOrderIds.has((item as any).order_id)) return false;
       if (formatFilter !== "all" && item.format !== formatFilter) return false;
       if (categoryFilter !== "all" && item.books?.category_id !== categoryFilter) return false;
       return true;
     });
-  }, [orderItems, formatFilter, categoryFilter, allVerifiedIds]);
+  }, [orderItems, formatFilter, categoryFilter, filteredOrderIds]);
 
   // === SUMMARY CARDS ===
-  const totalRevenue = filteredOrders.reduce((s, o) => s + ((o.total_amount || 0) - (o.shipping_cost || 0)), 0);
+  const totalRevenue = filteredOrders.reduce((s, o) => s + getOrderSellableAmount(o as RevenueOrder), 0);
   const totalOrdersCount = filteredOrders.length;
   const uniqueUsers = new Set(filteredOrders.map(o => o.user_id)).size;
   const totalBooksSold = filteredItems.reduce((s, i) => s + (i.quantity || 1), 0);
@@ -98,7 +98,7 @@ export default function AdminAnalytics() {
     const map: Record<string, number> = {};
     filteredOrders.forEach(o => {
       const d = format(new Date(o.created_at), "yyyy-MM");
-      map[d] = (map[d] || 0) + (o.total_amount || 0);
+      map[d] = (map[d] || 0) + getOrderSellableAmount(o as RevenueOrder);
     });
     return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([month, revenue]) => ({ month, revenue }));
   }, [filteredOrders]);
@@ -110,7 +110,7 @@ export default function AdminAnalytics() {
       const d = format(new Date(o.created_at), "yyyy-MM-dd");
       if (!map[d]) map[d] = { count: 0, revenue: 0 };
       map[d].count++;
-      map[d].revenue += o.total_amount || 0;
+      map[d].revenue += getOrderSellableAmount(o as RevenueOrder);
     });
     return Object.entries(map).sort(([a], [b]) => b.localeCompare(a)).slice(0, 30).map(([date, v]) => ({ date, ...v }));
   }, [filteredOrders]);
@@ -150,8 +150,8 @@ export default function AdminAnalytics() {
       const key = `${e.user_id}-${e.role}`;
       if (!map[key]) map[key] = { user_id: e.user_id, role: e.role, total: 0, pending: 0, paid: 0 };
       map[key].total += e.earned_amount || 0;
-      if (e.status === "paid") map[key].paid += e.earned_amount || 0;
-      else map[key].pending += e.earned_amount || 0;
+      if (e.status === "confirmed") map[key].paid += e.earned_amount || 0;
+      else if (e.status === "pending") map[key].pending += e.earned_amount || 0;
     });
     return Object.values(map).sort((a, b) => b.total - a.total);
   }, [earnings]);
