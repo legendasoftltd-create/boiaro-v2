@@ -204,7 +204,7 @@ export default function AdminDashboard() {
             </h2>
             <Badge variant="outline" className="text-[10px]">Live</Badge>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 items-stretch">
             <div className="bg-card/80 rounded-lg p-3 border border-border/30 cursor-pointer hover:border-primary/30 transition-colors" onClick={() => navigate("/admin/user-analytics")}>
               <div className="flex items-center gap-2 mb-1">
                 <Users className="h-3.5 w-3.5 text-purple-400" />
@@ -275,12 +275,12 @@ export default function AdminDashboard() {
         </div>
 
         {/* === SECTION 1: Financial KPIs === */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 items-stretch">
           <StaggeredItem index={0}>
-            <KPICard icon={DollarSign} label="Verified Order Revenue" value={stats.totalRevenue} prefix="৳" tooltip="Revenue from verified paid orders only. Excludes manual ledger entries and adjustments." color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/financial-reports")} />
+            <KPICard icon={DollarSign} label="Verified Order Revenue" value={stats.totalRevenue} prefix="৳" tooltip="Sellable total (order total minus shipping) for verified paid/settled orders only — same rules as Financial Reports." color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/financial-reports")} />
           </StaggeredItem>
           <StaggeredItem index={1}>
-            <KPICard icon={TrendingUp} label="Real Net Profit" value={stats.realNetProfit} prefix="৳" tooltip="Revenue - costs - creator payouts - expenses" color={stats.realNetProfit >= 0 ? "text-primary" : "text-red-400"} bgColor={stats.realNetProfit >= 0 ? "bg-primary/10" : "bg-red-500/10"} onClick={() => navigate("/admin/financial-reports")} />
+            <KPICard icon={TrendingUp} label="Real Net Profit" value={stats.realNetProfit} prefix="৳" tooltip="Verified sellable revenue minus all-time creator payouts (excluding platform and reversed) minus ledger expenses. Packaging, fulfillment, and other ledger income are not fully reflected here; see Financial Reports for a full P&L." color={stats.realNetProfit >= 0 ? "text-primary" : "text-red-400"} bgColor={stats.realNetProfit >= 0 ? "bg-primary/10" : "bg-red-500/10"} onClick={() => navigate("/admin/financial-reports")} />
           </StaggeredItem>
           <StaggeredItem index={2}>
             <KPICard icon={ArrowDownRight} label="Total Expense" value={stats.totalExpense} prefix="৳" tooltip="Total expenses from ledger" color="text-red-400" bgColor="bg-red-500/10" onClick={() => navigate("/admin/accounting")} />
@@ -294,12 +294,12 @@ export default function AdminDashboard() {
         </div>
 
         {/* === SECTION 2: User & Conversion KPIs === */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-stretch">
           <StaggeredItem index={4}>
             <KPICard icon={Users} label="Active Users" value={stats.totalUsers} tooltip="Total registered users" color="text-purple-400" bgColor="bg-purple-500/10" onClick={() => navigate("/admin/users")} />
           </StaggeredItem>
           <StaggeredItem index={5}>
-            <KPICard icon={UserCheck} label="Paid Users" value={stats.paidUsers} tooltip="Users with at least one order" color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/users")} />
+            <KPICard icon={UserCheck} label="Paid Users" value={stats.paidUsers} tooltip="Users with at least one verified paid or settled-COD order" color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/users")} />
           </StaggeredItem>
           <StaggeredItem index={6}>
             <KPICard icon={Percent} label="Conversion Rate" value={conversionRate} suffix="%" tooltip="Paid users / Total users" color="text-blue-400" bgColor="bg-blue-500/10" onClick={() => navigate("/admin/analytics")} />
@@ -311,12 +311,12 @@ export default function AdminDashboard() {
             <KPICard icon={Coins} label="Coins Spent" value={stats.totalCoinsSpent} tooltip="Total coins spent by users" color="text-orange-400" bgColor="bg-orange-500/10" onClick={() => navigate("/admin/coin-settings")} />
           </StaggeredItem>
           <StaggeredItem index={9}>
-            <KPICard icon={ShoppingCart} label="Total Orders" value={stats.totalOrders} tooltip="All orders placed" color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/orders")} />
+            <KPICard icon={ShoppingCart} label="Total Orders" value={stats.totalOrders} tooltip="Orders excluding cancelled and returned" color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/orders")} />
           </StaggeredItem>
         </div>
 
         {/* === SECTION 2.5: Live Activity === */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
           <StaggeredItem index={10}>
             <KPICard icon={Activity} label="Online Now" value={stats.onlineNow} tooltip="Users active in last 5 minutes" color="text-green-400" bgColor="bg-green-500/10" onClick={() => navigate("/admin/reading-analytics")} />
           </StaggeredItem>
@@ -786,7 +786,7 @@ function StaggeredItem({ children, index }: { children: React.ReactNode; index: 
     return () => clearTimeout(t);
   }, [index]);
   return (
-    <div className={`transition-all duration-500 ease-out ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}>
+    <div className={`h-full transition-all duration-500 ease-out ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"}`}>
       {children}
     </div>
   );
@@ -807,10 +807,10 @@ function KPICard({ icon: Icon, label, value, color, bgColor, onClick, tooltip, p
     <Tooltip>
       <TooltipTrigger asChild>
         <Card
-          className="border-border/40 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 active:scale-[0.97] transition-all duration-200 cursor-pointer group"
+          className="border-border/40 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 active:scale-[0.97] transition-all duration-200 cursor-pointer group h-full min-h-[5.5rem]"
           onClick={onClick}
         >
-          <CardContent className="p-4 flex items-center gap-3">
+          <CardContent className="p-4 flex items-center gap-3 h-full">
             <div className={`p-2 rounded-lg ${bgColor} group-hover:scale-110 transition-transform duration-200`}>
               <Icon className={`h-4 w-4 ${color}`} />
             </div>
