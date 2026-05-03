@@ -39,21 +39,22 @@ export function EarningsDashboard({ role }: EarningsDashboardProps) {
     onError: (err) => toast.error(err.message),
   });
 
-  const totalEarned = earnings.reduce((sum, e) => sum + e.earned_amount, 0);
-  const pendingEarnings = earnings.filter(e => e.status === "pending").reduce((sum, e) => sum + e.earned_amount, 0);
-  const confirmedEarnings = earnings.filter(e => e.status === "confirmed").reduce((sum, e) => sum + e.earned_amount, 0);
+  const activeEarnings = earnings.filter(e => e.status !== "reversed");
+  const totalEarned = activeEarnings.reduce((sum, e) => sum + e.earned_amount, 0);
+  const pendingEarnings = activeEarnings.filter(e => e.status === "pending").reduce((sum, e) => sum + e.earned_amount, 0);
+  const confirmedEarnings = activeEarnings.filter(e => e.status === "confirmed").reduce((sum, e) => sum + e.earned_amount, 0);
   const totalWithdrawn = withdrawals.filter(w => w.status === "paid").reduce((sum, w) => sum + w.amount, 0);
   const pendingWithdrawals = withdrawals
     .filter(w => w.status === "pending" || w.status === "approved")
     .reduce((sum, w) => sum + w.amount, 0);
   const availableBalance = confirmedEarnings - totalWithdrawn - pendingWithdrawals;
 
-  const ebookEarnings = earnings.filter(e => e.format === "ebook").reduce((s, e) => s + e.earned_amount, 0);
-  const audioEarnings = earnings.filter(e => e.format === "audiobook").reduce((s, e) => s + e.earned_amount, 0);
-  const hardcopyEarnings = earnings.filter(e => e.format === "hardcopy").reduce((s, e) => s + e.earned_amount, 0);
-  const ebookSales = earnings.filter(e => e.format === "ebook").length;
-  const audioSales = earnings.filter(e => e.format === "audiobook").length;
-  const hardcopySales = earnings.filter(e => e.format === "hardcopy").length;
+  const ebookEarnings = activeEarnings.filter(e => e.format === "ebook").reduce((s, e) => s + e.earned_amount, 0);
+  const audioEarnings = activeEarnings.filter(e => e.format === "audiobook").reduce((s, e) => s + e.earned_amount, 0);
+  const hardcopyEarnings = activeEarnings.filter(e => e.format === "hardcopy").reduce((s, e) => s + e.earned_amount, 0);
+  const ebookSales = activeEarnings.filter(e => e.format === "ebook").length;
+  const audioSales = activeEarnings.filter(e => e.format === "audiobook").length;
+  const hardcopySales = activeEarnings.filter(e => e.format === "hardcopy").length;
 
   const submitWithdrawal = () => {
     const amount = Number(withdrawForm.amount);

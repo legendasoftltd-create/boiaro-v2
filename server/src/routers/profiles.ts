@@ -319,8 +319,10 @@ export const profilesRouter = router({
       ]);
       const bookCount = allBookIds.size;
 
-      const totalEarnings = earnings.reduce((s, e) => s + e.earned_amount, 0);
-      const confirmed = earnings.filter(e => e.status === "confirmed").reduce((s, e) => s + e.earned_amount, 0);
+      // Exclude reversed earnings from all totals
+      const activeEarnings = earnings.filter(e => e.status !== "reversed");
+      const totalEarnings = activeEarnings.reduce((s, e) => s + e.earned_amount, 0);
+      const confirmed = activeEarnings.filter(e => e.status === "confirmed").reduce((s, e) => s + e.earned_amount, 0);
       const withdrawn = withdrawals.filter(w => w.status === "paid").reduce((s, w) => s + w.amount, 0);
       const pendingPayout = withdrawals
         .filter(w => w.status === "pending" || w.status === "approved")
@@ -332,16 +334,16 @@ export const profilesRouter = router({
         availableBalance: Math.max(0, confirmed - withdrawn - pendingPayout),
         pendingPayout,
         withdrawn,
-        // salesByFormat = number of individual sales (earning records per format)
+        // salesByFormat = number of individual sales (earning records per format, excluding reversed)
         salesByFormat: {
-          ebook: earnings.filter(e => e.format === "ebook").length,
-          audiobook: earnings.filter(e => e.format === "audiobook").length,
-          hardcopy: earnings.filter(e => e.format === "hardcopy").length,
+          ebook: activeEarnings.filter(e => e.format === "ebook").length,
+          audiobook: activeEarnings.filter(e => e.format === "audiobook").length,
+          hardcopy: activeEarnings.filter(e => e.format === "hardcopy").length,
         },
         revenueByFormat: {
-          ebook: earnings.filter(e => e.format === "ebook").reduce((s, e) => s + e.earned_amount, 0),
-          audiobook: earnings.filter(e => e.format === "audiobook").reduce((s, e) => s + e.earned_amount, 0),
-          hardcopy: earnings.filter(e => e.format === "hardcopy").reduce((s, e) => s + e.earned_amount, 0),
+          ebook: activeEarnings.filter(e => e.format === "ebook").reduce((s, e) => s + e.earned_amount, 0),
+          audiobook: activeEarnings.filter(e => e.format === "audiobook").reduce((s, e) => s + e.earned_amount, 0),
+          hardcopy: activeEarnings.filter(e => e.format === "hardcopy").reduce((s, e) => s + e.earned_amount, 0),
         },
       };
     }),
@@ -429,14 +431,15 @@ export const profilesRouter = router({
           select: { earned_amount: true },
         }),
         prisma.withdrawalRequest.findMany({
-          where: { user_id: ctx.userId, status: { in: ["pending", "approved"] } },
-          select: { amount: true },
+          where: { user_id: ctx.userId, status: { in: ["pending", "approved", "paid"] } },
+          select: { amount: true, status: true },
         }),
       ]);
 
       const confirmedTotal = earnings.reduce((s, e) => s + e.earned_amount, 0);
-      const pendingWithdrawn = existingWithdrawals.reduce((s, w) => s + w.amount, 0);
-      const available = confirmedTotal - pendingWithdrawn;
+      // Subtract both in-flight (pending/approved) AND already-paid withdrawals
+      const alreadyWithdrawn = existingWithdrawals.reduce((s, w) => s + w.amount, 0);
+      const available = confirmedTotal - alreadyWithdrawn;
 
       if (input.amount > available) {
         throw new TRPCError({

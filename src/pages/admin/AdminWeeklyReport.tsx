@@ -18,14 +18,15 @@ export default function AdminWeeklyReport() {
   const utils = trpc.useUtils();
   const week = getWeekRange();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["weekly-report", week.start],
     queryFn: () => utils.admin.weeklyReportData.fetch(),
   });
 
   if (isLoading) return <div className="space-y-4 animate-pulse"><div className="h-8 w-64 bg-muted rounded" /><div className="h-40 bg-muted rounded-lg" /></div>;
+  if (isError || !data) return <div className="p-6 text-center text-muted-foreground">Failed to load weekly report. Please refresh.</div>;
 
-  const d = data!;
+  const d = data;
 
   return (
     <div className="space-y-6">
