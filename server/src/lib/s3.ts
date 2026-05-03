@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, PutBucketPolicyCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import path from "path";
 import crypto from "crypto";
@@ -310,9 +310,52 @@ export async function deleteFromS3(urlOrKey: string): Promise<void> {
   await s3Client.send(new DeleteObjectCommand({ Bucket: AWS_S3_BUCKET!, Key: key }));
 }
 
-// ─── Presigned URL ────────────────────────────────────────────────────────────
+// ─── Presigned URLs ───────────────────────────────────────────────────────────
 
 export async function createPresignedUploadUrl(key: string, mimeType: string, expiresIn = 300): Promise<string> {
   if (!s3Configured) throw new Error("S3 not configured");
   return getSignedUrl(s3Client, new PutObjectCommand({ Bucket: AWS_S3_BUCKET!, Key: key, ContentType: mimeType }), { expiresIn });
+}
+
+export async function createPresignedGetUrl(keyOrUrl: string, expiresIn = 3600): Promise<string> {
+  if (!s3Configured) throw new Error("S3 not configured");
+  const base = getS3PublicUrl("");
+  let key = keyOrUrl;
+  if (keyOrUrl.startsWith("http")) {
+    key = keyOrUrl.startsWith(base)
+      ? keyOrUrl.slice(base.length)
+      : new URL(keyOrUrl).pathname.replace(/^\//, "");
+  }
+  return getSignedUrl(s3Client, new GetObjectCommand({ Bucket: AWS_S3_BUCKET!, Key: key }), { expiresIn });
+}
+
+export function isS3Url(url: string): boolean {
+  if (!url) return false;
+  const base = getS3PublicUrl("");
+  if (url.startsWith(base)) return true;
+  try {
+    const host = new URL(url).hostname;
+    return host.endsWith(".amazonaws.com") || host.endsWith(".r2.cloudflarestorage.com");
+  } catch { return false; }
+}
+
+// ─── Bucket Policy ────────────────────────────────────────────────────────────
+// Public-read for non-sensitive asset folders; ebooks & audio stay private.
+
+export async function applyPublicReadPolicy(): Promise<void> {
+  if (!s3Configured) throw new Error("S3 not configured");
+  const policy = JSON.stringify({
+    Version: "2012-10-17",
+    Statement: [{
+      Effect: "Allow",
+      Principal: "*",
+      Action: "s3:GetObject",
+      Resource: [
+        `arn:aws:s3:::${AWS_S3_BUCKET}/covers/*`,
+        `arn:aws:s3:::${AWS_S3_BUCKET}/images/*`,
+        `arn:aws:s3:::${AWS_S3_BUCKET}/avatars/*`,
+      ],
+    }],
+  });
+  await s3Client.send(new PutBucketPolicyCommand({ Bucket: AWS_S3_BUCKET!, Policy: policy }));
 }

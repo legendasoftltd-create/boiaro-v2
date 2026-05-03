@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure, publicProcedure } from "../trpc.js";
+import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { isS3Url, createPresignedGetUrl } from "../lib/s3.js";
+
+async function toServeUrl(url: string | null | undefined): Promise<string | null> {
+  if (!url) return null;
+  if (isS3Url(url)) return createPresignedGetUrl(url, 3600);
+  return url;
+}
 
 export const contentRouter = router({
   /**
@@ -72,9 +79,9 @@ export const contentRouter = router({
         }
       }
 
-      // Return the content URL
+      // Return the content URL (presigned if stored on S3)
       if (contentType === "ebook") {
-        return { url: formatRecord?.file_url ?? null };
+        return { url: await toServeUrl(formatRecord?.file_url) };
       }
 
       if (contentType === "audiobook" && trackNumber !== undefined) {
@@ -82,7 +89,7 @@ export const contentRouter = router({
           where: { book_format: { book_id: bookId }, track_number: trackNumber },
         });
         if (!track?.audio_url) return { url: null };
-        return { url: track.audio_url };
+        return { url: await toServeUrl(track.audio_url) };
       }
 
       return { url: null };
@@ -90,7 +97,7 @@ export const contentRouter = router({
 
   batchSignedUrls: protectedProcedure
     .input(z.object({ bookId: z.string() }))
-    .query(async ({ ctx, input }) => {
+    .query(async ({ input }) => {
       const tracks = await prisma.audiobookTrack.findMany({
         where: { book_format: { book_id: input.bookId }, status: "active" },
         orderBy: { track_number: "asc" },
@@ -98,7 +105,7 @@ export const contentRouter = router({
 
       const urls: Record<number, string | null> = {};
       for (const t of tracks) {
-        urls[t.track_number] = t.audio_url || null;
+        urls[t.track_number] = await toServeUrl(t.audio_url);
       }
       return { urls };
     }),
@@ -151,6 +158,6 @@ export const contentRouter = router({
         }
       }
 
-      return { file_url: ebookFormat?.file_url ?? null, preview_percentage: ebookFormat?.preview_percentage ?? null };
+      return { file_url: await toServeUrl(ebookFormat?.file_url), preview_percentage: ebookFormat?.preview_percentage ?? null };
     }),
 });
