@@ -630,3 +630,334 @@ Full port of tRPC `orders.placeOrder` logic into REST. Behaviour is identical.
 - Radio station and live session queries are also wrapped in `try/catch`.
 - Any failure in user-specific data no longer crashes the homepage response — the main homepage content is always returned even if personalization data fails.
 - Errors are logged to server console for debugging without surfacing to clients.
+
+## 17) RedX Delivery Integration
+
+### Overview
+
+Full integration with the [RedX OpenAPI](https://redx.com.bd/developer-api/) for parcel creation, tracking, and status sync. Covers both REST (mobile) and tRPC (web). Parcels are created automatically when a hardcopy order is placed. Status updates are received in real time via webhook.
+
+---
+
+### New endpoints — Shipping / RedX
+
+#### GET /api/v1/shipping/redx/areas
+
+Returns delivery areas from RedX. Filter by district to get a manageable list for the checkout area picker.
+
+**Query params**
+
+| Param | Type | Description |
+|---|---|---|
+| `district_name` | string | Filter by district (uses RedX spelling — see mapping below) |
+| `post_code` | string | Filter by postal code |
+
+**Note:** RedX uses legacy spellings for some districts. The mapping is handled automatically on the web. For REST clients, use the RedX name directly:
+
+| Our district name | RedX `district_name` |
+|---|---|
+| Chattogram | Chittagong |
+| Barishal | Barisal |
+| Narsingdi | Norshingdi |
+| Lakshmipur | Laksmipur |
+| Coxs Bazar | Cox's Bazar |
+| Khagrachhari | Khagrachari |
+| Chapainawabganj | Chapai Nawabganj |
+| Jhalokati | Jhalokathi |
+| Pirojpur | Perojpur |
+
+**Response**
+
+```json
+{
+  "areas": [
+    {
+      "id": 12,
+      "name": "Dhanmondi",
+      "post_code": 1209,
+      "district_name": "Dhaka",
+      "division_name": "Dhaka",
+      "zone_id": 1
+    }
+  ]
+}
+```
+
+Returns `{ "areas": [] }` (not an error) when no areas match — handle gracefully on client.
+
+---
+
+#### GET /api/v1/shipping/redx/track/:parcel_id
+
+Returns tracking events for a RedX parcel ID. For tracking by order ID from a user context use `GET /api/v1/orders/:order_id/tracking` instead.
+
+**Response**
+
+```json
+{
+  "tracking": [
+    {
+      "message_en": "Package is created successfully",
+      "message_bn": "পার্সেলটি সফলভাবে প্লেস করা হয়েছে",
+      "time": "2025-01-04T21:19:41.000Z"
+    }
+  ]
+}
+```
+
+---
+
+#### GET /api/v1/shipping/redx/parcel/:tracking_id
+
+Returns full parcel details from RedX.
+
+---
+
+#### POST /api/v1/shipping/redx/parcel
+
+Manually create a RedX parcel. For normal checkout flow this is handled automatically — use this endpoint for custom/admin parcel creation.
+
+**Request body**
+
+```json
+{
+  "customer_name": "string",
+  "customer_phone": "string",
+  "delivery_area": "string",
+  "delivery_area_id": 12,
+  "customer_address": "string",
+  "cash_collection_amount": "500",
+  "parcel_weight": "500",
+  "value": "500",
+  "merchant_invoice_id": "string (optional)",
+  "instruction": "string (optional)",
+  "pickup_store_id": 1420
+}
+```
+
+**Response**
+
+```json
+{ "tracking_id": "string" }
+```
+
+---
+
+#### POST /api/v1/shipping/redx/parcel/:tracking_id/cancel
+
+Cancel a RedX parcel.
+
+**Request body**
+
+```json
+{ "reason": "string (optional)" }
+```
+
+---
+
+#### GET /api/v1/shipping/redx/charge
+
+Queries RedX's charge calculator directly. **This is not used at checkout.** Shipping charges shown to customers are sourced from the DB shipping methods table (`GET /api/v1/shipping/methods`) which are managed independently of RedX rates. Use this endpoint for internal cost reconciliation or admin tooling only.
+
+**Query params**
+
+| Param | Type | Required |
+|---|---|---|
+| `delivery_area_id` | number | Yes |
+| `pickup_area_id` | number | Yes |
+| `cash_collection_amount` | number | Yes |
+| `weight` | number (grams) | Yes |
+
+**Response**
+
+```json
+{
+  "deliveryCharge": 60,
+  "codCharge": 0
+}
+```
+
+---
+
+#### GET /api/v1/shipping/redx/pickup-stores
+
+List all RedX pickup stores configured for the merchant.
+
+---
+
+#### GET /api/v1/shipping/redx/pickup-stores/:id
+
+Get details of a single pickup store.
+
+---
+
+#### POST /api/v1/shipping/redx/pickup-stores
+
+Create a new RedX pickup store.
+
+**Request body**
+
+```json
+{
+  "name": "string",
+  "phone": "string",
+  "address": "string",
+  "area_id": 284
+}
+```
+
+---
+
+#### POST /api/v1/shipping/redx/webhook
+
+Receives real-time parcel status updates from RedX. **This endpoint is for RedX only — do not call it from client apps.**
+
+Register in the RedX dashboard as:
+```
+https://yourdomain.com/api/v1/shipping/redx/webhook?token=<REDX_WEBHOOK_SECRET>
+```
+
+The `token` query param must match `REDX_WEBHOOK_SECRET` in `.env`. Requests without a valid token return `401`.
+
+**RedX status → order status mapping**
+
+| RedX status | Order status |
+|---|---|
+| `ready-for-delivery` | `pickup_received` |
+| `delivery-in-progress` | `in_transit` |
+| `delivered` | `delivered` |
+| `agent-hold` | `in_transit` |
+| `agent-returning` | `returned` |
+| `returned` | `returned` |
+| `agent-area-change` | `in_transit` |
+
+Each status change also creates an `OrderStatusHistory` record. Always responds `200` to prevent RedX retries.
+
+---
+
+### Shipping charge — how it works
+
+Delivery charges shown to customers at checkout come from the **DB shipping methods table**, not from the RedX charge calculator. Use `GET /api/v1/shipping/methods` to fetch available methods and calculate cost client-side:
+
+```
+charge = base_cost + max(0, ceil(total_weight_kg - 0.5)) × per_kg_cost
+```
+
+Methods are zone-aware — filter by `zone` field (`inside_dhaka`, `outside_dhaka`, or `all`) based on the customer's selected district. Use `GET /api/v1/shipping/districts` to determine `is_dhaka_area` for a given district.
+
+The `GET /api/v1/shipping/redx/charge` endpoint reflects what RedX actually bills internally and is intended for admin/reconciliation use only — it is not part of the customer-facing checkout flow.
+
+---
+
+### Updated endpoints — Orders
+
+#### POST /api/v1/orders
+
+**New field in request body**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `shipping_area_id` | number | Required for hardcopy orders | RedX area `id` from `GET /api/v1/shipping/redx/areas` |
+
+When `shipping_area_id` is present and the order contains hardcopy items, a RedX parcel is created automatically after the order is saved. The returned `tracking_id` is stored on the order as `redx_tracking_id`. Parcel creation failure does **not** fail the order — it is logged and the order proceeds normally.
+
+**Updated request body**
+
+```json
+{
+  "items": [...],
+  "payment_method": "cod",
+  "grand_total": 560,
+  "shipping_name": "Akram Hossain",
+  "shipping_phone": "01XXXXXXXXX",
+  "shipping_address": "46/1 Hemendra Dash Road",
+  "shipping_district": "Dhaka",
+  "shipping_area": "Dhanmondi",
+  "shipping_area_id": 2,
+  "shipping_cost": 60,
+  "total_weight": 0.5
+}
+```
+
+---
+
+#### GET /api/v1/orders/:order_id/tracking *(new)*
+
+Returns live RedX tracking events for the authenticated user's order. The user does not need to know the RedX tracking ID — it is resolved from the order.
+
+**Auth:** Required
+
+**Response**
+
+```json
+{
+  "tracking": [
+    {
+      "message_en": "Package is created successfully",
+      "message_bn": "পার্সেলটি সফলভাবে প্লেস করা হয়েছে",
+      "time": "2025-01-04T21:19:41.000Z"
+    }
+  ]
+}
+```
+
+Returns `404` if the order has no RedX tracking ID yet.
+
+---
+
+#### PATCH /api/v1/orders/:order_id *(new)*
+
+Allows a user to cancel their own order. Also cancels the associated RedX parcel if one exists.
+
+**Auth:** Required
+
+**Request body**
+
+```json
+{
+  "status": "cancelled",
+  "note": "string (optional)"
+}
+```
+
+Only `status: "cancelled"` is accepted. Returns `400` if the order is already `delivered`, `returned`, or `cancelled`.
+
+**Response**
+
+```json
+{ "success": true }
+```
+
+---
+
+### Order status flow (hardcopy)
+
+```
+pending → confirmed → processing → ready_for_pickup → pickup_received → in_transit → delivered
+```
+
+| Status | Triggered by |
+|---|---|
+| `pending` | Auto on order placement |
+| `confirmed` | Auto on payment success |
+| `processing` | Admin manually (packing) |
+| `ready_for_pickup` | Admin manually (ready for RedX pickup) |
+| `pickup_received` | RedX webhook (`ready-for-delivery`) |
+| `in_transit` | RedX webhook (`delivery-in-progress`) |
+| `delivered` | RedX webhook (`delivered`) |
+| `returned` | RedX webhook (`returned` / `agent-returning`) |
+
+---
+
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `REDX_ENV` | `development` uses sandbox, anything else uses production |
+| `REDX_BASE_URL` | Production base URL (`https://openapi.redx.com.bd/v1.0.0-beta`) |
+| `REDX_API_TOKEN` | Production JWT token |
+| `REDX_SANDBOX_TOKEN` | Sandbox JWT token (used when `REDX_ENV=development`) |
+| `REDX_PICKUP_STORE_ID` | Your RedX pickup store ID (get from `GET /api/v1/shipping/redx/pickup-stores`) |
+| `REDX_WEBHOOK_SECRET` | Secret token validated on incoming webhook requests |
+
+

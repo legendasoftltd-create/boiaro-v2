@@ -4,6 +4,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings } from "../../lib/earnings.js";
+import * as redx from "../../services/redx.service.js";
 
 type GatewayConfig = Record<string, unknown>;
 
@@ -100,6 +101,7 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
       estimated_delivery_days,
       total_weight,
       packaging_cost,
+      shipping_area_id,
       // wallet extension
       coin_amount,
     } = req.body;
@@ -339,6 +341,34 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
       });
     }
 
+    // Auto-create RedX parcel for hardcopy orders with a delivery area ID
+    if (hardcopyItems.length > 0 && shipping_area_id) {
+      try {
+        const pickupStoreId = process.env.REDX_PICKUP_STORE_ID
+          ? Number(process.env.REDX_PICKUP_STORE_ID)
+          : undefined;
+        const weightGrams = String(Math.round((Number(total_weight) || 0.5) * 1000));
+        const { tracking_id } = await redx.createParcel({
+          customer_name: shipping_name ?? "Customer",
+          customer_phone: shipping_phone ?? "",
+          delivery_area: shipping_area ?? "",
+          delivery_area_id: Number(shipping_area_id),
+          customer_address: shipping_address ?? "",
+          cash_collection_amount: String(isCod ? finalGrandTotal : 0),
+          parcel_weight: weightGrams,
+          merchant_invoice_id: orderNumber,
+          value: String(finalGrandTotal),
+          pickup_store_id: pickupStoreId,
+        });
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { redx_tracking_id: tracking_id, redx_area_id: Number(shipping_area_id) },
+        });
+      } catch (err) {
+        console.error("[RedX] parcel creation failed for order", orderNumber, err);
+      }
+    }
+
     // SSLCommerz — mirrors tRPC placeOrder SSLCommerz block exactly
     if (isSSLCommerz) {
       const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
@@ -457,6 +487,72 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
 
     // Same response shape as tRPC for non-SSLCommerz
     res.status(201).json({ orderId: order.id, gatewayUrl: null });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// GET /orders/:order_id/tracking — get RedX tracking events for user's order
+ordersRestRouter.get("/:order_id/tracking", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: String(req.params.order_id), user_id: req.auth.userId! },
+      select: { redx_tracking_id: true },
+    });
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    if (!order.redx_tracking_id) {
+      res.status(404).json({ error: "No tracking info available for this order" });
+      return;
+    }
+    const data = await redx.trackParcel(order.redx_tracking_id);
+    res.json(data);
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// PATCH /orders/:order_id — cancel an order (user-initiated; cancels RedX parcel too)
+ordersRestRouter.patch("/:order_id", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { status, note } = req.body;
+    if (status !== "cancelled") {
+      res.status(400).json({ error: "Only status=cancelled is allowed via this endpoint" });
+      return;
+    }
+    const order = await prisma.order.findFirst({
+      where: { id: String(req.params.order_id), user_id: req.auth.userId! },
+    });
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    if (["delivered", "returned", "cancelled"].includes(order.status ?? "")) {
+      res.status(400).json({ error: `Cannot cancel an order with status: ${order.status}` });
+      return;
+    }
+    if (order.redx_tracking_id) {
+      try {
+        await redx.cancelParcel(order.redx_tracking_id, note || "Cancelled by customer");
+      } catch (err) {
+        console.error("[RedX] parcel cancellation failed for order", order.order_number, err);
+      }
+    }
+    await prisma.$transaction([
+      prisma.order.update({ where: { id: order.id }, data: { status: "cancelled" } }),
+      prisma.orderStatusHistory.create({
+        data: {
+          order_id: order.id,
+          old_status: order.status,
+          new_status: "cancelled",
+          changed_by: req.auth.userId!,
+          note: note || null,
+        },
+      }),
+    ]);
+    res.json({ success: true });
   } catch (error) {
     sendHttpError(res, error);
   }

@@ -841,6 +841,16 @@ export const adminRouter = router({
       const order = await prisma.order.findUnique({ where: { id: input.orderId } });
       if (!order) throw new TRPCError({ code: "NOT_FOUND" });
 
+      // Cancel RedX parcel when order is cancelled
+      if (input.status === "cancelled" && order.redx_tracking_id) {
+        try {
+          const { cancelParcel } = await import("../services/redx.service.js");
+          await cancelParcel(order.redx_tracking_id, "Cancelled by admin");
+        } catch (err) {
+          console.error("[RedX] parcel cancellation failed for order", order.order_number, err);
+        }
+      }
+
       return prisma.$transaction([
         prisma.order.update({ where: { id: input.orderId }, data: { status: input.status } }),
         prisma.orderStatusHistory.create({
@@ -1000,6 +1010,40 @@ export const adminRouter = router({
         });
       }
       return updated;
+    }),
+
+  // Manually create a RedX parcel for an order (re-trigger if it failed silently)
+  createRedxParcel: adminProcedure
+    .input(z.object({ orderId: z.string() }))
+    .mutation(async ({ input }) => {
+      const order = await prisma.order.findUnique({ where: { id: input.orderId } });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!order.redx_area_id) throw new TRPCError({ code: "BAD_REQUEST", message: "Order has no RedX area ID — cannot create parcel" });
+
+      const { createParcel } = await import("../services/redx.service.js");
+      const pickupStoreId = process.env.REDX_PICKUP_STORE_ID ? Number(process.env.REDX_PICKUP_STORE_ID) : undefined;
+      const weightGrams = String(Math.round((order.total_weight ?? 0.5) * 1000));
+      const isCod = order.payment_method === "cod";
+
+      const { tracking_id } = await createParcel({
+        customer_name: order.shipping_name ?? "Customer",
+        customer_phone: order.shipping_phone ?? "",
+        delivery_area: order.shipping_area ?? "",
+        delivery_area_id: order.redx_area_id,
+        customer_address: order.shipping_address ?? "",
+        cash_collection_amount: String(isCod ? (order.total_amount ?? 0) : 0),
+        parcel_weight: weightGrams,
+        merchant_invoice_id: order.order_number,
+        value: String(order.total_amount ?? 0),
+        pickup_store_id: pickupStoreId,
+      });
+
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { redx_tracking_id: tracking_id },
+      });
+
+      return { tracking_id };
     }),
 
   // ── Role Applications ───────────────────────────────────────────────────────
