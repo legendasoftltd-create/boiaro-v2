@@ -76,6 +76,7 @@ export const checkMultiBookAccess = async (
     }
   }
 
+
   return {
     has_access,
     access_method,

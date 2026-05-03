@@ -50,6 +50,7 @@ export default function AdminRevenueSplits() {
     Number(rule.writer_percentage || 0) + Number(rule.publisher_percentage || 0) + Number(rule.narrator_percentage || 0) +
     Number(rule.platform_percentage || 0) + Number(rule.fulfillment_cost_percentage || 0);
 
+
   const validateRule = (rule: any): string | null => {
     const total = getTotal(rule);
     if (Math.abs(total - 100) > 0.01) return `Total must be 100% (currently ${total}%)`;

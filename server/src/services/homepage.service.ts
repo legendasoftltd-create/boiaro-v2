@@ -236,6 +236,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     }
 
 
+
     const filteredTrendingNow = filterBooksByType(trendingNow).slice(0, takeLimit);
     const filteredTopMostRead = filterBooksByType(topTenMostRead).slice(0, takeLimit);
     const filteredSlider = filterBooksByType(slider).slice(0, takeLimit);
