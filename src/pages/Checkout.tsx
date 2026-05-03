@@ -7,6 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { ChevronsUpDown, Check } from "lucide-react"
 import { Navbar } from "@/components/Navbar"
 import { Footer } from "@/components/Footer"
 import { useCart } from "@/contexts/CartContext"
@@ -17,7 +20,7 @@ import { trpc } from "@/lib/trpc"
 import { toast } from "sonner"
 import { toMediaUrl } from "@/lib/mediaUrl"
 import { z } from "zod"
-import { DISTRICTS, isDhakaArea } from "@/lib/bangladeshDistricts"
+import { DISTRICTS, isDhakaArea, toRedxDistrictName } from "@/lib/bangladeshDistricts"
 
 const shippingSchema = z.object({
   name: z.string().trim().min(2, "Name is required").max(100),
@@ -50,6 +53,8 @@ export default function Checkout() {
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [form, setForm] = useState({ name: "", phone: "", district: "", area: "", address: "", postalCode: "" })
+  const [deliveryAreaId, setDeliveryAreaId] = useState<number | null>(null)
+  const [areaComboOpen, setAreaComboOpen] = useState(false)
   const [method, setMethod] = useState<string>("")
   const [step, setStep] = useState<CheckoutStep>("shipping")
   const [orderId, setOrderId] = useState<string | null>(null)
@@ -70,8 +75,18 @@ export default function Checkout() {
   const validateCouponMutation = trpc.orders.validateCoupon.useMutation()
   const placeOrderMutation = trpc.orders.placeOrder.useMutation()
 
-  // Sync district to shipping calculator
-  useEffect(() => { shipping.setDistrict(form.district); }, [form.district])
+  const { data: redxAreasData, isFetching: redxAreasFetching } = trpc.shipping.redx.areas.useQuery(
+    { district_name: toRedxDistrictName(form.district) },
+    { enabled: !!form.district && shipping.hasHardcopy, staleTime: 5 * 60 * 1000 }
+  )
+  const redxAreas = redxAreasData?.areas ?? []
+
+  // Sync district to shipping calculator and reset area when district changes
+  useEffect(() => {
+    shipping.setDistrict(form.district)
+    setDeliveryAreaId(null)
+    setForm(f => ({ ...f, area: "" }))
+  }, [form.district])
 
   // Set default payment method when gateways load
   const defaultMethodSet = useRef(false)
@@ -213,6 +228,7 @@ export default function Checkout() {
           orderPayload.shippingCarrier = shipping.selectedMethod.provider_code ?? undefined
           orderPayload.shippingCost = effectiveShippingCharge
           orderPayload.estimatedDeliveryDays = String(shipping.selectedMethod.delivery_time ?? shipping.selectedMethod.delivery_days ?? "")
+          orderPayload.shippingAreaId = deliveryAreaId ?? undefined
         }
       }
 
@@ -372,7 +388,48 @@ export default function Checkout() {
                         </div>
                         <div>
                           <Label className="text-sm mb-1.5">এলাকা / থানা</Label>
-                          <Input placeholder="মিরপুর, উত্তরা..." value={form.area} onChange={e => handleChange("area", e.target.value)} className="bg-secondary border-border" />
+                          <Popover open={areaComboOpen} onOpenChange={setAreaComboOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                disabled={!form.district || redxAreasFetching}
+                                className="w-full justify-between bg-secondary border-border font-normal"
+                              >
+                                {redxAreasFetching
+                                  ? "লোড হচ্ছে..."
+                                  : !form.district
+                                  ? "আগে জেলা নির্বাচন করুন"
+                                  : form.area || "এলাকা নির্বাচন করুন"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                              <Command>
+                                <CommandInput placeholder="এলাকা খুঁজুন..." />
+                                <CommandList>
+                                  <CommandEmpty>কোনো এলাকা পাওয়া যায়নি।</CommandEmpty>
+                                  <CommandGroup>
+                                    {redxAreas.map(a => (
+                                      <CommandItem
+                                        key={a.id}
+                                        value={a.name}
+                                        onSelect={v => {
+                                          const area = redxAreas.find(x => x.name.toLowerCase() === v.toLowerCase())
+                                          handleChange("area", area?.name ?? v)
+                                          setDeliveryAreaId(area?.id ?? null)
+                                          setAreaComboOpen(false)
+                                        }}
+                                      >
+                                        <Check className={`mr-2 h-4 w-4 ${form.area === a.name ? "opacity-100" : "opacity-0"}`} />
+                                        {a.name}
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
                           {errors.area && <p className="text-xs text-destructive mt-1">{errors.area}</p>}
                         </div>
                       </div>

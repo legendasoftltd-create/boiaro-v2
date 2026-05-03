@@ -193,6 +193,9 @@ export function OrderInvoice({ order, items, onClose, customerEmail }: InvoicePr
               <p style={{ fontSize: 13, lineHeight: 1.5 }}>Order: {order.order_number || order.id.slice(0, 8).toUpperCase()}</p>
               <p style={{ fontSize: 13, lineHeight: 1.5 }}>Date: {orderDate}</p>
               <p style={{ fontSize: 13, lineHeight: 1.5 }}>Status: {order.status}</p>
+              {order.redx_tracking_id && (
+                <p style={{ fontSize: 13, lineHeight: 1.5 }}>Tracking: <strong>{order.redx_tracking_id}</strong></p>
+              )}
             </div>
           </div>
 
@@ -266,6 +269,12 @@ export function OrderInvoice({ order, items, onClose, customerEmail }: InvoicePr
               <div>
                 <div className="label" style={{ color: "#999", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>Package Weight</div>
                 <div className="value" style={{ fontWeight: 600, marginTop: 2 }}>{order.total_weight} kg</div>
+              </div>
+            )}
+            {order.redx_tracking_id && (
+              <div>
+                <div className="label" style={{ color: "#999", fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5 }}>RedX Tracking</div>
+                <div className="value" style={{ fontWeight: 600, marginTop: 2, fontFamily: "monospace" }}>{order.redx_tracking_id}</div>
               </div>
             )}
           </div>

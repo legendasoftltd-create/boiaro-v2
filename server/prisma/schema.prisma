@@ -986,6 +986,8 @@ model Order {
   shipping_phone             String?
   shipping_zip               String?
   status                     String?  @default("pending")
+  redx_tracking_id           String?
+  redx_area_id               Int?
   total_amount               Float?
   total_weight               Float?
   updated_at                 DateTime @updatedAt
