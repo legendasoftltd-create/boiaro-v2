@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { AdminSearchBar } from "@/components/admin/AdminSearchBar";
-import { Package, Truck, MapPin, Weight, ExternalLink, RefreshCw, FileText, ShoppingCart, CheckCircle2, CreditCard, BookOpen, Headphones, BookCopy } from "lucide-react";
+import { Package, Truck, MapPin, Weight, ExternalLink, RefreshCw, FileText, ShoppingCart, CheckCircle2, CreditCard, BookOpen, Headphones, BookCopy, Loader2 } from "lucide-react";
 import { OrderProfitBreakdown } from "@/components/admin/OrderProfitBreakdown";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -164,6 +164,7 @@ export default function AdminOrders() {
   const markCodPaidMutation = trpc.admin.markCodPaid.useMutation();
   const markPurchasedMutation = trpc.admin.markOrderPurchased.useMutation();
   const updateShipmentMutation = trpc.admin.updateShipment.useMutation();
+  const createRedxParcelMutation = trpc.admin.createRedxParcel.useMutation();
 
   const load = async () => {
     await refetch();
@@ -315,6 +316,11 @@ export default function AdminOrders() {
                     <div>
                       <p className="text-xs font-mono font-medium text-primary">{o.order_number || o.id.slice(0, 8).toUpperCase()}</p>
                       <p className="text-[10px] text-muted-foreground">{new Date(o.created_at).toLocaleDateString()}</p>
+                      {o.redx_tracking_id && (
+                        <p className="text-[10px] font-mono text-emerald-400 flex items-center gap-0.5 mt-0.5">
+                          <Truck className="w-2.5 h-2.5" />{o.redx_tracking_id}
+                        </p>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -691,6 +697,58 @@ export default function AdminOrders() {
                 orderPurchaseCost={detail.is_purchased ? detail.purchase_cost_per_unit : undefined}
                 isPurchased={detail.is_purchased}
               />
+
+              {/* RedX Tracking Section (hardcopy only) */}
+              {detailFormat !== "digital" && (
+                <div className="border-t pt-3 space-y-2">
+                  <h3 className="font-semibold text-sm flex items-center gap-2">
+                    <Truck className="w-4 h-4 text-primary" /> RedX Parcel
+                  </h3>
+                  {detail.redx_tracking_id ? (
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                      <Badge className="bg-emerald-500/20 text-emerald-400">Tracking ID</Badge>
+                      <span className="font-mono text-sm">{detail.redx_tracking_id}</span>
+                      <Button
+                        size="sm" variant="outline" className="gap-1 h-7 ml-auto"
+                        onClick={async () => {
+                          setTrackingLoading(true);
+                          try {
+                            const data = await utils.shipping.redx.trackParcel.fetch({ parcel_id: detail.redx_tracking_id });
+                            const latest = data.tracking?.[0];
+                            if (latest) toast.success(`Latest: ${latest.message_en}`);
+                            else toast.info("No tracking events yet");
+                          } catch { toast.error("Failed to fetch tracking"); }
+                          finally { setTrackingLoading(false); }
+                        }}
+                        disabled={trackingLoading}
+                      >
+                        {trackingLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Track
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <span className="text-xs text-amber-400">No RedX parcel created yet</span>
+                      <Button
+                        size="sm" variant="outline" className="gap-1 h-7 ml-auto"
+                        disabled={createRedxParcelMutation.isPending || !detail.redx_area_id}
+                        onClick={async () => {
+                          try {
+                            const result = await createRedxParcelMutation.mutateAsync({ orderId: detail.id });
+                            toast.success(`RedX parcel created: ${result.tracking_id}`);
+                            setDetail({ ...detail, redx_tracking_id: result.tracking_id });
+                            load();
+                          } catch (err: any) {
+                            toast.error(err.message || "Failed to create RedX parcel");
+                          }
+                        }}
+                      >
+                        {createRedxParcelMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Package className="w-3 h-3" />}
+                        {detail.redx_area_id ? "Create RedX Parcel" : "No area ID — cannot create"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Shipment Section (hardcopy only) */}
               {detailFormat !== "digital" && (

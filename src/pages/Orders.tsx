@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Package, Clock, Truck, CheckCircle, ShoppingBag, CreditCard, AlertCircle, FileText, BookOpen, Headphones, BookCopy } from "lucide-react"
+import { ArrowLeft, Package, Clock, Truck, CheckCircle, ShoppingBag, CreditCard, AlertCircle, FileText, BookOpen, Headphones, BookCopy, MapPin, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +11,73 @@ import { useAuth } from "@/contexts/AuthContext"
 import { trpc } from "@/lib/trpc"
 import { OrderInvoice } from "@/components/admin/OrderInvoice"
 import { toMediaUrl } from "@/lib/mediaUrl"
+
+function TrackingDialog({ trackingId, open, onClose }: { trackingId: string; open: boolean; onClose: () => void }) {
+  const { data, isLoading, error } = trpc.shipping.redx.trackParcel.useQuery(
+    { parcel_id: trackingId },
+    { enabled: open && !!trackingId }
+  )
+
+  const events = data?.tracking ?? []
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Truck className="w-4 h-4 text-primary" /> RedX Tracking
+          </DialogTitle>
+          <p className="text-xs font-mono text-muted-foreground">#{trackingId}</p>
+        </DialogHeader>
+
+        {isLoading && (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        )}
+
+        {error && (
+          <div className="flex items-center gap-2 text-sm text-destructive py-4">
+            <AlertCircle className="w-4 h-4" /> Failed to load tracking info.
+          </div>
+        )}
+
+        {!isLoading && !error && events.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-6">No tracking updates yet.</p>
+        )}
+
+        {events.length > 0 && (
+          <div className="relative mt-2">
+            {/* vertical line */}
+            <div className="absolute left-3.5 top-2 bottom-2 w-px bg-border" />
+
+            <div className="space-y-5">
+              {events.map((ev, i) => (
+                <div key={i} className="flex gap-4 relative">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 z-10 ${i === 0 ? "bg-primary" : "bg-secondary border border-border"}`}>
+                    {i === 0
+                      ? <MapPin className="w-3.5 h-3.5 text-primary-foreground" />
+                      : <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+                    }
+                  </div>
+                  <div className="pb-1">
+                    <p className={`text-sm font-medium ${i === 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                      {ev.message_en}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{ev.message_bn}</p>
+                    <p className="text-xs text-muted-foreground/60 mt-1">
+                      {new Date(ev.time).toLocaleString("en-BD", { dateStyle: "medium", timeStyle: "short" })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 // ─── Payment Status Config ───
 const paymentStatusConfig: Record<string, { label: string; color: string }> = {
@@ -56,6 +123,7 @@ export default function Orders() {
   const navigate = useNavigate()
   const [invoiceOrder, setInvoiceOrder] = useState<any>(null)
   const [invoiceItems, setInvoiceItems] = useState<any[]>([])
+  const [trackingId, setTrackingId] = useState<string | null>(null)
 
   const { data: ordersData, isLoading: loading } = trpc.orders.myOrders.useQuery(
     { limit: 100 },
@@ -156,24 +224,14 @@ export default function Orders() {
                       ))}
                     </div>
 
-                    {/* Courier / Tracking Info (hardcopy only) */}
-                    {hasHardcopy && (() => {
-                      const ship = order.shipments?.[0]
-                      if (!ship) return null
-                      const courierLabel = ship.courier_name || ship.provider_code
-                      return (
-                        <div className="flex items-center gap-2 text-xs bg-muted/50 rounded-md px-3 py-1.5 mb-3">
-                          <Truck className="w-3.5 h-3.5 text-primary shrink-0" />
-                          {courierLabel && <span className="font-medium capitalize">{courierLabel}</span>}
-                          {ship.tracking_code && (
-                            <span className="font-mono text-muted-foreground">#{ship.tracking_code}</span>
-                          )}
-                          {!courierLabel && !ship.tracking_code && (
-                            <span className="text-muted-foreground">Shipment created</span>
-                          )}
-                        </div>
-                      )
-                    })()}
+                    {/* RedX Tracking Info (hardcopy only) */}
+                    {hasHardcopy && order.redx_tracking_id && (
+                      <div className="flex items-center gap-2 text-xs bg-muted/50 rounded-md px-3 py-1.5 mb-3">
+                        <Truck className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <span className="font-medium">RedX</span>
+                        <span className="font-mono text-muted-foreground">#{order.redx_tracking_id}</span>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -183,6 +241,16 @@ export default function Orders() {
                         )}
                       </div>
                       <div className="flex items-center gap-2">
+                        {order.redx_tracking_id && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1 text-xs h-7"
+                            onClick={() => setTrackingId(order.redx_tracking_id)}
+                          >
+                            <Truck className="w-3 h-3" /> Track
+                          </Button>
+                        )}
                         {["confirmed", "processing", "ready_for_pickup", "pickup_received", "in_transit", "shipped", "delivered", "paid", "access_granted"].includes(order.status) && (
                           <Button
                             variant="outline"
@@ -251,6 +319,15 @@ export default function Orders() {
           {invoiceOrder && <OrderInvoice order={invoiceOrder} items={invoiceItems} customerEmail={userEmail} />}
         </DialogContent>
       </Dialog>
+
+      {/* Tracking Dialog */}
+      {trackingId && (
+        <TrackingDialog
+          trackingId={trackingId}
+          open={!!trackingId}
+          onClose={() => setTrackingId(null)}
+        />
+      )}
     </main>
   )
 }

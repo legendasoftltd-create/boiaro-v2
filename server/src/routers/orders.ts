@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
+import * as redx from "../services/redx.service.js";
 
 type GatewayConfig = Record<string, unknown>;
 
@@ -217,6 +218,7 @@ export const ordersRouter = router({
       estimatedDeliveryDays: z.string().optional(),
       totalWeight: z.number().optional(),
       packagingCost: z.number().optional(),
+      shippingAreaId: z.number().int().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.userId;
@@ -365,6 +367,35 @@ export const ordersRouter = router({
           where: { id: input.appliedCouponId },
           data: { used_count: { increment: 1 } },
         });
+      }
+
+      // Auto-create RedX parcel for hardcopy orders that have a delivery area ID
+      if (hardcopyItems.length > 0 && input.shippingAreaId) {
+        try {
+          const pickupStoreId = process.env.REDX_PICKUP_STORE_ID
+            ? Number(process.env.REDX_PICKUP_STORE_ID)
+            : undefined;
+          const weightGrams = String(Math.round((input.totalWeight ?? 0.5) * 1000));
+          const { tracking_id } = await redx.createParcel({
+            customer_name: input.shippingName ?? "Customer",
+            customer_phone: input.shippingPhone ?? "",
+            delivery_area: input.shippingArea ?? "",
+            delivery_area_id: input.shippingAreaId,
+            customer_address: input.shippingAddress ?? "",
+            cash_collection_amount: String(isCod ? input.grandTotal : 0),
+            parcel_weight: weightGrams,
+            merchant_invoice_id: orderNumber,
+            value: String(input.grandTotal),
+            pickup_store_id: pickupStoreId,
+          });
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { redx_tracking_id: tracking_id, redx_area_id: input.shippingAreaId },
+          });
+        } catch (err) {
+          // Don't fail the order if RedX is unavailable — log and continue
+          console.error("[RedX] parcel creation failed for order", orderNumber, err);
+        }
       }
 
       if (isSSLCommerz) {
