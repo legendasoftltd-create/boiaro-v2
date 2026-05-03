@@ -1,0 +1,1096 @@
+{
+  "info": {
+    "name": "Boiaro API",
+    "description": "Complete REST API collection for Boiaro v2 — covers auth, books, profile, wallet, orders, notifications, subscriptions, and more.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "boiaro-v2-api-collection"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000/api/v1", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "refresh_token", "value": "", "type": "string" },
+    { "key": "book_id", "value": "1", "type": "string" },
+    { "key": "book_slug", "value": "sample-book-slug", "type": "string" },
+    { "key": "order_id", "value": "1", "type": "string" },
+    { "key": "review_id", "value": "1", "type": "string" },
+    { "key": "coupon_code", "value": "DISCOUNT10", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Sign Up",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data && body.data.access_token) {",
+                  "    pm.collectionVariables.set('access_token', body.data.access_token);",
+                  "    pm.collectionVariables.set('refresh_token', body.data.refresh_token);",
+                  "  }",
+                  "  pm.test('Status is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "  pm.test('Response has access_token', () => pm.expect(body.data).to.have.property('access_token'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"Password123!\",\n  \"display_name\": \"Test User\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/signup", "host": ["{{base_url}}"], "path": ["auth", "signup"] }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data && body.data.access_token) {",
+                  "    pm.collectionVariables.set('access_token', body.data.access_token);",
+                  "    pm.collectionVariables.set('refresh_token', body.data.refresh_token);",
+                  "  }",
+                  "  pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "  pm.test('Has access_token', () => pm.expect(body.data).to.have.property('access_token'));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\",\n  \"password\": \"Password123!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has user data', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data && body.data.access_token) {",
+                  "    pm.collectionVariables.set('access_token', body.data.access_token);",
+                  "    pm.collectionVariables.set('refresh_token', body.data.refresh_token);",
+                  "  }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/refresh", "host": ["{{base_url}}"], "path": ["auth", "refresh"] }
+          }
+        },
+        {
+          "name": "Request Password Reset",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"testuser@example.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/reset-password", "host": ["{{base_url}}"], "path": ["auth", "reset-password"] }
+          }
+        },
+        {
+          "name": "Update Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"NewPassword123!\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/update-password", "host": ["{{base_url}}"], "path": ["auth", "update-password"] }
+          }
+        },
+        {
+          "name": "Google OAuth Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"access_token\": \"<google_access_token>\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/google", "host": ["{{base_url}}"], "path": ["auth", "google"] }
+          }
+        },
+        {
+          "name": "Facebook OAuth Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"access_token\": \"<facebook_access_token>\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/facebook", "host": ["{{base_url}}"], "path": ["auth", "facebook"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Books",
+      "item": [
+        {
+          "name": "List Books",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns array', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.be.an('array').or.to.be.an('object');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/books/?page=1&pageSize=10&format=ebook",
+              "host": ["{{base_url}}"],
+              "path": ["books", ""],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "pageSize", "value": "10" },
+                { "key": "format", "value": "ebook", "description": "ebook | audiobook | hardcopy" },
+                { "key": "sort", "value": "newest", "disabled": true, "description": "newest | popular | price_asc | price_desc" },
+                { "key": "query", "value": "", "disabled": true, "description": "Search query" },
+                { "key": "categoryId", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Book by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has book data', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/books/{{book_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}"] }
+          }
+        },
+        {
+          "name": "Get Book by Slug",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/books/slug/{{book_slug}}", "host": ["{{base_url}}"], "path": ["books", "slug", "{{book_slug}}"] }
+          }
+        },
+        {
+          "name": "List Book Categories",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/books/categories/list", "host": ["{{base_url}}"], "path": ["books", "categories", "list"] }
+          }
+        },
+        {
+          "name": "Get Book Reviews",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/books/{{book_id}}/reviews?limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["books", "{{book_id}}", "reviews"],
+              "query": [{ "key": "limit", "value": "10" }]
+            }
+          }
+        },
+        {
+          "name": "Post Book Review",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 4,\n  \"comment\": \"Great book! Highly recommend.\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/books/{{book_id}}/reviews", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "reviews"] }
+          }
+        },
+        {
+          "name": "Delete Book Review",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/books/{{book_id}}/reviews/{{review_id}}", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "reviews", "{{review_id}}"] }
+          }
+        },
+        {
+          "name": "Get Bookmark Status",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/books/{{book_id}}/bookmarks", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "bookmarks"] }
+          }
+        },
+        {
+          "name": "Toggle Bookmark",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/books/{{book_id}}/bookmarks", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "bookmarks"] }
+          }
+        },
+        {
+          "name": "Get Audiobook Tracks",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/books/{{book_id}}/tracks", "host": ["{{base_url}}"], "path": ["books", "{{book_id}}", "tracks"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Search Books",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns results', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('data');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/search/?q=harry",
+              "host": ["{{base_url}}"],
+              "path": ["search", ""],
+              "query": [{ "key": "q", "value": "harry", "description": "Minimum 2 characters" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List All Categories",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/categories/", "host": ["{{base_url}}"], "path": ["categories", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authors",
+      "item": [
+        {
+          "name": "List Authors",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/authors/", "host": ["{{base_url}}"], "path": ["authors", ""] }
+          }
+        },
+        {
+          "name": "Get Author by ID",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/authors/1", "host": ["{{base_url}}"], "path": ["authors", "1"] }
+          }
+        },
+        {
+          "name": "Create Author",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Author Name\",\n  \"bio\": \"Author biography\",\n  \"avatar_url\": \"https://example.com/avatar.jpg\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/authors/", "host": ["{{base_url}}"], "path": ["authors", ""] }
+          }
+        },
+        {
+          "name": "Update Author",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Author Name\",\n  \"bio\": \"Updated biography\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/authors/1", "host": ["{{base_url}}"], "path": ["authors", "1"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Narrators",
+      "item": [
+        {
+          "name": "List Narrators",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/narrators/", "host": ["{{base_url}}"], "path": ["narrators", ""] }
+          }
+        },
+        {
+          "name": "Create Narrator",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Narrator Name\",\n  \"bio\": \"Narrator biography\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/narrators/", "host": ["{{base_url}}"], "path": ["narrators", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Publishers",
+      "item": [
+        {
+          "name": "List Publishers",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/publishers/", "host": ["{{base_url}}"], "path": ["publishers", ""] }
+          }
+        },
+        {
+          "name": "Create Publisher",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Publisher Name\",\n  \"website\": \"https://publisher.com\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/publishers/", "host": ["{{base_url}}"], "path": ["publishers", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has profile data', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.have.property('id');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Updated Name\",\n  \"bio\": \"My updated bio\",\n  \"phone\": \"+8801700000000\",\n  \"website_url\": \"https://mysite.com\",\n  \"facebook_url\": \"https://facebook.com/me\",\n  \"instagram_url\": \"https://instagram.com/me\",\n  \"youtube_url\": \"https://youtube.com/c/me\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/profile/", "host": ["{{base_url}}"], "path": ["profile", ""] }
+          }
+        },
+        {
+          "name": "Upload Profile Image",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "image", "type": "file", "src": "" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/profile/upload-image", "host": ["{{base_url}}"], "path": ["profile", "upload-image"] }
+          }
+        },
+        {
+          "name": "Get Role Applications",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/profile/roles/", "host": ["{{base_url}}"], "path": ["profile", "roles", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "My Library (Me)",
+      "item": [
+        {
+          "name": "Get My Bookmarks",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/me/bookmarks", "host": ["{{base_url}}"], "path": ["me", "bookmarks"] }
+          }
+        },
+        {
+          "name": "Get My Wishlist",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/me/wishlist", "host": ["{{base_url}}"], "path": ["me", "wishlist"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Homepage",
+      "item": [
+        {
+          "name": "Get Full Homepage",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/homepage/?type=ebook&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["homepage", ""],
+              "query": [
+                { "key": "type", "value": "ebook", "description": "ebook | audiobook | hardcopy" },
+                { "key": "limit", "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Homepage Section - Slider",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/homepage/slider", "host": ["{{base_url}}"], "path": ["homepage", "slider"] }
+          }
+        },
+        {
+          "name": "Get Homepage Section - Trending",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/homepage/trendingNow", "host": ["{{base_url}}"], "path": ["homepage", "trendingNow"] }
+          }
+        },
+        {
+          "name": "Get Homepage Section - Popular",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/homepage/popularBooks", "host": ["{{base_url}}"], "path": ["homepage", "popularBooks"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Footer",
+      "item": [
+        {
+          "name": "Get Footer Content",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/footer/", "host": ["{{base_url}}"], "path": ["footer", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Content",
+      "item": [
+        {
+          "name": "Get Ebook Signed URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has signed URL', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.have.property('url');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": {{book_id}},\n  \"contentType\": \"ebook\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/content/ebook-url", "host": ["{{base_url}}"], "path": ["content", "ebook-url"] }
+          }
+        },
+        {
+          "name": "Get Audiobook Track URL",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": {{book_id}},\n  \"trackNumber\": 1\n}"
+            },
+            "url": { "raw": "{{base_url}}/content/audio-url", "host": ["{{base_url}}"], "path": ["content", "audio-url"] }
+          }
+        },
+        {
+          "name": "Get Batch Audio URLs",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": {{book_id}}\n}"
+            },
+            "url": { "raw": "{{base_url}}/content/batch-audio-urls", "host": ["{{base_url}}"], "path": ["content", "batch-audio-urls"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Access",
+      "item": [
+        {
+          "name": "Check Content Access",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"bookId\": {{book_id}},\n  \"format\": \"ebook\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/access/", "host": ["{{base_url}}"], "path": ["access", ""] }
+          }
+        },
+        {
+          "name": "Check Preview Eligibility",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/access/preview-eligibility", "host": ["{{base_url}}"], "path": ["access", "preview-eligibility"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "Get Wallet Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has balance', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.have.property('balance');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/wallet/", "host": ["{{base_url}}"], "path": ["wallet", ""] }
+          }
+        },
+        {
+          "name": "Get Transaction History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/wallet/transactions?limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["wallet", "transactions"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "Claim Daily Reward",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/wallet/claim-daily", "host": ["{{base_url}}"], "path": ["wallet", "claim-daily"] }
+          }
+        },
+        {
+          "name": "Claim Ad Reward",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"placement\": \"banner\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/wallet/claim-ad", "host": ["{{base_url}}"], "path": ["wallet", "claim-ad"] }
+          }
+        },
+        {
+          "name": "Get Coin Settings",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/wallet/coin-settings", "host": ["{{base_url}}"], "path": ["wallet", "coin-settings"] }
+          }
+        },
+        {
+          "name": "Unlock Content with Coins",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"book_id\": {{book_id}},\n  \"format\": \"ebook\",\n  \"coin_cost\": 50\n}"
+            },
+            "url": { "raw": "{{base_url}}/wallet/unlock", "host": ["{{base_url}}"], "path": ["wallet", "unlock"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Coin Packages",
+      "item": [
+        {
+          "name": "List Active Coin Packages",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/coin-packages/", "host": ["{{base_url}}"], "path": ["coin-packages", ""] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "Get Subscription Plans",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/subscriptions/plans", "host": ["{{base_url}}"], "path": ["subscriptions", "plans"] }
+          }
+        },
+        {
+          "name": "Get Active Subscription",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/subscriptions/active", "host": ["{{base_url}}"], "path": ["subscriptions", "active"] }
+          }
+        },
+        {
+          "name": "Subscribe to Plan",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": 1,\n  \"couponCode\": \"\",\n  \"couponDiscount\": 0\n}"
+            },
+            "url": { "raw": "{{base_url}}/subscriptions/subscribe", "host": ["{{base_url}}"], "path": ["subscriptions", "subscribe"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Get Payment Gateways",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/orders/payment-gateways", "host": ["{{base_url}}"], "path": ["orders", "payment-gateways"] }
+          }
+        },
+        {
+          "name": "Get My Orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/orders/?limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["orders", ""],
+              "query": [
+                { "key": "limit", "value": "10" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.data && body.data.id) {",
+                  "    pm.collectionVariables.set('order_id', body.data.id);",
+                  "  }",
+                  "  pm.test('Order created', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"book_id\": {{book_id}},\n      \"format\": \"hardcopy\",\n      \"quantity\": 1\n    }\n  ],\n  \"shipping_name\": \"John Doe\",\n  \"shipping_phone\": \"+8801700000000\",\n  \"shipping_address\": \"123 Main Street\",\n  \"shipping_city\": \"Dhaka\",\n  \"shipping_district\": \"Dhaka\",\n  \"shipping_area\": \"Dhanmondi\",\n  \"shipping_method_id\": 1,\n  \"coupon_code\": \"\",\n  \"payment_method\": \"sslcommerz\",\n  \"coin_amount\": 0\n}"
+            },
+            "url": { "raw": "{{base_url}}/orders/", "host": ["{{base_url}}"], "path": ["orders", ""] }
+          }
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/orders/{{order_id}}", "host": ["{{base_url}}"], "path": ["orders", "{{order_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Initiate Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": {{order_id}}\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/initiate", "host": ["{{base_url}}"], "path": ["payments", "initiate"] }
+          }
+        },
+        {
+          "name": "Demo Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": {{order_id}}\n}"
+            },
+            "url": { "raw": "{{base_url}}/payments/demo", "host": ["{{base_url}}"], "path": ["payments", "demo"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shipping",
+      "item": [
+        {
+          "name": "Get Shipping Methods",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/shipping/methods", "host": ["{{base_url}}"], "path": ["shipping", "methods"] }
+          }
+        },
+        {
+          "name": "Get Bangladesh Districts",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/shipping/districts", "host": ["{{base_url}}"], "path": ["shipping", "districts"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Coupons",
+      "item": [
+        {
+          "name": "Get Coupon by Code",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/coupons/{{coupon_code}}", "host": ["{{base_url}}"], "path": ["coupons", "{{coupon_code}}"] }
+          }
+        },
+        {
+          "name": "Validate Coupon",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{coupon_code}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/coupons/validate", "host": ["{{base_url}}"], "path": ["coupons", "validate"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Get Notifications",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/notifications/?limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", ""],
+              "query": [{ "key": "limit", "value": "50" }]
+            }
+          }
+        },
+        {
+          "name": "Mark Notifications as Read",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ids\": [1, 2, 3]\n}"
+            },
+            "url": { "raw": "{{base_url}}/notifications/read", "host": ["{{base_url}}"], "path": ["notifications", "read"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Server is healthy', () => pm.response.to.have.status(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": { "raw": "http://localhost:3000/health", "host": ["http://localhost:3000"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "File Upload",
+      "item": [
+        {
+          "name": "Upload File",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            },
+            "url": { "raw": "http://localhost:3000/upload", "host": ["http://localhost:3000"], "path": ["upload"] }
+          }
+        },
+        {
+          "name": "Upload Media",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "media", "type": "file", "src": "" }
+              ]
+            },
+            "url": { "raw": "http://localhost:3000/upload/media", "host": ["http://localhost:3000"], "path": ["upload", "media"] }
+          }
+        }
+      ]
+    }
+  ]
+}
