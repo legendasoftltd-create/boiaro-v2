@@ -137,6 +137,7 @@ walletRestRouter.get("/coin-settings", async (_req, res) => {
   }
 });
 
+
 walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { book_id, format, coin_cost } = req.body;
