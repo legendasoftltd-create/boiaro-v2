@@ -1,0 +1,4 @@
+id,format,writer_percentage,publisher_percentage,narrator_percentage,platform_percentage,created_at,updated_at,fulfillment_cost_percentage
+2809f288-3e3d-46ef-be86-3496ca533a64,audiobook,0,0,60,40,2026-03-24 12:44:22.719313+00,2026-03-24 12:44:22.719313+00,0
+ab950300-ba5d-4c32-9761-37a0db39dcec,hardcopy,0,60,0,40,2026-03-24 12:44:22.719313+00,2026-03-24 12:44:22.719313+00,0
+d1358fc2-e493-469a-993d-03d65d14eb7d,ebook,65,0,0,35,2026-03-24 12:44:22.719313+00,2026-03-24 12:44:22.719313+00,0
