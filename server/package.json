@@ -23,6 +23,7 @@
     "migrate:csv-shipping-methods": "tsx scripts/migrate-shipping-methods.ts",
     "migrate:csv-default-revenue-rules": "tsx scripts/migrate-default-revenue-rules.ts",
     "migrate:csv-all": "npm run migrate:csv-users && npm run migrate:csv-categories && npm run migrate:csv-authors && npm run migrate:csv-publishers && npm run migrate:csv-narrators && npm run migrate:csv-books && npm run migrate:csv-payment-gateways && npm run migrate:csv-role-permissions && npm run migrate:csv-shipping-methods && npm run migrate:csv-default-revenue-rules",
+    "clean:orders": "tsx scripts/clean-orders.ts",
     "seed:defaults": "prisma db seed",
     "seed:legacy": "npm run migrate:csv-all",
     "seed:all": "npm run seed:defaults && npm run seed:legacy"
