@@ -57,7 +57,7 @@ export const walletRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { amount, type, description, referenceId, source } = input;
 
-      return prisma.$transaction(async (tx) => {
+      return prisma.$transaction(async (tx: any) => {
         await tx.coinTransaction.create({
           data: {
             user_id: ctx.userId,
@@ -107,9 +107,12 @@ export const walletRouter = router({
       });
       if (existing?.status === "active") return { already_unlocked: true };
 
-      const wallet = await prisma.userCoin.findUnique({ where: { user_id: ctx.userId } });
-      if (!wallet || wallet.balance < coinCost) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient coins" });
+      // Free unlocks skip wallet check entirely
+      if (coinCost > 0) {
+        const wallet = await prisma.userCoin.findUnique({ where: { user_id: ctx.userId } });
+        if (!wallet || wallet.balance < coinCost) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Insufficient coins" });
+        }
       }
 
       // Get the monetary value of this format (coin_price or price) for earnings calculation
@@ -118,7 +121,7 @@ export const walletRouter = router({
         select: { id: true, price: true, coin_price: true },
       });
 
-      const unlock = await prisma.$transaction(async (tx) => {
+      const unlock = await prisma.$transaction(async (tx: any) => {
         const created = await tx.contentUnlock.upsert({
           where: {
             user_id_book_id_format: { user_id: ctx.userId, book_id: bookId, format },
@@ -128,28 +131,30 @@ export const walletRouter = router({
             book_id: bookId,
             format,
             coins_spent: coinCost,
-            unlock_method: "coin",
+            unlock_method: coinCost === 0 ? "free" : "coin",
             status: "active",
           },
           update: { status: "active", coins_spent: coinCost },
         });
-        await tx.coinTransaction.create({
-          data: {
-            user_id: ctx.userId,
-            amount: -coinCost,
-            type: "spend",
-            description: `Content unlock - ${format}`,
-            reference_id: bookId,
-            source: "content_unlock",
-          },
-        });
-        await tx.userCoin.update({
-          where: { user_id: ctx.userId },
-          data: {
-            balance: { decrement: coinCost },
-            total_spent: { increment: coinCost },
-          },
-        });
+        if (coinCost > 0) {
+          await tx.coinTransaction.create({
+            data: {
+              user_id: ctx.userId,
+              amount: -coinCost,
+              type: "spend",
+              description: `Content unlock - ${format}`,
+              reference_id: bookId,
+              source: "content_unlock",
+            },
+          });
+          await tx.userCoin.update({
+            where: { user_id: ctx.userId },
+            data: {
+              balance: { decrement: coinCost },
+              total_spent: { increment: coinCost },
+            },
+          });
+        }
         return created;
       });
 
@@ -173,7 +178,21 @@ export const walletRouter = router({
       const unlock = await prisma.contentUnlock.findFirst({
         where: { user_id: ctx.userId, book_id: input.bookId, format: input.format, status: "active" },
       });
-      return { unlocked: !!unlock };
+      if (unlock) return { unlocked: true };
+
+      // For premium_voice, an active subscription also grants access
+      if (input.format === "premium_voice") {
+        const subscription = await prisma.userSubscription.findFirst({
+          where: {
+            user_id: ctx.userId,
+            status: "active",
+            OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+          },
+        });
+        if (subscription) return { unlocked: true };
+      }
+
+      return { unlocked: false };
     }),
 
   userUnlocks: protectedProcedure.query(({ ctx }) =>

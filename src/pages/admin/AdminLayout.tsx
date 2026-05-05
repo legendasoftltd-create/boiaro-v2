@@ -51,6 +51,7 @@ const navGroups: NavGroup[] = [
       { label: "Reviews", path: "/admin/reviews", icon: Star },
       { label: "Recommendations", path: "/admin/recommendations", icon: Sparkles },
       { label: "DRM / Protection", path: "/admin/drm-settings", icon: Shield },
+      { label: "AI Voice (TTS)", path: "/admin/tts-management", icon: Sparkles },
     ],
   },
   {

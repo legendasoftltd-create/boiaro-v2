@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as pdfjsLib from "pdfjs-dist";
-import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.js?url";
+import pdfWorkerSrc from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { Loader2, ChevronLeft, ChevronRight, AlertTriangle, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ interface PdfRendererProps {
   onZoomChange?: (zoom: number) => void;
   onError: (error: string) => void;
   isDarkMode: boolean;
+  onTextExtracted?: (text: string) => void;
 }
 
 const PDF_LOAD_TIMEOUT = 30_000;
@@ -43,10 +44,12 @@ export function PdfRenderer({
   onZoomChange,
   onError,
   isDarkMode,
+  onTextExtracted,
 }: PdfRendererProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const onErrorRef = useRef(onError);
+  const onTextExtractedRef = useRef(onTextExtracted);
   const onTotalPagesChangeRef = useRef(onTotalPagesChange);
   const [rendering, setRendering] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -77,7 +80,8 @@ export function PdfRenderer({
   useEffect(() => {
     onErrorRef.current = onError;
     onTotalPagesChangeRef.current = onTotalPagesChange;
-  }, [onError, onTotalPagesChange]);
+    onTextExtractedRef.current = onTextExtracted;
+  }, [onError, onTotalPagesChange, onTextExtracted]);
 
   // Reset pan when page changes or zoom resets to base
   useEffect(() => {
@@ -198,7 +202,7 @@ export function PdfRenderer({
         const ctx = targetCanvas.getContext("2d")!;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        const renderTask = page.render({ canvasContext: ctx, viewport });
+        const renderTask = page.render({ canvasContext: ctx, viewport, canvas: targetCanvas });
         renderTaskRef.current = renderTask;
         await Promise.race([
           renderTask.promise,
@@ -206,6 +210,22 @@ export function PdfRenderer({
             setTimeout(() => reject(new Error("PDF page render timed out")), PDF_RENDER_TIMEOUT)
           ),
         ]);
+
+        // Extract text content and fire callback for TTS
+        if (onTextExtractedRef.current) {
+          try {
+            const textContent = await page.getTextContent();
+            const text = textContent.items
+              .map((item: any) => item.str)
+              .join(" ")
+              .replace(/\s+/g, " ")
+              .trim();
+            if (text) onTextExtractedRef.current(text);
+          } catch {
+            // text extraction is best-effort — don't block rendering
+          }
+        }
+
         return true;
       } catch (err: any) {
         if (err?.name !== "RenderingCancelledException") {

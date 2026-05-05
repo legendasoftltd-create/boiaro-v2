@@ -1,15 +1,15 @@
-import { Sun, Moon, Minus, Plus, Type, BookOpen, Sparkles, Volume2, Play, Music, Waves } from "lucide-react";
+import { Sun, Moon, Minus, Plus, Type, BookOpen, Sparkles, Play, Waves, Mic, Lock, Coins, Zap } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { BANGLA_PREVIEW_TEXT, preprocessForNarration, getVoiceParamsForEmotion } from "@/lib/narrationPreprocessor";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
 import type { TtsMode } from "@/hooks/useTtsEngine";
 import type { MusicGenre } from "@/hooks/useBackgroundMusic";
+import { BENGALI_VOICES, type BengaliVoiceId, type PremiumTTSSpeed } from "@/hooks/usePremiumTTS";
 
 const GENRE_OPTIONS: { value: MusicGenre; label: string; emoji: string }[] = [
   { value: "calm", label: "শান্ত", emoji: "🌿" },
@@ -29,6 +29,13 @@ interface ReaderSettingsSheetProps {
   fileType: "pdf" | "epub";
   ttsMode?: TtsMode;
   onTtsModeChange?: (mode: TtsMode) => void;
+  premiumVoiceAvailable?: boolean;
+  voiceUnlocked?: boolean;
+  voiceCoinPrice?: number;
+  selectedVoiceId?: BengaliVoiceId;
+  onVoiceChange?: (id: BengaliVoiceId) => void;
+  ttsSpeed?: PremiumTTSSpeed;
+  onTtsSpeedChange?: (s: PremiumTTSSpeed) => void;
   autoReadEnabled?: boolean;
   onAutoReadChange?: (enabled: boolean) => void;
   ambientEnabled?: boolean;
@@ -39,14 +46,28 @@ interface ReaderSettingsSheetProps {
   onAmbientVolumeChange?: (v: number) => void;
   ambientMuted?: boolean;
   onAmbientMuteToggle?: () => void;
+  currentPageText?: string;
+  onPlayOnPage?: () => void;
 }
+
+const SPEED_OPTIONS: { value: PremiumTTSSpeed; label: string }[] = [
+  { value: 0.7, label: "০.৭×" },
+  { value: 0.85, label: "০.৮×" },
+  { value: 1, label: "১×" },
+  { value: 1.1, label: "১.১×" },
+  { value: 1.2, label: "১.২×" },
+];
 
 export function ReaderSettingsSheet({
   open, onOpenChange, isDarkMode, setIsDarkMode, fontSize, setFontSize, fileType,
   ttsMode, onTtsModeChange,
+  premiumVoiceAvailable, voiceUnlocked, voiceCoinPrice = 0,
+  selectedVoiceId, onVoiceChange,
+  ttsSpeed = 1, onTtsSpeedChange,
   autoReadEnabled, onAutoReadChange,
   ambientEnabled, onAmbientEnabledChange, ambientGenre, onAmbientGenreChange,
-  ambientVolume = 0.15, onAmbientVolumeChange, ambientMuted, onAmbientMuteToggle,
+  ambientVolume = 0.15, onAmbientVolumeChange,
+  currentPageText, onPlayOnPage,
 }: ReaderSettingsSheetProps) {
   const [isPreviewing, setIsPreviewing] = useState(false);
   const previewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,7 +78,11 @@ export function ReaderSettingsSheet({
     trackTtsPreview(ttsMode === "premium" ? "premium" : "browser");
 
     window.speechSynthesis.cancel();
-    const segments = preprocessForNarration(BANGLA_PREVIEW_TEXT);
+    // Use actual page text (first 300 chars) when available, else fall back to sample
+    const previewSource = currentPageText?.trim()
+      ? currentPageText.trim().substring(0, 300)
+      : BANGLA_PREVIEW_TEXT;
+    const segments = preprocessForNarration(previewSource);
     if (segments.length === 0) return;
 
     setIsPreviewing(true);
@@ -79,7 +104,7 @@ export function ReaderSettingsSheet({
     };
     speakNext();
     previewTimeoutRef.current = setTimeout(() => { window.speechSynthesis.cancel(); setIsPreviewing(false); }, 8000);
-  }, [isPreviewing, ttsMode]);
+  }, [isPreviewing, ttsMode, currentPageText]);
 
   const stopPreview = useCallback(() => {
     window.speechSynthesis.cancel();
@@ -214,50 +239,135 @@ export function ReaderSettingsSheet({
             </>
           )}
 
-          {/* ═══ VOICE MODE (EPUB only) ═══ */}
-          {fileType === "epub" && onTtsModeChange && (
-            <>
-              <Separator />
-              <div>
-                <SectionHeader icon={ttsMode === "premium" ? Sparkles : Volume2} title="Voice Mode" />
-                <div className="flex items-center justify-between mb-2">
-                  <Badge variant={ttsMode === "premium" ? "default" : "secondary"} className="text-[10px]">
-                    {ttsMode === "premium" ? (
-                      <><Sparkles className="w-3 h-3 mr-1" /> Premium (Natural)</>
-                    ) : (
-                      <><Volume2 className="w-3 h-3 mr-1" /> Free (Basic)</>
-                    )}
-                  </Badge>
-                  <Switch
-                    checked={ttsMode === "premium"}
-                    onCheckedChange={(checked) => onTtsModeChange(checked ? "premium" : "browser")}
-                  />
-                </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed mb-3">
-                  {ttsMode === "premium"
-                    ? "AI-generated natural Bangla narration voice."
-                    : "Free browser voice. Toggle for premium quality."}
-                </p>
-                <Button variant="outline" size="sm" className="w-full text-xs h-8"
-                  onClick={isPreviewing ? stopPreview : handlePreviewVoice}>
-                  {isPreviewing ? <>■ Stop Preview</> : <><Play className="w-3 h-3 mr-1.5" /> Preview Voice</>}
-                </Button>
-              </div>
-            </>
-          )}
+          {/* ═══ ভয়েস মোড ═══ */}
+          <>
+            <Separator />
+            <div className="space-y-3">
+              <SectionHeader icon={Sparkles} title="ভয়েস মোড" />
 
-          {/* ═══ AUTO-READ (EPUB only) ═══ */}
+              {/* Free / Premium toggle — two large buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                {/* ফ্রি button */}
+                <button
+                  onClick={() => onTtsModeChange?.("browser")}
+                  className={`flex items-center justify-center gap-2 py-3 px-3 rounded-xl border text-sm font-semibold transition-all ${
+                    ttsMode === "browser"
+                      ? "bg-secondary border-border text-foreground shadow-sm"
+                      : "bg-transparent border-border/40 text-muted-foreground hover:border-border"
+                  }`}
+                >
+                  <Mic className="w-4 h-4 shrink-0" />
+                  <span>ফ্রি</span>
+                </button>
+
+                {/* প্রিমিয়াম AI HD button */}
+                <button
+                  onClick={() => premiumVoiceAvailable ? onTtsModeChange?.("premium") : undefined}
+                  disabled={!premiumVoiceAvailable}
+                  className={`flex items-center justify-center gap-1.5 py-3 px-3 rounded-xl border text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    ttsMode === "premium"
+                      ? "bg-amber-500 border-amber-500 text-black shadow-md shadow-amber-500/20"
+                      : "bg-transparent border-amber-500/30 text-amber-400 hover:border-amber-500/60"
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span>প্রিমিয়াম</span>
+                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${ttsMode === "premium" ? "bg-black/20 text-black" : "bg-amber-500/20 text-amber-400"}`}>
+                    AI HD
+                  </span>
+                  {premiumVoiceAvailable && !voiceUnlocked && voiceCoinPrice > 0 && (
+                    <span className="flex items-center gap-0.5 text-[9px]">
+                      <Coins className="w-2.5 h-2.5" />{voiceCoinPrice}
+                    </span>
+                  )}
+                  {premiumVoiceAvailable && !voiceUnlocked && voiceCoinPrice === 0 && (
+                    <Lock className="w-3 h-3 opacity-60" />
+                  )}
+                </button>
+              </div>
+
+              {/* Description */}
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                {ttsMode === "premium"
+                  ? "এআই-জেনারেটেড প্রাকৃতিক বাংলা কণ্ঠস্বর।"
+                  : "ফ্রি ব্রাউজার ভয়েস — ডিভাইসের ডিফল্ট কণ্ঠস্বর ব্যবহার করে।"}
+              </p>
+
+              {/* Voice selector — when premium is active and unlocked */}
+              {ttsMode === "premium" && premiumVoiceAvailable && voiceUnlocked && onVoiceChange && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                    <Mic className="w-3 h-3" /> ভয়েস বেছে নিন
+                  </p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {BENGALI_VOICES.map(v => (
+                      <button key={v.id}
+                        onClick={() => onVoiceChange(v.id as BengaliVoiceId)}
+                        className={`text-[11px] px-2 py-2 rounded-lg border text-center transition-all ${selectedVoiceId === v.id ? "bg-amber-500 text-black border-amber-500 font-semibold" : "bg-muted/30 text-muted-foreground border-border/50 hover:border-amber-500/50"}`}>
+                        {v.name}
+                        <div className="text-[9px] opacity-70">{v.label.split("(")[1]?.replace(")", "") ?? ""}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Speed selector */}
+              {onTtsSpeedChange && (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                    <Zap className="w-3 h-3" /> পড়ার গতি
+                  </p>
+                  <div className="flex gap-1">
+                    {SPEED_OPTIONS.map(s => (
+                      <button key={s.value}
+                        onClick={() => onTtsSpeedChange(s.value)}
+                        className={`flex-1 text-[11px] py-1.5 rounded-lg border transition-all ${ttsSpeed === s.value ? "bg-primary text-primary-foreground border-primary font-semibold" : "bg-muted/30 text-muted-foreground border-border/50 hover:border-border"}`}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Play on page — AI Voice shortcut */}
+              {ttsMode === "premium" && voiceUnlocked && onPlayOnPage && (
+                <Button
+                  size="sm"
+                  className="w-full h-9 bg-amber-500 hover:bg-amber-600 text-black text-xs font-semibold"
+                  onClick={() => { stopPreview(); onPlayOnPage(); onOpenChange(false); }}
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                  এই পাতা AI Voice দিয়ে পড়ুন
+                </Button>
+              )}
+
+              {/* ভয়েস প্রিভিউ */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full h-9 text-xs font-medium border-border/60"
+                onClick={isPreviewing ? stopPreview : handlePreviewVoice}
+              >
+                {isPreviewing
+                  ? <><span className="mr-1.5 text-base leading-none">■</span>বন্ধ করুন</>
+                  : <><Play className="w-3.5 h-3.5 mr-1.5" />ভয়েস প্রিভিউ</>}
+              </Button>
+            </div>
+          </>
+
+          {/* ═══ অটো-রিড (EPUB only) ═══ */}
           {fileType === "epub" && onAutoReadChange && (
             <>
               <Separator />
               <div>
-                <SectionHeader icon={Play} title="Auto-Read" />
+                <SectionHeader icon={Play} title="অটো-রিড" />
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs text-muted-foreground">Start reading aloud automatically</p>
+                  <p className="text-xs text-muted-foreground">স্বয়ংক্রিয়ভাবে জোরে পড়া শুরু করুন</p>
                   <Switch checked={!!autoReadEnabled} onCheckedChange={onAutoReadChange} />
                 </div>
                 <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
-                  TTS starts when you open a book and continues to the next page seamlessly.
+                  বই খুললেই TTS শুরু হবে এবং পরবর্তী পাতায় স্বয়ংক্রিয়ভাবে চলবে।
                 </p>
               </div>
             </>

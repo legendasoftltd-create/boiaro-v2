@@ -12,7 +12,8 @@ import { SearchableSelect } from "@/components/admin/SearchableSelect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle, Sparkles, Mic } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { BookContributors } from "@/components/admin/BookContributors";
@@ -75,6 +76,14 @@ export default function AdminBooks() {
     language: "bn", tags: "",
   });
 
+  const [premiumVoice, setPremiumVoice] = useState({
+    enabled: false,
+    access_type: "paid",
+    coin_price: 0,
+    saved: false,
+  });
+  const [savingPremiumVoice, setSavingPremiumVoice] = useState(false);
+
   const formats = selectedBookId ? (formatsByBookId[selectedBookId] || []) : [];
   const formatsLoaded = !!selectedBookId && formatsHydratedBookId === selectedBookId;
   const { log } = useAdminLogger();
@@ -87,6 +96,7 @@ export default function AdminBooks() {
   const updateTrackMutation = trpc.admin.updateAudiobookTrackAdmin.useMutation();
   const deleteTrackMutation = trpc.admin.deleteAudiobookTrackAdmin.useMutation();
   const createLedgerEntryMutation = trpc.admin.createAccountingLedgerEntry.useMutation();
+  const savePremiumVoiceMutation = trpc.admin.savePremiumVoiceSettings.useMutation();
 
   useEffect(() => {
     if (!formatOpen || !selectedBookId) return;
@@ -399,6 +409,18 @@ export default function AdminBooks() {
     setFormatsLoading(true);
     setFormatsHydratedBookId(null);
 
+    const bookData = books.find((b) => b.id === bookId);
+    if (bookData) {
+      setPremiumVoice({
+        enabled: bookData.premium_voice_enabled ?? false,
+        access_type: bookData.voice_access_type ?? "paid",
+        coin_price: bookData.voice_coin_price ?? 0,
+        saved: bookData.premium_voice_enabled != null,
+      });
+    } else {
+      setPremiumVoice({ enabled: false, access_type: "paid", coin_price: 0, saved: false });
+    }
+
     const requestId = ++formatFetchRef.current;
     console.debug("[AdminBooks][Formats] open request", { requestId, selectedBookId: bookId });
 
@@ -470,6 +492,33 @@ export default function AdminBooks() {
       return sum % 10 === 0;
     }
     return false;
+  };
+
+  const handleSavePremiumVoice = async () => {
+    if (!selectedBookId) return;
+    setSavingPremiumVoice(true);
+    try {
+      await savePremiumVoiceMutation.mutateAsync({
+        book_id: selectedBookId,
+        premium_voice_enabled: premiumVoice.enabled,
+        voice_access_type: premiumVoice.access_type,
+        voice_coin_price: premiumVoice.enabled ? premiumVoice.coin_price : null,
+      });
+      setPremiumVoice((p) => ({ ...p, saved: true }));
+      // Update local books state so re-opening the dialog shows the saved values
+      setBooks((prev) =>
+        prev.map((b) =>
+          b.id === selectedBookId
+            ? { ...b, premium_voice_enabled: premiumVoice.enabled, voice_access_type: premiumVoice.access_type, voice_coin_price: premiumVoice.enabled ? premiumVoice.coin_price : null }
+            : b
+        )
+      );
+      toast.success("Premium Voice settings saved");
+    } catch (err: any) {
+      toast.error("Failed to save: " + (err?.message ?? "Unknown error"));
+    } finally {
+      setSavingPremiumVoice(false);
+    }
   };
 
   const saveFormat = async () => {
@@ -1055,6 +1104,79 @@ export default function AdminBooks() {
                         </Button>
                         {formatForm.file_url && <Badge variant="outline" className="bg-green-500/10 text-green-400 text-xs">✓ File uploaded</Badge>}
                       </div>
+                    </div>
+
+                    {/* Premium Voice TTS Monetization */}
+                    <div className="col-span-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+                          <span className="text-sm font-medium text-amber-400">Premium Voice (TTS) — Monetization</span>
+                        </div>
+                        {premiumVoice.saved && (
+                          <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-400 border-green-500/30">Saved on book</Badge>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2.5">
+                        <Switch
+                          checked={premiumVoice.enabled}
+                          onCheckedChange={(v) => setPremiumVoice((p) => ({ ...p, enabled: v, saved: false }))}
+                          className="data-[state=checked]:bg-amber-500"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          <Mic className="h-3.5 w-3.5 text-amber-400" />
+                          <span className="text-sm text-muted-foreground">Enable Premium Voice for this book</span>
+                        </div>
+                      </div>
+
+                      {premiumVoice.enabled && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">Access Type</Label>
+                            <Select
+                              value={premiumVoice.access_type}
+                              onValueChange={(v) => setPremiumVoice((p) => ({ ...p, access_type: v, saved: false }))}
+                            >
+                              <SelectTrigger className="h-8 text-sm mt-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="free">Free</SelectItem>
+                                <SelectItem value="paid">Paid (coins)</SelectItem>
+                                <SelectItem value="subscription">Subscription only</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <p className="text-[10px] text-muted-foreground mt-1">One-time lifetime unlock per user</p>
+                          </div>
+                          {premiumVoice.access_type === "paid" && (
+                            <div>
+                              <Label className="text-xs">Coin Price (per book)</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={premiumVoice.coin_price}
+                                onChange={(e) => setPremiumVoice((p) => ({ ...p, coin_price: Number(e.target.value) || 0, saved: false }))}
+                                className="h-8 text-sm mt-1"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="w-full bg-amber-500 hover:bg-amber-600 text-black font-medium"
+                        onClick={handleSavePremiumVoice}
+                        disabled={savingPremiumVoice}
+                      >
+                        {savingPremiumVoice ? (
+                          <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Saving...</>
+                        ) : (
+                          <><CheckCircle className="h-3 w-3 mr-1.5" />Save Premium Voice Settings</>
+                        )}
+                      </Button>
                     </div>
                   </TabsContent>
 

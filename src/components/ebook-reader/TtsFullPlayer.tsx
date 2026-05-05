@@ -54,6 +54,7 @@ interface TtsFullPlayerProps {
   onMusicVolumeChange?: (v: number) => void;
   ttsMode?: TtsMode;
   onTtsModeChange?: (mode: TtsMode) => void;
+  premiumVoiceAvailable?: boolean;
 }
 
 function formatTime(sec: number): string {
@@ -64,11 +65,11 @@ function formatTime(sec: number): string {
 
 export function TtsFullPlayer({
   open, isPlaying, isPaused, currentSentenceIndex, totalSentences, currentEmotion,
-  playbackRate, elapsedSeconds, totalDurationSeconds, bookTitle, bookCover, isPremium,
+  playbackRate, elapsedSeconds, totalDurationSeconds, bookTitle, bookCover,
   onClose, onPlay, onPause, onResume, onStop,
   onSkipForward, onSkipBackward, onSeekToIndex, onSetSpeed,
   musicAvailable, musicMuted, musicVolume = 0.15, onMusicToggle, onMusicVolumeChange,
-  ttsMode, onTtsModeChange,
+  ttsMode, onTtsModeChange, premiumVoiceAvailable,
 }: TtsFullPlayerProps) {
   const [showSpeed, setShowSpeed] = useState(false);
 
@@ -180,8 +181,8 @@ export function TtsFullPlayer({
             </div>
           </div>
 
-          {/* ═══════ VOICE SELECTION — Clear grouped section ═══════ */}
-          {ttsMode && onTtsModeChange && (
+          {/* ═══════ VOICE SELECTION — only when book has premium voice ═══════ */}
+          {ttsMode && onTtsModeChange && premiumVoiceAvailable && (
             <div className="w-full rounded-xl border border-border/30 bg-secondary/10 p-4 mb-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Mic className="w-4 h-4 text-primary" />
@@ -197,17 +198,17 @@ export function TtsFullPlayer({
                       : "bg-muted/30 text-muted-foreground border-border/50 hover:border-border"
                   }`}
                 >
-                  <Mic className="w-4 h-4" /> Free
+                  <Mic className="w-4 h-4" /> Free TTS
                 </button>
                 <button
                   onClick={() => onTtsModeChange("premium")}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-sm font-medium transition-all ${
                     ttsMode === "premium"
-                      ? "bg-primary text-primary-foreground border-primary shadow-md"
-                      : "bg-muted/30 text-muted-foreground border-border/50 hover:border-border"
+                      ? "bg-amber-500 text-black border-amber-500 shadow-md"
+                      : "bg-muted/30 text-muted-foreground border-border/50 hover:border-amber-500/50 hover:text-amber-400"
                   }`}
                 >
-                  <Sparkles className="w-4 h-4" /> Premium
+                  <Sparkles className="w-4 h-4" /> AI Voice
                 </button>
               </div>
             </div>

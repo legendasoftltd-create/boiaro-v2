@@ -1,10 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client-js"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["driverAdapters"]
+  engineType      = "library"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ─── Enums ───────────────────────────────────────────────────────────────────
@@ -375,6 +378,7 @@ model Book {
   rating            Float?
   reviews_count     Int?     @default(0)
   slug              String   @unique
+  premium_voice_enabled Boolean? @default(false)
   submission_status String   @default("pending")
   submitted_by      String?
   tags              String[]
@@ -382,6 +386,8 @@ model Book {
   title_en          String?
   total_reads       Int?     @default(0)
   updated_at        DateTime @updatedAt
+  voice_access_type String?  @default("paid")
+  voice_coin_price  Int?
 
   author    Author?    @relation(fields: [author_id], references: [id])
   category  Category?  @relation(fields: [category_id], references: [id])
@@ -1425,14 +1431,17 @@ model TtsAudio {
   id          String   @id @default(uuid())
   audio_url   String?
   book_id     String?
+  char_count  Int?
   created_at  DateTime @default(now())
   language    String   @default("bn")
   source_text String
   status      String   @default("pending")
+  text_hash   String?
   updated_at  DateTime @updatedAt
   user_id     String
   voice_id    String?
 
+  @@index([text_hash])
   @@map("tts_audio")
 }
 

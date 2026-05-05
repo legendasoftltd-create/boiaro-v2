@@ -1,9 +1,15 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from "react";
 import ePub from "epubjs";
-import type Book from "epubjs/types/book";
-import type Rendition from "epubjs/types/rendition";
-import type { NavItem } from "epubjs/types/navigation";
-import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2 } from "lucide-react";
+
+// epubjs's Rendition.requireManager() resolves "default"/"continuous" by reading
+// window.ePub.ViewManagers. In a Vite ES-module environment there is no global,
+// so we expose the imported ePub as a window property once at module load time.
+if (typeof window !== "undefined") {
+  (window as any).ePub = ePub;
+}
+
+type NavItem = { label: string; href: string; subitems?: NavItem[] };
 
 interface EpubRendererProps {
   url: string;
@@ -27,11 +33,41 @@ export interface EpubRendererHandle {
 
 const LOAD_TIMEOUT_MS = 25000;
 
+type RuntimeBook = {
+  ready?: Promise<unknown>;
+  loaded?: { navigation?: Promise<{ toc?: NavItem[] }> };
+  navigation?: { toc?: NavItem[] };
+  toc?: NavItem[];
+  locations?: { generate?: (chars: number) => Promise<unknown>; length?: () => number } | unknown[];
+  generateLocations?: (chars: number) => Promise<unknown>;
+  renderTo?: (element: HTMLElement, options?: Record<string, unknown>) => any;
+  destroy?: () => void;
+};
+
+function getLocationCount(book: RuntimeBook | null) {
+  const locations = book?.locations;
+  if (!locations) return 0;
+  if (Array.isArray(locations)) return locations.length;
+  if (typeof locations.length === "function") return locations.length();
+  return 0;
+}
+
+function generateLocations(book: RuntimeBook, chars: number) {
+  const locations = book.locations;
+  if (locations && !Array.isArray(locations) && typeof locations.generate === "function") {
+    return locations.generate(chars);
+  }
+  if (typeof book.generateLocations === "function") {
+    return book.generateLocations(chars);
+  }
+  return Promise.resolve();
+}
+
 export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
   ({ url, fontSize, isDarkMode, onTocLoaded, onLocationChange, onError, initialCfi }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const bookRef = useRef<Book | null>(null);
-    const renditionRef = useRef<Rendition | null>(null);
+    const bookRef = useRef<RuntimeBook | null>(null);
+    const renditionRef = useRef<any>(null);
     const [loaded, setLoaded] = useState(false);
     const [initError, setInitError] = useState<string | null>(null);
 
@@ -175,8 +211,9 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
       }
 
       let destroyed = false;
-      let book: Book | null = null;
+      let book: RuntimeBook | null = null;
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      let blobUrl: string | null = null;
 
       const cleanup = () => {
         destroyed = true;
@@ -185,6 +222,7 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
         renditionRef.current = null;
         try { book?.destroy(); } catch {}
         bookRef.current = null;
+        if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
       };
 
       const fail = (msg: string) => {
@@ -224,13 +262,19 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           }
           console.debug("[EpubRenderer] EPUB fetched, size:", arrayBuffer.byteLength);
 
-          // Create book from binary
-          book = ePub(arrayBuffer as any);
+          // Pass a second argument ({}) so ePub() takes the 2-arg code path.
+          // With 1 arg + ArrayBuffer (object), ePub returns new Epub(arrayBuffer)
+          // treating it as options — url stays undefined, book never loads.
+          // With 2 args, it calls epub.open(arrayBuffer) which triggers the
+          // BINARY path, extracts with JSZip, and returns a Book with renderTo.
+          book = await (ePub as any)(arrayBuffer, {}) as RuntimeBook;
           bookRef.current = book;
 
-          await book.ready;
+          if (!book || typeof book.renderTo !== "function") {
+            throw new Error("EPUB renderer unavailable — renderTo not found");
+          }
           if (destroyed) return;
-          console.debug("[EpubRenderer] book.ready resolved");
+          console.debug("[EpubRenderer] Book loaded, renderTo confirmed");
 
           // Render to container
           if (!containerRef.current) return;
@@ -247,10 +291,12 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
 
           // Load TOC
           try {
-            const nav = await book.loaded.navigation;
+            const nav = book.loaded?.navigation
+              ? await book.loaded.navigation
+              : book.navigation || { toc: book.toc || [] };
             if (!destroyed) {
               console.debug("[EpubRenderer] TOC loaded, items:", nav.toc?.length);
-              onTocLoaded(nav.toc);
+              onTocLoaded(nav.toc || []);
             }
           } catch (tocErr) {
             console.warn("[EpubRenderer] TOC load failed:", tocErr);
@@ -276,8 +322,8 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           setLoaded(true);
 
           // Generate locations for accurate percentage tracking (runs in background after first render)
-          book.locations.generate(1024).then(() => {
-            if (!destroyed) console.debug("[EpubRenderer] Locations generated:", book?.locations?.length());
+          generateLocations(book, 1024).then(() => {
+            if (!destroyed) console.debug("[EpubRenderer] Locations generated:", getLocationCount(book));
           }).catch(() => {});
 
           // Handle relocated event for progress tracking
@@ -285,12 +331,12 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
             if (destroyed) return;
             try {
               let pct: number;
-              if (book?.locations?.length()) {
+              if (getLocationCount(book) && typeof location.start?.percentage === "number") {
                 // Accurate percentage once locations are generated
                 pct = Math.round((location.start?.percentage ?? 0) * 100);
               } else {
                 // Spine-based estimate while locations are still generating
-                const spineItems = (book?.spine as any)?.items;
+                const spineItems = (book as any)?.spine?.items;
                 const spineLen = Array.isArray(spineItems) ? spineItems.length : 1;
                 const idx = location.start?.index ?? 0;
                 pct = Math.round((idx / Math.max(1, spineLen - 1)) * 100);
@@ -380,7 +426,7 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
 
           // Generate locations for percentage (non-blocking)
           try {
-            await book.locations.generate(1600);
+            await generateLocations(book, 1600);
             if (!destroyed) rendition.reportLocation();
           } catch (locErr) {
             console.warn("[EpubRenderer] Location generation failed:", locErr);
@@ -409,7 +455,7 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
       }
     }, [isDarkMode, fontSize]);
 
-    function applyTheme(rendition: Rendition, dark: boolean, size: number) {
+    function applyTheme(rendition: any, dark: boolean, size: number) {
       rendition.themes.default({
         "body, p, span, div, li, a, blockquote, figcaption, cite, em, strong": {
           "font-size": `${size}px !important`,

@@ -438,17 +438,18 @@ export const booksRouter = router({
             select: { user_id: true, display_name: true, avatar_url: true },
           })
         : [];
-      const profileMap = new Map(profiles.map(p => [p.user_id, p]));
+      const profileMap: Record<string, { display_name: string | null; avatar_url: string | null }> = {};
+      profiles.forEach(p => { profileMap[p.user_id] = p; });
       return comments.map(c => ({
         ...c,
-        display_name: profileMap.get(c.user_id)?.display_name ?? null,
-        avatar_url: profileMap.get(c.user_id)?.avatar_url ?? null,
+        display_name: profileMap[c.user_id]?.display_name ?? null,
+        avatar_url: profileMap[c.user_id]?.avatar_url ?? null,
         like_count: c._count.likes,
         liked_by_me: input.userId ? (c.likes as any[]).length > 0 : false,
         replies: c.replies.map((r: any) => ({
           ...r,
-          display_name: profileMap.get(r.user_id)?.display_name ?? null,
-          avatar_url: profileMap.get(r.user_id)?.avatar_url ?? null,
+          display_name: profileMap[r.user_id]?.display_name ?? null,
+          avatar_url: profileMap[r.user_id]?.avatar_url ?? null,
           like_count: r._count.likes,
           liked_by_me: input.userId ? (r.likes as any[]).length > 0 : false,
         })),
@@ -548,14 +549,15 @@ export const booksRouter = router({
             select: { user_id: true, display_name: true, avatar_url: true },
           })
         : [];
-      const profileMap = new Map(profiles.map((p) => [p.user_id, p]));
+      const profileMap: Record<string, { display_name: string | null; avatar_url: string | null }> = {};
+      profiles.forEach(p => { profileMap[p.user_id] = p; });
 
       return {
         ...book,
         contributors: book.contributors.map((c) => ({
           ...c,
-          display_name: profileMap.get(c.user_id)?.display_name ?? null,
-          avatar_url: profileMap.get(c.user_id)?.avatar_url ?? null,
+          display_name: profileMap[c.user_id]?.display_name ?? null,
+          avatar_url: profileMap[c.user_id]?.avatar_url ?? null,
         })),
       };
     }),
