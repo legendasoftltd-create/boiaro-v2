@@ -59,6 +59,7 @@ jobs:
             cd server
             npm ci
             npm run build
+            npx prisma migrate deploy
             cd ..
             npm run build
 
