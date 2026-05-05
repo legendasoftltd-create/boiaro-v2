@@ -33,3 +33,4 @@ server/src/generated/
 *.njsproj
 *.sln
 *.sw?
+tsconfig.tsbuildinfo
