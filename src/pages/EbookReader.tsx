@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Sparkles, Lock, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useReadingProgress } from "@/hooks/useReadingProgress";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSecureContent } from "@/hooks/useSecureContent";
@@ -94,15 +95,19 @@ export default function EbookReader() {
   }, []);
   const [showTtsFullPlayer, setShowTtsFullPlayer] = useState(false);
   const [bookCover, setBookCover] = useState<string | null>(null);
-  const [ttsLastIndex, setTtsLastIndex] = useState(0);
-  const [ttsAutoPlay, setTtsAutoPlay] = useState(false);
+  const [premiumVoiceEnabled, setPremiumVoiceEnabled] = useState(false);
+  const [voiceAccessType, setVoiceAccessType] = useState<"free" | "paid" | "subscription">("paid");
+  const [voiceCoinPrice, setVoiceCoinPrice] = useState(0);
+  const [showVoiceGate, setShowVoiceGate] = useState(false);
+  const [pdfPageText, setPdfPageText] = useState("");
+  const [selectedVoiceId, setSelectedVoiceId] = useState<import("@/hooks/usePremiumTTS").BengaliVoiceId>("EXAVITQu4vr4xnSDxMaL");
+  const [ttsSpeed, setTtsSpeed] = useState<import("@/hooks/usePremiumTTS").PremiumTTSSpeed>(1);
   const ttsAutoPlayRef = useRef(false);
   const [autoReadEnabled, setAutoReadEnabled] = useState(() => {
     try { return localStorage.getItem("tts_auto_read") === "true"; } catch { return false; }
   });
   const autoReadRef = useRef(autoReadEnabled);
   autoReadRef.current = autoReadEnabled;
-  const ttsStartedForPageRef = useRef(false);
   const access = useEbookAccess(bookId, isFreeBook, totalPages, previewPct);
 
   // ── CRITICAL GATE: Preview/paywall enforcement ──
@@ -139,6 +144,25 @@ export default function EbookReader() {
     { enabled: !!user && !!bookId }
   );
   const bookmarkMutation = trpc.books.bookmark.useMutation({ onSuccess: () => refetchBookmark() });
+
+  // Premium Voice unlock gate — check for paid AND subscription types
+  const { data: voiceUnlockData, refetch: refetchVoiceUnlock } = trpc.wallet.checkUnlock.useQuery(
+    { bookId: bookId!, format: "premium_voice" },
+    { enabled: !!user && !!bookId && premiumVoiceEnabled && (voiceAccessType === "paid" || voiceAccessType === "subscription") }
+  );
+  const { data: balanceData } = trpc.wallet.balance.useQuery(
+    undefined,
+    { enabled: !!user && showVoiceGate }
+  );
+  const unlockVoiceMutation = trpc.wallet.unlockContent.useMutation({
+    onSuccess: () => {
+      refetchVoiceUnlock();
+      setShowVoiceGate(false);
+      tts.setMode("premium");
+      toast.success("Premium Voice unlocked! Enjoy ElevenLabs TTS.");
+    },
+    onError: (err) => toast.error(err.message || "Failed to unlock"),
+  });
   useEffect(() => {
     if (bookmarkData !== undefined) setIsBookmarked(bookmarkData.bookmarked);
   }, [bookmarkData]);
@@ -151,7 +175,7 @@ export default function EbookReader() {
     // Check paywall
     if (shouldEnforcePreviewLimit && access.isPercentageBlocked(percentage)) {
       setShowPaywall(true);
-      setTtsAutoPlay(false);
+      
       ttsAutoPlayRef.current = false;
       return;
     }
@@ -178,7 +202,7 @@ export default function EbookReader() {
         tts.play(text);
       } else {
         // End of book or empty page
-        setTtsAutoPlay(false);
+        
         ttsAutoPlayRef.current = false;
       }
     };
@@ -203,13 +227,47 @@ export default function EbookReader() {
     }
   }, [tts.isPlaying, tts.isPaused]);
 
-  // Wrap mode change to track conversions
+  // Wrap mode change — gate "premium" mode behind voice unlock when required
   const handleTtsModeChange = useCallback((newMode: TtsMode) => {
+    if (newMode === "premium") {
+      if (!premiumVoiceEnabled) {
+        toast.error("Premium Voice is not enabled for this book.");
+        return;
+      }
+      // "free" access — switch immediately, no gate
+      if (voiceAccessType === "free") {
+        tts.setMode("premium");
+        if (bookId) trackTtsModeSwitch(bookId, tts.mode, "premium");
+        return;
+      }
+      // "subscription" access — active subscribers get it free; others see the gate
+      if (voiceAccessType === "subscription") {
+        const alreadyUnlocked = voiceUnlockData?.unlocked === true;
+        if (alreadyUnlocked) {
+          tts.setMode("premium");
+          if (bookId) trackTtsModeSwitch(bookId, tts.mode, "premium");
+        } else {
+          setShowVoiceGate(true);
+        }
+        return;
+      }
+      // "paid" access — check unlock status
+      const alreadyUnlocked = voiceUnlockData?.unlocked === true;
+      if (!alreadyUnlocked) {
+        if (voiceCoinPrice === 0 && bookId) {
+          // 0-coin paid unlock: auto-unlock silently
+          unlockVoiceMutation.mutate({ bookId, format: "premium_voice", coinCost: 0 });
+          return;
+        }
+        setShowVoiceGate(true);
+        return;
+      }
+    }
     if (bookId && newMode !== tts.mode) {
       trackTtsModeSwitch(bookId, tts.mode, newMode);
     }
     tts.setMode(newMode);
-  }, [tts.mode, tts.setMode, bookId, trackTtsModeSwitch]);
+  }, [tts.mode, tts.setMode, bookId, trackTtsModeSwitch, premiumVoiceEnabled, voiceAccessType, voiceUnlockData, voiceCoinPrice]);
 
   // Sync background music with TTS state (only when ambient is enabled)
   const ambientEnabledRef = useRef(ambientEnabled);
@@ -252,25 +310,32 @@ export default function EbookReader() {
   }, [tts.isPlaying, bgMusic.isPlaying]);
 
   const handleTtsPlay = useCallback(() => {
+    if ((tts as any).isGenerating || (tts as any).isLoading) return;
+
+    let text = "";
+
     if (fileType === "epub" && epubRef.current) {
-      const text = epubRef.current.getVisibleText();
-      if (text) {
-        setTtsAutoPlay(true);
-        ttsAutoPlayRef.current = true;
-        if (ambientEnabled) {
-          console.log("[EbookAmbient] user gesture play → bgMusic.play()", {
-            available: bgMusic.available,
-            muted: bgMusic.isMuted,
-            volume: bgMusic.volume,
-          });
-          bgMusic.play();
-        }
-        tts.play(text);
-      } else {
-        toast.error("Could not extract text from this page");
-      }
+      text = epubRef.current.getVisibleText();
+    } else if (fileType === "pdf") {
+      text = pdfPageText;
     }
-  }, [ambientEnabled, bgMusic, fileType, tts]);
+
+    if (!text || !text.trim()) {
+      toast.error("Could not extract text from this page. Try scrolling to load content first.");
+      return;
+    }
+
+    if (tts.mode === "premium") {
+      toast.info("Generating AI voice audio… this may take a moment.");
+    }
+
+    
+    ttsAutoPlayRef.current = true;
+    if (ambientEnabled) {
+      bgMusic.play();
+    }
+    tts.play(text);
+  }, [ambientEnabled, bgMusic, fileType, tts, pdfPageText]);
 
   const handleTtsPause = useCallback(() => {
     console.log("[EbookAmbient] handleTtsPause()", {
@@ -346,7 +411,7 @@ export default function EbookReader() {
       const text = epubRef.current.getVisibleText();
       if (text && text.trim().length > 10) {
         autoReadTriggeredRef.current = true;
-        setTtsAutoPlay(true);
+        
         ttsAutoPlayRef.current = true;
         tts.play(text);
       }
@@ -452,6 +517,10 @@ export default function EbookReader() {
         setEbookPrice(resolvedEbookPrice);
         setPreviewPct((ebookFmt as any).preview_percentage ?? null);
         setBookCover(toMediaUrl(dbBook.cover_url) || null);
+        setPremiumVoiceEnabled(Boolean((dbBook as any).premium_voice_enabled));
+        const vat = (dbBook as any).voice_access_type;
+        setVoiceAccessType(vat === "free" ? "free" : vat === "subscription" ? "subscription" : "paid");
+        setVoiceCoinPrice(Number((dbBook as any).voice_coin_price) || 0);
         // Only auto-detect genre if user hasn't manually chosen one
         if (!userOverrodeGenre) {
           try {
@@ -739,7 +808,7 @@ export default function EbookReader() {
         show={showControls}
         isDarkMode={isDarkMode}
         isTtsPlaying={tts.isPlaying}
-        showTtsButton={fileType === "epub"}
+        showTtsButton={true}
         onBack={() => navigate(bookSlug ? `/book/${bookSlug}` : "/")}
         onToggleBookmark={toggleBookmark}
         onOpenToc={() => setShowToc(true)}
@@ -773,6 +842,7 @@ export default function EbookReader() {
               onZoomChange={(z) => setZoom(z)}
               onError={(err) => toast.error(err)}
               isDarkMode={isDarkMode}
+              onTextExtracted={(text) => setPdfPageText(text)}
             />
           </div>
         ) : (
@@ -835,7 +905,7 @@ export default function EbookReader() {
       </main>
 
       {/* TTS Mini Player — visible when TTS is active */}
-      {fileType === "epub" && (tts.isPlaying || tts.isPaused) && (
+      {(tts.isPlaying || tts.isPaused) && (
         <TtsMiniPlayer
           isPlaying={tts.isPlaying}
           isPaused={tts.isPaused}
@@ -850,7 +920,7 @@ export default function EbookReader() {
           onPlay={handleTtsPlay}
           onPause={handleTtsPause}
           onResume={handleTtsResume}
-          onStop={() => { handleTtsStop(); setTtsLastIndex(0); setTtsAutoPlay(false); ttsAutoPlayRef.current = false; }}
+          onStop={() => { handleTtsStop();   ttsAutoPlayRef.current = false; }}
           onSkipForward={() => tts.skipForward(3)}
           onSkipBackward={() => tts.skipBackward(3)}
           onOpenFullPlayer={() => setShowTtsFullPlayer(true)}
@@ -858,7 +928,8 @@ export default function EbookReader() {
           musicMuted={bgMusic.isMuted}
           onMusicToggle={bgMusic.toggleMute}
           ttsMode={tts.mode}
-          onTtsModeChange={tts.setMode}
+          onTtsModeChange={handleTtsModeChange}
+          premiumVoiceAvailable={premiumVoiceEnabled}
         />
       )}
 
@@ -880,18 +951,19 @@ export default function EbookReader() {
         onPlay={handleTtsPlay}
         onPause={handleTtsPause}
         onResume={handleTtsResume}
-        onStop={() => { handleTtsStop(); setTtsLastIndex(0); setTtsAutoPlay(false); ttsAutoPlayRef.current = false; setShowTtsFullPlayer(false); }}
+        onStop={() => { handleTtsStop();   ttsAutoPlayRef.current = false; setShowTtsFullPlayer(false); }}
         onSkipForward={() => tts.skipForward(3)}
         onSkipBackward={() => tts.skipBackward(3)}
         onSeekToIndex={tts.seekToIndex}
-        onSetSpeed={tts.setSpeed}
+        onSetSpeed={(s) => tts.setSpeed(s as any)}
         musicAvailable={ambientEnabled && bgMusic.available}
         musicMuted={bgMusic.isMuted}
         musicVolume={bgMusic.volume}
         onMusicToggle={bgMusic.toggleMute}
         onMusicVolumeChange={bgMusic.setVolume}
         ttsMode={tts.mode}
-        onTtsModeChange={tts.setMode}
+        onTtsModeChange={handleTtsModeChange}
+        premiumVoiceAvailable={premiumVoiceEnabled}
       />
 
       {/* Bottom Bar */}
@@ -946,8 +1018,23 @@ export default function EbookReader() {
         fontSize={fontSize}
         setFontSize={setFontSize}
         fileType={fileType}
+        currentPageText={fileType === "epub" && epubRef.current ? epubRef.current.getVisibleText() : pdfPageText}
+        onPlayOnPage={handleTtsPlay}
         ttsMode={tts.mode}
         onTtsModeChange={handleTtsModeChange}
+        premiumVoiceAvailable={premiumVoiceEnabled}
+        voiceUnlocked={voiceAccessType === "free" || voiceUnlockData?.unlocked === true}
+        voiceCoinPrice={voiceCoinPrice}
+        selectedVoiceId={selectedVoiceId}
+        onVoiceChange={(id) => {
+          setSelectedVoiceId(id);
+          (tts as any).setVoice?.(id);
+        }}
+        ttsSpeed={ttsSpeed}
+        onTtsSpeedChange={(s) => {
+          setTtsSpeed(s);
+          tts.setSpeed(s as any);
+        }}
         autoReadEnabled={autoReadEnabled}
         onAutoReadChange={(enabled) => {
           setAutoReadEnabled(enabled);
@@ -1001,6 +1088,105 @@ export default function EbookReader() {
         }}
         onClose={() => navigate(bookSlug ? `/book/${bookSlug}` : "/")}
       />
+
+      {/* Premium Voice Unlock Gate */}
+      <Dialog open={showVoiceGate} onOpenChange={setShowVoiceGate}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-400">
+              <Sparkles className="h-4 w-4" />
+              {voiceAccessType === "subscription" ? "Subscription Required" : "Unlock Premium Voice"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <div className="flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
+                <Lock className="h-5 w-5 text-amber-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">ElevenLabs AI Narration</p>
+                <p className="text-xs text-muted-foreground">
+                  {voiceAccessType === "subscription"
+                    ? "Active subscription required for this book's AI voice"
+                    : "High-quality AI voice reads this book aloud"}
+                </p>
+              </div>
+            </div>
+
+            {voiceAccessType === "subscription" ? (
+              <>
+                <div className="flex items-center justify-between rounded-lg border border-border/40 bg-accent/10 px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Required</span>
+                  <span className="flex items-center gap-1 font-semibold text-amber-400">
+                    <Sparkles className="h-4 w-4" />
+                    Active Subscription
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">Subscribe to unlock AI voice for all eligible books.</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowVoiceGate(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-black font-semibold"
+                    onClick={() => { setShowVoiceGate(false); navigate("/subscriptions"); }}
+                  >
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />View Plans
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between rounded-lg border border-border/40 bg-accent/10 px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Unlock cost</span>
+                  <span className="flex items-center gap-1 font-semibold text-amber-400">
+                    <Coins className="h-4 w-4" />
+                    {voiceCoinPrice} coins
+                  </span>
+                </div>
+
+                {balanceData?.wallet && (
+                  <div className="flex items-center justify-between rounded-lg border border-border/40 bg-accent/10 px-3 py-2">
+                    <span className="text-sm text-muted-foreground">Your balance</span>
+                    <span className={`flex items-center gap-1 font-semibold ${(balanceData.wallet.balance ?? 0) >= voiceCoinPrice ? "text-green-400" : "text-red-400"}`}>
+                      <Coins className="h-4 w-4" />
+                      {balanceData.wallet.balance ?? 0} coins
+                    </span>
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">One-time unlock — play unlimited times after purchase.</p>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowVoiceGate(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-black font-semibold"
+                    disabled={
+                      unlockVoiceMutation.isPending ||
+                      !balanceData?.wallet ||
+                      (balanceData.wallet.balance ?? 0) < voiceCoinPrice
+                    }
+                    onClick={() => {
+                      if (!bookId) return;
+                      unlockVoiceMutation.mutate({ bookId, format: "premium_voice", coinCost: voiceCoinPrice });
+                    }}
+                  >
+                    {unlockVoiceMutation.isPending ? (
+                      <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Unlocking...</>
+                    ) : (balanceData?.wallet && (balanceData.wallet.balance ?? 0) < voiceCoinPrice) ? (
+                      "Not enough coins"
+                    ) : (
+                      <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Unlock Now</>
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

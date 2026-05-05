@@ -203,10 +203,30 @@ export const adminRouter = router({
       });
     }),
 
+  savePremiumVoiceSettings: adminProcedure
+    .input(
+      z.object({
+        book_id: z.string(),
+        premium_voice_enabled: z.boolean(),
+        voice_access_type: z.string(),
+        voice_coin_price: z.number().int().nullable().optional(),
+      })
+    )
+    .mutation(({ input }) =>
+      prisma.book.update({
+        where: { id: input.book_id },
+        data: {
+          premium_voice_enabled: input.premium_voice_enabled,
+          voice_access_type: input.voice_access_type,
+          voice_coin_price: input.voice_coin_price ?? null,
+        } as any,
+      })
+    ),
+
   deleteBookWithFormats: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) =>
-      prisma.$transaction(async (tx) => {
+      prisma.$transaction(async (tx: any) => {
         const formatIds = (
           await tx.bookFormat.findMany({
             where: { book_id: input.id },
@@ -491,7 +511,7 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      return prisma.$transaction(async (tx) => {
+      return prisma.$transaction(async (tx: any) => {
         const wallet = await tx.userCoin.findUnique({ where: { user_id: input.userId } });
         if (!wallet) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
@@ -1065,7 +1085,7 @@ export const adminRouter = router({
       const userId = app.user_id;
       const displayName = app.display_name || "Unknown";
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.roleApplication.update({
           where: { id: input.applicationId },
           data: { status: "approved", reviewed_by: ctx.userId, verified: true, reviewed_at: new Date() },
@@ -1834,7 +1854,7 @@ export const adminRouter = router({
           where: { role: notification.audience as any },
           select: { user_id: true },
         });
-        userIds = [...new Set(roles.map((role) => role.user_id))];
+        userIds = [...new Set<string>(roles.map((role) => role.user_id as string))];
       }
 
       if (!userIds.length) return { sent: 0 };
@@ -3343,7 +3363,7 @@ export const adminRouter = router({
   updateSubmissionStatus: adminProcedure
     .input(z.object({ bookId: z.string(), status: z.enum(["approved", "rejected", "draft", "pending"]) }))
     .mutation(async ({ ctx, input }) => {
-      return prisma.$transaction(async (tx) => {
+      return prisma.$transaction(async (tx: any) => {
         const updatedBook = await tx.book.update({
           where: { id: input.bookId },
           data: {
@@ -3410,7 +3430,7 @@ export const adminRouter = router({
       const req = await prisma.contentEditRequest.findUnique({ where: { id: input.requestId } });
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
       const changes = (() => { try { return JSON.parse(req.details || "{}"); } catch { return {}; } })();
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         if (changes.book && req.book_id && req.request_type === "book") {
           const { submission_status: _ss, submitted_by: _sb, ...bookUpdates } = changes.book;
           if (Object.keys(bookUpdates).length > 0) await tx.book.update({ where: { id: req.book_id }, data: bookUpdates });
@@ -3629,7 +3649,7 @@ export const adminRouter = router({
       const app = await prisma.roleApplication.findUnique({ where: { id: input.applicationId } });
       if (!app) throw new TRPCError({ code: "NOT_FOUND" });
 
-      await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx: any) => {
         await tx.roleApplication.update({
           where: { id: input.applicationId },
           data: { status: "approved", reviewed_by: ctx.userId, verified: true, reviewed_at: new Date() },

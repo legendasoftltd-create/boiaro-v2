@@ -161,7 +161,7 @@ walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, 
       where: { book_id, format },
       select: { id: true, price: true },
     });
-    const unlock = await prisma.$transaction(async (tx) => {
+    const unlock = await prisma.$transaction(async (tx: any) => {
       const created = await tx.contentUnlock.upsert({
         where: { user_id_book_id_format: { user_id: req.auth.userId!, book_id, format } },
         create: { user_id: req.auth.userId!, book_id, format, coins_spent: coin_cost, unlock_method: "coin", status: "active" },

@@ -1,279 +1,233 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
-export type PremiumTTSSpeed = 0.75 | 1 | 1.25 | 1.5;
+export type PremiumTTSSpeed = 0.7 | 0.85 | 1 | 1.1 | 1.2;
+
+// Bengali voice IDs — must match server/src/routers/tts.ts BENGALI_VOICES
+export const BENGALI_VOICES = [
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah",  label: "সারা (মহিলা)" },
+  { id: "pFZP5JQG7iQjIQuC4Bku", name: "Lily",   label: "লিলি (মহিলা)" },
+  { id: "JBFqnCBsd6RMkjVDRZzb", name: "George", label: "জর্জ (পুরুষ)" },
+] as const;
+
+export type BengaliVoiceId = typeof BENGALI_VOICES[number]["id"];
+const DEFAULT_VOICE_ID: BengaliVoiceId = "EXAVITQu4vr4xnSDxMaL"; // Sarah
+
+const LOOKAHEAD = 3; // pre-generate this many paragraphs ahead
+const MAX_PARA_CHARS = 2500;
 
 interface PremiumTTSState {
   isPlaying: boolean;
   isPaused: boolean;
+  isLoading: boolean;
+  isGenerating: boolean;
   currentTime: number;
   duration: number;
   playbackRate: PremiumTTSSpeed;
-  isLoading: boolean;
-  isGenerating: boolean;
+  paragraphIndex: number;
+  totalParagraphs: number;
   error: string | null;
 }
 
-const log = (...args: unknown[]) => console.log("[PremiumTTS]", ...args);
+const log = (...a: unknown[]) => console.log("[PremiumTTS]", ...a);
 
-export function usePremiumTTS(bookId: string | null, onComplete?: () => void) {
+function splitParagraphs(text: string): string[] {
+  const raw = text.split(/\n{2,}|।\s*\n/).map(p => p.trim()).filter(Boolean);
+  const chunks: string[] = [];
+  for (const para of raw) {
+    if (para.length <= MAX_PARA_CHARS) {
+      chunks.push(para);
+    } else {
+      const sentences = para.split(/(?<=।)\s+/);
+      let cur = "";
+      for (const s of sentences) {
+        if ((cur + s).length > MAX_PARA_CHARS && cur) { chunks.push(cur.trim()); cur = s; }
+        else cur += (cur ? " " : "") + s;
+      }
+      if (cur.trim()) chunks.push(cur.trim());
+    }
+  }
+  return chunks.length ? chunks : [text.substring(0, MAX_PARA_CHARS)];
+}
+
+export function usePremiumTTS(bookId: string | null, onComplete?: () => void, onQuotaExceeded?: () => void) {
+  const generateMutation   = trpc.tts.generateParagraph.useMutation();
+  const prefetchMutation   = trpc.tts.prefetchParagraphs.useMutation();
+
   const [state, setState] = useState<PremiumTTSState>({
-    isPlaying: false,
-    isPaused: false,
-    currentTime: 0,
-    duration: 0,
-    playbackRate: 1,
-    isLoading: false,
-    isGenerating: false,
-    error: null,
+    isPlaying: false, isPaused: false, isLoading: false, isGenerating: false,
+    currentTime: 0, duration: 0, playbackRate: 1, paragraphIndex: 0,
+    totalParagraphs: 0, error: null,
   });
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const onCompleteRef = useRef(onComplete);
+  const audioRef       = useRef<HTMLAudioElement | null>(null);
+  const onCompleteRef  = useRef(onComplete);
   onCompleteRef.current = onComplete;
+  const onQuotaExceededRef = useRef(onQuotaExceeded);
+  onQuotaExceededRef.current = onQuotaExceeded;
 
-  const isActiveRef = useRef(false);
-  const rateRef = useRef<PremiumTTSSpeed>(1);
-  const rawTextRef = useRef("");
-  const currentAudioUrlRef = useRef<string | null>(null);
+  const paragraphsRef  = useRef<string[]>([]);
+  const urlCacheRef    = useRef<Map<number, string>>(new Map()); // index → audio URL
+  const currentIdxRef  = useRef(0);
+  const voiceIdRef     = useRef<BengaliVoiceId>(DEFAULT_VOICE_ID);
+  const rateRef        = useRef<PremiumTTSSpeed>(1);
+  const activeRef      = useRef(false);
 
-  // Cleanup audio element
+  // ── Audio element setup ────────────────────────────────────────────────────
   const cleanupAudio = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute("src");
-      audioRef.current.load();
-      audioRef.current = null;
-    }
+    if (!audioRef.current) return;
+    audioRef.current.pause();
+    audioRef.current.removeAttribute("src");
+    audioRef.current.load();
+    audioRef.current = null;
   }, []);
 
-  // Setup audio element with event listeners
-  const setupAudio = useCallback((audioUrl: string) => {
+  const playAudioUrl = useCallback((url: string, idx: number, total: number) => {
     cleanupAudio();
-
-    const audio = new Audio();
+    const audio = new Audio(url);
     audioRef.current = audio;
-    currentAudioUrlRef.current = audioUrl;
-
-    // Update state when audio metadata loads
-    audio.addEventListener("loadedmetadata", () => {
-      setState((s) => ({
-        ...s,
-        duration: audio.duration,
-        isLoading: false,
-      }));
-    });
-
-    // Update current time as audio plays
-    audio.addEventListener("timeupdate", () => {
-      setState((s) => ({ ...s, currentTime: audio.currentTime }));
-    });
-
-    // Handle audio ended
-    audio.addEventListener("ended", () => {
-      setState((s) => ({
-        ...s,
-        isPlaying: false,
-        isPaused: false,
-        currentTime: 0,
-      }));
-      onCompleteRef.current?.();
-    });
-
-    // Handle errors
-    audio.addEventListener("error", (e) => {
-      log("Audio error:", e);
-      setState((s) => ({
-        ...s,
-        isPlaying: false,
-        isPaused: false,
-        error: "Failed to play audio",
-      }));
-    });
-
-    // Set source and attempt to play
-    audio.src = audioUrl;
     audio.playbackRate = rateRef.current;
-  }, [cleanupAudio]);
 
-  // Generate or get full book audio from backend
-  const generateFullBookAudio = useCallback(
-    async (fullText: string) => {
-      if (!bookId) {
-        toast.error("Book ID required for TTS");
-        return null;
+    audio.onloadedmetadata = () =>
+      setState(s => ({ ...s, duration: audio.duration, isLoading: false }));
+
+    audio.ontimeupdate = () =>
+      setState(s => ({ ...s, currentTime: audio.currentTime }));
+
+    audio.onended = () => {
+      const next = idx + 1;
+      if (!activeRef.current) return;
+      if (next < total) {
+        playParagraph(next);
+      } else {
+        activeRef.current = false;
+        setState(s => ({ ...s, isPlaying: false, isPaused: false, currentTime: 0 }));
+        onCompleteRef.current?.();
       }
+    };
 
-      try {
-        setState((s) => ({
-          ...s,
-          isGenerating: true,
-          error: null,
-        }));
+    audio.onerror = () => {
+      setState(s => ({ ...s, isPlaying: false, error: "Audio playback failed" }));
+    };
 
-        log("Requesting full book audio generation for book:", bookId);
+    setState(s => ({
+      ...s, isLoading: true, isPlaying: true, isPaused: false,
+      paragraphIndex: idx, totalParagraphs: total, currentTime: 0,
+    }));
 
-        const API_BASE =
-          (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
-        const token = localStorage.getItem("access_token");
+    audio.play().catch(err => {
+      log("Play error:", err);
+      toast.error("অডিও প্লে করতে সমস্যা হয়েছে");
+    });
+  }, [cleanupAudio]); // eslint-disable-line react-hooks/exhaustive-deps
 
-        // Call backend to generate or get cached full book audio
-        const response = await fetch(`${API_BASE}/trpc/tts.getOrGenerateFullBookAudio`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-          body: JSON.stringify({
-            bookId,
-            fullText: fullText.trim(),
-          }),
-        });
+  // ── Generate a paragraph and cache URL ────────────────────────────────────
+  const ensureParagraph = useCallback(async (idx: number): Promise<string | null> => {
+    if (!bookId) return null;
+    if (urlCacheRef.current.has(idx)) return urlCacheRef.current.get(idx)!;
 
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
+    const text = paragraphsRef.current[idx];
+    if (!text) return null;
 
-        const result = await response.json();
+    const result = await generateMutation.mutateAsync({
+      bookId,
+      text,
+      voiceId: voiceIdRef.current,
+      paragraphIndex: idx,
+    });
 
-        if (!result.success || !result.result?.audioUrl) {
-          throw new Error(result.result?.error || "Failed to generate audio");
-        }
+    if (result.success && result.audioUrl) {
+      urlCacheRef.current.set(idx, result.audioUrl);
+      return result.audioUrl;
+    }
+    if ((result as any).quotaExceeded) {
+      activeRef.current = false;
+      onQuotaExceededRef.current?.();
+      throw new Error("QUOTA_EXCEEDED");
+    }
+    throw new Error((result as any).error ?? "Generation failed");
+  }, [bookId, generateMutation]);
 
-        log(
-          "Audio URL received:",
-          result.result.cached ? "(cached)" : "(newly generated)",
-          result.result.audioUrl.substring(0, 100) + "..."
-        );
-
-        setState((s) => ({
-          ...s,
-          isGenerating: false,
-        }));
-
-        return result.result.audioUrl;
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : "Unknown error";
-        log("Error generating audio:", errorMsg);
-        toast.error(`Failed to generate audio: ${errorMsg}`);
-        setState((s) => ({
-          ...s,
-          isGenerating: false,
-          error: errorMsg,
-        }));
-        return null;
+  // ── Lookahead prefetch ─────────────────────────────────────────────────────
+  const prefetchAhead = useCallback((fromIdx: number) => {
+    if (!bookId) return;
+    const total = paragraphsRef.current.length;
+    const toFetch = [];
+    for (let i = fromIdx + 1; i < Math.min(fromIdx + 1 + LOOKAHEAD, total); i++) {
+      if (!urlCacheRef.current.has(i)) {
+        toFetch.push({ text: paragraphsRef.current[i], index: i });
       }
-    },
-    [bookId]
-  );
+    }
+    if (toFetch.length > 0) {
+      prefetchMutation.mutate({ bookId, paragraphs: toFetch, voiceId: voiceIdRef.current });
+    }
+  }, [bookId, prefetchMutation]);
 
-  // Play full book audio
-  const play = useCallback(
-    async (fullText: string) => {
-      if (!fullText || fullText.trim().length === 0) {
-        toast.error("No text to read aloud");
-        return;
+  // ── Play a specific paragraph ──────────────────────────────────────────────
+  const playParagraph = useCallback(async (idx: number) => {
+    if (!activeRef.current) return;
+    const total = paragraphsRef.current.length;
+    if (idx >= total) return;
+
+    currentIdxRef.current = idx;
+    setState(s => ({ ...s, isGenerating: true, error: null }));
+
+    try {
+      const url = await ensureParagraph(idx);
+      if (!url || !activeRef.current) return;
+      setState(s => ({ ...s, isGenerating: false }));
+      playAudioUrl(url, idx, total);
+      prefetchAhead(idx);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      log("Error paragraph", idx, msg);
+      if (msg !== "QUOTA_EXCEEDED") {
+        toast.error(`AI ভয়েস তৈরিতে সমস্যা: ${msg}`);
       }
+      setState(s => ({ ...s, isGenerating: false, isPlaying: false, error: msg }));
+    }
+  }, [ensureParagraph, playAudioUrl, prefetchAhead]);
 
-      rawTextRef.current = fullText;
-      isActiveRef.current = true;
+  // ── Public API ─────────────────────────────────────────────────────────────
+  const play = useCallback(async (fullText: string) => {
+    if (!fullText.trim()) { toast.error("পাঠ্য বিষয় নেই"); return; }
+    activeRef.current = true;
+    urlCacheRef.current.clear();
 
-      // Check if we already have an audio URL for this book
-      if (currentAudioUrlRef.current) {
-        log("Resuming existing audio");
-        setupAudio(currentAudioUrlRef.current);
-        setState((s) => ({ ...s, isLoading: true }));
-        audioRef.current?.play().catch((err) => {
-          log("Play error:", err);
-        });
-        setState((s) => ({
-          ...s,
-          isPlaying: true,
-          isPaused: false,
-          currentTime: 0,
-        }));
-        return;
-      }
+    paragraphsRef.current = splitParagraphs(fullText);
+    currentIdxRef.current = 0;
 
-      // Generate or get cached full book audio
-      const audioUrl = await generateFullBookAudio(fullText);
-      if (!audioUrl) return;
+    toast.info("AI ভয়েস তৈরি হচ্ছে…");
+    await playParagraph(0);
+  }, [playParagraph]);
 
-      // Setup and play audio
-      setupAudio(audioUrl);
-      setState((s) => ({ ...s, isLoading: true }));
-
-      try {
-        await audioRef.current?.play();
-        setState((s) => ({
-          ...s,
-          isPlaying: true,
-          isPaused: false,
-          currentTime: 0,
-        }));
-      } catch (err) {
-        log("Play error:", err);
-        toast.error("Failed to play audio");
-      }
-    },
-    [generateFullBookAudio, setupAudio]
-  );
-
-  // Pause playback
   const pause = useCallback(() => {
     audioRef.current?.pause();
-    setState((s) => ({ ...s, isPaused: true }));
+    setState(s => ({ ...s, isPaused: true, isPlaying: false }));
   }, []);
 
-  // Resume playback
   const resume = useCallback(() => {
-    audioRef.current
-      ?.play()
-      .catch((err) => {
-        log("Resume error:", err);
-      });
-    setState((s) => ({ ...s, isPaused: false }));
+    audioRef.current?.play().catch(() => {});
+    setState(s => ({ ...s, isPaused: false, isPlaying: true }));
   }, []);
 
-  // Stop playback completely
   const stop = useCallback(() => {
-    isActiveRef.current = false;
+    activeRef.current = false;
     cleanupAudio();
-    currentAudioUrlRef.current = null;
+    urlCacheRef.current.clear();
+    paragraphsRef.current = [];
     setState({
-      isPlaying: false,
-      isPaused: false,
-      currentTime: 0,
-      duration: 0,
-      playbackRate: rateRef.current,
-      isLoading: false,
-      isGenerating: false,
-      error: null,
+      isPlaying: false, isPaused: false, isLoading: false, isGenerating: false,
+      currentTime: 0, duration: 0, playbackRate: rateRef.current,
+      paragraphIndex: 0, totalParagraphs: 0, error: null,
     });
   }, [cleanupAudio]);
 
-  // Seek to specific time
-  const seekToTime = useCallback((time: number) => {
-    if (audioRef.current) {
-      audioRef.current.currentTime = Math.max(0, Math.min(time, audioRef.current.duration));
-    }
-  }, []);
-
-  // Set playback rate
-  const setSpeed = useCallback((speed: PremiumTTSSpeed) => {
-    rateRef.current = speed;
-    if (audioRef.current) {
-      audioRef.current.playbackRate = speed;
-    }
-    setState((s) => ({ ...s, playbackRate: speed }));
-  }, []);
-
-  // Skip forward/backward (by seconds)
   const skipForward = useCallback((seconds = 10) => {
     if (audioRef.current) {
       audioRef.current.currentTime = Math.min(
-        audioRef.current.currentTime + seconds,
-        audioRef.current.duration
+        audioRef.current.currentTime + seconds, audioRef.current.duration
       );
     }
   }, []);
@@ -284,26 +238,37 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void) {
     }
   }, []);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      isActiveRef.current = false;
-      cleanupAudio();
-    };
-  }, [cleanupAudio]);
+  const seekToIndex = useCallback((time: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = Math.max(0, Math.min(time, audioRef.current.duration));
+    }
+  }, []);
 
-  // Return compatible API with old usePremiumTTS signature
+  const setSpeed = useCallback((speed: PremiumTTSSpeed) => {
+    rateRef.current = speed;
+    if (audioRef.current) audioRef.current.playbackRate = speed;
+    setState(s => ({ ...s, playbackRate: speed }));
+  }, []);
+
+  const setVoice = useCallback((voiceId: BengaliVoiceId) => {
+    voiceIdRef.current = voiceId;
+    urlCacheRef.current.clear(); // invalidate cache for new voice
+  }, []);
+
+  useEffect(() => () => { activeRef.current = false; cleanupAudio(); }, [cleanupAudio]);
+
+  // Compat surface for useTtsEngine
   return {
     ...state,
-    // Compatibility with old API
-    currentSentenceIndex: state.currentTime > 0 ? 0 : -1,
-    totalSentences: state.duration > 0 ? 1 : 0,
+    currentSentenceIndex: state.paragraphIndex,
+    totalSentences: state.totalParagraphs,
     currentEmotion: "neutral" as const,
     elapsedSeconds: state.currentTime,
     totalDurationSeconds: state.duration,
-    currentSegmentText: rawTextRef.current.substring(0, 100),
+    currentSegmentText: paragraphsRef.current[state.paragraphIndex] ?? "",
     isBuffering: state.isLoading,
-    // New methods
+    rawText: paragraphsRef.current.join("\n\n"),
+    voiceId: voiceIdRef.current,
     play,
     playFromIndex: play,
     pause,
@@ -311,8 +276,8 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void) {
     stop,
     skipForward,
     skipBackward,
-    seekToIndex: seekToTime,
+    seekToIndex,
     setSpeed,
-    rawText: rawTextRef.current,
+    setVoice,
   };
 }

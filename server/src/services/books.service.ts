@@ -205,7 +205,7 @@ async function getFollowedProfileIdsForBookDetails(
     select: { followee_id: true },
   });
 
-  return new Set(follows.map((follow) => follow.followee_id));
+  return new Set<string>(follows.map((follow) => follow.followee_id as string));
 }
 
 export async function getBookByIdForRest(

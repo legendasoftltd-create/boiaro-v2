@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
-import { useBanglaTTS, type TTSSpeed } from "@/hooks/useBanglaTTS";
-import { usePremiumTTS, type PremiumTTSSpeed } from "@/hooks/usePremiumTTS";
+import { toast } from "sonner";
+import { useBanglaTTS } from "@/hooks/useBanglaTTS";
+import { usePremiumTTS } from "@/hooks/usePremiumTTS";
 
 export type TtsMode = "browser" | "premium";
 
@@ -19,7 +20,20 @@ export function useTtsEngine(bookId: string | null, onComplete?: () => void) {
   });
 
   const browserTts = useBanglaTTS(mode === "browser" ? onComplete : undefined);
-  const premiumTts = usePremiumTTS(bookId, mode === "premium" ? onComplete : undefined);
+  const premiumTts = usePremiumTTS(
+    bookId,
+    mode === "premium" ? onComplete : undefined,
+    () => {
+      // Auto-fallback to browser TTS when ElevenLabs quota is exceeded
+      try { window.speechSynthesis.cancel(); } catch {}
+      setModeState("browser");
+      try { localStorage.setItem("tts_mode", "browser"); } catch {}
+      toast.warning("AI Voice quota exhausted — switched to free browser TTS", {
+        description: "Top up your ElevenLabs account to use AI voice again.",
+        duration: 6000,
+      });
+    }
+  );
 
   // Use refs to avoid stale closures in setMode callback
   const browserTtsRef = useRef(browserTts);
@@ -48,6 +62,8 @@ export function useTtsEngine(bookId: string | null, onComplete?: () => void) {
     // Forward all state from active engine
     isPlaying: activeEngine.isPlaying,
     isPaused: activeEngine.isPaused,
+    isGenerating: (activeEngine as any).isGenerating ?? false,
+    isLoading: (activeEngine as any).isLoading ?? false,
     currentSentenceIndex: activeEngine.currentSentenceIndex,
     totalSentences: activeEngine.totalSentences,
     currentEmotion: activeEngine.currentEmotion,
@@ -64,6 +80,7 @@ export function useTtsEngine(bookId: string | null, onComplete?: () => void) {
     skipBackward: activeEngine.skipBackward,
     seekToIndex: activeEngine.seekToIndex,
     setSpeed: activeEngine.setSpeed,
+    setVoice: (premiumTts as any).setVoice,
     rawText: activeEngine.rawText,
     // Browser TTS specific (playFromIndex)
     playFromIndex: mode === "browser" ? browserTts.playFromIndex : undefined,

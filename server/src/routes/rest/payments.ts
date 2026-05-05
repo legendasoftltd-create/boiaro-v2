@@ -231,7 +231,7 @@ paymentsRestRouter.post("/initiate", requireAuth, async (req: AuthenticatedReque
       return;
     }
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.order.update({
         where: { id: order_id },
         data: { status: "awaiting_payment" },
@@ -424,7 +424,7 @@ paymentsRestRouter.post("/demo", requireAuth, async (req: AuthenticatedRequest, 
       return;
     }
     const txnId = `DEMO-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.order.update({ where: { id: order_id }, data: { status: "confirmed" } });
       await tx.payment.create({
         data: {

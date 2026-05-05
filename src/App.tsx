@@ -59,6 +59,7 @@ const GamificationPage = lazy(() => import("./pages/GamificationPage.tsx"));
 const AdminLayout = lazy(() => import("./pages/admin/AdminLayout.tsx"));
 const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard.tsx"));
 const AdminBooks = lazy(() => import("./pages/admin/AdminBooks.tsx"));
+const AdminTtsManagement = lazy(() => import("./pages/admin/AdminTtsManagement.tsx"));
 const AdminAuthors = lazy(() => import("./pages/admin/AdminAuthors.tsx"));
 const AdminNarrators = lazy(() => import("./pages/admin/AdminNarrators.tsx"));
 const AdminPublishers = lazy(() => import("./pages/admin/AdminPublishers.tsx"));
@@ -244,6 +245,7 @@ const App = () => {
                   <Route element={<AdminLayout />}>
                   <Route index element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
                   <Route path="books" element={<AdminBooks />} />
+                  <Route path="tts-management" element={<AdminTtsManagement />} />
                   <Route path="authors" element={<AdminAuthors />} />
                   <Route path="narrators" element={<AdminNarrators />} />
                   <Route path="publishers" element={<AdminPublishers />} />

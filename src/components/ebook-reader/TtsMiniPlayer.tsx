@@ -26,6 +26,7 @@ interface TtsMiniPlayerProps {
   onMusicToggle?: () => void;
   ttsMode?: TtsMode;
   onTtsModeChange?: (mode: TtsMode) => void;
+  premiumVoiceAvailable?: boolean;
 }
 
 function formatTime(sec: number): string {
@@ -36,10 +37,10 @@ function formatTime(sec: number): string {
 
 export function TtsMiniPlayer({
   isPlaying, isPaused, currentSentenceIndex, totalSentences,
-  elapsedSeconds, totalDurationSeconds, bookTitle, show, isPremium,
+  elapsedSeconds, totalDurationSeconds, bookTitle, show,
   onPlay, onPause, onResume, onStop, onSkipForward, onSkipBackward, onOpenFullPlayer,
   musicAvailable, musicMuted, onMusicToggle,
-  ttsMode, onTtsModeChange,
+  ttsMode, onTtsModeChange, premiumVoiceAvailable,
 }: TtsMiniPlayerProps) {
   if (!show) return null;
 
@@ -81,18 +82,18 @@ export function TtsMiniPlayer({
           {/* Quick controls row */}
           <div className="flex items-center gap-1">
             {/* Voice badge — always visible */}
-            {ttsMode && onTtsModeChange && (
+            {ttsMode && onTtsModeChange && premiumVoiceAvailable && (
               <button
                 onClick={() => onTtsModeChange(ttsMode === "browser" ? "premium" : "browser")}
                 className={`flex items-center gap-1 h-8 px-2 rounded-lg text-[10px] font-semibold border transition-all ${
                   ttsMode === "premium"
-                    ? "bg-primary/15 border-primary/30 text-primary"
+                    ? "bg-amber-500/15 border-amber-500/30 text-amber-400"
                     : "bg-muted/50 border-border/50 text-muted-foreground"
                 }`}
-                title="Choose your reading voice"
+                title={ttsMode === "premium" ? "Using Premium AI Voice" : "Switch to Premium AI Voice"}
               >
                 {ttsMode === "premium" ? <Sparkles className="w-3 h-3" /> : <Mic className="w-3 h-3" />}
-                <span className="hidden xs:inline">{ttsMode === "premium" ? "Premium" : "Free"}</span>
+                <span className="hidden xs:inline">{ttsMode === "premium" ? "AI Voice" : "Free TTS"}</span>
               </button>
             )}
 
