@@ -1,5 +1,9 @@
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import { prisma } from "../lib/prisma.js";
+import { uploadWithFallback } from "../lib/s3.js";
+import crypto from "crypto";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const role = await prisma.userRole.findFirst({
@@ -8,10 +12,6 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!role) throw new TRPCError({ code: "FORBIDDEN" });
   return next({ ctx });
 });
-import { z } from "zod";
-import { prisma } from "../lib/prisma.js";
-import { uploadWithFallback } from "../lib/s3.js";
-import crypto from "crypto";
 
 const getElevenLabsKey = () => process.env.ELEVENLABS_API_KEY;
 const UPLOADS_DIR = process.env.UPLOADS_DIR || "./uploads";
@@ -227,17 +227,16 @@ export const ttsRouter = router({
     }),
 
   // Get or generate full book audio (legacy compat + for books without paragraph structure)
-  getOrGenerateFullBookAudio: publicProcedure
+  getOrGenerateFullBookAudio: protectedProcedure
     .input(z.object({
       bookId: z.string(),
       fullText: z.string().min(1).max(50000),
       voiceId: z.string().optional(),
-      userId: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       try {
         const voiceId = input.voiceId || DEFAULT_VOICE_ID;
-        const userId = input.userId || ctx.userId || "anonymous";
+        const userId = ctx.userId;
         const textHash = makeCacheHash(input.fullText, voiceId);
 
         const cached = await prisma.ttsAudio.findFirst({

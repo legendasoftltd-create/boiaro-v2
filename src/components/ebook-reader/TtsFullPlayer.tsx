@@ -11,7 +11,8 @@ import type { EmotionTag } from "@/lib/narrationPreprocessor";
 import type { TTSSpeed } from "@/hooks/useBanglaTTS";
 import type { TtsMode } from "@/hooks/useTtsEngine";
 
-const TTS_SPEEDS: TTSSpeed[] = [0.75, 1, 1.25, 1.5];
+const BROWSER_SPEEDS: TTSSpeed[] = [0.75, 1, 1.25, 1.5];
+const PREMIUM_SPEEDS = [0.7, 0.85, 1, 1.1, 1.2] as const;
 
 const emotionLabels: Record<EmotionTag, { icon: string; label: string }> = {
   neutral: { icon: "🎧", label: "Normal" },
@@ -165,13 +166,13 @@ export function TtsFullPlayer({
               </Button>
               {showSpeed && (
                 <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-card border border-border rounded-xl p-1.5 shadow-2xl flex gap-1">
-                  {TTS_SPEEDS.map((s) => (
+                  {(ttsMode === "premium" ? PREMIUM_SPEEDS : BROWSER_SPEEDS).map((s) => (
                     <Button
                       key={s}
                       variant={playbackRate === s ? "default" : "ghost"}
                       size="sm"
                       className="text-xs px-2.5 h-8 rounded-lg"
-                      onClick={() => { onSetSpeed(s); setShowSpeed(false); }}
+                      onClick={() => { onSetSpeed(s as any); setShowSpeed(false); }}
                     >
                       {s}x
                     </Button>

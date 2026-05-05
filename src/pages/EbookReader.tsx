@@ -103,6 +103,7 @@ export default function EbookReader() {
   const [selectedVoiceId, setSelectedVoiceId] = useState<import("@/hooks/usePremiumTTS").BengaliVoiceId>("EXAVITQu4vr4xnSDxMaL");
   const [ttsSpeed, setTtsSpeed] = useState<import("@/hooks/usePremiumTTS").PremiumTTSSpeed>(1);
   const ttsAutoPlayRef = useRef(false);
+  const ttsPlayRef = useRef<((text: string) => void) | null>(null);
   const [autoReadEnabled, setAutoReadEnabled] = useState(() => {
     try { return localStorage.getItem("tts_auto_read") === "true"; } catch { return false; }
   });
@@ -192,17 +193,16 @@ export default function EbookReader() {
       const text = epubRef.current.getVisibleText();
       // Wait until text is stable (same on two consecutive checks) and long enough
       if (text && text.trim().length > 10 && text === lastText) {
-        tts.play(text);
+        ttsPlayRef.current?.(text);
       } else if (attempts < maxAttempts) {
         lastText = text || "";
         attempts++;
         ttsAdvanceTimerRef.current = setTimeout(tryReadPage, 250);
       } else if (text && text.trim().length > 10) {
         // Use whatever we have after max attempts
-        tts.play(text);
+        ttsPlayRef.current?.(text);
       } else {
         // End of book or empty page
-        
         ttsAutoPlayRef.current = false;
       }
     };
@@ -211,6 +211,7 @@ export default function EbookReader() {
   }, [fileType, access, percentage, shouldEnforcePreviewLimit]);
 
   const tts = useTtsEngine(bookId, handleTtsComplete);
+  ttsPlayRef.current = tts.play;
   const effectiveGenre = musicGenre || "calm";
   const bgMusic = useBackgroundMusic(effectiveGenre);
   const { trackTtsSession, trackTtsModeSwitch } = useActivityTracker();
@@ -411,9 +412,8 @@ export default function EbookReader() {
       const text = epubRef.current.getVisibleText();
       if (text && text.trim().length > 10) {
         autoReadTriggeredRef.current = true;
-        
         ttsAutoPlayRef.current = true;
-        tts.play(text);
+        ttsPlayRef.current?.(text);
       }
     }, 2000); // Give EPUB time to render
     return () => clearTimeout(timer);
