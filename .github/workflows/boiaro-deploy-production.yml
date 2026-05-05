@@ -44,10 +44,24 @@ jobs:
             git checkout -B production origin/production
             git reset --hard origin/production
 
+            # Load Node/npm for non-interactive SSH sessions (nvm is not auto-loaded)
+            export NVM_DIR="$HOME/.nvm"
+            if [ -s "$NVM_DIR/nvm.sh" ]; then
+              . "$NVM_DIR/nvm.sh"
+              nvm use default
+            fi
+
+            if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+              echo "Node.js/npm not found for deploy user: $(whoami)"
+              echo "Make sure nvm and a default Node version are installed for this user."
+              exit 1
+            fi
+
             npm ci
             cd server
             npm ci
             npm run build
+            npx prisma migrate deploy
             cd ..
             npm run build
 
