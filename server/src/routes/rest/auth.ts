@@ -153,54 +153,110 @@ authRestRouter.post(
   }
 );
 
-authRestRouter.post("/social/google", async (req, res) => {
-  try {
-    const accessToken = req.body?.access_token ?? req.body?.accessToken;
-    if (!accessToken || typeof accessToken !== "string") {
-      res.status(400).json({ error: "Missing access_token" });
-      return;
-    }
+// ── Shared Google token verification ─────────────────────────────────────────
+// Accepts id_token (preferred) or access_token (legacy).
+// id_token: JWT from Google Identity Services — verified via tokeninfo, contains
+//   email/name/picture directly, email_verified is a boolean.
+// access_token: OAuth2 token — verified via tokeninfo + separate userinfo call,
+//   email_verified comes back as the string "true".
+async function verifyGoogleToken(body: Record<string, unknown>): Promise<{
+  email: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+}> {
+  const googleClientId = process.env.GOOGLE_CLIENT_ID;
+  if (!googleClientId) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Server Google login is not configured (missing GOOGLE_CLIENT_ID).",
+    });
+  }
 
-    const googleClientId = process.env.GOOGLE_CLIENT_ID;
-    if (!googleClientId) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Server Google login is not configured (missing GOOGLE_CLIENT_ID).",
-      });
-    }
+  const idToken =
+    (body.id_token as string | undefined) ??
+    (body.idToken as string | undefined);
 
+  const accessToken =
+    (body.access_token as string | undefined) ??
+    (body.accessToken as string | undefined);
+
+  if (!idToken && !accessToken) {
+    throw Object.assign(new Error("Missing id_token or access_token"), { statusCode: 400 });
+  }
+
+  if (idToken) {
+    // ── id_token path ──────────────────────────────────────────────────────
     const tokenInfoRes = await fetch(
-      `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(accessToken)}`
+      `https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${encodeURIComponent(idToken)}`
     );
     if (!tokenInfoRes.ok) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Google access token." });
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Google ID token." });
     }
-
     const tokenInfo = (await tokenInfoRes.json()) as {
       aud?: string;
       email?: string;
-      email_verified?: string;
+      email_verified?: boolean | string;
+      name?: string;
+      picture?: string;
+      error_description?: string;
     };
+    if (tokenInfo.error_description) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: `Google: ${tokenInfo.error_description}` });
+    }
     if (tokenInfo.aud !== googleClientId) {
       throw new TRPCError({ code: "UNAUTHORIZED", message: "Google token audience mismatch." });
     }
-    if (!tokenInfo.email || tokenInfo.email_verified !== "true") {
+    if (!tokenInfo.email || !tokenInfo.email_verified) {
       throw new TRPCError({ code: "UNAUTHORIZED", message: "Google email is not verified." });
     }
-
-    const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!userInfoRes.ok) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Failed to fetch Google user profile." });
-    }
-
-    const userInfo = (await userInfoRes.json()) as {
-      email?: string;
-      name?: string;
-      picture?: string;
+    return {
+      email: tokenInfo.email.toLowerCase(),
+      displayName: tokenInfo.name ?? null,
+      avatarUrl: tokenInfo.picture ?? null,
     };
-    const email = (userInfo.email || tokenInfo.email).toLowerCase();
+  }
+
+  // ── access_token path (legacy) ────────────────────────────────────────────
+  const tokenInfoRes = await fetch(
+    `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(accessToken!)}`
+  );
+  if (!tokenInfoRes.ok) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Google access token." });
+  }
+  const tokenInfo = (await tokenInfoRes.json()) as {
+    aud?: string;
+    email?: string;
+    email_verified?: boolean | string;
+    error_description?: string;
+  };
+  if (tokenInfo.error_description) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: `Google: ${tokenInfo.error_description}` });
+  }
+  if (tokenInfo.aud !== googleClientId) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Google token audience mismatch." });
+  }
+  const verified = tokenInfo.email_verified === true || tokenInfo.email_verified === "true";
+  if (!tokenInfo.email || !verified) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Google email is not verified." });
+  }
+
+  let displayName: string | null = null;
+  let avatarUrl: string | null = null;
+  const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (userInfoRes.ok) {
+    const userInfo = (await userInfoRes.json()) as { name?: string; picture?: string };
+    displayName = userInfo.name ?? null;
+    avatarUrl = userInfo.picture ?? null;
+  }
+
+  return { email: tokenInfo.email.toLowerCase(), displayName, avatarUrl };
+}
+
+async function handleGoogleLogin(req: import("express").Request, res: Response) {
+  try {
+    const { email, displayName, avatarUrl } = await verifyGoogleToken(req.body ?? {});
 
     let user = await prisma.user.findUnique({
       where: { email },
@@ -217,8 +273,8 @@ authRestRouter.post("/social/google", async (req, res) => {
           email_verified: true,
           profile: {
             create: {
-              display_name: userInfo.name || email.split("@")[0],
-              avatar_url: userInfo.picture || null,
+              display_name: displayName || email.split("@")[0],
+              avatar_url: avatarUrl,
               referral_code,
             },
           },
@@ -235,127 +291,22 @@ authRestRouter.post("/social/google", async (req, res) => {
       throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
     }
 
-    const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } = signTokens(
-      user.id,
-      user.email
-    );
+    const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } = signTokens(user.id, user.email);
     sendSocialLoginResponse(
       res,
-      {
-        id: user.id,
-        email: user.email,
-        roles: user.roles.map((role) => role.role),
-        profile: user.profile,
-      },
+      { id: user.id, email: user.email, roles: user.roles.map((r) => r.role), profile: user.profile },
       jwtAccessToken,
       jwtRefreshToken
     );
   } catch (error) {
     sendHttpError(res, error);
   }
-});
+}
 
-authRestRouter.post("/google", async (req, res) => {
-  try {
-    const accessToken = req.body?.access_token ?? req.body?.accessToken;
-    if (!accessToken || typeof accessToken !== "string") {
-      res.status(400).json({ error: "Missing access_token" });
-      return;
-    }
+authRestRouter.post("/social/google", handleGoogleLogin);
 
-    const googleClientId = process.env.GOOGLE_CLIENT_ID;
-    if (!googleClientId) {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "Server Google login is not configured (missing GOOGLE_CLIENT_ID).",
-      });
-    }
-
-    const tokenInfoRes = await fetch(
-      `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(accessToken)}`
-    );
-    if (!tokenInfoRes.ok) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Google access token." });
-    }
-
-    const tokenInfo = (await tokenInfoRes.json()) as {
-      aud?: string;
-      email?: string;
-      email_verified?: string;
-    };
-    if (tokenInfo.aud !== googleClientId) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Google token audience mismatch." });
-    }
-    if (!tokenInfo.email || tokenInfo.email_verified !== "true") {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Google email is not verified." });
-    }
-
-    const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
-    if (!userInfoRes.ok) {
-      throw new TRPCError({ code: "UNAUTHORIZED", message: "Failed to fetch Google user profile." });
-    }
-
-    const userInfo = (await userInfoRes.json()) as {
-      email?: string;
-      name?: string;
-      picture?: string;
-    };
-    const email = (userInfo.email || tokenInfo.email).toLowerCase();
-
-    let user = await prisma.user.findUnique({
-      where: { email },
-      include: { profile: true, roles: true },
-    });
-
-    if (!user) {
-      const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
-      const referral_code = generateReferralCode();
-      user = await prisma.user.create({
-        data: {
-          email,
-          password_hash,
-          email_verified: true,
-          profile: {
-            create: {
-              display_name: userInfo.name || email.split("@")[0],
-              avatar_url: userInfo.picture || null,
-              referral_code,
-            },
-          },
-          roles: { create: { role: "user" } },
-        },
-        include: { profile: true, roles: true },
-      });
-    }
-
-    if (user.profile?.deleted_at) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
-    }
-    if (user.profile?.is_active === false) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
-    }
-
-    const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } = signTokens(
-      user.id,
-      user.email
-    );
-    sendSocialLoginResponse(
-      res,
-      {
-        id: user.id,
-        email: user.email,
-        roles: user.roles.map((role) => role.role),
-        profile: user.profile,
-      },
-      jwtAccessToken,
-      jwtRefreshToken
-    );
-  } catch (error) {
-    sendHttpError(res, error);
-  }
-});
+// Legacy alias for older clients
+authRestRouter.post("/google", handleGoogleLogin);
 
 authRestRouter.post("/social/facebook", async (req, res) => {
   try {

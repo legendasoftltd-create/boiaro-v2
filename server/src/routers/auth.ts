@@ -54,7 +54,11 @@ export const authRouter = router({
   signInWithGoogle: publicProcedure
     .input(
       z.object({
-        accessToken: z.string().min(1),
+        // Accept id_token (preferred) or access_token (legacy)
+        idToken: z.string().min(1).optional(),
+        accessToken: z.string().min(1).optional(),
+      }).refine((d) => d.idToken || d.accessToken, {
+        message: "Either idToken or accessToken is required",
       })
     )
     .mutation(async ({ input }) => {
@@ -66,39 +70,84 @@ export const authRouter = router({
         });
       }
 
-      const tokenInfoRes = await fetch(
-        `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(input.accessToken)}`
-      );
-      if (!tokenInfoRes.ok) {
-        throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Google access token." });
+      let email: string;
+      let displayName: string | null = null;
+      let avatarUrl: string | null = null;
+
+      if (input.idToken) {
+        // ── id_token path (preferred) ──────────────────────────────────────
+        // tokeninfo validates the JWT signature and expiry server-side;
+        // the payload contains email, name, picture directly.
+        const tokenInfoRes = await fetch(
+          `https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${encodeURIComponent(input.idToken)}`
+        );
+        if (!tokenInfoRes.ok) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Google ID token." });
+        }
+
+        const tokenInfo = (await tokenInfoRes.json()) as {
+          aud?: string;
+          email?: string;
+          email_verified?: boolean | string;
+          name?: string;
+          picture?: string;
+          error_description?: string;
+        };
+
+        if (tokenInfo.error_description) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: `Google: ${tokenInfo.error_description}` });
+        }
+        if (tokenInfo.aud !== googleClientId) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Google token audience mismatch." });
+        }
+        if (!tokenInfo.email || !tokenInfo.email_verified) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Google email is not verified." });
+        }
+
+        email = tokenInfo.email.toLowerCase();
+        displayName = tokenInfo.name ?? null;
+        avatarUrl = tokenInfo.picture ?? null;
+      } else {
+        // ── access_token path (legacy) ─────────────────────────────────────
+        const tokenInfoRes = await fetch(
+          `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(input.accessToken!)}`
+        );
+        if (!tokenInfoRes.ok) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid Google access token." });
+        }
+
+        const tokenInfo = (await tokenInfoRes.json()) as {
+          aud?: string;
+          email?: string;
+          email_verified?: string | boolean;
+          error_description?: string;
+        };
+
+        if (tokenInfo.error_description) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: `Google: ${tokenInfo.error_description}` });
+        }
+        if (tokenInfo.aud !== googleClientId) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Google token audience mismatch." });
+        }
+        const verified = tokenInfo.email_verified === true || tokenInfo.email_verified === "true";
+        if (!tokenInfo.email || !verified) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Google email is not verified." });
+        }
+
+        email = tokenInfo.email.toLowerCase();
+
+        // Fetch name/picture from userinfo for access_token
+        const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+          headers: { Authorization: `Bearer ${input.accessToken}` },
+        });
+        if (userInfoRes.ok) {
+          const userInfo = (await userInfoRes.json()) as { name?: string; picture?: string };
+          displayName = userInfo.name ?? null;
+          avatarUrl = userInfo.picture ?? null;
+        }
       }
 
-      const tokenInfo = (await tokenInfoRes.json()) as {
-        aud?: string;
-        email?: string;
-        email_verified?: string;
-      };
-      if (tokenInfo.aud !== googleClientId) {
-        throw new TRPCError({ code: "UNAUTHORIZED", message: "Google token audience mismatch." });
-      }
-      if (!tokenInfo.email || tokenInfo.email_verified !== "true") {
-        throw new TRPCError({ code: "UNAUTHORIZED", message: "Google email is not verified." });
-      }
-
-      const userInfoRes = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-        headers: { Authorization: `Bearer ${input.accessToken}` },
-      });
-      if (!userInfoRes.ok) {
-        throw new TRPCError({ code: "UNAUTHORIZED", message: "Failed to fetch Google user profile." });
-      }
-
-      const userInfo = (await userInfoRes.json()) as {
-        email?: string;
-        name?: string;
-        picture?: string;
-      };
-      const email = (userInfo.email || tokenInfo.email).toLowerCase();
-
+      // ── Find or create user ────────────────────────────────────────────────
       let user = await prisma.user.findUnique({
         where: { email },
         include: { profile: true, roles: true },
@@ -114,8 +163,8 @@ export const authRouter = router({
             email_verified: true,
             profile: {
               create: {
-                display_name: userInfo.name || email.split("@")[0],
-                avatar_url: userInfo.picture || null,
+                display_name: displayName || email.split("@")[0],
+                avatar_url: avatarUrl,
                 referral_code,
               },
             },
