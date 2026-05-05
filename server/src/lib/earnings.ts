@@ -150,3 +150,31 @@ export async function calculateEarnings(params: EarningParams): Promise<number> 
   }
   return 0;
 }
+
+export async function calculateOrderEarnings(orderId: string): Promise<number> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: { select: { id: true, book_id: true, format: true, price: true, quantity: true } } },
+  });
+  if (!order) return 0;
+
+  let created = 0;
+  for (const item of order.items) {
+    if (!item.book_id) continue;
+    const alreadyExists = await prisma.contributorEarning.findFirst({
+      where: { order_item_id: item.id },
+      select: { id: true },
+    });
+    if (alreadyExists) continue;
+
+    const count = await calculateEarnings({
+      bookId: item.book_id,
+      format: item.format,
+      saleAmount: Number(item.price || 0) * Number(item.quantity || 1),
+      orderId: order.id,
+      orderItemId: item.id,
+    });
+    created += count;
+  }
+  return created;
+}

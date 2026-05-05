@@ -3,7 +3,7 @@ import { sendHttpError } from "../../lib/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
-import { calculateEarnings } from "../../lib/earnings.js";
+import { calculateEarnings, calculateOrderEarnings } from "../../lib/earnings.js";
 
 export const paymentsRestRouter = Router();
 
@@ -40,6 +40,8 @@ async function finalizePaidOrder(params: { orderId: string; paymentMethod: strin
       transaction_id: params.transactionId || undefined,
     },
   });
+
+  await calculateOrderEarnings(order.id);
 
   for (const item of order.items) {
     if (!item.book_id || item.format === "hardcopy") continue;
@@ -91,21 +93,14 @@ async function finalizePaidOrder(params: { orderId: string; paymentMethod: strin
       update: { status: "active" },
     });
 
-    if (item.price > 0) {
-      await calculateEarnings({
-        bookId: item.book_id,
-        format: item.format,
-        saleAmount: item.price,
-        orderId: order.id,
-        orderItemId: item.id,
-      });
-    }
   }
 
-  await prisma.order.update({
-    where: { id: params.orderId },
-    data: { status: "confirmed" },
-  });
+  if (["pending", "awaiting_payment"].includes(order.status || "")) {
+    await prisma.order.update({
+      where: { id: params.orderId },
+      data: { status: "confirmed" },
+    });
+  }
 
   return true;
 }

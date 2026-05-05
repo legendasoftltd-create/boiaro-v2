@@ -21,7 +21,9 @@
     "migrate:csv-payment-gateways": "tsx scripts/migrate-payment-gateways.ts",
     "migrate:csv-role-permissions": "tsx scripts/migrate-role-permissions.ts",
     "migrate:csv-shipping-methods": "tsx scripts/migrate-shipping-methods.ts",
-    "migrate:csv-all": "npm run migrate:csv-users && npm run migrate:csv-categories && npm run migrate:csv-authors && npm run migrate:csv-publishers && npm run migrate:csv-narrators && npm run migrate:csv-books && npm run migrate:csv-payment-gateways && npm run migrate:csv-role-permissions && npm run migrate:csv-shipping-methods",
+    "migrate:csv-default-revenue-rules": "tsx scripts/migrate-default-revenue-rules.ts",
+    "migrate:csv-all": "npm run migrate:csv-users && npm run migrate:csv-categories && npm run migrate:csv-authors && npm run migrate:csv-publishers && npm run migrate:csv-narrators && npm run migrate:csv-books && npm run migrate:csv-payment-gateways && npm run migrate:csv-role-permissions && npm run migrate:csv-shipping-methods && npm run migrate:csv-default-revenue-rules",
+    "clean:orders": "tsx scripts/clean-orders.ts",
     "seed:defaults": "prisma db seed",
     "seed:legacy": "npm run migrate:csv-all",
     "seed:all": "npm run seed:defaults && npm run seed:legacy"
@@ -55,7 +57,7 @@
     "@types/node": "^22.16.5",
     "@types/pg": "^8.20.0",
     "dotenv-cli": "^11.0.0",
-    "prisma": "^6.19.3",
+    "prisma": "^7.8.0",
     "tsx": "^4.19.2",
     "typescript": "^5.8.3"
   }
