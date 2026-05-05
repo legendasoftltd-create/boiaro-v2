@@ -5,6 +5,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings } from "../../lib/earnings.js";
 import * as redx from "../../services/redx.service.js";
+import { resolveFileUrl } from "../../lib/mediaUrl.js";
 
 type GatewayConfig = Record<string, unknown>;
 
@@ -70,7 +71,21 @@ ordersRestRouter.get("/", requireAuth, async (req: AuthenticatedRequest, res) =>
       nextCursor = orders.pop()!.id;
     }
 
-    res.json({ orders, nextCursor });
+    const resolvedOrders = orders.map((order) => ({
+      ...order,
+      items: order.items.map((item) => ({
+        ...item,
+        book_format: item.book_format
+          ? {
+              ...item.book_format,
+              book: item.book_format.book
+                ? { ...item.book_format.book, cover_url: resolveFileUrl(item.book_format.book.cover_url) }
+                : null,
+            }
+          : null,
+      })),
+    }));
+    res.json({ orders: resolvedOrders, nextCursor });
   } catch (error) {
     sendHttpError(res, error);
   }

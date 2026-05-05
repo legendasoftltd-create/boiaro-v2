@@ -3,6 +3,7 @@ import { sendHttpError } from "../../lib/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
+import { resolveFileUrl } from "../../lib/mediaUrl.js";
 
 export const libraryRestRouter = Router();
 
@@ -25,7 +26,7 @@ libraryRestRouter.get("/purchases", requireAuth, async (req: AuthenticatedReques
       where: { id: { in: bookIds } },
       select: bookSummarySelect,
     });
-    const bookMap = new Map(books.map((b) => [b.id, b]));
+    const bookMap = new Map(books.map((b) => [b.id, { ...b, cover_url: resolveFileUrl(b.cover_url) }]));
     res.json({
       items: purchases.map((p) => ({
         book_id: p.book_id,
@@ -50,7 +51,7 @@ libraryRestRouter.get("/unlocks", requireAuth, async (req: AuthenticatedRequest,
       where: { id: { in: bookIds } },
       select: bookSummarySelect,
     });
-    const bookMap = new Map(books.map((b) => [b.id, b]));
+    const bookMap = new Map(books.map((b) => [b.id, { ...b, cover_url: resolveFileUrl(b.cover_url) }]));
     res.json({
       items: unlocks.map((u) => ({
         book_id: u.book_id,
@@ -79,7 +80,7 @@ libraryRestRouter.get("/continue-reading", requireAuth, async (req: Authenticate
       where: { id: { in: bookIds } },
       select: bookSummarySelect,
     });
-    const bookMap = new Map(books.map((b) => [b.id, b]));
+    const bookMap = new Map(books.map((b) => [b.id, { ...b, cover_url: resolveFileUrl(b.cover_url) }]));
     res.json({
       items: progressList.map((p) => ({
         book_id: p.book_id,
@@ -110,7 +111,7 @@ libraryRestRouter.get("/continue-listening", requireAuth, async (req: Authentica
       where: { id: { in: bookIds } },
       select: bookSummarySelect,
     });
-    const bookMap = new Map(books.map((b) => [b.id, b]));
+    const bookMap = new Map(books.map((b) => [b.id, { ...b, cover_url: resolveFileUrl(b.cover_url) }]));
     res.json({
       items: progressList.map((p) => ({
         book_id: p.book_id,

@@ -2,12 +2,13 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { resolveUrls, resolveFileUrl } from "../lib/mediaUrl.js";
 
 export const profilesRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
     const profile = await prisma.profile.findUnique({ where: { user_id: ctx.userId } });
     if (!profile) throw new TRPCError({ code: "NOT_FOUND" });
-    return profile;
+    return resolveUrls(profile);
   }),
 
   update: protectedProcedure
@@ -373,9 +374,9 @@ export const profilesRouter = router({
         })
       : [];
 
-    return [...submittedBooks, ...extraBooks].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    return [...submittedBooks, ...extraBooks]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map((b) => ({ ...b, cover_url: resolveFileUrl(b.cover_url) }));
   }),
 
   myEarnings: protectedProcedure

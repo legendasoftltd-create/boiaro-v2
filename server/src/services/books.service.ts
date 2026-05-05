@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
+import { resolveBookUrls } from "../lib/mediaUrl.js";
 import type {
   bookListSchema,
   bookReviewsQuerySchema,
@@ -121,15 +122,17 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     nextCursor = next!.id;
   }
 
-  const booksWithNarrators = books.map((book) => ({
-    ...book,
-    formats: book.formats.map((format) => ({
-      ...format,
-      narrators: format.narrator ?? null,
-    })),
-  }));
+  const resolved = books.map((book) =>
+    resolveBookUrls({
+      ...book,
+      formats: book.formats.map((format) => ({
+        ...format,
+        narrators: format.narrator ?? null,
+      })),
+    })
+  );
 
-  return { books: booksWithNarrators, nextCursor };
+  return { books: resolved, nextCursor };
 }
 
 export async function getBookById(id: string) {
@@ -155,7 +158,7 @@ export async function getBookById(id: string) {
     throw new TRPCError({ code: "NOT_FOUND" });
   }
 
-  return book;
+  return resolveBookUrls(book);
 }
 
 function appendFollowedStatusToBookDetails(
@@ -243,7 +246,7 @@ export async function getBookBySlug(slug: string) {
     throw new TRPCError({ code: "NOT_FOUND" });
   }
 
-  return book;
+  return resolveBookUrls(book);
 }
 
 export async function getBookBySlugForRest(

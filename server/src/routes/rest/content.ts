@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { TRPCError } from "@trpc/server";
 import { sendHttpError } from "../../lib/http.js";
 import { AuthenticatedRequest, requireAuth } from "../../middleware/auth.js";
 import { getEbookSignedUrl } from "../../services/content.service.js";
 import { prisma } from "../../lib/prisma.js";
+import { resolveFileUrl } from "../../lib/mediaUrl.js";
 
 export const contentRestRouter = Router();
 
@@ -42,8 +42,9 @@ contentRestRouter.post("/audio-url", async (req: AuthenticatedRequest, res) => {
       return;
     }
     const expires = Date.now() + 300_000;
+    const resolvedUrl = resolveFileUrl(track.audio_url)!;
     res.json({
-      signed_url: `${track.audio_url}?token=secure_token&expires=${expires}`,
+      signed_url: `${resolvedUrl}?token=secure_token&expires=${expires}`,
       expires_in: 300,
     });
   } catch (error) {
@@ -75,7 +76,7 @@ contentRestRouter.post("/batch-audio-urls", requireAuth, async (req: Authenticat
     res.json({
       tracks: tracks.map((t) => ({
         track_number: t.track_number,
-        signed_url: t.audio_url ? `${t.audio_url}?token=secure_token&expires=${expires}` : null,
+        signed_url: t.audio_url ? `${resolveFileUrl(t.audio_url)}?token=secure_token&expires=${expires}` : null,
         expires_in: 300,
       })),
     });

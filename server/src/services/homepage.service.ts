@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { resolveBookUrls, resolveUrls } from "../lib/mediaUrl.js";
 
 const normalizeFormatType = (type?: string) => {
     if (!type) return null;
@@ -15,7 +16,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         : 10;
     const normalizedType = normalizeFormatType(type);
 
-    const allBooks = await prisma.book.findMany({
+    const rawBooks = await prisma.book.findMany({
         where: { submission_status: "approved" },
         orderBy: { created_at: "desc" },
         take: 200,
@@ -28,6 +29,8 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
             }
         }
     });
+    // Resolve all file URLs once — every derived array below inherits correct URLs
+    const allBooks = rawBooks.map(resolveBookUrls);
 
     //   total count 
     const counts = {
@@ -181,7 +184,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
                 currentUser = {
                     id: user.id,
                     email: user.email,
-                    profile: user.profile
+                    profile: user.profile ? resolveUrls(user.profile) : null,
                 };
 
                 const progressData = await prisma.readingProgress.findMany({
@@ -272,8 +275,8 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
             slider: filteredSlider,
         },
         allCategory: allCategory.slice(0, takeLimit),
-        allAuthor: allAuthor.slice(0, takeLimit),
-        allNarrators: allNarrators.slice(0, takeLimit),
+        allAuthor: allAuthor.slice(0, takeLimit).map(resolveUrls),
+        allNarrators: allNarrators.slice(0, takeLimit).map(resolveUrls),
         "countsValue": { counts, totalNarrators },
         "NewReleases": {
             "all": filterBooksByType(allBooks).slice(0, takeLimit),

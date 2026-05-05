@@ -4,6 +4,7 @@ import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { bookByIdSchema, bookListSchema } from "../schemas/books.js";
 import { getBookById, listBooks } from "../services/books.service.js";
+import { resolveBookUrls, resolveUrls } from "../lib/mediaUrl.js";
 
 export const booksRouter = router({
   list: publicProcedure
@@ -78,7 +79,7 @@ export const booksRouter = router({
         prisma.book.count({ where }),
       ]);
 
-      return { books, total };
+      return { books: books.map(resolveBookUrls), total };
     }),
 
   trending: publicProcedure
@@ -552,14 +553,14 @@ export const booksRouter = router({
       const profileMap: Record<string, { display_name: string | null; avatar_url: string | null }> = {};
       profiles.forEach(p => { profileMap[p.user_id] = p; });
 
-      return {
+      return resolveBookUrls({
         ...book,
         contributors: book.contributors.map((c) => ({
           ...c,
           display_name: profileMap[c.user_id]?.display_name ?? null,
           avatar_url: profileMap[c.user_id]?.avatar_url ?? null,
         })),
-      };
+      });
     }),
 
   searchApprovedBooks: publicProcedure
