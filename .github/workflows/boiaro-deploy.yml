@@ -2,66 +2,92 @@ name: Remote Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
-      - name: Deploy over SSH
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── Build on the runner (7 GB RAM — no OOM risk) ──────────────────────
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        run: npm ci
+        working-directory: server
+
+      - name: Build server
+        run: npm run build
+        working-directory: server
+
+      - name: Build frontend
+        run: npm run build
+
+      # ── Upload built artifacts to server via rsync ────────────────────────
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.VPS_IP }}" >> ~/.ssh/known_hosts
+
+      - name: Sync frontend dist
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            dist/ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/html/staging.boiaro.com/dist/
+
+      - name: Sync server dist, prisma and package files
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            server/dist/ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/html/staging.boiaro.com/server/dist/
+
+          rsync -az \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            server/prisma/ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/html/staging.boiaro.com/server/prisma/
+
+          rsync -az \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            server/package.json server/package-lock.json \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/html/staging.boiaro.com/server/
+
+          rsync -az \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ecosystem.config.cjs \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/html/staging.boiaro.com/
+
+      # ── On server: only production deps + migrate + reload ────────────────
+      - name: Install production deps and reload
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: 22
-          command_timeout: 90m
+          command_timeout: 15m
           script_stop: true
           script: |
             set -euo pipefail
 
-            APP_DIR="/var/www/html/staging.boiaro.com"
-            REPO_URL="${{ secrets.DEPLOY_REPO_URL }}"
-            if [ -z "$REPO_URL" ]; then
-              REPO_URL="https://github.com/${{ github.repository }}.git"
-            fi
-
-            if [ ! -d "$APP_DIR/.git" ]; then
-              mkdir -p "$APP_DIR"
-              git clone "$REPO_URL" "$APP_DIR"
-            fi
-
-            cd "$APP_DIR"
-            git config --global --add safe.directory "$APP_DIR"
-            git fetch origin main
-            git reset --hard
-            git clean -fd -e uploads/
-            git checkout -B main origin/main
-            git reset --hard origin/main
-
-            # Load Node/npm for non-interactive SSH sessions (nvm is not auto-loaded)
             export NVM_DIR="$HOME/.nvm"
-            if [ -s "$NVM_DIR/nvm.sh" ]; then
-              . "$NVM_DIR/nvm.sh"
-              nvm use default
-            fi
+            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use default
 
-            if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-              echo "Node.js/npm not found for deploy user: $(whoami)"
-              echo "Make sure nvm and a default Node version are installed for this user."
-              exit 1
-            fi
-
-            npm ci
-            cd server
-            npm ci
-            npm run build
+            cd /var/www/html/staging.boiaro.com/server
+            npm ci --omit=dev
+            npx prisma generate
             npx prisma migrate deploy
-            cd ..
-            npm run build
 
+            cd /var/www/html/staging.boiaro.com
             pm2 startOrReload ecosystem.config.cjs --env production
             pm2 save
