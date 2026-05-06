@@ -15,10 +15,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
-      # ── Build on the runner (7 GB RAM — no OOM risk) ──────────────────────
+      # ── Build on the runner ──────────────────────────────────────────────
       - name: Install frontend dependencies
         run: npm ci
 
@@ -33,7 +33,7 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      # ── Upload built artifacts to server via rsync ────────────────────────
+      # ── Upload built artifacts to server via rsync ───────────────────────
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
@@ -70,7 +70,7 @@ jobs:
             ecosystem.production.config.cjs \
             ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/html/boiaro.com/
 
-      # ── On server: only production deps + migrate + reload ────────────────
+      # ── On server: install deps + migrate + reload ───────────────────────
       - name: Install production deps and reload
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -82,8 +82,8 @@ jobs:
           script: |
             set -euo pipefail
 
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use default
+            echo "Node version on server:"
+            node -v
 
             cd /var/www/html/boiaro.com/server
             npm ci --omit=dev
