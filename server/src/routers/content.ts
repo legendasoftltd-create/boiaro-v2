@@ -3,11 +3,14 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { isS3Url, createPresignedGetUrl } from "../lib/s3.js";
+import { resolveFileUrl } from "../lib/mediaUrl.js";
 
 async function toServeUrl(url: string | null | undefined): Promise<string | null> {
   if (!url) return null;
+  // Private content on S3 → time-limited presigned URL
   if (isS3Url(url)) return createPresignedGetUrl(url, 3600);
-  return url;
+  // Local storage → resolve to absolute URL (handles localhost and relative paths)
+  return resolveFileUrl(url);
 }
 
 export const contentRouter = router({

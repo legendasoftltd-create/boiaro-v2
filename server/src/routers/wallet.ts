@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
+import { resolveFileUrl } from "../lib/mediaUrl.js";
 
 export const walletRouter = router({
   coinPackages: publicProcedure.query(() =>
@@ -245,14 +246,18 @@ export const walletRouter = router({
     };
   }),
 
-  userUnlocksWithBooks: protectedProcedure.query(({ ctx }) =>
-    prisma.contentUnlock.findMany({
+  userUnlocksWithBooks: protectedProcedure.query(async ({ ctx }) => {
+    const unlocks = await prisma.contentUnlock.findMany({
       where: { user_id: ctx.userId, status: "active" },
       include: { book: { select: { title: true, slug: true, cover_url: true } } },
       orderBy: { created_at: "desc" },
       take: 20,
-    })
-  ),
+    });
+    return unlocks.map((u) => ({
+      ...u,
+      book: u.book ? { ...u.book, cover_url: resolveFileUrl(u.book.cover_url) } : null,
+    }));
+  }),
 
   hasSubscription: protectedProcedure
     .input(z.object({ format: z.enum(["ebook", "audiobook"]).optional() }))

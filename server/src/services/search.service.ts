@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { resolveFileUrl } from "../lib/mediaUrl.js";
 
 export const searchBooks = async (q: string) => {
   const books = await prisma.book.findMany({
@@ -30,6 +31,6 @@ export const searchBooks = async (q: string) => {
   });
 
   return {
-    results: books,
+    results: books.map((b) => ({ ...b, cover_url: resolveFileUrl(b.cover_url) })),
   };
 };

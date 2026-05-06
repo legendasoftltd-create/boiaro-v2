@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { resolveFileUrl } from "../lib/mediaUrl.js";
 
 export const getAllPublishers = async (userId?: string | null) => {
   const publishers = await prisma.publisher.findMany({
@@ -42,6 +43,7 @@ export const getAllPublishers = async (userId?: string | null) => {
   return {
     publishers: publishers.map((publisher) => ({
       ...publisher,
+      logo_url: resolveFileUrl(publisher.logo_url),
       followed: followedPublisherIds.has(publisher.id),
     })),
   };

@@ -416,7 +416,7 @@ export async function removeBookBookmark(userId: string, bookId: string) {
 }
 
 export async function getUserBookmarks(userId: string) {
-  return prisma.bookmark.findMany({
+  const bookmarks = await prisma.bookmark.findMany({
     where: { user_id: userId },
     include: {
       book: {
@@ -431,4 +431,8 @@ export async function getUserBookmarks(userId: string) {
     },
     orderBy: { created_at: "desc" },
   });
+  return bookmarks.map((bm) => ({
+    ...bm,
+    book: bm.book ? resolveBookUrls(bm.book) : null,
+  }));
 }

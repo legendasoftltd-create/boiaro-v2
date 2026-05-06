@@ -1,6 +1,7 @@
 // services/authors.service.ts
 
 import { prisma } from "../lib/prisma.js";
+import { resolveFileUrl } from "../lib/mediaUrl.js";
 
 export const getAllAuthors = async (
   limit: number,
@@ -59,6 +60,7 @@ export const getAllAuthors = async (
     return {
         authors: authors.map((author) => ({
           ...author,
+          avatar_url: resolveFileUrl(author.avatar_url),
           followed: followedAuthorIds.has(author.id),
         })),
         total,
@@ -86,10 +88,8 @@ export const getAuthorById = async (id: string) => {
     });
 
     if (!author) {
-        return ({
-            error: "Author not found",
-        });
+        return ({ error: "Author not found" });
     }
 
-    return author;
+    return { ...author, avatar_url: resolveFileUrl(author.avatar_url) };
 };

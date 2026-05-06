@@ -7,6 +7,7 @@ import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateOrderEarnings } from "../lib/earnings.js";
 import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
+import { resolveFileUrl } from "../lib/mediaUrl.js";
 
 function orderSellableAmount(order: { total_amount?: number | null; shipping_cost?: number | null }) {
   return Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
@@ -482,7 +483,7 @@ export const adminRouter = router({
           })
         : [];
       const profileMap = Object.fromEntries(
-        profiles.map((profile) => [profile.user_id, { display_name: profile.display_name, avatar_url: profile.avatar_url }])
+        profiles.map((profile) => [profile.user_id, { display_name: profile.display_name, avatar_url: resolveFileUrl(profile.avatar_url) }])
       );
       return wallets.map((wallet) => ({
         ...wallet,
@@ -840,7 +841,7 @@ export const adminRouter = router({
             select: { id: true, title: true, cover_url: true },
           })
         : [];
-      const bookMap = Object.fromEntries(books.map((book) => [book.id, book]));
+      const bookMap = Object.fromEntries(books.map((book) => [book.id, { ...book, cover_url: resolveFileUrl(book.cover_url) }]));
 
       return {
         order,
@@ -1547,7 +1548,7 @@ export const adminRouter = router({
         user_id: u.id,
         email: u.email,
         display_name: u.profile?.display_name || u.email,
-        avatar_url: u.profile?.avatar_url ?? null,
+        avatar_url: resolveFileUrl(u.profile?.avatar_url ?? null),
         phone: u.profile?.phone ?? null,
         roles: u.roles.map((r) => r.role),
         existing_links: linksByUser[u.id] || [],
@@ -2602,9 +2603,9 @@ export const adminRouter = router({
       ]);
 
       return {
-        authors,
-        publishers,
-        narrators,
+        authors: authors.map((a) => ({ ...a, avatar_url: resolveFileUrl(a.avatar_url) })),
+        publishers: publishers.map((p) => ({ ...p, logo_url: resolveFileUrl(p.logo_url) })),
+        narrators: narrators.map((n) => ({ ...n, avatar_url: resolveFileUrl(n.avatar_url) })),
       };
     }),
 
