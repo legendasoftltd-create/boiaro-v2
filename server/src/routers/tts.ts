@@ -17,6 +17,77 @@ const getElevenLabsKey = () => process.env.ELEVENLABS_API_KEY;
 const UPLOADS_DIR = process.env.UPLOADS_DIR || "./uploads";
 const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
 
+// ─── TTS Access Control ─────────────────────────────────────────────────────
+// Shared by both tRPC procedures and REST routes.
+
+export type TtsAccessResult =
+  | { allowed: true;  access_type: string }
+  | { allowed: false; reason: string; access_type: string; coin_price: number };
+
+export async function checkTtsAccess(
+  userId: string,
+  bookId: string
+): Promise<TtsAccessResult> {
+  const book = await prisma.book.findUnique({
+    where: { id: bookId },
+    select: {
+      premium_voice_enabled: true,
+      voice_access_type: true,
+      voice_coin_price: true,
+    },
+  });
+
+  if (!book) {
+    return { allowed: false, reason: "Book not found", access_type: "none", coin_price: 0 };
+  }
+  if (!book.premium_voice_enabled) {
+    return {
+      allowed: false,
+      reason: "Premium Voice is not enabled for this book",
+      access_type: "none",
+      coin_price: 0,
+    };
+  }
+
+  // Free — no unlock needed
+  if (book.voice_access_type === "free") {
+    return { allowed: true, access_type: "free" };
+  }
+
+  // Check coin/purchase unlock
+  const unlock = await prisma.contentUnlock.findFirst({
+    where: { user_id: userId, book_id: bookId, format: "premium_voice", status: "active" },
+  });
+  if (unlock) return { allowed: true, access_type: "coin_unlock" };
+
+  // Subscription grants access for both "subscription" and "paid" access types
+  const subscription = await prisma.userSubscription.findFirst({
+    where: {
+      user_id: userId,
+      status: "active",
+      OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+    },
+  });
+  if (subscription) return { allowed: true, access_type: "subscription" };
+
+  // Denied — tell the client what they need
+  const coinPrice = book.voice_coin_price ?? 0;
+  if (book.voice_access_type === "subscription") {
+    return {
+      allowed: false,
+      reason: "Active subscription required for AI Voice on this book",
+      access_type: "subscription",
+      coin_price: coinPrice,
+    };
+  }
+  return {
+    allowed: false,
+    reason: "Purchase required — unlock with coins to use AI Voice",
+    access_type: "paid",
+    coin_price: coinPrice,
+  };
+}
+
 // ─── Bengali-friendly voices (tested per tts_docs.md) ──────────────────────
 export const BENGALI_VOICES = [
   { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", label: "সারা (মহিলা)", lang: "bn" },
@@ -119,7 +190,7 @@ async function callElevenLabs(text: string, voiceId: string): Promise<Buffer> {
 }
 
 // ─── Generate + cache a single paragraph ────────────────────────────────────
-async function generateParagraphAudio(
+export async function generateParagraphAudio(
   text: string,
   voiceId: string,
   bookId: string,
@@ -184,6 +255,12 @@ export const ttsRouter = router({
       paragraphIndex: z.number().int().min(0).default(0),
     }))
     .mutation(async ({ ctx, input }) => {
+      // ── Access gate ──
+      const access = await checkTtsAccess(ctx.userId, input.bookId);
+      if (access.allowed === false) {
+        throw new TRPCError({ code: "FORBIDDEN", message: access.reason });
+      }
+
       try {
         const audioUrl = await generateParagraphAudio(
           input.text,
@@ -216,6 +293,12 @@ export const ttsRouter = router({
       voiceId: z.string().default(DEFAULT_VOICE_ID),
     }))
     .mutation(async ({ ctx, input }) => {
+      // ── Access gate ──
+      const access = await checkTtsAccess(ctx.userId, input.bookId);
+      if (access.allowed === false) {
+        throw new TRPCError({ code: "FORBIDDEN", message: access.reason });
+      }
+
       // Fire and forget — cache them so next play is instant
       Promise.all(
         input.paragraphs.map(p =>

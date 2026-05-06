@@ -23,6 +23,7 @@ import { ordersRestRouter } from "./orders.js";
 import { paymentsRestRouter } from "./payments.js";
 import { shippingRestRouter } from "./shipping.js";
 import { couponsRestRouter } from "./coupons.js";
+import { ttsRestRouter } from "./tts.js";
 
 export const restRouter = Router();
 
@@ -50,3 +51,4 @@ restRouter.use("/orders", ordersRestRouter);
 restRouter.use("/payments", paymentsRestRouter);
 restRouter.use("/shipping", shippingRestRouter);
 restRouter.use("/coupons", couponsRestRouter);
+restRouter.use("/tts", ttsRestRouter);

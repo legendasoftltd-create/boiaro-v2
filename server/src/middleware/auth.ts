@@ -29,3 +29,13 @@ export function requireAuth(
 
   next();
 }
+
+// Populates req.auth if a token is present but does NOT reject missing tokens.
+// Use for endpoints where auth enriches the response but is not mandatory.
+export function optionalAuth(
+  req: AuthenticatedRequest,
+  _res: Response,
+  next: NextFunction
+) {
+  next();
+}
