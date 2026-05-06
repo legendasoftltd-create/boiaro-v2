@@ -46,29 +46,29 @@ jobs:
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key" \
             dist/ \
-            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/boiaro/dist/
+            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/html/boiaro.com/dist/
 
       - name: Sync server dist, prisma and package files
         run: |
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key" \
             server/dist/ \
-            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/boiaro/server/dist/
+            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/html/boiaro.com/server/dist/
 
           rsync -az \
             -e "ssh -i ~/.ssh/deploy_key" \
             server/prisma/ \
-            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/boiaro/server/prisma/
+            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/html/boiaro.com/server/prisma/
 
           rsync -az \
             -e "ssh -i ~/.ssh/deploy_key" \
             server/package.json server/package-lock.json \
-            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/boiaro/server/
+            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/html/boiaro.com/server/
 
           rsync -az \
             -e "ssh -i ~/.ssh/deploy_key" \
             ecosystem.production.config.cjs \
-            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/boiaro/
+            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/html/boiaro.com/
 
       # ── On server: only production deps + migrate + reload ────────────────
       - name: Install production deps and reload
@@ -85,11 +85,11 @@ jobs:
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use default
 
-            cd /var/www/boiaro/server
+            cd /var/www/html/boiaro.com/server
             npm ci --omit=dev
             npx prisma generate
             npx prisma migrate deploy
 
-            cd /var/www/boiaro
+            cd /var/www/html/boiaro.com
             pm2 startOrReload ecosystem.production.config.cjs --env production
             pm2 save
