@@ -18,6 +18,16 @@ import { ArrowLeft, Loader2 } from "lucide-react"
 import type { MasterBook, Author, Publisher, Category, Narrator } from "@/lib/types"
 import type { AudioTrack } from "@/contexts/AudioPlayerContext"
 
+/** Converts raw bytes string ("5242880") → "5.0 MB", leaves "5.0 MB" unchanged */
+function normalizeFileSize(raw: string | null | undefined): string {
+  if (!raw) return "N/A";
+  if (/^\d+$/.test(raw.trim())) {
+    const mb = Number(raw) / (1024 * 1024);
+    return mb < 0.1 ? `${Math.round(Number(raw) / 1024)} KB` : `${mb.toFixed(1)} MB`;
+  }
+  return raw;
+}
+
 function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterBook & { allNarrators: Narrator[] }; audioTracks: AudioTrack[] } {
   const author: Author = dbBook.author ? {
     id: dbBook.author_id || "",
@@ -132,7 +142,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
       available: ebookFmt.is_available !== false,
       price: Number(ebookFmt.price) || 0,
       pages: ebookFmt.pages || 0,
-      fileSize: ebookFmt.file_size || "N/A",
+      fileSize: normalizeFileSize(ebookFmt.file_size),
       previewChapters: ebookFmt.preview_chapters || 0,
       previewPercentage: ebookFmt.preview_percentage ?? null,
     }
