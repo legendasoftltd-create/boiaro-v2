@@ -834,7 +834,7 @@ export const booksRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const count = await prisma.ebookChapter.count({ where: { book_format_id: input.bookFormatId } });
-      return prisma.ebookChapter.create({
+      const chapter = await prisma.ebookChapter.create({
         data: {
           book_format_id: input.bookFormatId,
           chapter_title: input.title,
@@ -845,6 +845,14 @@ export const booksRouter = router({
           created_by: ctx.userId,
         },
       });
+      // Keep book_formats.file_url in sync with the first chapter's file
+      if (count === 0 && input.fileUrl) {
+        await prisma.bookFormat.update({
+          where: { id: input.bookFormatId },
+          data: { file_url: input.fileUrl },
+        });
+      }
+      return chapter;
     }),
 
   submitEbookChapter: protectedProcedure
