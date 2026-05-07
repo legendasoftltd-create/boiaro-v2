@@ -69,13 +69,22 @@ const fallbackConfig = { uploadsDir: UPLOADS_DIR, baseUrl: BASE_URL };
 // When S3 is down (or not configured), uploadWithFallback() writes the buffer
 // to local disk itself, so diskStorage is no longer needed here.
 
-const IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp"];
+const IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"];
 const MEDIA_MIMES = [
-  "image/jpeg", "image/png", "image/webp",
-  "application/pdf", "application/epub+zip", "application/octet-stream",
+  // images
+  "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml",
+  // documents
+  "application/pdf", "application/epub+zip",
+  // audio — comprehensive browser MIME coverage for MP3/AAC/M4A/WAV/FLAC/OGG
   "audio/mpeg", "audio/mp3", "audio/mp4", "audio/aac",
-  "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg",
+  "audio/wav", "audio/x-wav", "audio/wave",
+  "audio/webm", "audio/ogg", "audio/flac", "audio/x-flac",
+  "audio/x-m4a", "audio/m4a",
+  "audio/x-aiff", "audio/aiff",
+  // video (audiobook containers)
   "video/mp4", "video/webm", "video/ogg", "video/quicktime",
+  // catch-all binary (some browsers send unknown audio as octet-stream)
+  "application/octet-stream",
 ];
 
 const uploadImage = multer({
@@ -147,6 +156,25 @@ app.post("/upload/media", uploadMedia.single("file"), async (req, res) => {
 
 // Serve local files (fallback copies when S3 was down)
 app.use("/uploads", express.static(UPLOADS_DIR));
+
+// ── Multer / upload error handler ──────────────────────────────────────────
+// Multer fileFilter errors bypass route try/catch and land here as Express errors.
+// Return JSON so the frontend gets a usable error instead of an HTML 500 page.
+app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err?.code === "LIMIT_FILE_SIZE") {
+    res.status(413).json({ error: "File too large. Maximum size exceeded." });
+    return;
+  }
+  if (err?.code === "LIMIT_UNEXPECTED_FILE") {
+    res.status(400).json({ error: "Unexpected file field." });
+    return;
+  }
+  if (err?.message?.includes("Only JPG") || err?.message?.includes("Unsupported media")) {
+    res.status(415).json({ error: err.message });
+    return;
+  }
+  next(err);
+});
 
 // ── Health ────────────────────────────────────────────────────────────────────
 
