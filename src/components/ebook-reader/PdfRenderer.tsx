@@ -35,6 +35,58 @@ const MAX_ZOOM = 3.0;
 const DOUBLE_TAP_DELAY = 300; // ms
 const DOUBLE_TAP_ZOOM = 2.0;
 
+/**
+ * Reconstruct readable text from PDF.js text items using their x/y positions.
+ * Naive join(" ") puts spaces between every glyph — in Bengali PDFs each
+ * character is its own item, producing "ব া ং ল া" instead of "বাংলা".
+ * This groups items by line (same y) and only inserts a space when there is
+ * a gap between items that exceeds the word-space threshold.
+ */
+function reconstructPdfText(items: Array<{
+  str: string;
+  transform: number[];
+  width: number;
+  hasEOL?: boolean;
+}>): string {
+  const LINE_Y_TOLERANCE = 3;   // pts — items within this y-distance are on the same line
+  const WORD_GAP_PTS = 3;       // pts — gap larger than this between items → insert space
+
+  // Group by approximate y (baseline)
+  const lineMap = new Map<number, Array<{ x: number; str: string; width: number; hasEOL: boolean }>>();
+  for (const item of items) {
+    if (!("str" in item)) continue;
+    const [, , , , x, y] = item.transform;
+    // Round y to cluster items on the same baseline
+    const lineY = Math.round(y / LINE_Y_TOLERANCE) * LINE_Y_TOLERANCE;
+    if (!lineMap.has(lineY)) lineMap.set(lineY, []);
+    lineMap.get(lineY)!.push({ x, str: item.str ?? "", width: item.width ?? 0, hasEOL: !!item.hasEOL });
+  }
+
+  // Sort lines descending by y (PDF y=0 is bottom-of-page → higher y = higher on page)
+  const sortedYs = [...lineMap.keys()].sort((a, b) => b - a);
+
+  const textLines = sortedYs.map(y => {
+    const lineItems = lineMap.get(y)!.sort((a, b) => a.x - b.x);
+    let line = "";
+    for (let i = 0; i < lineItems.length; i++) {
+      if (i > 0) {
+        const prev = lineItems[i - 1];
+        const gap = lineItems[i].x - (prev.x + prev.width);
+        if (gap > WORD_GAP_PTS) line += " ";
+      }
+      line += lineItems[i].str;
+      if (lineItems[i].hasEOL) line += "\n";
+    }
+    return line.trim();
+  }).filter(Boolean);
+
+  return textLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[^\S\n]+/g, " ")   // collapse multiple spaces (not newlines)
+    .trim();
+}
+
 export function PdfRenderer({
   url,
   currentPage,
@@ -214,12 +266,8 @@ export function PdfRenderer({
         // Extract text content and fire callback for TTS
         if (onTextExtractedRef.current) {
           try {
-            const textContent = await page.getTextContent();
-            const text = textContent.items
-              .map((item: any) => item.str)
-              .join(" ")
-              .replace(/\s+/g, " ")
-              .trim();
+            const textContent = await page.getTextContent({ includeMarkedContent: false });
+            const text = reconstructPdfText(textContent.items as any[]);
             if (text) onTextExtractedRef.current(text);
           } catch {
             // text extraction is best-effort — don't block rendering

@@ -174,16 +174,21 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
       },
       getVisibleText: () => {
         try {
+          let rawText = "";
           const contents = renditionRef.current?.getContents?.();
           if (contents && Array.isArray(contents)) {
-            return (contents as any[])
+            rawText = (contents as any[])
               .map((c: any) => c?.document?.body?.innerText || "")
-              .join("\n")
-              .trim();
+              .join("\n");
+          } else {
+            const doc = getIframeDoc();
+            if (doc?.body) rawText = doc.body.innerText || "";
           }
-          const doc = getIframeDoc();
-          if (doc?.body) return doc.body.innerText || "";
-          return "";
+          // Normalize: collapse multiple spaces (but keep newlines), reduce 3+ newlines to 2
+          return rawText
+            .replace(/[^\S\n]+/g, " ")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim();
         } catch {
           return "";
         }
