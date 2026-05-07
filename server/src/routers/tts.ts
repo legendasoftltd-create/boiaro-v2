@@ -15,7 +15,7 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 
 const getElevenLabsKey = () => process.env.ELEVENLABS_API_KEY;
 const UPLOADS_DIR = process.env.UPLOADS_DIR || "./uploads";
-const BASE_URL = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+const BASE_URL = (process.env.BASE_URL || process.env.FRONTEND_URL || `http://localhost:${process.env.PORT || 3001}`).replace(/\/$/, "");
 
 // ─── TTS Access Control ─────────────────────────────────────────────────────
 // Shared by both tRPC procedures and REST routes.
