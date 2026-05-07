@@ -35,13 +35,25 @@ interface PremiumTTSState {
 const log = (...a: unknown[]) => console.log("[PremiumTTS]", ...a);
 
 function splitParagraphs(text: string): string[] {
-  const raw = text.split(/\n{2,}|।\s*\n/).map(p => p.trim()).filter(Boolean);
+  // First normalize: collapse sequences of blank lines, and treat single newlines
+  // (common in PDF-extracted text where each visual line is a \n) as spaces so
+  // words across line-breaks are not separated.
+  const normalized = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n{2,}/g, "") // mark real paragraph breaks with a sentinel
+    .replace(/\n/g, " ")          // single newlines → space (PDF line joins)
+    .replace(//g, "\n\n")   // restore real paragraph breaks
+    .replace(/[^\S\n]{2,}/g, " ") // collapse multiple spaces
+    .trim();
+
+  const raw = normalized.split(/\n{2,}|।\s*\n/).map(p => p.trim()).filter(Boolean);
   const chunks: string[] = [];
   for (const para of raw) {
     if (para.length <= MAX_PARA_CHARS) {
       chunks.push(para);
     } else {
-      const sentences = para.split(/(?<=।)\s+/);
+      // Split long paragraphs on Bangla sentence endings
+      const sentences = para.split(/(?<=[।.!?])\s+/);
       let cur = "";
       for (const s of sentences) {
         if ((cur + s).length > MAX_PARA_CHARS && cur) { chunks.push(cur.trim()); cur = s; }
@@ -50,7 +62,7 @@ function splitParagraphs(text: string): string[] {
       if (cur.trim()) chunks.push(cur.trim());
     }
   }
-  return chunks.length ? chunks : [text.substring(0, MAX_PARA_CHARS)];
+  return chunks.length ? chunks : [normalized.substring(0, MAX_PARA_CHARS)];
 }
 
 export function usePremiumTTS(bookId: string | null, onComplete?: () => void, onQuotaExceeded?: () => void, onAccessDenied?: () => void) {

@@ -228,6 +228,25 @@ export default function EbookReader() {
     }
   }, [tts.isPlaying, tts.isPaused]);
 
+  // Reset to browser TTS when the access check completes and the user hasn't unlocked.
+  // This handles the case where localStorage has tts_mode="premium" from a previous session
+  // on a different book — without this, the user would be in premium mode and call play()
+  // before the gate is shown.
+  useEffect(() => {
+    if (voiceUnlockLoading) return;
+    if (!premiumVoiceEnabled && tts.mode === "premium") {
+      tts.setMode("browser");
+      return;
+    }
+    if (
+      (voiceAccessType === "paid" || voiceAccessType === "subscription") &&
+      voiceUnlockData?.unlocked === false &&
+      tts.mode === "premium"
+    ) {
+      tts.setMode("browser");
+    }
+  }, [premiumVoiceEnabled, voiceAccessType, voiceUnlockData, voiceUnlockLoading, tts.mode, tts.setMode]);
+
   // Wrap mode change — gate "premium" mode behind voice unlock when required
   const handleTtsModeChange = useCallback((newMode: TtsMode) => {
     if (newMode === "premium") {
@@ -244,25 +263,9 @@ export default function EbookReader() {
       // Still loading unlock status — wait to avoid wrong gate trigger
       if (voiceUnlockLoading) return;
 
-      // "subscription" access — active subscribers get it free; others see the gate
-      if (voiceAccessType === "subscription") {
-        const alreadyUnlocked = voiceUnlockData?.unlocked === true;
-        if (alreadyUnlocked) {
-          tts.setMode("premium");
-          if (bookId) trackTtsModeSwitch(bookId, tts.mode, "premium");
-        } else {
-          setShowVoiceGate(true);
-        }
-        return;
-      }
-      // "paid" access — check unlock status
+      // Both "paid" and "subscription" — check unlock status (subscription also checked server-side)
       const alreadyUnlocked = voiceUnlockData?.unlocked === true;
       if (!alreadyUnlocked) {
-        if (voiceCoinPrice === 0 && bookId) {
-          // 0-coin paid unlock: auto-unlock silently
-          unlockVoiceMutation.mutate({ bookId, format: "premium_voice", coinCost: 0 });
-          return;
-        }
         setShowVoiceGate(true);
         return;
       }
@@ -271,7 +274,7 @@ export default function EbookReader() {
       trackTtsModeSwitch(bookId, tts.mode, newMode);
     }
     tts.setMode(newMode);
-  }, [tts.mode, tts.setMode, bookId, trackTtsModeSwitch, premiumVoiceEnabled, voiceAccessType, voiceUnlockData, voiceUnlockLoading, voiceCoinPrice]);
+  }, [tts.mode, tts.setMode, bookId, trackTtsModeSwitch, premiumVoiceEnabled, voiceAccessType, voiceUnlockData, voiceUnlockLoading]);
 
   // Sync background music with TTS state (only when ambient is enabled)
   const ambientEnabledRef = useRef(ambientEnabled);
