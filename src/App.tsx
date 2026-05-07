@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import React, { lazy, Suspense, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { trpc, createTrpcClient } from "@/lib/trpc";
@@ -156,6 +156,28 @@ function LegacyCheckoutCallbackRedirect({ status }: { status: "success" | "faile
 
 const SentryErrorBoundary = Sentry.ErrorBoundary;
 
+// Resets the error boundary on every route change so a crash on one page
+// does not leave all subsequent navigations stuck on the error screen.
+function NavigationErrorBoundary({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return (
+    <SentryErrorBoundary
+      key={location.pathname}
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
+          <div className="text-center space-y-4">
+            <h1 className="text-2xl font-bold">Something went wrong</h1>
+            <p className="text-muted-foreground">An unexpected error occurred. Please try again.</p>
+            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-primary text-primary-foreground rounded-md">Refresh</button>
+          </div>
+        </div>
+      }
+    >
+      {children}
+    </SentryErrorBoundary>
+  );
+}
+
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
     <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -185,7 +207,6 @@ const App = () => {
   }));
   const [trpcClient] = useState(() => createTrpcClient());
   return (
-  <SentryErrorBoundary fallback={<div className="min-h-screen flex items-center justify-center bg-background text-foreground"><div className="text-center space-y-4"><h1 className="text-2xl font-bold">Something went wrong</h1><p className="text-muted-foreground">An unexpected error occurred. Please refresh the page.</p><button onClick={() => window.location.reload()} className="px-4 py-2 bg-primary text-primary-foreground rounded-md">Refresh</button></div></div>}>
   <trpc.Provider client={trpcClient} queryClient={queryClient}>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -199,6 +220,7 @@ const App = () => {
               <Suspense fallback={null}><PresenceTracker /></Suspense>
               <Suspense fallback={null}><BandwidthReporter /></Suspense>
               <Suspense fallback={<PageLoader />}>
+              <NavigationErrorBoundary>
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/auth" element={<Auth />} />
@@ -340,6 +362,7 @@ const App = () => {
 
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </NavigationErrorBoundary>
               </Suspense>
               <Suspense fallback={null}><MiniPlayer /></Suspense>
               <Suspense fallback={null}><FullPlayer /></Suspense>
@@ -352,7 +375,6 @@ const App = () => {
     </TooltipProvider>
   </QueryClientProvider>
   </trpc.Provider>
-  </SentryErrorBoundary>
   );
 };
 
