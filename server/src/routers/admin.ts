@@ -348,7 +348,7 @@ export const adminRouter = router({
       return prisma.bookFormat.create({
         data: {
           ...data,
-          submission_status: data.submission_status ?? "pending",
+          submission_status: data.submission_status ?? "approved",
           submitted_by: data.submitted_by ?? ctx.userId,
         } as any,
       });
