@@ -259,7 +259,7 @@ export default function AdminBooks() {
         track_number: nextOrder,
         duration: trackForm.duration || null,
         is_preview: nextOrder === 1,
-        status: "draft",
+        status: "active",
         media_type: uploadedMediaType,
         chapter_price: chapterPrice,
       });
