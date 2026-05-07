@@ -69,40 +69,37 @@ const fallbackConfig = { uploadsDir: UPLOADS_DIR, baseUrl: BASE_URL };
 // When S3 is down (or not configured), uploadWithFallback() writes the buffer
 // to local disk itself, so diskStorage is no longer needed here.
 
-const IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"];
-const MEDIA_MIMES = [
-  // images
-  "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml",
-  // documents
-  "application/pdf", "application/epub+zip",
-  // audio — comprehensive browser MIME coverage for MP3/AAC/M4A/WAV/FLAC/OGG
-  "audio/mpeg", "audio/mp3", "audio/mp4", "audio/aac",
-  "audio/wav", "audio/x-wav", "audio/wave",
-  "audio/webm", "audio/ogg", "audio/flac", "audio/x-flac",
-  "audio/x-m4a", "audio/m4a",
-  "audio/x-aiff", "audio/aiff",
-  // video (audiobook containers)
-  "video/mp4", "video/webm", "video/ogg", "video/quicktime",
-  // catch-all binary (some browsers send unknown audio as octet-stream)
-  "application/octet-stream",
-];
+const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"]);
+
+function isAllowedMediaMime(mime: string): boolean {
+  if (!mime) return false;
+  // Accept any audio or video variant (covers x-aac, opus, wma, x-m4b, x-matroska, etc.)
+  if (mime.startsWith("audio/") || mime.startsWith("video/")) return true;
+  // Ebook formats
+  if (mime === "application/pdf" || mime === "application/epub+zip") return true;
+  // Images
+  if (mime.startsWith("image/")) return true;
+  // Browsers sometimes send unknown audio as a raw binary stream
+  if (mime === "application/octet-stream") return true;
+  return false;
+}
 
 const uploadImage = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) =>
-    IMAGE_MIMES.includes(file.mimetype)
+    IMAGE_MIMES.has(file.mimetype)
       ? cb(null, true)
-      : cb(new Error("Only JPG, PNG, or WebP images are allowed")),
+      : cb(new Error("Only JPG, PNG, WebP, GIF, or SVG images are allowed")),
 });
 
 const uploadMedia = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 },
   fileFilter: (_req, file, cb) =>
-    MEDIA_MIMES.includes(file.mimetype)
+    isAllowedMediaMime(file.mimetype)
       ? cb(null, true)
-      : cb(new Error("Unsupported media file type")),
+      : cb(new Error(`Unsupported file type: ${file.mimetype}`)),
 });
 
 // ── Upload routes ─────────────────────────────────────────────────────────────
