@@ -147,7 +147,7 @@ export default function EbookReader() {
   const bookmarkMutation = trpc.books.bookmark.useMutation({ onSuccess: () => refetchBookmark() });
 
   // Premium Voice unlock gate — check for paid AND subscription types
-  const { data: voiceUnlockData, refetch: refetchVoiceUnlock } = trpc.wallet.checkUnlock.useQuery(
+  const { data: voiceUnlockData, isLoading: voiceUnlockLoading, refetch: refetchVoiceUnlock } = trpc.wallet.checkUnlock.useQuery(
     { bookId: bookId!, format: "premium_voice" },
     { enabled: !!user && !!bookId && premiumVoiceEnabled && (voiceAccessType === "paid" || voiceAccessType === "subscription") }
   );
@@ -210,7 +210,7 @@ export default function EbookReader() {
     ttsAdvanceTimerRef.current = setTimeout(tryReadPage, 500);
   }, [fileType, access, percentage, shouldEnforcePreviewLimit]);
 
-  const tts = useTtsEngine(bookId, handleTtsComplete);
+  const tts = useTtsEngine(bookId, handleTtsComplete, () => setShowVoiceGate(true));
   ttsPlayRef.current = tts.play;
   const effectiveGenre = musicGenre || "calm";
   const bgMusic = useBackgroundMusic(effectiveGenre);
@@ -241,6 +241,9 @@ export default function EbookReader() {
         if (bookId) trackTtsModeSwitch(bookId, tts.mode, "premium");
         return;
       }
+      // Still loading unlock status — wait to avoid wrong gate trigger
+      if (voiceUnlockLoading) return;
+
       // "subscription" access — active subscribers get it free; others see the gate
       if (voiceAccessType === "subscription") {
         const alreadyUnlocked = voiceUnlockData?.unlocked === true;
@@ -268,7 +271,7 @@ export default function EbookReader() {
       trackTtsModeSwitch(bookId, tts.mode, newMode);
     }
     tts.setMode(newMode);
-  }, [tts.mode, tts.setMode, bookId, trackTtsModeSwitch, premiumVoiceEnabled, voiceAccessType, voiceUnlockData, voiceCoinPrice]);
+  }, [tts.mode, tts.setMode, bookId, trackTtsModeSwitch, premiumVoiceEnabled, voiceAccessType, voiceUnlockData, voiceUnlockLoading, voiceCoinPrice]);
 
   // Sync background music with TTS state (only when ambient is enabled)
   const ambientEnabledRef = useRef(ambientEnabled);

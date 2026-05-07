@@ -9,7 +9,7 @@ export type TtsMode = "browser" | "premium";
  * Unified TTS engine that wraps browser (free) and premium (server-side) TTS.
  * Only one engine is active at a time. Switching modes stops the current engine.
  */
-export function useTtsEngine(bookId: string | null, onComplete?: () => void) {
+export function useTtsEngine(bookId: string | null, onComplete?: () => void, onAccessDenied?: () => void) {
   const [mode, setModeState] = useState<TtsMode>(() => {
     try {
       const saved = localStorage.getItem("tts_mode");
@@ -32,7 +32,8 @@ export function useTtsEngine(bookId: string | null, onComplete?: () => void) {
         description: "Top up your ElevenLabs account to use AI voice again.",
         duration: 6000,
       });
-    }
+    },
+    onAccessDenied,
   );
 
   // Use refs to avoid stale closures in setMode callback

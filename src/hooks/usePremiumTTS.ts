@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { toast } from "sonner";
+import { TRPCClientError } from "@trpc/client";
 import { trpc } from "@/lib/trpc";
 import { getTtsCachedUrl, saveTtsCachedUrl, clearTtsBookCache } from "@/lib/ttsCache";
 
@@ -52,7 +53,7 @@ function splitParagraphs(text: string): string[] {
   return chunks.length ? chunks : [text.substring(0, MAX_PARA_CHARS)];
 }
 
-export function usePremiumTTS(bookId: string | null, onComplete?: () => void, onQuotaExceeded?: () => void) {
+export function usePremiumTTS(bookId: string | null, onComplete?: () => void, onQuotaExceeded?: () => void, onAccessDenied?: () => void) {
   const generateMutation   = trpc.tts.generateParagraph.useMutation();
   const prefetchMutation   = trpc.tts.prefetchParagraphs.useMutation();
 
@@ -67,6 +68,8 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
   onCompleteRef.current    = onComplete;
   const onQuotaExceededRef = useRef(onQuotaExceeded);
   onQuotaExceededRef.current = onQuotaExceeded;
+  const onAccessDeniedRef = useRef(onAccessDenied);
+  onAccessDeniedRef.current = onAccessDenied;
 
   const paragraphsRef  = useRef<string[]>([]);
   const urlCacheRef    = useRef<Map<number, string>>(new Map()); // session cache: index → URL
@@ -175,7 +178,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       throw new Error("QUOTA_EXCEEDED");
     }
     throw new Error((result as any).error ?? "Generation failed");
-  }, [bookId, generateMutation]);
+  }, [bookId, generateMutation]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Lookahead prefetch ─────────────────────────────────────────────────────
   const prefetchAhead = useCallback((fromIdx: number) => {
@@ -210,9 +213,16 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       playAudioUrl(url, idx, total);
       prefetchAhead(idx);
     } catch (err) {
+      // FORBIDDEN: server access-check rejected the request — show the unlock gate, no error toast
+      if (err instanceof TRPCClientError && err.data?.code === "FORBIDDEN") {
+        activeRef.current = false;
+        onAccessDeniedRef.current?.();
+        setState(s => ({ ...s, isGenerating: false, isPlaying: false, error: null }));
+        return;
+      }
       const msg = err instanceof Error ? err.message : "Unknown error";
       log("Error paragraph", idx, msg);
-      if (msg !== "QUOTA_EXCEEDED") {
+      if (msg !== "QUOTA_EXCEEDED" && msg !== "ACCESS_DENIED") {
         toast.error(`AI ভয়েস তৈরিতে সমস্যা: ${msg}`);
       }
       setState(s => ({ ...s, isGenerating: false, isPlaying: false, error: msg }));
