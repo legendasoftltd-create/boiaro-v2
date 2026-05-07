@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { getTtsCachedUrl, saveTtsCachedUrl, clearTtsBookCache } from "@/lib/ttsCache";
 
 export type PremiumTTSSpeed = 0.7 | 0.85 | 1 | 1.1 | 1.2;
 
@@ -61,16 +62,20 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     totalParagraphs: 0, error: null,
   });
 
-  const audioRef       = useRef<HTMLAudioElement | null>(null);
-  const onCompleteRef  = useRef(onComplete);
-  onCompleteRef.current = onComplete;
+  const audioRef           = useRef<HTMLAudioElement | null>(null);
+  const onCompleteRef      = useRef(onComplete);
+  onCompleteRef.current    = onComplete;
   const onQuotaExceededRef = useRef(onQuotaExceeded);
   onQuotaExceededRef.current = onQuotaExceeded;
 
   const paragraphsRef  = useRef<string[]>([]);
-  const urlCacheRef    = useRef<Map<number, string>>(new Map()); // index → audio URL
+  const urlCacheRef    = useRef<Map<number, string>>(new Map()); // session cache: index → URL
+  // Tracks URLs fetched this session that haven't been confirmed played yet
+  const pendingPersistRef = useRef<Map<number, string>>(new Map());
   const currentIdxRef  = useRef(0);
   const voiceIdRef     = useRef<BengaliVoiceId>(DEFAULT_VOICE_ID);
+  const bookIdRef      = useRef<string | null>(bookId);
+  bookIdRef.current    = bookId;
   const rateRef        = useRef<PremiumTTSSpeed>(1);
   const activeRef      = useRef(false);
 
@@ -96,6 +101,16 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       setState(s => ({ ...s, currentTime: audio.currentTime }));
 
     audio.onended = () => {
+      // Paragraph played to completion — persist URL to localStorage cache
+      const bid = bookIdRef.current;
+      const text = paragraphsRef.current[idx];
+      const pendingUrl = pendingPersistRef.current.get(idx);
+      if (bid && text && pendingUrl) {
+        saveTtsCachedUrl(bid, voiceIdRef.current, text, pendingUrl);
+        pendingPersistRef.current.delete(idx);
+        log(`Cached paragraph ${idx} to localStorage`);
+      }
+
       const next = idx + 1;
       if (!activeRef.current) return;
       if (next < total) {
@@ -125,11 +140,22 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
   // ── Generate a paragraph and cache URL ────────────────────────────────────
   const ensureParagraph = useCallback(async (idx: number): Promise<string | null> => {
     if (!bookId) return null;
+
+    // 1. Session in-memory cache
     if (urlCacheRef.current.has(idx)) return urlCacheRef.current.get(idx)!;
 
     const text = paragraphsRef.current[idx];
     if (!text) return null;
 
+    // 2. Persistent localStorage cache (no tRPC call needed)
+    const persisted = getTtsCachedUrl(bookId, voiceIdRef.current, text);
+    if (persisted) {
+      urlCacheRef.current.set(idx, persisted);
+      log(`localStorage cache hit for paragraph ${idx}`);
+      return persisted;
+    }
+
+    // 3. Generate via tRPC (ElevenLabs → S3 → DB cache)
     const result = await generateMutation.mutateAsync({
       bookId,
       text,
@@ -139,6 +165,8 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
 
     if (result.success && result.audioUrl) {
       urlCacheRef.current.set(idx, result.audioUrl);
+      // Queue for localStorage persistence after playback completes
+      pendingPersistRef.current.set(idx, result.audioUrl);
       return result.audioUrl;
     }
     if ((result as any).quotaExceeded) {
@@ -155,9 +183,11 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     const total = paragraphsRef.current.length;
     const toFetch = [];
     for (let i = fromIdx + 1; i < Math.min(fromIdx + 1 + LOOKAHEAD, total); i++) {
-      if (!urlCacheRef.current.has(i)) {
-        toFetch.push({ text: paragraphsRef.current[i], index: i });
-      }
+      // Skip if already in session cache or localStorage cache
+      if (urlCacheRef.current.has(i)) continue;
+      const text = paragraphsRef.current[i];
+      if (text && getTtsCachedUrl(bookId, voiceIdRef.current, text)) continue;
+      toFetch.push({ text: paragraphsRef.current[i], index: i });
     }
     if (toFetch.length > 0) {
       prefetchMutation.mutate({ bookId, paragraphs: toFetch, voiceId: voiceIdRef.current });
@@ -194,6 +224,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     if (!fullText.trim()) { toast.error("পাঠ্য বিষয় নেই"); return; }
     activeRef.current = true;
     urlCacheRef.current.clear();
+    pendingPersistRef.current.clear();
 
     paragraphsRef.current = splitParagraphs(fullText);
     currentIdxRef.current = 0;
@@ -216,6 +247,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     activeRef.current = false;
     cleanupAudio();
     urlCacheRef.current.clear();
+    pendingPersistRef.current.clear();
     paragraphsRef.current = [];
     setState({
       isPlaying: false, isPaused: false, isLoading: false, isGenerating: false,
@@ -251,8 +283,10 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
   }, []);
 
   const setVoice = useCallback((voiceId: BengaliVoiceId) => {
+    // Clear session cache for the old voice (localStorage cache is kept per-voice)
+    urlCacheRef.current.clear();
+    pendingPersistRef.current.clear();
     voiceIdRef.current = voiceId;
-    urlCacheRef.current.clear(); // invalidate cache for new voice
   }, []);
 
   useEffect(() => () => { activeRef.current = false; cleanupAudio(); }, [cleanupAudio]);
@@ -279,5 +313,9 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     seekToIndex,
     setSpeed,
     setVoice,
+    /** Expose for admin tools — clears localStorage cache for this book+voice */
+    clearBookCache: useCallback(() => {
+      if (bookId) clearTtsBookCache(bookId, voiceIdRef.current);
+    }, [bookId]),
   };
 }
