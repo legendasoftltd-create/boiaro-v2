@@ -118,6 +118,7 @@ export const authRouter = router({
 
         const tokenInfo = (await tokenInfoRes.json()) as {
           aud?: string;
+          azp?: string;
           email?: string;
           email_verified?: string | boolean;
           error_description?: string;
@@ -126,7 +127,8 @@ export const authRouter = router({
         if (tokenInfo.error_description) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: `Google: ${tokenInfo.error_description}` });
         }
-        if (tokenInfo.aud !== googleClientId) {
+        const clientMatch = tokenInfo.aud === googleClientId || tokenInfo.azp === googleClientId;
+        if (!clientMatch) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Google token audience mismatch." });
         }
         const verified = tokenInfo.email_verified === true || tokenInfo.email_verified === "true";

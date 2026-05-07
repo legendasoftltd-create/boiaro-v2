@@ -225,6 +225,7 @@ async function verifyGoogleToken(body: Record<string, unknown>): Promise<{
   }
   const tokenInfo = (await tokenInfoRes.json()) as {
     aud?: string;
+    azp?: string;
     email?: string;
     email_verified?: boolean | string;
     error_description?: string;
@@ -232,7 +233,8 @@ async function verifyGoogleToken(body: Record<string, unknown>): Promise<{
   if (tokenInfo.error_description) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: `Google: ${tokenInfo.error_description}` });
   }
-  if (tokenInfo.aud !== googleClientId) {
+  const clientMatch = tokenInfo.aud === googleClientId || tokenInfo.azp === googleClientId;
+  if (!clientMatch) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Google token audience mismatch." });
   }
   const verified = tokenInfo.email_verified === true || tokenInfo.email_verified === "true";
