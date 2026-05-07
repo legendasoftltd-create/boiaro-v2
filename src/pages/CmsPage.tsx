@@ -41,7 +41,7 @@ export default function CmsPage() {
               </h1>
               <div className="flex items-center gap-2 mt-4 text-muted-foreground text-sm">
                 <CalendarDays className="h-4 w-4" />
-                <span>Last updated: {formatDate(page.updated_at.toISOString())}</span>
+                <span>Last updated: {formatDate(String(page.updated_at))}</span>
               </div>
             </header>
 
