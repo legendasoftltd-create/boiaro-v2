@@ -451,10 +451,16 @@ export default function EbookReader() {
     if (!slug) { setError("No book specified"); setLoading(false); return; }
     let cancelled = false;
 
-    const load = async () => {
-      setLoading(true);
-      setError(null);
+    // Synchronously clear stale book state before any async work — prevents the
+    // previous book's content from showing while the new book loads.
+    setLoading(true);
+    setError(null);
+    setFileUrl(null);
+    setBookId(null);
+    setBookTitle("");
+    setBookSlug("");
 
+    const load = async () => {
       const dbBook = await utils.books.detail.fetch({ slug }).catch(() => null);
 
       if (!dbBook) {
@@ -835,6 +841,7 @@ export default function EbookReader() {
         {fileType === "pdf" ? (
           <div className="max-w-5xl mx-auto px-2 sm:px-4">
             <PdfRenderer
+              key={fileUrl ?? "pdf-loading"}
               url={fileUrl}
               currentPage={currentPage}
               zoom={zoom}
@@ -870,6 +877,7 @@ export default function EbookReader() {
               }}
             >
               <EpubRenderer
+                key={fileUrl ?? "epub-loading"}
                 ref={epubRef}
                 url={fileUrl}
                 fontSize={fontSize}
