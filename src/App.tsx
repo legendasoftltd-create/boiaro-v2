@@ -158,11 +158,14 @@ const SentryErrorBoundary = Sentry.ErrorBoundary;
 
 // Resets the error boundary on every route change so a crash on one page
 // does not leave all subsequent navigations stuck on the error screen.
+// Uses resetKeys instead of key= so children are NOT unmounted on navigation —
+// only the error state is cleared. Using key= was unmounting the entire admin
+// layout on every page change, causing re-mount crashes.
 function NavigationErrorBoundary({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   return (
     <SentryErrorBoundary
-      key={location.pathname}
+      resetKeys={[location.pathname]}
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
           <div className="text-center space-y-4">

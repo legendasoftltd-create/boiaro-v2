@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation, Link } from "react-router-dom";
 import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { useAdminPermissions } from "@/hooks/useAdminPermissions";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   LayoutDashboard, BookOpen, Users, Mic2, Building2, ShoppingCart,
   Star, Layers, ChevronLeft, ChevronRight, LogOut, CreditCard, UserCheck, DollarSign, Wallet, FileCheck, Settings, Truck, Crown, Ticket, Bell, Mail, FileText, BarChart3, PanelTop, Newspaper, Globe, ImageIcon, HeadphonesIcon, Shield, Activity, Coins, LayoutGrid, Megaphone, MonitorPlay, Sparkles, Gift, ChevronDown, Menu, AlertTriangle, MessageSquare, Package, ShieldCheck,
@@ -383,7 +384,9 @@ export default function AdminLayout() {
 
       <main className={cn("flex-1 overflow-y-auto", isMobile && "pt-14")}>
         <div className="p-5 max-w-7xl mx-auto">
-          <Outlet />
+          <ErrorBoundary key={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
     </div>
