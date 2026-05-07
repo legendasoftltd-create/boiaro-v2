@@ -19,6 +19,7 @@ jobs:
           cache: 'npm'
 
       # ── Build on the runner ──────────────────────────────────────────────
+
       - name: Install frontend dependencies
         run: npm ci
 
@@ -29,6 +30,10 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
         working-directory: server
+        env:
+          # prisma.config.ts calls env('DATABASE_URL') at load time.
+          # A dummy value satisfies the check — generate never connects to DB.
+          DATABASE_URL: "postgresql://ci:ci@localhost/ci"
 
       - name: Build server
         run: npm run build
@@ -38,6 +43,7 @@ jobs:
         run: npm run build
 
       # ── Upload built artifacts to server via rsync ───────────────────────
+
       - name: Setup SSH key
         run: |
           mkdir -p ~/.ssh
@@ -66,7 +72,7 @@ jobs:
 
           rsync -az \
             -e "ssh -i ~/.ssh/deploy_key" \
-            server/package.json server/package-lock.json \
+            server/package.json server/package-lock.json server/prisma.config.ts \
             ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/html/boiaro.com/server/
 
           rsync -az \
@@ -75,6 +81,7 @@ jobs:
             ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }}:/var/www/html/boiaro.com/
 
       # ── On server: install deps + migrate + reload ───────────────────────
+
       - name: Install production deps and reload
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -86,14 +93,24 @@ jobs:
           script: |
             set -euo pipefail
 
-            echo "Node version on server:"
+            echo "=== Node version ==="
             node -v
 
             cd /var/www/html/boiaro.com/server
+
+            echo "=== Installing production dependencies ==="
             npm ci --omit=dev
+
+            echo "=== Generating Prisma client ==="
             npx prisma generate
+
+            echo "=== Running database migrations ==="
             npx prisma migrate deploy
 
+            echo "=== Reloading PM2 processes ==="
             cd /var/www/html/boiaro.com
             pm2 startOrReload ecosystem.production.config.cjs --env production
             pm2 save
+
+            echo "=== Deploy complete ==="
+            pm2 list
