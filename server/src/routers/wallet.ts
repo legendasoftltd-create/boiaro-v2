@@ -116,11 +116,15 @@ export const walletRouter = router({
         }
       }
 
-      // Get the monetary value of this format (coin_price or price) for earnings calculation
-      const bookFormat = await prisma.bookFormat.findFirst({
-        where: { book_id: bookId, format: format as any },
-        select: { id: true, price: true, coin_price: true },
-      });
+      // premium_voice is not a BookFormatType enum value — it has no book_formats row.
+      // Only query for standard format types to avoid a Prisma enum validation error.
+      const BOOK_FORMAT_TYPES = new Set(["ebook", "audiobook", "hardcopy"]);
+      const bookFormat = BOOK_FORMAT_TYPES.has(format)
+        ? await prisma.bookFormat.findFirst({
+            where: { book_id: bookId, format: format as any },
+            select: { id: true, price: true, coin_price: true },
+          })
+        : null;
 
       const unlock = await prisma.$transaction(async (tx: any) => {
         const created = await tx.contentUnlock.upsert({
