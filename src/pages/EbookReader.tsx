@@ -98,6 +98,7 @@ export default function EbookReader() {
   const [premiumVoiceEnabled, setPremiumVoiceEnabled] = useState(false);
   const [voiceAccessType, setVoiceAccessType] = useState<"free" | "paid" | "subscription">("paid");
   const [voiceCoinPrice, setVoiceCoinPrice] = useState(0);
+  const [ebookFormatId, setEbookFormatId] = useState<string | null>(null);
   const [showVoiceGate, setShowVoiceGate] = useState(false);
   const [pdfPageText, setPdfPageText] = useState("");
   const [selectedVoiceId, setSelectedVoiceId] = useState<import("@/hooks/usePremiumTTS").BengaliVoiceId>("EXAVITQu4vr4xnSDxMaL");
@@ -533,6 +534,7 @@ export default function EbookReader() {
         const vat = (dbBook as any).voice_access_type;
         setVoiceAccessType(vat === "free" ? "free" : vat === "subscription" ? "subscription" : "paid");
         setVoiceCoinPrice(Number((dbBook as any).voice_coin_price) || 0);
+        setEbookFormatId((ebookFmt as any).id ?? null);
         // Only auto-detect genre if user hasn't manually chosen one
         if (!userOverrodeGenre) {
           try {
@@ -1151,32 +1153,58 @@ export default function EbookReader() {
               </>
             ) : (
               <>
+                {/* Price info */}
                 <div className="flex items-center justify-between rounded-lg border border-border/40 bg-accent/10 px-3 py-2">
-                  <span className="text-sm text-muted-foreground">Unlock cost</span>
+                  <span className="text-sm text-muted-foreground">Book price</span>
                   <span className="flex items-center gap-1 font-semibold text-amber-400">
-                    <Coins className="h-4 w-4" />
-                    {voiceCoinPrice} coins
+                    ৳{ebookPrice > 0 ? ebookPrice.toFixed(0) : "—"}
                   </span>
                 </div>
 
-                {balanceData?.wallet && (
-                  <div className="flex items-center justify-between rounded-lg border border-border/40 bg-accent/10 px-3 py-2">
-                    <span className="text-sm text-muted-foreground">Your balance</span>
-                    <span className={`flex items-center gap-1 font-semibold ${(balanceData.wallet.balance ?? 0) >= voiceCoinPrice ? "text-green-400" : "text-red-400"}`}>
-                      <Coins className="h-4 w-4" />
-                      {balanceData.wallet.balance ?? 0} coins
-                    </span>
-                  </div>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  Buy this book via payment gateway — AI Voice access is included with your purchase.
+                </p>
 
-                <p className="text-xs text-muted-foreground">One-time unlock — play unlimited times after purchase.</p>
+                {/* Primary: pay via gateway */}
+                <Button
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold"
+                  onClick={() => {
+                    setShowVoiceGate(false);
+                    navigate(`/book/${bookSlug}`);
+                  }}
+                >
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                  Buy via Payment Gateway
+                </Button>
+
+                {/* Divider */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-border/40" />
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wider">or instant unlock</span>
+                  <div className="flex-1 h-px bg-border/40" />
+                </div>
+
+                {/* Secondary: coin unlock */}
+                <div className="flex items-center justify-between rounded-lg border border-border/40 bg-accent/10 px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Coin unlock</span>
+                  <span className="flex items-center gap-1 font-semibold text-amber-400">
+                    <Coins className="h-4 w-4" />
+                    {voiceCoinPrice} coins
+                    {balanceData?.wallet && (
+                      <span className={`ml-2 text-xs ${(balanceData.wallet.balance ?? 0) >= voiceCoinPrice ? "text-green-400" : "text-red-400"}`}>
+                        (balance: {balanceData.wallet.balance ?? 0})
+                      </span>
+                    )}
+                  </span>
+                </div>
 
                 <div className="flex gap-2">
                   <Button variant="outline" className="flex-1" onClick={() => setShowVoiceGate(false)}>
                     Cancel
                   </Button>
                   <Button
-                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-black font-semibold"
+                    variant="outline"
+                    className="flex-1"
                     disabled={
                       unlockVoiceMutation.isPending ||
                       !balanceData?.wallet ||
@@ -1192,7 +1220,7 @@ export default function EbookReader() {
                     ) : (balanceData?.wallet && (balanceData.wallet.balance ?? 0) < voiceCoinPrice) ? (
                       "Not enough coins"
                     ) : (
-                      <><Sparkles className="h-3.5 w-3.5 mr-1.5" />Unlock Now</>
+                      <><Coins className="h-3.5 w-3.5 mr-1.5" />Use Coins</>
                     )}
                   </Button>
                 </div>

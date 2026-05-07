@@ -93,6 +93,8 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
   bookIdRef.current    = bookId;
   const rateRef        = useRef<PremiumTTSSpeed>(1);
   const activeRef      = useRef(false);
+  // Always-current ref so audio event handlers never hold stale closures
+  const playParagraphRef = useRef<(idx: number) => void>(() => {});
 
   // ── Audio element setup ────────────────────────────────────────────────────
   const cleanupAudio = useCallback(() => {
@@ -129,7 +131,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       const next = idx + 1;
       if (!activeRef.current) return;
       if (next < total) {
-        playParagraph(next);
+        playParagraphRef.current(next); // always-current ref, never stale
       } else {
         activeRef.current = false;
         setState(s => ({ ...s, isPlaying: false, isPaused: false, currentTime: 0 }));
@@ -138,7 +140,16 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     };
 
     audio.onerror = () => {
-      setState(s => ({ ...s, isPlaying: false, error: "Audio playback failed" }));
+      log(`Audio error on paragraph ${idx} — skipping to next`);
+      const next = idx + 1;
+      if (!activeRef.current) return;
+      if (next < total) {
+        playParagraphRef.current(next);
+      } else {
+        activeRef.current = false;
+        setState(s => ({ ...s, isPlaying: false, isPaused: false, currentTime: 0 }));
+        onCompleteRef.current?.();
+      }
     };
 
     setState(s => ({
@@ -154,7 +165,9 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
 
   // ── Generate a paragraph and cache URL ────────────────────────────────────
   const ensureParagraph = useCallback(async (idx: number): Promise<string | null> => {
-    if (!bookId) return null;
+    // Use the ref so this always reads the current bookId even from stale closures
+    const bid = bookIdRef.current;
+    if (!bid) return null;
 
     // 1. Session in-memory cache
     if (urlCacheRef.current.has(idx)) return urlCacheRef.current.get(idx)!;
@@ -163,7 +176,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     if (!text) return null;
 
     // 2. Persistent localStorage cache (no tRPC call needed)
-    const persisted = getTtsCachedUrl(bookId, voiceIdRef.current, text);
+    const persisted = getTtsCachedUrl(bid, voiceIdRef.current, text);
     if (persisted) {
       urlCacheRef.current.set(idx, persisted);
       log(`localStorage cache hit for paragraph ${idx}`);
@@ -172,7 +185,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
 
     // 3. Generate via tRPC (ElevenLabs → S3 → DB cache)
     const result = await generateMutation.mutateAsync({
-      bookId,
+      bookId: bid,
       text,
       voiceId: voiceIdRef.current,
       paragraphIndex: idx,
@@ -190,24 +203,25 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       throw new Error("QUOTA_EXCEEDED");
     }
     throw new Error((result as any).error ?? "Generation failed");
-  }, [bookId, generateMutation]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [generateMutation]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Lookahead prefetch ─────────────────────────────────────────────────────
   const prefetchAhead = useCallback((fromIdx: number) => {
-    if (!bookId) return;
+    const bid = bookIdRef.current;
+    if (!bid) return;
     const total = paragraphsRef.current.length;
     const toFetch = [];
     for (let i = fromIdx + 1; i < Math.min(fromIdx + 1 + LOOKAHEAD, total); i++) {
       // Skip if already in session cache or localStorage cache
       if (urlCacheRef.current.has(i)) continue;
       const text = paragraphsRef.current[i];
-      if (text && getTtsCachedUrl(bookId, voiceIdRef.current, text)) continue;
+      if (text && getTtsCachedUrl(bid, voiceIdRef.current, text)) continue;
       toFetch.push({ text: paragraphsRef.current[i], index: i });
     }
     if (toFetch.length > 0) {
-      prefetchMutation.mutate({ bookId, paragraphs: toFetch, voiceId: voiceIdRef.current });
+      prefetchMutation.mutate({ bookId: bid, paragraphs: toFetch, voiceId: voiceIdRef.current });
     }
-  }, [bookId, prefetchMutation]);
+  }, [prefetchMutation]);
 
   // ── Play a specific paragraph ──────────────────────────────────────────────
   const playParagraph = useCallback(async (idx: number) => {
@@ -240,6 +254,9 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       setState(s => ({ ...s, isGenerating: false, isPlaying: false, error: msg }));
     }
   }, [ensureParagraph, playAudioUrl, prefetchAhead]);
+
+  // Keep the ref current so audio event handlers always call the latest version
+  playParagraphRef.current = playParagraph;
 
   // ── Public API ─────────────────────────────────────────────────────────────
   const play = useCallback(async (fullText: string) => {

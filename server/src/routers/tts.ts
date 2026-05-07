@@ -54,11 +54,20 @@ export async function checkTtsAccess(
     return { allowed: true, access_type: "free" };
   }
 
-  // Check coin/purchase unlock
+  // Check coin/purchase unlock record
   const unlock = await prisma.contentUnlock.findFirst({
     where: { user_id: userId, book_id: bookId, format: "premium_voice", status: "active" },
   });
   if (unlock) return { allowed: true, access_type: "coin_unlock" };
+
+  // Check if user purchased the ebook via payment gateway
+  const paidEbookOrder = await prisma.orderItem.findFirst({
+    where: {
+      order: { user_id: userId, status: { in: ["paid", "confirmed", "completed", "delivered"] } },
+      book_format: { book_id: bookId, format: "ebook" },
+    },
+  });
+  if (paidEbookOrder) return { allowed: true, access_type: "coin_unlock" };
 
   // Subscription grants access for both "subscription" and "paid" access types
   const subscription = await prisma.userSubscription.findFirst({
