@@ -97,16 +97,56 @@ export async function checkTtsAccess(
   };
 }
 
-// ─── Bengali-friendly voices (tested per tts_docs.md) ──────────────────────
+// ─── Bengali-friendly voices (fallback when no DB config) ──────────────────
 export const BENGALI_VOICES = [
-  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", label: "সারা (মহিলা)", lang: "bn" },
-  { id: "pFZP5JQG7iQjIQuC4Bku", name: "Lily",  label: "লিলি (মহিলা)", lang: "bn" },
-  { id: "JBFqnCBsd6RMkjVDRZzb", name: "George", label: "জর্জ (পুরুষ)", lang: "bn" },
+  { id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", label: "সারা (মহিলা)", lang: "bn", enabled: true },
+  { id: "pFZP5JQG7iQjIQuC4Bku", name: "Lily",  label: "লিলি (মহিলা)", lang: "bn", enabled: true },
+  { id: "JBFqnCBsd6RMkjVDRZzb", name: "George", label: "জর্জ (পুরুষ)", lang: "bn", enabled: true },
 ];
 const DEFAULT_VOICE_ID = BENGALI_VOICES[0].id; // Sarah
 
-// ─── ElevenLabs settings per tts_docs.md ───────────────────────────────────
-const ELEVENLABS_MODEL = "eleven_multilingual_v2";
+// ─── Platform settings keys ─────────────────────────────────────────────────
+const VOICE_CONFIG_KEY    = "tts_voices_config";
+const AMBIENT_CONFIG_KEY  = "ambient_tracks_config";
+const TTS_MODEL_KEY       = "tts_model_id";
+
+// ─── Default ambient tracks ─────────────────────────────────────────────────
+const DEFAULT_AMBIENT_TRACKS = [
+  { id: "calm",      name: "Calm",      label: "শান্ত",        emoji: "🌿", url: "", enabled: true, prompt: "Soft peaceful ambient sounds, gentle breeze, birds chirping, nature background music" },
+  { id: "romance",   name: "Romance",   label: "রোমান্স",       emoji: "💕", url: "", enabled: true, prompt: "Romantic soft piano melody, gentle strings, warm ambient atmosphere" },
+  { id: "horror",    name: "Horror",    label: "ভৌতিক",        emoji: "👻", url: "", enabled: true, prompt: "Eerie dark ambient music, unsettling low drones, suspenseful horror atmosphere" },
+  { id: "suspense",  name: "Suspense",  label: "সাসপেন্স",     emoji: "⚡", url: "", enabled: true, prompt: "Tense suspense background music, mysterious ambient sounds, thriller atmosphere" },
+  { id: "adventure", name: "Adventure", label: "অ্যাডভেঞ্চার", emoji: "⚔️", url: "", enabled: true, prompt: "Epic adventure background music, orchestral ambient, heroic atmosphere" },
+];
+
+// ─── DB helpers ─────────────────────────────────────────────────────────────
+async function getStoredVoices() {
+  const row = await prisma.platformSetting.findUnique({ where: { key: VOICE_CONFIG_KEY } });
+  if (row?.value) { try { return JSON.parse(row.value) as typeof BENGALI_VOICES; } catch {} }
+  return BENGALI_VOICES;
+}
+
+async function getStoredAmbientTracks() {
+  const row = await prisma.platformSetting.findUnique({ where: { key: AMBIENT_CONFIG_KEY } });
+  if (row?.value) { try { return JSON.parse(row.value) as typeof DEFAULT_AMBIENT_TRACKS; } catch {} }
+  return DEFAULT_AMBIENT_TRACKS;
+}
+
+// ─── TTS model — dynamic, cached in memory for 5 min ───────────────────────
+const ELEVENLABS_MODEL_DEFAULT = "eleven_multilingual_v2";
+let _modelCache: { value: string; expiresAt: number } | null = null;
+
+async function getStoredTtsModel(): Promise<string> {
+  if (_modelCache && Date.now() < _modelCache.expiresAt) return _modelCache.value;
+  const row = await prisma.platformSetting.findUnique({ where: { key: TTS_MODEL_KEY } });
+  const model = row?.value?.trim() || ELEVENLABS_MODEL_DEFAULT;
+  _modelCache = { value: model, expiresAt: Date.now() + 5 * 60_000 };
+  return model;
+}
+
+function invalidateModelCache() { _modelCache = null; }
+
+// ─── ElevenLabs settings ────────────────────────────────────────────────────
 const ELEVENLABS_OUTPUT_FORMAT = "mp3_44100_128"; // URL query param, NOT body
 const VOICE_SETTINGS = {
   stability: 0.5,
@@ -155,18 +195,19 @@ function splitIntoParagraphs(text: string, maxChars = 2500): string[] {
 }
 
 // ─── SHA-256 hash for cache key ─────────────────────────────────────────────
-function makeCacheHash(text: string, voiceId: string): string {
+function makeCacheHash(text: string, voiceId: string, model: string): string {
   return crypto
     .createHash("sha256")
-    .update(`${text}|${voiceId}|${ELEVENLABS_MODEL}`)
+    .update(`${text}|${voiceId}|${model}`)
     .digest("hex");
 }
 
-// ─── Core ElevenLabs call ───────────────────────────────────────────────────
-async function callElevenLabs(text: string, voiceId: string): Promise<Buffer> {
+// ─── Core ElevenLabs TTS call ───────────────────────────────────────────────
+async function callElevenLabs(text: string, voiceId: string, model?: string): Promise<Buffer> {
   const key = getElevenLabsKey();
   if (!key) throw new Error("ELEVENLABS_API_KEY not configured");
 
+  const modelId = model ?? await getStoredTtsModel();
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${ELEVENLABS_OUTPUT_FORMAT}`;
 
   const response = await fetch(url, {
@@ -177,7 +218,7 @@ async function callElevenLabs(text: string, voiceId: string): Promise<Buffer> {
     },
     body: JSON.stringify({
       text: preprocessBengaliText(text),
-      model_id: ELEVENLABS_MODEL,
+      model_id: modelId,
       voice_settings: VOICE_SETTINGS,
     }),
   });
@@ -206,7 +247,8 @@ export async function generateParagraphAudio(
   userId: string,
   paragraphIndex: number
 ): Promise<string> {
-  const textHash = makeCacheHash(text, voiceId);
+  const model = await getStoredTtsModel();
+  const textHash = makeCacheHash(text, voiceId, model);
 
   // Check cache first
   const cached = await prisma.ttsAudio.findFirst({
@@ -218,8 +260,8 @@ export async function generateParagraphAudio(
     return cached.audio_url;
   }
 
-  console.log(`[TTS] Generating paragraph ${paragraphIndex} (${text.length} chars)`);
-  const audioBuffer = await callElevenLabs(text, voiceId);
+  console.log(`[TTS] Generating paragraph ${paragraphIndex} (${text.length} chars) model=${model}`);
+  const audioBuffer = await callElevenLabs(text, voiceId, model);
 
   const fileName = `tts_${bookId}_p${paragraphIndex}_${textHash.slice(0, 8)}.mp3`;
   const uploadResult = await uploadWithFallback(
@@ -252,8 +294,17 @@ export async function generateParagraphAudio(
 
 export const ttsRouter = router({
 
-  // List available Bengali voices
-  listVoices: publicProcedure.query(() => BENGALI_VOICES),
+  // List available Bengali voices (reads from platform_settings, falls back to hardcoded)
+  listVoices: publicProcedure.query(async () => {
+    const voices = await getStoredVoices();
+    return voices.filter(v => v.enabled !== false);
+  }),
+
+  // Public: list enabled ambient tracks
+  listAmbientTracks: publicProcedure.query(async () => {
+    const tracks = await getStoredAmbientTracks();
+    return tracks.filter(t => t.enabled);
+  }),
 
   // Generate audio for a single paragraph (with SHA-256 cache)
   generateParagraph: protectedProcedure
@@ -329,7 +380,8 @@ export const ttsRouter = router({
       try {
         const voiceId = input.voiceId || DEFAULT_VOICE_ID;
         const userId = ctx.userId;
-        const textHash = makeCacheHash(input.fullText, voiceId);
+        const model = await getStoredTtsModel();
+        const textHash = makeCacheHash(input.fullText, voiceId, model);
 
         const cached = await prisma.ttsAudio.findFirst({
           where: { text_hash: textHash, status: "completed" },
@@ -455,11 +507,12 @@ export const ttsRouter = router({
       `,
     ]);
 
+    const voices = await getStoredVoices();
     return {
       totalCached,
       todayGenerated,
       totalCharsProcessed: Number(totalCharsRow[0]?.total ?? 0),
-      voices: BENGALI_VOICES,
+      voices: voices.filter(v => v.enabled !== false),
     };
   }),
 
@@ -500,4 +553,135 @@ export const ttsRouter = router({
     const result = await prisma.ttsAudio.deleteMany({ where: { status: "completed" } });
     return { success: true, deletedCount: result.count };
   }),
+
+  // ── Voice Config ────────────────────────────────────────────────────────────
+
+  // Admin: fetch all voices from ElevenLabs API
+  adminFetchElevenLabsVoices: adminProcedure.query(async () => {
+    const key = getElevenLabsKey();
+    if (!key) throw new TRPCError({ code: "BAD_REQUEST", message: "API key not set" });
+    const res = await fetch("https://api.elevenlabs.io/v1/voices", {
+      headers: { "xi-api-key": key },
+    });
+    if (!res.ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `ElevenLabs ${res.status}` });
+    const data = await res.json() as { voices: any[] };
+    return data.voices ?? [];
+  }),
+
+  // Admin: get current voice config
+  adminGetVoiceConfig: adminProcedure.query(() => getStoredVoices()),
+
+  // Admin: save voice config
+  adminSaveVoiceConfig: adminProcedure
+    .input(z.array(z.object({
+      id:       z.string(),
+      name:     z.string(),
+      label:    z.string(),
+      lang:     z.string().default("bn"),
+      enabled:  z.boolean().default(true),
+      category: z.string().optional(),
+    })))
+    .mutation(async ({ input }) => {
+      await prisma.platformSetting.upsert({
+        where:  { key: VOICE_CONFIG_KEY },
+        update: { value: JSON.stringify(input) },
+        create: { key: VOICE_CONFIG_KEY, value: JSON.stringify(input) },
+      });
+      return { success: true };
+    }),
+
+  // ── Ambient Track Config ────────────────────────────────────────────────────
+
+  // Admin: get ambient tracks config
+  adminGetAmbientTracks: adminProcedure.query(() => getStoredAmbientTracks()),
+
+  // Admin: save ambient tracks config
+  adminSaveAmbientTracks: adminProcedure
+    .input(z.array(z.object({
+      id:      z.string(),
+      name:    z.string(),
+      label:   z.string(),
+      emoji:   z.string(),
+      url:     z.string(),
+      enabled: z.boolean(),
+      prompt:  z.string().optional(),
+    })))
+    .mutation(async ({ input }) => {
+      await prisma.platformSetting.upsert({
+        where:  { key: AMBIENT_CONFIG_KEY },
+        update: { value: JSON.stringify(input) },
+        create: { key: AMBIENT_CONFIG_KEY, value: JSON.stringify(input) },
+      });
+      return { success: true };
+    }),
+
+  // Admin: generate ambient sound via ElevenLabs Sound Effects API
+  adminGenerateAmbientSound: adminProcedure
+    .input(z.object({
+      trackId:         z.string(),
+      prompt:          z.string().min(10).max(500),
+      durationSeconds: z.number().min(5).max(22).default(22),
+    }))
+    .mutation(async ({ input }) => {
+      const key = getElevenLabsKey();
+      if (!key) throw new TRPCError({ code: "BAD_REQUEST", message: "ELEVENLABS_API_KEY not configured" });
+
+      const response = await fetch("https://api.elevenlabs.io/v1/sound-generation", {
+        method: "POST",
+        headers: { "xi-api-key": key, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text:             input.prompt,
+          duration_seconds: input.durationSeconds,
+          prompt_influence: 0.3,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `ElevenLabs ${response.status}: ${errText}` });
+      }
+
+      const audioBuffer = Buffer.from(await response.arrayBuffer());
+      const fileName = `ambient_${input.trackId}_${Date.now()}.mp3`;
+      const result = await uploadWithFallback(
+        audioBuffer,
+        fileName,
+        "audio/mpeg",
+        { hint: "audio", folder: "ambient-tracks" },
+        { uploadsDir: UPLOADS_DIR, baseUrl: BASE_URL }
+      );
+      return { success: true, url: result.url, via: result.via };
+    }),
+
+  // ── TTS Model Config ────────────────────────────────────────────────────────
+
+  // Admin: fetch available models from ElevenLabs
+  adminFetchElevenLabsModels: adminProcedure.query(async () => {
+    const key = getElevenLabsKey();
+    if (!key) throw new TRPCError({ code: "BAD_REQUEST", message: "API key not set" });
+    const res = await fetch("https://api.elevenlabs.io/v1/models", {
+      headers: { "xi-api-key": key },
+    });
+    if (!res.ok) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `ElevenLabs ${res.status}` });
+    return res.json() as Promise<{ model_id: string; name: string; description: string; can_do_text_to_speech: boolean }[]>;
+  }),
+
+  // Admin: get current TTS model
+  adminGetTtsModel: adminProcedure.query(async () => {
+    const model = await getStoredTtsModel();
+    return { model };
+  }),
+
+  // Admin: save TTS model
+  adminSaveTtsModel: adminProcedure
+    .input(z.object({ model: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      await prisma.platformSetting.upsert({
+        where:  { key: TTS_MODEL_KEY },
+        update: { value: input.model },
+        create: { key: TTS_MODEL_KEY, value: input.model },
+      });
+      invalidateModelCache();
+      return { success: true };
+    }),
 });

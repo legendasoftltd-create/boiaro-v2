@@ -340,7 +340,9 @@ export function isS3Url(url: string): boolean {
 }
 
 // ─── Bucket Policy ────────────────────────────────────────────────────────────
-// Public-read for non-sensitive asset folders; ebooks & audio stay private.
+// Public-read for assets that must be served directly to the browser.
+// Ebooks stay private (signed URLs only). TTS/ambient audio must be public
+// so the browser <audio> element can play them without credentials.
 
 export async function applyPublicReadPolicy(): Promise<void> {
   if (!s3Configured) throw new Error("S3 not configured");
@@ -354,6 +356,10 @@ export async function applyPublicReadPolicy(): Promise<void> {
         `arn:aws:s3:::${AWS_S3_BUCKET}/covers/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/images/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/avatars/*`,
+        `arn:aws:s3:::${AWS_S3_BUCKET}/audio/*`,
+        `arn:aws:s3:::${AWS_S3_BUCKET}/tts-paragraphs/*`,
+        `arn:aws:s3:::${AWS_S3_BUCKET}/tts-tests/*`,
+        `arn:aws:s3:::${AWS_S3_BUCKET}/ambient-tracks/*`,
       ],
     }],
   });

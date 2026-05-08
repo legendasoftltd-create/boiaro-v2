@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,19 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   Sparkles, Trash2, RefreshCw, Mic, BarChart3, Database, Zap,
   AlertTriangle, CheckCircle, XCircle, Play, Pause, Square,
-  ChevronLeft, ChevronRight, BookOpen, Search, Volume2,
+  ChevronLeft, ChevronRight, BookOpen, Search, Volume2, Music, Plus,
+  Save, Download, Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
-
-const VOICE_MAP: Record<string, string> = {
-  EXAVITQu4vr4xnSDxMaL: "Sarah",
-  pFZP5JQG7iQjIQuC4Bku: "Lily",
-  JBFqnCBsd6RMkjVDRZzb: "George",
-};
 
 const CACHE_PAGE = 20;
 
@@ -64,13 +60,437 @@ function AudioPlayer({ url }: { url: string }) {
   );
 }
 
+// Known ElevenLabs TTS models (shown in selector)
+const KNOWN_MODELS = [
+  { id: "eleven_v3",             name: "Eleven v3 (সর্বোচ্চ গুণমান)" },
+  { id: "eleven_multilingual_v2", name: "Multilingual v2 (Bengali-tested, default)" },
+  { id: "eleven_turbo_v2_5",     name: "Turbo v2.5 (দ্রুত)" },
+  { id: "eleven_flash_v2_5",     name: "Flash v2.5 (সবচেয়ে দ্রুত)" },
+];
+
+// ── Voice Management Section ─────────────────────────────────────────────────
+function VoiceManagement() {
+  const [fetchedVoices, setFetchedVoices] = useState<any[] | null>(null);
+  const [voiceConfig, setVoiceConfig] = useState<
+    { id: string; name: string; label: string; lang: string; enabled: boolean; category?: string }[]
+  >([]);
+  const [ttsModel, setTtsModel] = useState("");
+  const [fetchedModels, setFetchedModels] = useState<any[] | null>(null);
+  const [testAudioUrls, setTestAudioUrls] = useState<Record<string, string>>({});
+  const [testPlaying, setTestPlaying] = useState<string | null>(null);
+  const testAudioRefs = useRef<Record<string, HTMLAudioElement>>({});
+
+  const { data: currentConfig, refetch: refetchConfig } = trpc.tts.adminGetVoiceConfig.useQuery();
+  useEffect(() => {
+    if (currentConfig?.length && !voiceConfig.length) setVoiceConfig(currentConfig as any);
+  }, [currentConfig]);
+
+  const { data: modelData } = trpc.tts.adminGetTtsModel.useQuery();
+  useEffect(() => { if (modelData?.model && !ttsModel) setTtsModel(modelData.model); }, [modelData]);
+
+  const fetchElevenLabsVoices = trpc.tts.adminFetchElevenLabsVoices.useQuery(undefined, { enabled: false });
+  const fetchElevenLabsModels = trpc.tts.adminFetchElevenLabsModels.useQuery(undefined, { enabled: false });
+
+  const saveConfigMutation = trpc.tts.adminSaveVoiceConfig.useMutation({
+    onSuccess: () => { toast.success("Voice config সংরক্ষিত হয়েছে"); refetchConfig(); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const saveModelMutation = trpc.tts.adminSaveTtsModel.useMutation({
+    onSuccess: () => toast.success(`TTS Model সেট করা হয়েছে: ${ttsModel}`),
+    onError: (e) => toast.error(e.message),
+  });
+
+  const testVoiceMutation = trpc.tts.testVoice.useMutation({
+    onSuccess: (d, vars) => {
+      if (d.success && d.audioUrl) {
+        setTestAudioUrls(prev => ({ ...prev, [vars.voiceId]: d.audioUrl! }));
+        playTestAudio(vars.voiceId, d.audioUrl!);
+      } else {
+        toast.error(d.error === "QUOTA_EXCEEDED" ? "কোটা শেষ হয়ে গেছে" : (d.error ?? "Test failed"));
+      }
+    },
+  });
+
+  const handleFetchVoices = async () => {
+    const result = await fetchElevenLabsVoices.refetch();
+    if (result.data) { setFetchedVoices(result.data); toast.success(`${result.data.length}টি ভয়েস পাওয়া গেছে`); }
+    else toast.error("ElevenLabs থেকে ভয়েস আনতে ব্যর্থ");
+  };
+
+  const handleFetchModels = async () => {
+    const result = await fetchElevenLabsModels.refetch();
+    if (result.data) { setFetchedModels(result.data.filter(m => m.can_do_text_to_speech)); toast.success(`${result.data.length}টি model পাওয়া গেছে`); }
+    else toast.error("Models আনতে ব্যর্থ");
+  };
+
+  const addVoiceToConfig = (v: any) => {
+    if (voiceConfig.find(c => c.id === v.voice_id)) { toast.info("এই ভয়েস ইতিমধ্যে যোগ করা আছে"); return; }
+    setVoiceConfig(prev => [...prev, { id: v.voice_id, name: v.name, label: v.name, lang: "bn", enabled: true, category: v.category }]);
+  };
+
+  const updateVoice = (id: string, field: string, value: any) =>
+    setVoiceConfig(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v));
+
+  const removeVoice = (id: string) => setVoiceConfig(prev => prev.filter(v => v.id !== id));
+
+  const playTestAudio = (voiceId: string, url: string) => {
+    Object.values(testAudioRefs.current).forEach(a => { a.pause(); a.currentTime = 0; });
+    setTestPlaying(voiceId);
+    const audio = new Audio(url);
+    testAudioRefs.current[voiceId] = audio;
+    audio.onended = () => setTestPlaying(null);
+    audio.play().catch(() => toast.error("Cannot play audio"));
+  };
+
+  const stopTestAudio = () => {
+    Object.values(testAudioRefs.current).forEach(a => { a.pause(); a.currentTime = 0; });
+    setTestPlaying(null);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Settings className="h-4 w-4 text-amber-400" /> Voice & Model Management
+        </CardTitle>
+        <p className="text-xs text-muted-foreground pt-1">
+          ElevenLabs API থেকে ভয়েস এনে সক্রিয় করুন এবং TTS model বেছে নিন।
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-5">
+
+        {/* ── TTS Model Selector ── */}
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+              <Zap className="h-3.5 w-3.5" /> TTS Generation Model
+            </p>
+            <Button variant="ghost" size="sm" className="text-xs h-7"
+              onClick={handleFetchModels} disabled={fetchElevenLabsModels.isFetching}>
+              <Download className={`h-3 w-3 mr-1 ${fetchElevenLabsModels.isFetching ? "animate-spin" : ""}`} />
+              API থেকে আনুন
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Select value={ttsModel} onValueChange={setTtsModel}>
+              <SelectTrigger className="h-8 text-xs flex-1">
+                <SelectValue placeholder="Model বেছে নিন…" />
+              </SelectTrigger>
+              <SelectContent>
+                {(fetchedModels ?? KNOWN_MODELS).map(m => (
+                  <SelectItem key={m.id ?? m.model_id} value={m.id ?? m.model_id}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input value={ttsModel} onChange={e => setTtsModel(e.target.value)}
+              placeholder="custom model id…" className="h-8 text-xs w-48 font-mono" />
+            <Button size="sm" className="h-8 text-xs bg-amber-500 hover:bg-amber-600 text-black shrink-0"
+              onClick={() => saveModelMutation.mutate({ model: ttsModel })}
+              disabled={!ttsModel || saveModelMutation.isPending}>
+              <Save className="h-3 w-3 mr-1" />
+              {saveModelMutation.isPending ? "…" : "সেট করুন"}
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            বর্তমান: <code className="bg-muted px-1 rounded font-mono">{modelData?.model ?? "eleven_multilingual_v2"}</code>
+            {" · "}SHA-256 cache model ID অন্তর্ভুক্ত করে — model পরিবর্তনে নতুন cache তৈরি হবে।
+          </p>
+        </div>
+
+        {/* ── Voice Config ── */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-muted-foreground">সক্রিয় Voice Config</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="text-xs h-7"
+                onClick={handleFetchVoices} disabled={fetchElevenLabsVoices.isFetching}>
+                <Download className={`h-3 w-3 mr-1 ${fetchElevenLabsVoices.isFetching ? "animate-spin" : ""}`} />
+                ElevenLabs থেকে আনুন
+              </Button>
+              <Button size="sm" className="text-xs h-7 bg-amber-500 hover:bg-amber-600 text-black"
+                onClick={() => saveConfigMutation.mutate(voiceConfig)}
+                disabled={saveConfigMutation.isPending}>
+                <Save className="h-3 w-3 mr-1" />
+                {saveConfigMutation.isPending ? "…" : "সংরক্ষণ করুন"}
+              </Button>
+            </div>
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="text-xs">Voice ID</TableHead>
+                <TableHead className="text-xs">Name</TableHead>
+                <TableHead className="text-xs w-36">বাংলা Label</TableHead>
+                <TableHead className="text-xs w-16 text-center">Active</TableHead>
+                <TableHead className="text-xs w-28 text-center">টেস্ট</TableHead>
+                <TableHead className="text-xs w-14 text-center">মুছুন</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {voiceConfig.length === 0 ? (
+                <TableRow><TableCell colSpan={6} className="text-center text-xs text-muted-foreground py-6">
+                  ElevenLabs থেকে ভয়েস এনে যোগ করুন
+                </TableCell></TableRow>
+              ) : voiceConfig.map(v => (
+                <TableRow key={v.id}>
+                  <TableCell className="text-xs font-mono text-muted-foreground">{v.id.slice(0, 12)}…</TableCell>
+                  <TableCell className="text-xs font-medium">{v.name}</TableCell>
+                  <TableCell>
+                    <Input value={v.label} onChange={e => updateVoice(v.id, "label", e.target.value)}
+                      className="h-7 text-xs" placeholder="বাংলা নাম" />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Switch checked={v.enabled} onCheckedChange={val => updateVoice(v.id, "enabled", val)} />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className="flex gap-1 justify-center">
+                      <Button size="sm" variant="outline" className="h-7 text-xs px-2"
+                        disabled={testVoiceMutation.isPending && testVoiceMutation.variables?.voiceId === v.id}
+                        onClick={() => testVoiceMutation.mutate({ voiceId: v.id })}>
+                        {testVoiceMutation.isPending && testVoiceMutation.variables?.voiceId === v.id
+                          ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Volume2 className="h-3 w-3" />}
+                      </Button>
+                      {testAudioUrls[v.id] && (
+                        <Button size="sm" variant={testPlaying === v.id ? "default" : "outline"}
+                          className="h-7 w-7 p-0"
+                          onClick={() => testPlaying === v.id ? stopTestAudio() : playTestAudio(v.id, testAudioUrls[v.id])}>
+                          {testPlaying === v.id ? <Square className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeVoice(v.id)}>
+                      <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+
+        {/* Fetched voices from ElevenLabs */}
+        {fetchedVoices && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground mb-2">
+              ElevenLabs-এ পাওয়া ভয়েস ({fetchedVoices.length}টি) — "+" দিয়ে config-এ যোগ করুন
+            </p>
+            <div className="max-h-64 overflow-y-auto border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Name</TableHead>
+                    <TableHead className="text-xs">Category</TableHead>
+                    <TableHead className="text-xs w-20">Labels</TableHead>
+                    <TableHead className="text-xs w-14 text-center">যোগ করুন</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fetchedVoices.map(v => {
+                    const inConfig = voiceConfig.some(c => c.id === v.voice_id);
+                    return (
+                      <TableRow key={v.voice_id} className={inConfig ? "opacity-40" : ""}>
+                        <TableCell className="text-xs font-medium">{v.name}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground capitalize">{v.category ?? "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground truncate max-w-[80px]">
+                          {Object.values(v.labels ?? {}).slice(0, 2).join(", ") || "—"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" disabled={inConfig}
+                            onClick={() => addVoiceToConfig(v)}>
+                            <Plus className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Ambient Sound Management Section ─────────────────────────────────────────
+function AmbientManagement() {
+  type Track = { id: string; name: string; label: string; emoji: string; url: string; enabled: boolean; prompt?: string };
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [newTrack, setNewTrack] = useState({ id: "", name: "", label: "", emoji: "🎵", url: "", prompt: "" });
+  const [generateFor, setGenerateFor] = useState<string | null>(null); // track id being generated
+  const [duration, setDuration] = useState(22);
+
+  const { data: ambientConfig } = trpc.tts.adminGetAmbientTracks.useQuery();
+  useEffect(() => {
+    if (ambientConfig?.length && !tracks.length) setTracks(ambientConfig as any);
+  }, [ambientConfig]);
+
+  const saveMutation = trpc.tts.adminSaveAmbientTracks.useMutation({
+    onSuccess: () => toast.success("Ambient track config সংরক্ষিত হয়েছে"),
+    onError: (e) => toast.error(e.message),
+  });
+
+  const generateMutation = trpc.tts.adminGenerateAmbientSound.useMutation({
+    onSuccess: (d, vars) => {
+      toast.success(`Sound generated via ${d.via}`);
+      // Auto-fill the URL for this track
+      setTracks(prev => prev.map(t => t.id === vars.trackId ? { ...t, url: d.url } : t));
+      setGenerateFor(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const updateTrack = (id: string, field: string, value: any) =>
+    setTracks(prev => prev.map(t => t.id === id ? { ...t, [field]: value } : t));
+
+  const removeTrack = (id: string) => setTracks(prev => prev.filter(t => t.id !== id));
+
+  const addTrack = () => {
+    if (!newTrack.id.trim() || !newTrack.name.trim()) { toast.error("ID এবং Name প্রয়োজন"); return; }
+    if (tracks.find(t => t.id === newTrack.id)) { toast.error("এই ID ইতিমধ্যে আছে"); return; }
+    setTracks(prev => [...prev, { ...newTrack, enabled: true }]);
+    setNewTrack({ id: "", name: "", label: "", emoji: "🎵", url: "", prompt: "" });
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Music className="h-4 w-4 text-primary" /> Ambient Sound Management
+          </CardTitle>
+          <Button size="sm" className="text-xs h-8 bg-primary hover:bg-primary/90"
+            onClick={() => saveMutation.mutate(tracks)} disabled={saveMutation.isPending}>
+            <Save className="h-3.5 w-3.5 mr-1.5" />
+            {saveMutation.isPending ? "সংরক্ষণ হচ্ছে…" : "সংরক্ষণ করুন"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground pt-1">
+          ElevenLabs Sound Effects API দিয়ে ambient generate করুন অথবা সরাসরি MP3 URL দিন।
+          URL খালি থাকলে built-in synthetic sound ব্যবহার হবে।
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* Track list */}
+        <div className="space-y-3">
+          {tracks.map(t => (
+            <div key={t.id} className="border rounded-lg p-3 space-y-2 bg-card">
+              {/* Row 1: identity + controls */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-lg w-8 text-center">{t.emoji}</span>
+                <div className="flex-1 min-w-0 grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                  <Input value={t.name} onChange={e => updateTrack(t.id, "name", e.target.value)}
+                    className="h-7 text-xs" placeholder="Name" />
+                  <Input value={t.label} onChange={e => updateTrack(t.id, "label", e.target.value)}
+                    className="h-7 text-xs" placeholder="বাংলা label" />
+                  <Input value={t.emoji} onChange={e => updateTrack(t.id, "emoji", e.target.value)}
+                    className="h-7 text-xs" placeholder="Emoji" />
+                  <div className="flex items-center gap-2">
+                    <Switch checked={t.enabled} onCheckedChange={val => updateTrack(t.id, "enabled", val)} />
+                    <span className="text-[10px] text-muted-foreground font-mono">{t.id}</span>
+                  </div>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  {t.url && <AudioPlayer url={t.url} />}
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeTrack(t.id)}>
+                    <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Row 2: URL + generate button */}
+              <div className="flex gap-2">
+                <Input value={t.url} onChange={e => updateTrack(t.id, "url", e.target.value)}
+                  className="h-7 text-xs flex-1" placeholder="MP3 URL (খালি = synthetic fallback)" />
+                <Button size="sm" variant="outline" className="h-7 text-xs shrink-0"
+                  onClick={() => setGenerateFor(generateFor === t.id ? null : t.id)}>
+                  <Sparkles className="h-3 w-3 mr-1 text-amber-400" />
+                  ElevenLabs Generate
+                </Button>
+              </div>
+
+              {/* Inline generate panel */}
+              {generateFor === t.id && (
+                <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-3 space-y-2">
+                  <p className="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> ElevenLabs Sound Effects দিয়ে Generate করুন
+                  </p>
+                  <Input
+                    value={(t as any).prompt ?? ""}
+                    onChange={e => updateTrack(t.id, "prompt", e.target.value)}
+                    placeholder="Sound description prompt (English)…"
+                    className="h-8 text-xs"
+                  />
+                  <div className="flex items-center gap-3">
+                    <span className="text-[11px] text-muted-foreground whitespace-nowrap">Duration: {duration}s</span>
+                    <input type="range" min={5} max={22} step={1} value={duration}
+                      onChange={e => setDuration(Number(e.target.value))}
+                      className="flex-1 accent-amber-500" />
+                    <Button size="sm"
+                      className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-black shrink-0"
+                      disabled={generateMutation.isPending || !(t as any).prompt}
+                      onClick={() => generateMutation.mutate({
+                        trackId: t.id,
+                        prompt: (t as any).prompt ?? "",
+                        durationSeconds: duration,
+                      })}>
+                      {generateMutation.isPending && generateMutation.variables?.trackId === t.id
+                        ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" />Generating…</>
+                        : <><Sparkles className="h-3 w-3 mr-1" />Generate</>}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/60">
+                    Max 22s · ElevenLabs Sound Effects API · Generated audio ওয়েবসাইটে loop করবে
+                  </p>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Add new track */}
+        <div className="border rounded-lg p-3 space-y-2 bg-muted/10">
+          <p className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+            <Plus className="h-3.5 w-3.5" /> নতুন ট্র্যাক যোগ করুন
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <Input placeholder="ID (e.g. jazz)" value={newTrack.id}
+              onChange={e => setNewTrack(p => ({ ...p, id: e.target.value }))} className="h-7 text-xs" />
+            <Input placeholder="Name" value={newTrack.name}
+              onChange={e => setNewTrack(p => ({ ...p, name: e.target.value }))} className="h-7 text-xs" />
+            <Input placeholder="বাংলা label" value={newTrack.label}
+              onChange={e => setNewTrack(p => ({ ...p, label: e.target.value }))} className="h-7 text-xs" />
+            <Input placeholder="Emoji 🎵" value={newTrack.emoji}
+              onChange={e => setNewTrack(p => ({ ...p, emoji: e.target.value }))} className="h-7 text-xs" />
+            <Input placeholder="MP3 URL (ঐচ্ছিক)" value={newTrack.url}
+              onChange={e => setNewTrack(p => ({ ...p, url: e.target.value }))}
+              className="h-7 text-xs col-span-2 md:col-span-4" />
+          </div>
+          <Button size="sm" variant="outline" className="text-xs h-7" onClick={addTrack}>
+            <Plus className="h-3 w-3 mr-1" /> যোগ করুন
+          </Button>
+        </div>
+
+        <p className="text-[11px] text-muted-foreground/70">
+          Built-in synthetic fallback শুধুমাত্র: <code className="bg-muted px-1 rounded">calm, romance, horror, suspense, adventure</code>
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function AdminTtsManagement() {
   const [cacheOffset, setCacheOffset] = useState(0);
   const [searchText, setSearchText] = useState("");
   const [filterVoice, setFilterVoice] = useState("all");
-  const [testAudioUrls, setTestAudioUrls] = useState<Record<string, string>>({});
-  const [testPlaying, setTestPlaying] = useState<string | null>(null);
-  const testAudioRefs = useRef<Record<string, HTMLAudioElement>>({});
 
   // ── Queries ──
   const { data: apiStatus, refetch: refetchApi, isFetching: apiLoading } =
@@ -100,30 +520,6 @@ export default function AdminTtsManagement() {
   const deleteSingleMutation = trpc.tts.adminDeleteCache.useMutation({
     onSuccess: () => { refetchStats(); refetchCache(); refetchBookStats(); },
   });
-  const testVoiceMutation = trpc.tts.testVoice.useMutation({
-    onSuccess: (d, vars) => {
-      if (d.success && d.audioUrl) {
-        setTestAudioUrls(prev => ({ ...prev, [vars.voiceId]: d.audioUrl! }));
-        playTestAudio(vars.voiceId, d.audioUrl!);
-      } else {
-        toast.error(d.error === "QUOTA_EXCEEDED" ? "কোটা শেষ হয়ে গেছে" : (d.error ?? "Test failed"));
-      }
-    },
-  });
-
-  const playTestAudio = (voiceId: string, url: string) => {
-    Object.values(testAudioRefs.current).forEach(a => { a.pause(); a.currentTime = 0; });
-    setTestPlaying(voiceId);
-    const audio = new Audio(url);
-    testAudioRefs.current[voiceId] = audio;
-    audio.onended = () => setTestPlaying(null);
-    audio.play().catch(() => toast.error("Cannot play audio"));
-  };
-
-  const stopTestAudio = () => {
-    Object.values(testAudioRefs.current).forEach(a => { a.pause(); a.currentTime = 0; });
-    setTestPlaying(null);
-  };
 
   const refetchAll = () => {
     refetchApi(); refetchStats(); refetchCache(); refetchBookStats();
@@ -131,6 +527,9 @@ export default function AdminTtsManagement() {
 
   // ── Filtered cache items ──
   const allItems = cacheData?.items ?? [];
+  const voiceMap: Record<string, string> = Object.fromEntries(
+    (stats?.voices ?? []).map(v => [v.id, v.name])
+  );
   const filteredItems = allItems.filter(item => {
     const voiceMatch = filterVoice === "all" || item.voice_id === filterVoice;
     const textMatch = !searchText.trim() || item.source_text.toLowerCase().includes(searchText.toLowerCase());
@@ -210,7 +609,7 @@ export default function AdminTtsManagement() {
           { icon: Database, label: "মোট ক্যাশড", value: stats?.totalCached ?? "—", sub: "অডিও সেগমেন্ট" },
           { icon: Zap, label: "আজকে জেনারেট", value: stats?.todayGenerated ?? "—", sub: "নতুন রিকোয়েস্ট" },
           { icon: BarChart3, label: "মোট ক্যারেক্টার", value: stats ? fmtK(stats.totalCharsProcessed) : "—", sub: "ElevenLabs-এ পাঠানো" },
-          { icon: Mic, label: "Available Voices", value: stats?.voices?.length ?? 3, sub: "Bengali-friendly" },
+          { icon: Mic, label: "Active Voices", value: stats?.voices?.length ?? "—", sub: "Bengali-configured" },
         ].map((s, i) => (
           <Card key={i}>
             <CardContent className="pt-5">
@@ -224,63 +623,11 @@ export default function AdminTtsManagement() {
         ))}
       </div>
 
-      {/* ── Voice Cards with Test Button ── */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Mic className="h-4 w-4 text-amber-400" /> Bengali Voices (ElevenLabs)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {(stats?.voices ?? []).map(v => (
-              <div key={v.id} className="flex flex-col gap-3 p-3 rounded-xl border border-border/40 bg-muted/10">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
-                    <Mic className="h-4 w-4 text-amber-400" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm">{v.name}</p>
-                    <p className="text-xs text-muted-foreground">{v.label}</p>
-                    <p className="text-[10px] text-muted-foreground/50 font-mono truncate">{v.id.slice(0, 12)}…</p>
-                  </div>
-                  <Badge variant="outline" className="text-[10px] shrink-0 bg-green-500/10 text-green-400 border-green-500/30">
-                    Active
-                  </Badge>
-                </div>
+      {/* ── Voice Management ── */}
+      <VoiceManagement />
 
-                {/* Test controls */}
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex-1 h-7 text-xs"
-                    disabled={testVoiceMutation.isPending}
-                    onClick={() => testVoiceMutation.mutate({ voiceId: v.id })}
-                  >
-                    {testVoiceMutation.isPending && testVoiceMutation.variables?.voiceId === v.id
-                      ? <><RefreshCw className="h-3 w-3 mr-1 animate-spin" />জেনারেট হচ্ছে…</>
-                      : <><Volume2 className="h-3 w-3 mr-1" />টেস্ট করুন</>}
-                  </Button>
-
-                  {testAudioUrls[v.id] && (
-                    <Button
-                      size="sm"
-                      variant={testPlaying === v.id ? "default" : "outline"}
-                      className="h-7 w-9 p-0"
-                      onClick={() => testPlaying === v.id ? stopTestAudio() : playTestAudio(v.id, testAudioUrls[v.id])}
-                    >
-                      {testPlaying === v.id
-                        ? <Square className="h-3 w-3" />
-                        : <Play className="h-3 w-3" />}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── Ambient Sound Management ── */}
+      <AmbientManagement />
 
       {/* ── Per-Book Stats ── */}
       {(bookStats?.length ?? 0) > 0 && (
@@ -366,8 +713,8 @@ export default function AdminTtsManagement() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">সব ভয়েস</SelectItem>
-                {Object.entries(VOICE_MAP).map(([id, name]) => (
-                  <SelectItem key={id} value={id}>{name}</SelectItem>
+                {(stats?.voices ?? []).map(v => (
+                  <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -400,7 +747,7 @@ export default function AdminTtsManagement() {
                   </TableCell>
                   <TableCell className="text-xs">
                     <Badge variant="outline" className="text-[10px]">
-                      {item.voice_id ? (VOICE_MAP[item.voice_id] ?? item.voice_id.slice(0, 6)) : "—"}
+                      {item.voice_id ? (voiceMap[item.voice_id] ?? item.voice_id.slice(0, 6)) : "—"}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">

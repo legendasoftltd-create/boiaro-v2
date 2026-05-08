@@ -10,14 +10,8 @@ import { useActivityTracker } from "@/hooks/useActivityTracker";
 import type { TtsMode } from "@/hooks/useTtsEngine";
 import type { MusicGenre } from "@/hooks/useBackgroundMusic";
 import { BENGALI_VOICES, type BengaliVoiceId, type PremiumTTSSpeed } from "@/hooks/usePremiumTTS";
-
-const GENRE_OPTIONS: { value: MusicGenre; label: string; emoji: string }[] = [
-  { value: "calm", label: "শান্ত", emoji: "🌿" },
-  { value: "romance", label: "রোমান্স", emoji: "💕" },
-  { value: "horror", label: "ভৌতিক", emoji: "👻" },
-  { value: "suspense", label: "সাসপেন্স", emoji: "⚡" },
-  { value: "adventure", label: "অ্যাডভেঞ্চার", emoji: "⚔️" },
-];
+import type { AmbientTrack } from "@/lib/ambientAudioGenerator";
+import { DEFAULT_AMBIENT_TRACKS } from "@/lib/ambientAudioGenerator";
 
 interface ReaderSettingsSheetProps {
   open: boolean;
@@ -46,6 +40,8 @@ interface ReaderSettingsSheetProps {
   onAmbientVolumeChange?: (v: number) => void;
   ambientMuted?: boolean;
   onAmbientMuteToggle?: () => void;
+  ambientTracks?: AmbientTrack[];
+  voices?: { id: string; name: string; label: string }[];
   currentPageText?: string;
   onPlayOnPage?: () => void;
 }
@@ -67,6 +63,7 @@ export function ReaderSettingsSheet({
   autoReadEnabled, onAutoReadChange,
   ambientEnabled, onAmbientEnabledChange, ambientGenre, onAmbientGenreChange,
   ambientVolume = 0.15, onAmbientVolumeChange,
+  ambientTracks, voices,
   currentPageText, onPlayOnPage,
 }: ReaderSettingsSheetProps) {
   const [isPreviewing, setIsPreviewing] = useState(false);
@@ -157,12 +154,12 @@ export function ReaderSettingsSheet({
                   <div>
                     <p className="text-[11px] text-muted-foreground mb-2 font-medium">Choose Atmosphere</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {GENRE_OPTIONS.map((g) => (
+                      {(ambientTracks ?? DEFAULT_AMBIENT_TRACKS).map((g) => (
                         <button
-                          key={g.value}
-                          onClick={() => onAmbientGenreChange?.(g.value)}
+                          key={g.id}
+                          onClick={() => onAmbientGenreChange?.(g.id)}
                           className={`text-[11px] px-3 py-1.5 rounded-full border transition-all font-medium ${
-                            ambientGenre === g.value
+                            ambientGenre === g.id
                               ? "bg-primary text-primary-foreground border-primary shadow-sm"
                               : "bg-muted/50 text-muted-foreground border-border/50 hover:bg-muted hover:border-border"
                           }`}
@@ -300,7 +297,7 @@ export function ReaderSettingsSheet({
                     <Mic className="w-3 h-3" /> ভয়েস বেছে নিন
                   </p>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {BENGALI_VOICES.map(v => (
+                    {(voices ?? BENGALI_VOICES).map(v => (
                       <button key={v.id}
                         onClick={() => onVoiceChange(v.id as BengaliVoiceId)}
                         className={`text-[11px] px-2 py-2 rounded-lg border text-center transition-all ${selectedVoiceId === v.id ? "bg-amber-500 text-black border-amber-500 font-semibold" : "bg-muted/30 text-muted-foreground border-border/50 hover:border-amber-500/50"}`}>

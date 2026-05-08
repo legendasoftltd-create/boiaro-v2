@@ -16,6 +16,7 @@ import {
   initQueuePath,
   getCircuitState,
   pendingQueueSize,
+  applyPublicReadPolicy,
 } from "./lib/s3.js";
 
 import { startStorageSyncService } from "./services/storageSync.service.js";
@@ -200,6 +201,12 @@ app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT} [storage: ${mode}]`);
   // Start background sync service (uploads locally-saved files to S3 when it recovers)
   startStorageSyncService();
+  // Apply S3 bucket policy so TTS/ambient audio folders are publicly readable
+  if (s3Configured) {
+    applyPublicReadPolicy()
+      .then(() => console.log("[s3] public-read policy applied"))
+      .catch((err) => console.warn("[s3] failed to apply public-read policy:", err?.message));
+  }
 });
 
 export type { AppRouter } from "./routers/_app.js";

@@ -9,13 +9,12 @@ import {
   unlockAudioContext,
   isAudioUnlocked,
   bgLog,
-  type AmbientGenre,
+  SYNTHETIC_GENRES,
   type AudioNodes,
 } from "@/lib/ambientAudioGenerator";
 
-export type MusicGenre = AmbientGenre;
-
-const VALID_GENRES = new Set<MusicGenre>(["horror", "romance", "calm", "suspense", "adventure"]);
+// Widened to string so admin-configured dynamic tracks work
+export type MusicGenre = string;
 
 /**
  * Maps book category/tag strings to a music genre.
@@ -54,7 +53,7 @@ function loadPrefs(): BgMusicPrefs {
       const parsed = JSON.parse(raw);
       return {
         enabled: !!parsed.enabled,
-        genre: VALID_GENRES.has(parsed.genre) ? parsed.genre : null,
+        genre: typeof parsed.genre === "string" && parsed.genre.length > 0 ? parsed.genre : null,
         volume: typeof parsed.volume === "number" ? Math.max(0, Math.min(0.30, parsed.volume)) : 0.15,
         muted: !!parsed.muted,
       };
@@ -139,10 +138,11 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
       if (hasRealAudioRef.current) {
         bgLog(`${reason}: creating REAL audio source`, { genre: g });
         nodesRef.current = createRealAudio(g);
-      } else {
+      } else if (SYNTHETIC_GENRES.has(g)) {
         bgLog(`${reason}: creating SYNTHETIC audio source`, { genre: g });
         nodesRef.current = createAmbientAudio(g);
       }
+      // else: custom genre with no real audio — remains null (unavailable)
     }
     return nodesRef.current;
   }, []);
@@ -302,8 +302,9 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
     probeRealAudio(genre).then((hasReal) => {
       if (instanceId.current !== myId || !mountedRef.current) return;
       hasRealAudioRef.current = hasReal;
-      bgLog(`Genre "${genre}" ready — ${hasReal ? "REAL MP3" : "SYNTHETIC fallback"}`);
-      safeSetState((s) => ({ ...s, available: true, isRealAudio: hasReal }));
+      const hasSynthetic = SYNTHETIC_GENRES.has(genre);
+      bgLog(`Genre "${genre}" ready — ${hasReal ? "REAL MP3" : hasSynthetic ? "SYNTHETIC fallback" : "UNAVAILABLE"}`);
+      safeSetState((s) => ({ ...s, available: hasReal || hasSynthetic, isRealAudio: hasReal }));
     });
 
     return () => {

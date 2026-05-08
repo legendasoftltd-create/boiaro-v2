@@ -29,6 +29,7 @@ import { usePresence } from "@/hooks/usePresence";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
 import { trpc } from "@/lib/trpc";
 import { toMediaUrl } from "@/lib/mediaUrl";
+import { setAmbientTracks } from "@/lib/ambientAudioGenerator";
 
 type FileType = "pdf" | "epub";
 
@@ -165,6 +166,15 @@ export default function EbookReader() {
     },
     onError: (err) => toast.error(err.message || "Failed to unlock"),
   });
+
+  // Dynamic TTS voices + ambient tracks from admin config
+  const { data: dynamicVoices } = trpc.tts.listVoices.useQuery(undefined, { staleTime: 5 * 60_000 });
+  const { data: ambientTracks } = trpc.tts.listAmbientTracks.useQuery(undefined, { staleTime: 5 * 60_000 });
+
+  useEffect(() => {
+    if (ambientTracks?.length) setAmbientTracks(ambientTracks);
+  }, [ambientTracks]);
+
   useEffect(() => {
     if (bookmarkData !== undefined) setIsBookmarked(bookmarkData.bookmarked);
   }, [bookmarkData]);
@@ -1000,6 +1010,7 @@ export default function EbookReader() {
         ambientGenre={musicGenre}
         ambientVolume={bgMusic.volume}
         ambientMuted={bgMusic.isMuted}
+        ambientTracks={ambientTracks}
         onAmbientGenreChange={(g) => {
           setUserOverrodeGenre(true);
           setMusicGenre(g);
@@ -1079,6 +1090,8 @@ export default function EbookReader() {
         onAmbientVolumeChange={bgMusic.setVolume}
         ambientMuted={bgMusic.isMuted}
         onAmbientMuteToggle={bgMusic.toggleMute}
+        ambientTracks={ambientTracks}
+        voices={dynamicVoices}
       />
 
       {/* Preview Mode Badge */}

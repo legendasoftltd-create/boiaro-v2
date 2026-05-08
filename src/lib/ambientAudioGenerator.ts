@@ -1,16 +1,44 @@
 /**
  * Background music system with real MP3 support + synthetic fallback.
  *
- * Priority: Real MP3 from storage → Synthetic oscillator fallback
- *
- * Real audio files are expected at:
- *   {MEDIA_BASE_URL}/storage/v1/object/public/background-music/{genre}.mp3
- *
- * If the file doesn't exist or fails to load, the system falls back to
- * the original Web Audio API oscillator-based ambient sound.
+ * Priority: Real MP3 URL from admin config → Synthetic oscillator fallback
+ * (synthetic only available for the 5 built-in genre IDs)
  */
 
 export type AmbientGenre = "horror" | "romance" | "calm" | "suspense" | "adventure";
+
+export interface AmbientTrack {
+  id: string;
+  name: string;
+  label: string;
+  emoji: string;
+  url: string;
+  enabled: boolean;
+}
+
+// Built-in genres that support synthetic oscillator fallback
+export const SYNTHETIC_GENRES = new Set<string>(["calm", "romance", "horror", "suspense", "adventure"]);
+
+// Default track list (matches server DEFAULT_AMBIENT_TRACKS)
+export const DEFAULT_AMBIENT_TRACKS: AmbientTrack[] = [
+  { id: "calm",      name: "Calm",      label: "শান্ত",        emoji: "🌿", url: "", enabled: true },
+  { id: "romance",   name: "Romance",   label: "রোমান্স",       emoji: "💕", url: "", enabled: true },
+  { id: "horror",    name: "Horror",    label: "ভৌতিক",        emoji: "👻", url: "", enabled: true },
+  { id: "suspense",  name: "Suspense",  label: "সাসপেন্স",     emoji: "⚡", url: "", enabled: true },
+  { id: "adventure", name: "Adventure", label: "অ্যাডভেঞ্চার", emoji: "⚔️", url: "", enabled: true },
+];
+
+// Module-level dynamic track registry (set from EbookReader after API fetch)
+let _dynamicTracks: AmbientTrack[] | null = null;
+
+export function setAmbientTracks(tracks: AmbientTrack[]) {
+  _dynamicTracks = tracks;
+  _fileAvailability.clear(); // re-probe with new URLs
+}
+
+export function getAmbientTracks(): AmbientTrack[] {
+  return _dynamicTracks ?? DEFAULT_AMBIENT_TRACKS;
+}
 
 export const BG_MUSIC_DEBUG = true;
 
@@ -53,36 +81,32 @@ export function isAudioUnlocked(): boolean {
   return _unlocked && !!_sharedCtx && _sharedCtx.state === "running";
 }
 
-/* ── Storage URL helper ────────────────────────────────────────── */
+/* ── Storage URL helper (uses dynamic track config) ───────────── */
 
-function getMediaBaseUrl(): string {
-  // Background music storage not configured — falls back to oscillator
-  return "";
-}
-
-function getMusicFileUrl(genre: AmbientGenre): string {
-  const base = getMediaBaseUrl();
-  if (!base) return "";
-  return `${base}/storage/v1/object/public/background-music/${genre}.mp3`;
+function getMusicFileUrl(trackId: string): string {
+  const tracks = getAmbientTracks();
+  const track = tracks.find(t => t.id === trackId);
+  return track?.url ?? "";
 }
 
 /* ── Real audio file cache ─────────────────────────────────────── */
 
-const _fileAvailability = new Map<AmbientGenre, "unknown" | "available" | "unavailable">();
-const _audioElements = new Map<AmbientGenre, HTMLAudioElement>();
+const _fileAvailability = new Map<string, "unknown" | "available" | "unavailable">();
+const _audioElements = new Map<string, HTMLAudioElement>();
 
 /**
- * Probe whether a real MP3 file exists for the genre.
+ * Probe whether a real MP3 file exists for a track.
  * Results are cached so we only check once per session.
+ * Call setAmbientTracks() first to register URLs from the API.
  */
-export async function probeRealAudio(genre: AmbientGenre): Promise<boolean> {
-  const cached = _fileAvailability.get(genre);
+export async function probeRealAudio(trackId: string): Promise<boolean> {
+  const cached = _fileAvailability.get(trackId);
   if (cached === "available") return true;
   if (cached === "unavailable") return false;
 
-  const url = getMusicFileUrl(genre);
+  const url = getMusicFileUrl(trackId);
   if (!url) {
-    _fileAvailability.set(genre, "unavailable");
+    _fileAvailability.set(trackId, "unavailable");
     return false;
   }
 
@@ -91,12 +115,12 @@ export async function probeRealAudio(genre: AmbientGenre): Promise<boolean> {
     const ct = resp.headers.get("content-type") || "";
     // Accept audio/* MIME types OR octet-stream (storage may not set correct MIME)
     const ok = resp.ok && (ct.includes("audio") || ct.includes("octet-stream"));
-    _fileAvailability.set(genre, ok ? "available" : "unavailable");
-    bgLog(`Probe ${genre}.mp3: ${ok ? "FOUND" : "NOT FOUND"} (${resp.status})`);
+    _fileAvailability.set(trackId, ok ? "available" : "unavailable");
+    bgLog(`Probe ${trackId}: ${ok ? "FOUND" : "NOT FOUND"} (${resp.status})`);
     return ok;
   } catch {
-    _fileAvailability.set(genre, "unavailable");
-    bgLog(`Probe ${genre}.mp3: FAILED (network error)`);
+    _fileAvailability.set(trackId, "unavailable");
+    bgLog(`Probe ${trackId}: FAILED (network error)`);
     return false;
   }
 }
@@ -111,18 +135,18 @@ export interface RealAudioNodes {
   source: MediaElementAudioSourceNode;
 }
 
-export function createRealAudio(genre: AmbientGenre): RealAudioNodes {
+export function createRealAudio(trackId: string): RealAudioNodes {
   const ctx = getSharedAudioContext();
-  const url = getMusicFileUrl(genre);
+  const url = getMusicFileUrl(trackId);
 
   // Reuse or create audio element
-  let audio = _audioElements.get(genre);
+  let audio = _audioElements.get(trackId);
   if (!audio) {
     audio = new Audio();
     audio.crossOrigin = "anonymous";
     audio.loop = true;
     audio.preload = "auto";
-    _audioElements.set(genre, audio);
+    _audioElements.set(trackId, audio);
   }
   audio.src = url;
 
@@ -135,22 +159,20 @@ export function createRealAudio(genre: AmbientGenre): RealAudioNodes {
   try {
     source = ctx.createMediaElementSource(audio);
   } catch {
-    // Already connected — disconnect and reconnect gain
-    // This happens when switching genres back to a previously used one
-    bgLog(`Reusing existing MediaElementSource for ${genre}`);
-    // We need a fresh audio element in this case
+    // Already connected — need a fresh element
+    bgLog(`Reusing existing MediaElementSource for ${trackId}`);
     audio = new Audio();
     audio.crossOrigin = "anonymous";
     audio.loop = true;
     audio.preload = "auto";
     audio.src = url;
-    _audioElements.set(genre, audio);
+    _audioElements.set(trackId, audio);
     source = ctx.createMediaElementSource(audio);
   }
 
   source.connect(gainNode);
 
-  bgLog(`Created REAL audio: genre=${genre}, url=${url}`);
+  bgLog(`Created REAL audio: trackId=${trackId}, url=${url}`);
   return { type: "real", ctx, gainNode, audio, source };
 }
 
@@ -224,9 +246,9 @@ export interface SyntheticAudioNodes {
   lfo: OscillatorNode;
 }
 
-export function createAmbientAudio(genre: AmbientGenre): SyntheticAudioNodes {
+export function createAmbientAudio(genre: string): SyntheticAudioNodes {
   const ctx = getSharedAudioContext();
-  const config = GENRE_CONFIG[genre];
+  const config = GENRE_CONFIG[genre as AmbientGenre] ?? GENRE_CONFIG["calm"];
 
   const gainNode = ctx.createGain();
   gainNode.gain.value = 0;

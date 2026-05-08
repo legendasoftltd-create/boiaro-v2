@@ -4,14 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Slider } from "@/components/ui/slider";
 import type { MusicGenre } from "@/hooks/useBackgroundMusic";
-
-const GENRE_LABELS: Record<MusicGenre, string> = {
-  calm: "🌿 Calm",
-  romance: "💕 Romance",
-  horror: "👻 Horror",
-  suspense: "⚡ Suspense",
-  adventure: "⚔️ Adventure",
-};
+import { DEFAULT_AMBIENT_TRACKS, type AmbientTrack } from "@/lib/ambientAudioGenerator";
 
 interface ReaderBottomBarProps {
   show: boolean;
@@ -31,6 +24,7 @@ interface ReaderBottomBarProps {
   ambientGenre?: MusicGenre;
   ambientVolume?: number;
   ambientMuted?: boolean;
+  ambientTracks?: AmbientTrack[];
   onAmbientGenreChange?: (g: MusicGenre) => void;
   onAmbientVolumeChange?: (v: number) => void;
   onAmbientMuteToggle?: () => void;
@@ -39,7 +33,7 @@ interface ReaderBottomBarProps {
 export function ReaderBottomBar({
   show, isDarkMode, currentPage, totalPages, percentage, fileType,
   zoom, onPrevPage, onNextPage, onZoomIn, onZoomOut, onFullscreen,
-  ambientEnabled, ambientGenre, ambientVolume = 0.15, ambientMuted,
+  ambientEnabled, ambientGenre, ambientVolume = 0.15, ambientMuted, ambientTracks,
   onAmbientGenreChange, onAmbientVolumeChange, onAmbientMuteToggle,
 }: ReaderBottomBarProps) {
   const [showAmbientPanel, setShowAmbientPanel] = useState(false);
@@ -68,17 +62,17 @@ export function ReaderBottomBar({
           </div>
           {/* Genre row */}
           <div className="flex gap-1.5 flex-wrap">
-            {(Object.keys(GENRE_LABELS) as MusicGenre[]).map((g) => (
+            {(ambientTracks ?? DEFAULT_AMBIENT_TRACKS).map((t) => (
               <button
-                key={g}
-                onClick={() => onAmbientGenreChange?.(g)}
+                key={t.id}
+                onClick={() => onAmbientGenreChange?.(t.id)}
                 className={`text-[10px] px-2.5 py-1 rounded-full border transition-all font-medium ${
-                  ambientGenre === g
+                  ambientGenre === t.id
                     ? "bg-primary text-primary-foreground border-primary"
                     : "bg-muted/40 text-muted-foreground border-border/40 hover:border-border"
                 }`}
               >
-                {GENRE_LABELS[g]}
+                {t.emoji} {t.label}
               </button>
             ))}
           </div>
@@ -125,7 +119,7 @@ export function ReaderBottomBar({
               }`}
             >
               <Waves className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">{ambientGenre ? GENRE_LABELS[ambientGenre]?.split(" ").pop() : "Ambient"}</span>
+              <span className="hidden xs:inline">{ambientGenre ? ((ambientTracks ?? DEFAULT_AMBIENT_TRACKS).find(t => t.id === ambientGenre)?.label ?? ambientGenre) : "Ambient"}</span>
               <span className="font-mono">{Math.round((ambientVolume ?? 0.15) * 100)}%</span>
             </button>
           )}
