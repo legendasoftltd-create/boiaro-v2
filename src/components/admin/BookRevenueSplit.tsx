@@ -131,6 +131,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
   };
 
   const upsertRevenueOverride = trpc.admin.upsertRevenueOverride.useMutation();
+  const deleteRevenueOverrideMutation = trpc.admin.deleteRevenueOverride.useMutation();
 
   const saveSplit = async (format: string) => {
     const split = splits[format];
@@ -140,7 +141,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
     setSaving(format);
     if (split.useDefault) {
       if (split.id) {
-        await utils.admin.deleteRevenueOverride.fetch({ id: split.id });
+        await deleteRevenueOverrideMutation.mutateAsync({ id: split.id });
       }
       toast.success(`${format} using default rules`);
     } else {

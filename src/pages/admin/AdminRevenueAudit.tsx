@@ -20,6 +20,7 @@ interface AuditResult {
 
 function OrderAuditTool() {
   const utils = trpc.useUtils();
+  const revenueAuditFixMutation = trpc.admin.revenueAuditFixOrder.useMutation();
   const [orderId, setOrderId] = useState("");
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState(false);
@@ -50,7 +51,7 @@ function OrderAuditTool() {
     if (!result?.order) return;
     setFixing(true);
     try {
-      const data = await utils.admin.revenueAuditFixOrder.fetch({ orderId: result.order.id });
+      const data = await revenueAuditFixMutation.mutateAsync({ orderId: result.order.id });
       const fixes = data?.fixes || [];
       if (fixes.length === 0) {
         toast.info("No auto-fixable issues found");
@@ -252,6 +253,7 @@ function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
 /** Daily consistency check: orders revenue vs ledger income */
 function ConsistencyCheck() {
   const utils = trpc.useUtils();
+  const revenueAuditFixMutation = trpc.admin.revenueAuditFixOrder.useMutation();
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [result, setResult] = useState<{
@@ -322,7 +324,7 @@ function ConsistencyCheck() {
                   try {
                     const fixes: string[] = [];
                     for (const missingOrder of result.missingFromLedger) {
-                      const fixed = await utils.admin.revenueAuditFixOrder.fetch({ orderId: missingOrder.id });
+                      const fixed = await revenueAuditFixMutation.mutateAsync({ orderId: missingOrder.id });
                       if (fixed?.fixes?.length) fixes.push(...fixed.fixes);
                     }
                     toast.success(`Bulk fix complete: ${fixes.length} fix(es) applied`);
