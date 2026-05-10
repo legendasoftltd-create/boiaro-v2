@@ -33,25 +33,26 @@ const HOMEPAGE_SECTION_DEFAULTS: Array<{
   sort_order: number;
   display_source: string | null;
 }> = [
-  { section_key: "continue_reading", title: "পড়া চালিয়ে যান", subtitle: null, is_enabled: true, sort_order: 1, display_source: null },
-  { section_key: "continue_listening", title: "শোনা চালিয়ে যান", subtitle: null, is_enabled: true, sort_order: 2, display_source: null },
-  { section_key: "recently_viewed", title: "সম্প্রতি দেখা", subtitle: null, is_enabled: true, sort_order: 3, display_source: null },
-  { section_key: "recommended_for_you", title: "আপনার জন্য", subtitle: "AI সাজেশন", is_enabled: true, sort_order: 4, display_source: null },
-  { section_key: "because_you_read", title: "আপনি যা পড়েছেন", subtitle: null, is_enabled: true, sort_order: 5, display_source: null },
-  { section_key: "featured_books", title: "নতুন প্রকাশনা", subtitle: "সদ্য প্রকাশিত বইসমূহ", is_enabled: true, sort_order: 6, display_source: null },
-  { section_key: "trending_books", title: "ট্রেন্ডিং বই", subtitle: "জনপ্রিয় বইসমূহ", is_enabled: true, sort_order: 7, display_source: null },
-  { section_key: "top_10_most_read", title: "সর্বাধিক পঠিত ১০", subtitle: null, is_enabled: true, sort_order: 8, display_source: null },
-  { section_key: "editors_pick", title: "সম্পাদকের পছন্দ", subtitle: null, is_enabled: true, sort_order: 9, display_source: null },
-  { section_key: "popular_audiobooks", title: "জনপ্রিয় অডিওবুক", subtitle: "শুনুন আপনার পছন্দের বই", is_enabled: true, sort_order: 10, display_source: null },
-  { section_key: "audiobooks", title: "অডিওবুক সমূহ", subtitle: null, is_enabled: true, sort_order: 11, display_source: null },
-  { section_key: "hard_copies", title: "হার্ড কপি", subtitle: "সংগ্রহে রাখুন", is_enabled: true, sort_order: 12, display_source: null },
-  { section_key: "free_books", title: "ফ্রি বই", subtitle: "বিনামূল্যে পড়ুন", is_enabled: true, sort_order: 13, display_source: null },
-  { section_key: "categories", title: "ক্যাটাগরি", subtitle: "বিষয় অনুযায়ী বই খুঁজুন", is_enabled: true, sort_order: 14, display_source: null },
-  { section_key: "authors", title: "জনপ্রিয় লেখক", subtitle: "আমাদের প্রিয় লেখকগণ", is_enabled: true, sort_order: 15, display_source: null },
-  { section_key: "narrators", title: "জনপ্রিয় কথক", subtitle: null, is_enabled: true, sort_order: 16, display_source: null },
-  { section_key: "live_radio", title: "Live Radio", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 17, display_source: null },
-  { section_key: "blog", title: "ব্লগ ও আর্টিকেল", subtitle: "আমাদের সাম্প্রতিক লেখা", is_enabled: true, sort_order: 18, display_source: null },
-  { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 19, display_source: null },
+  { section_key: "hero", title: "Hero Banner", subtitle: null, is_enabled: true, sort_order: 1, display_source: null },
+  { section_key: "continue_reading", title: "পড়া চালিয়ে যান", subtitle: null, is_enabled: true, sort_order: 2, display_source: null },
+  { section_key: "continue_listening", title: "শোনা চালিয়ে যান", subtitle: null, is_enabled: true, sort_order: 3, display_source: null },
+  { section_key: "recently_viewed", title: "সম্প্রতি দেখা", subtitle: null, is_enabled: true, sort_order: 4, display_source: null },
+  { section_key: "recommended_for_you", title: "আপনার জন্য", subtitle: "AI সাজেশন", is_enabled: true, sort_order: 5, display_source: null },
+  { section_key: "because_you_read", title: "আপনি যা পড়েছেন", subtitle: null, is_enabled: true, sort_order: 6, display_source: null },
+  { section_key: "featured_books", title: "নতুন প্রকাশনা", subtitle: "সদ্য প্রকাশিত বইসমূহ", is_enabled: true, sort_order: 7, display_source: null },
+  { section_key: "trending_books", title: "ট্রেন্ডিং বই", subtitle: "জনপ্রিয় বইসমূহ", is_enabled: true, sort_order: 8, display_source: null },
+  { section_key: "top_10_most_read", title: "সর্বাধিক পঠিত ১০", subtitle: null, is_enabled: true, sort_order: 9, display_source: null },
+  { section_key: "editors_pick", title: "সম্পাদকের পছন্দ", subtitle: null, is_enabled: true, sort_order: 10, display_source: null },
+  { section_key: "popular_audiobooks", title: "জনপ্রিয় অডিওবুক", subtitle: "শুনুন আপনার পছন্দের বই", is_enabled: true, sort_order: 11, display_source: null },
+  { section_key: "audiobooks", title: "অডিওবুক সমূহ", subtitle: null, is_enabled: true, sort_order: 12, display_source: null },
+  { section_key: "hard_copies", title: "হার্ড কপি", subtitle: "সংগ্রহে রাখুন", is_enabled: true, sort_order: 13, display_source: null },
+  { section_key: "free_books", title: "ফ্রি বই", subtitle: "বিনামূল্যে পড়ুন", is_enabled: true, sort_order: 14, display_source: null },
+  { section_key: "categories", title: "ক্যাটাগরি", subtitle: "বিষয় অনুযায়ী বই খুঁজুন", is_enabled: true, sort_order: 15, display_source: null },
+  { section_key: "authors", title: "জনপ্রিয় লেখক", subtitle: "আমাদের প্রিয় লেখকগণ", is_enabled: true, sort_order: 16, display_source: null },
+  { section_key: "narrators", title: "জনপ্রিয় কথক", subtitle: null, is_enabled: true, sort_order: 17, display_source: null },
+  { section_key: "live_radio", title: "Live Radio", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 18, display_source: null },
+  { section_key: "blog", title: "ব্লগ ও আর্টিকেল", subtitle: "আমাদের সাম্প্রতিক লেখা", is_enabled: true, sort_order: 19, display_source: null },
+  { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 20, display_source: null },
 ];
 
 const APP_ROLE_VALUES = ["admin", "moderator", "user", "writer", "publisher", "narrator", "rj"] as const;
@@ -1690,10 +1691,7 @@ export const adminRouter = router({
 
   // ── Homepage Sections ─────────────────────────────────────────────────────────
   listHomepageSections: adminProcedure.query(async () => {
-    const existing = await prisma.homepageSection.findMany({
-      where: { section_key: { not: "hero" } },
-      orderBy: { sort_order: "asc" },
-    });
+    const existing = await prisma.homepageSection.findMany({ orderBy: { sort_order: "asc" } });
     if (existing.length > 0) return existing;
 
     await prisma.homepageSection.createMany({
@@ -1701,10 +1699,7 @@ export const adminRouter = router({
       skipDuplicates: true,
     });
 
-    return prisma.homepageSection.findMany({
-      where: { section_key: { not: "hero" } },
-      orderBy: { sort_order: "asc" },
-    });
+    return prisma.homepageSection.findMany({ orderBy: { sort_order: "asc" } });
   }),
 
   resetHomepageSections: adminProcedure
