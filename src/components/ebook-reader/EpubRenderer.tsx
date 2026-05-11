@@ -429,13 +429,7 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
             }
           });
 
-          // Generate locations for percentage (non-blocking)
-          try {
-            await generateLocations(book, 1600);
-            if (!destroyed) rendition.reportLocation();
-          } catch (locErr) {
-            console.warn("[EpubRenderer] Location generation failed:", locErr);
-          }
+
         } catch (err: any) {
           if (timeoutId) clearTimeout(timeoutId);
           if (!destroyed) {
