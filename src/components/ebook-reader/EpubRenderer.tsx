@@ -327,7 +327,8 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           setLoaded(true);
 
           // Generate locations for accurate percentage tracking (runs in background after first render)
-          generateLocations(book, 1024).then(() => {
+          // 150 chars per location gives fine-grained progress even for short books
+          generateLocations(book, 150).then(() => {
             if (!destroyed) console.debug("[EpubRenderer] Locations generated:", getLocationCount(book));
           }).catch(() => {});
 
@@ -335,21 +336,36 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           rendition.on("relocated", (location: any) => {
             if (destroyed) return;
             try {
+              const locCount = getLocationCount(book);
+              const spineItems = (book as any)?.spine?.items;
+              const spineLen = Math.max(1, Array.isArray(spineItems) ? spineItems.length : 1);
+              const spineIdx = location.start?.index ?? 0;
+              const displayedPage = location.start?.displayed?.page ?? 1;
+              const displayedTotal = location.start?.displayed?.total ?? 1;
+              const atLastSpine = spineIdx >= spineLen - 1;
+              const atLastPage = displayedPage >= displayedTotal;
+
               let pct: number;
-              if (getLocationCount(book) && typeof location.start?.percentage === "number") {
-                // Accurate percentage once locations are generated
-                pct = Math.round((location.start?.percentage ?? 0) * 100);
+              if (locCount >= 10 && typeof location.start?.percentage === "number") {
+                // Only trust location percentage when we have enough granularity (>=10 locations)
+                const rawPct = Math.round(location.start.percentage * 100);
+                // Cap at 99% unless user is genuinely on the last page of the last chapter
+                pct = rawPct >= 100 && !(atLastSpine && atLastPage) ? 99 : rawPct;
               } else {
-                // Spine-based estimate while locations are still generating
-                const spineItems = (book as any)?.spine?.items;
-                const spineLen = Array.isArray(spineItems) ? spineItems.length : 1;
-                const idx = location.start?.index ?? 0;
-                pct = Math.round((idx / Math.max(1, spineLen - 1)) * 100);
+                // Spine + displayed-page based estimate
+                // Each spine item contributes 1/spineLen of the total progress
+                const spineWeight = 1 / spineLen;
+                const spineProgress = spineIdx * spineWeight;
+                const pageProgress =
+                  displayedTotal > 1 ? (displayedPage - 1) / displayedTotal : 0;
+                const rawPct = Math.round((spineProgress + pageProgress * spineWeight) * 100);
+                pct = rawPct >= 100 && !(atLastSpine && atLastPage) ? 99 : rawPct;
               }
+
               pct = Math.min(100, Math.max(0, pct));
               const cfi = location.start?.cfi || "";
               const chapter = location.start?.href || "";
-              console.debug("[EpubRenderer] relocated → pct:", pct, "cfi:", cfi?.substring(0, 40));
+              console.debug("[EpubRenderer] relocated → pct:", pct, "spine:", spineIdx, "/", spineLen, "page:", displayedPage, "/", displayedTotal);
               onLocationChange({ percentage: pct, cfi, chapter });
             } catch {}
           });
