@@ -50,6 +50,7 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
     const bookRef = useRef<RuntimeBook | null>(null);
     const renditionRef = useRef<any>(null);
     const spinePageCountsRef = useRef<Record<number, number>>({}); // tracks displayed.total per spine index
+    const defaultSpinePageRef = useRef<number>(0); // first known page count used to estimate unvisited spines
     const [loaded, setLoaded] = useState(false);
     const [initError, setInitError] = useState<string | null>(null);
 
@@ -205,6 +206,7 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
       const cleanup = () => {
         destroyed = true;
         spinePageCountsRef.current = {};
+        defaultSpinePageRef.current = 0;
         if (timeoutId) clearTimeout(timeoutId);
         try { renditionRef.current?.destroy(); } catch {}
         renditionRef.current = null;
@@ -339,7 +341,13 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
               if (displayedTotal > (spinePageCountsRef.current[spineIdx] ?? 0)) {
                 spinePageCountsRef.current[spineIdx] = displayedTotal;
               }
-              const estimated = Array.from({ length: spineLen }, (_, i) => spinePageCountsRef.current[i] ?? 1);
+              // Use first known chapter length as the baseline estimate for unvisited chapters,
+              // so totalEstimated starts reasonable instead of defaulting to spineLen×1.
+              if (defaultSpinePageRef.current === 0 && displayedTotal > 1) {
+                defaultSpinePageRef.current = displayedTotal;
+              }
+              const defaultCount = defaultSpinePageRef.current || 1;
+              const estimated = Array.from({ length: spineLen }, (_, i) => spinePageCountsRef.current[i] ?? defaultCount);
               const totalEstimated = estimated.reduce((a, b) => a + b, 0);
               const pagesBefore = estimated.slice(0, spineIdx).reduce((a, b) => a + b, 0);
               const visualPage = pagesBefore + displayedPage;
