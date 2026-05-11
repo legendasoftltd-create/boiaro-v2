@@ -31,8 +31,6 @@ function CategorySectionRow({ section }: CategorySectionProps) {
 
   if (!section.books || section.books.length === 0) return null
 
-  const categorySlug = section.category.slug || section.category_id
-
   const mappedBooks = section.books.map((b: any) => ({
     id: b.id,
     title: b.title,
@@ -81,7 +79,7 @@ function CategorySectionRow({ section }: CategorySectionProps) {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              to={`/books?category=${categorySlug}`}
+              to={`/books?category=${section.category_id}`}
               className="text-xs text-primary hover:underline font-medium shrink-0"
             >
               সব দেখুন →

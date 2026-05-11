@@ -259,7 +259,7 @@ export function useCategories() {
     name: c.name,
     nameBn: c.name_bn || c.name,
     icon: c.icon || "BookOpen",
-    count: "0",
+    count: String(c._count?.books ?? 0),
     color: c.color || "primary",
   }));
 }

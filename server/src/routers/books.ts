@@ -134,6 +134,11 @@ export const booksRouter = router({
     prisma.category.findMany({
       where: { status: "active" },
       orderBy: [{ priority: "desc" }, { name: "asc" }],
+      include: {
+        _count: {
+          select: { books: { where: { submission_status: "approved" } } },
+        },
+      },
     })
   ),
 

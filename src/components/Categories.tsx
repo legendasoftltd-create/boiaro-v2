@@ -37,13 +37,13 @@ export function Categories() {
           {categories.map((category) => {
             const Icon = iconMap[category.icon] || BookOpen
             return (
-              <div key={category.id} className="flex-shrink-0 snap-start group cursor-pointer">
+              <Link key={category.id} to={`/books?category=${category.id}`} className="flex-shrink-0 snap-start group">
                 <div className={`relative w-24 md:w-32 p-3 md:p-4 rounded-xl md:rounded-2xl bg-gradient-to-br ${category.color} border border-border/40 hover:border-primary/30 transition-all duration-300 hover:scale-[1.03] hover:shadow-lg hover:shadow-primary/[0.04]`}>
                   <div className="w-10 h-10 rounded-xl bg-background/40 flex items-center justify-center mb-2.5 mx-auto"><Icon className="w-5 h-5 text-primary" /></div>
                   <h3 className="font-medium text-foreground text-[13px] text-center mb-0.5 group-hover:text-primary transition-colors line-clamp-1">{category.nameBn}</h3>
-                  <p className="text-[11px] text-muted-foreground text-center">{category.count}</p>
+                  <p className="text-[11px] text-muted-foreground text-center">{category.count} বই</p>
                 </div>
-              </div>
+              </Link>
             )
           })}
         </div>
