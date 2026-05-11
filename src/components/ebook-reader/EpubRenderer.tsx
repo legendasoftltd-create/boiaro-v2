@@ -44,30 +44,12 @@ type RuntimeBook = {
   destroy?: () => void;
 };
 
-function getLocationCount(book: RuntimeBook | null) {
-  const locations = book?.locations;
-  if (!locations) return 0;
-  if (Array.isArray(locations)) return locations.length;
-  if (typeof locations.length === "function") return locations.length();
-  return 0;
-}
-
-function generateLocations(book: RuntimeBook, chars: number) {
-  const locations = book.locations;
-  if (locations && !Array.isArray(locations) && typeof locations.generate === "function") {
-    return locations.generate(chars);
-  }
-  if (typeof book.generateLocations === "function") {
-    return book.generateLocations(chars);
-  }
-  return Promise.resolve();
-}
-
 export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
   ({ url, fontSize, isDarkMode, onTocLoaded, onLocationChange, onError, initialCfi }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const bookRef = useRef<RuntimeBook | null>(null);
     const renditionRef = useRef<any>(null);
+    const spinePageCountsRef = useRef<Record<number, number>>({}); // tracks displayed.total per spine index
     const [loaded, setLoaded] = useState(false);
     const [initError, setInitError] = useState<string | null>(null);
 
@@ -222,6 +204,7 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
 
       const cleanup = () => {
         destroyed = true;
+        spinePageCountsRef.current = {};
         if (timeoutId) clearTimeout(timeoutId);
         try { renditionRef.current?.destroy(); } catch {}
         renditionRef.current = null;
@@ -326,46 +309,40 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           if (timeoutId) clearTimeout(timeoutId);
           setLoaded(true);
 
-          // Generate locations for accurate percentage tracking (runs in background after first render)
-          // 150 chars per location gives fine-grained progress even for short books
-          generateLocations(book, 150).then(() => {
-            if (!destroyed) console.debug("[EpubRenderer] Locations generated:", getLocationCount(book));
-          }).catch(() => {});
-
           // Handle relocated event for progress tracking
+          // Uses displayed.page / displayed.total per spine item for accurate visual-page progress.
+          // Tracks each spine's page count as chapters are visited — no location pre-generation needed.
           rendition.on("relocated", (location: any) => {
             if (destroyed) return;
             try {
-              const locCount = getLocationCount(book);
               const spineItems = (book as any)?.spine?.items;
               const spineLen = Math.max(1, Array.isArray(spineItems) ? spineItems.length : 1);
-              const spineIdx = location.start?.index ?? 0;
-              const displayedPage = location.start?.displayed?.page ?? 1;
-              const displayedTotal = location.start?.displayed?.total ?? 1;
+              const spineIdx = Math.max(0, location.start?.index ?? 0);
+              const displayedPage = Math.max(1, location.start?.displayed?.page ?? 1);
+              const displayedTotal = Math.max(1, location.start?.displayed?.total ?? 1);
               const atLastSpine = spineIdx >= spineLen - 1;
               const atLastPage = displayedPage >= displayedTotal;
 
-              let pct: number;
-              if (locCount >= 10 && typeof location.start?.percentage === "number") {
-                // Only trust location percentage when we have enough granularity (>=10 locations)
-                const rawPct = Math.round(location.start.percentage * 100);
-                // Cap at 99% unless user is genuinely on the last page of the last chapter
-                pct = rawPct >= 100 && !(atLastSpine && atLastPage) ? 99 : rawPct;
-              } else {
-                // Spine + displayed-page based estimate
-                // Each spine item contributes 1/spineLen of the total progress
-                const spineWeight = 1 / spineLen;
-                const spineProgress = spineIdx * spineWeight;
-                const pageProgress =
-                  displayedTotal > 1 ? (displayedPage - 1) / displayedTotal : 0;
-                const rawPct = Math.round((spineProgress + pageProgress * spineWeight) * 100);
-                pct = rawPct >= 100 && !(atLastSpine && atLastPage) ? 99 : rawPct;
+              // Learn and remember the page count for this spine item
+              if (displayedTotal > (spinePageCountsRef.current[spineIdx] ?? 0)) {
+                spinePageCountsRef.current[spineIdx] = displayedTotal;
               }
 
-              pct = Math.min(100, Math.max(0, pct));
+              // Estimate total book pages: known counts for visited spines, 1 for unvisited
+              const estimated = Array.from({ length: spineLen }, (_, i) => spinePageCountsRef.current[i] ?? 1);
+              const totalEstimated = estimated.reduce((a, b) => a + b, 0);
+              const pagesBefore = estimated.slice(0, spineIdx).reduce((a, b) => a + b, 0);
+
+              let pct: number;
+              if (atLastSpine && atLastPage) {
+                pct = 100;
+              } else {
+                // (displayedPage - 1) so first page = 0%, progress grows with each turn
+                pct = Math.min(99, Math.max(0, Math.round(((pagesBefore + displayedPage - 1) / totalEstimated) * 100)));
+              }
+
               const cfi = location.start?.cfi || "";
               const chapter = location.start?.href || "";
-              console.debug("[EpubRenderer] relocated → pct:", pct, "spine:", spineIdx, "/", spineLen, "page:", displayedPage, "/", displayedTotal);
               onLocationChange({ percentage: pct, cfi, chapter });
             } catch {}
           });

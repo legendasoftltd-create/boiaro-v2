@@ -658,26 +658,19 @@ export default function EbookReader() {
   // ──────── EPUB location change handler with paywall check ────────
   const handleEpubLocationChange = useCallback(
     ({ percentage: pct, cfi, chapter }: { percentage: number; cfi: string; chapter?: string }) => {
-      // Clamp to 100 — epub.js may fire 99 on the last section due to partial-page rendering
-      const clampedPct = pct >= 98 ? 100 : pct;
-      setPercentage(clampedPct);
+      setPercentage(pct);
       setEpubCfi(cfi);
       if (chapter) setCurrentHref(chapter);
       const tocItem = tocItems.find((t) => chapter && t.href && chapter.includes(t.href));
       setChapterTitle(tocItem?.label || "");
-      // Estimate currentPage from percentage so the progress display in EbookTab and
-      // the auto-save both use a meaningful page number instead of always page 1
       if (totalPagesRef.current > 0) {
-        setCurrentPage(Math.max(1, Math.round((clampedPct / 100) * totalPagesRef.current)));
+        setCurrentPage(Math.max(1, Math.round((pct / 100) * totalPagesRef.current)));
       }
 
-      // Auto-trigger paywall if percentage exceeds preview limit
       if (shouldEnforcePreviewLimit && access.isPercentageBlocked(pct) && !showPaywall) {
         setShowPaywall(true);
       }
 
-      // If TTS is playing and this is a user-initiated page change (not auto-advance),
-      // restart TTS on the new page content
       if (tts.isPlaying && ttsAutoPlayRef.current) {
         handleManualPageTtsRestart(cfi);
       }
