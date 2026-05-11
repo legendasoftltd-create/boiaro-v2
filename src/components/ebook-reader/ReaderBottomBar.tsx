@@ -101,7 +101,7 @@ export function ReaderBottomBar({
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <span className="text-[11px] text-muted-foreground min-w-[80px] text-center font-medium">
-              {fileType === "pdf" ? `${currentPage} / ${totalPages}` : `${percentage}%`}
+              {totalPages > 0 ? `${currentPage} / ${totalPages}` : `পৃষ্ঠা ${currentPage}`}
             </span>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onNextPage} disabled={fileType === "pdf" && currentPage >= totalPages}>
               <ChevronRight className="w-4 h-4" />
