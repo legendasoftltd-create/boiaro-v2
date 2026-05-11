@@ -421,7 +421,8 @@ model Category {
   slug        String?
   status      String   @default("active")
 
-  books Book[]
+  books                     Book[]
+  homepage_category_sections HomepageCategorySection[]
 
   @@map("categories")
 }
@@ -815,6 +816,21 @@ model HomepageSection {
   updated_at     DateTime @updatedAt
 
   @@map("homepage_sections")
+}
+
+model HomepageCategorySection {
+  id          String   @id @default(uuid())
+  category_id String
+  title       String?
+  subtitle    String?
+  book_limit  Int      @default(8)
+  sort_order  Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  category Category @relation(fields: [category_id], references: [id], onDelete: Cascade)
+
+  @@map("homepage_category_sections")
 }
 
 model ListeningProgress {

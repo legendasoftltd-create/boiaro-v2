@@ -53,6 +53,7 @@ const HOMEPAGE_SECTION_DEFAULTS: Array<{
   { section_key: "live_radio", title: "Live Radio", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 18, display_source: null },
   { section_key: "blog", title: "ব্লগ ও আর্টিকেল", subtitle: "আমাদের সাম্প্রতিক লেখা", is_enabled: true, sort_order: 19, display_source: null },
   { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 20, display_source: null },
+  { section_key: "category_sections", title: "ক্যাটাগরি সেকশন", subtitle: "বিভাগ অনুযায়ী বই", is_enabled: true, sort_order: 21, display_source: null },
 ];
 
 const APP_ROLE_VALUES = ["admin", "moderator", "user", "writer", "publisher", "narrator", "rj"] as const;
@@ -2705,6 +2706,50 @@ export const adminRouter = router({
       await Promise.all(input.map(s =>
         prisma.homepageSection.update({ where: { id: s.id }, data: { title: s.title, subtitle: s.subtitle, is_enabled: s.is_enabled, sort_order: s.sort_order } })
       ));
+      return { success: true };
+    }),
+
+  // ── Homepage Category Sections ────────────────────────────────────────────
+  getHomepageCategorySections: adminProcedure.query(() =>
+    prisma.homepageCategorySection.findMany({
+      orderBy: { sort_order: "asc" },
+      include: { category: { select: { id: true, name: true, name_bn: true, slug: true } } },
+    })
+  ),
+
+  saveHomepageCategorySections: adminProcedure
+    .input(z.array(z.object({
+      id: z.string().optional(),
+      category_id: z.string(),
+      title: z.string().nullable().optional(),
+      subtitle: z.string().nullable().optional(),
+      book_limit: z.number().min(1).max(50).default(8),
+      sort_order: z.number(),
+    })))
+    .mutation(async ({ input }) => {
+      const incoming = input.map((r, i) => ({ ...r, sort_order: i + 1 }));
+      const incomingIds = incoming.filter(r => r.id).map(r => r.id as string);
+
+      // Delete rows that were removed
+      await prisma.homepageCategorySection.deleteMany({
+        where: { id: { notIn: incomingIds } },
+      });
+
+      // Upsert each row
+      await Promise.all(incoming.map(r => {
+        const data = {
+          category_id: r.category_id,
+          title: r.title ?? null,
+          subtitle: r.subtitle ?? null,
+          book_limit: r.book_limit,
+          sort_order: r.sort_order,
+        };
+        if (r.id) {
+          return prisma.homepageCategorySection.update({ where: { id: r.id }, data });
+        }
+        return prisma.homepageCategorySection.create({ data });
+      }));
+
       return { success: true };
     }),
 

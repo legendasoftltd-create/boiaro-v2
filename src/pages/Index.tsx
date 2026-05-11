@@ -27,6 +27,7 @@ const Narrators = lazy(() => import("@/components/Narrators").then(m => ({ defau
 const AppDownload = lazy(() => import("@/components/AppDownload").then(m => ({ default: m.AppDownload })))
 const BlogSection = lazy(() => import("@/components/BlogSection").then(m => ({ default: m.BlogSection })))
 const LiveRadioSection = lazy(() => import("@/components/LiveRadio").then(m => ({ default: m.LiveRadioSection })))
+const CategorySections = lazy(() => import("@/components/CategorySections").then(m => ({ default: m.CategorySections })))
 
 // Map section_key → React element factory
 const SECTION_REGISTRY: Record<string, (props: { books: any[]; popularAudiobooks: any[] }) => JSX.Element | null> = {
@@ -49,6 +50,7 @@ const SECTION_REGISTRY: Record<string, (props: { books: any[]; popularAudiobooks
   blog: () => <BlogSection />,
   live_radio: () => <LiveRadioSection />,
   app_download: () => <AppDownload />,
+  category_sections: () => <CategorySections />,
 }
 
 // Fallback order when DB sections haven't loaded yet
@@ -58,6 +60,7 @@ const FALLBACK_KEYS = [
   "trending_books", "top_10_most_read", "editors_pick",
   "popular_audiobooks", "audiobooks", "hard_copies", "free_books",
   "categories", "authors", "narrators", "live_radio", "blog", "app_download",
+  "category_sections",
 ]
 const REGISTRY_KEYS = new Set(Object.keys(SECTION_REGISTRY))
 

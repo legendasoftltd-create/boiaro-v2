@@ -315,6 +315,30 @@ export const booksRouter = router({
     })
   ),
 
+  homepageCategorySections: publicProcedure.query(async () => {
+    const sections = await prisma.homepageCategorySection.findMany({
+      orderBy: { sort_order: "asc" },
+      include: { category: { select: { id: true, name: true, name_bn: true, slug: true } } },
+    });
+
+    const results = await Promise.all(
+      sections.map(async (sec) => {
+        const books = await prisma.book.findMany({
+          where: { category_id: sec.category_id, submission_status: "approved" },
+          take: sec.book_limit,
+          orderBy: { created_at: "desc" },
+          select: {
+            id: true, title: true, cover_url: true, slug: true,
+            formats: { select: { format: true, price: true } },
+            author: { select: { id: true, name: true } },
+          },
+        });
+        return { ...sec, books };
+      })
+    );
+    return results;
+  }),
+
   siteSettings: publicProcedure.query(() =>
     prisma.siteSetting.findMany({ orderBy: { key: "asc" } })
   ),

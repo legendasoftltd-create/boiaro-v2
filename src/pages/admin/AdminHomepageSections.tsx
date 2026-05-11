@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Save, AlertTriangle, GripVertical, Eye, EyeOff, ArrowUp, ArrowDown } from "lucide-react";
+import { Save, AlertTriangle, GripVertical, Eye, EyeOff, ArrowUp, ArrowDown, LayoutList } from "lucide-react";
 import { useState, useEffect, useMemo, useRef } from "react";
+import { ManageCategorySections } from "@/components/admin/ManageCategorySections";
 
 interface Section {
   id: string; section_key: string; title: string; subtitle: string | null;
@@ -17,6 +18,7 @@ export default function AdminHomepageSections() {
   const [sections, setSections] = useState<Section[]>([]);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
   const dragNode = useRef<HTMLTableRowElement | null>(null);
 
   const { data, isLoading } = trpc.admin.listHomepageSections.useQuery();
@@ -168,6 +170,14 @@ export default function AdminHomepageSections() {
                 </TableCell>
                 <TableCell className="py-2">
                   <span className="font-medium text-sm truncate block">{formatKey(s.section_key)}</span>
+                  {s.section_key === "category_sections" && (
+                    <button
+                      onClick={() => setShowCategoryModal(true)}
+                      className="mt-0.5 text-[10px] text-primary flex items-center gap-1 hover:underline"
+                    >
+                      <LayoutList className="h-3 w-3" /> Manage Categories
+                    </button>
+                  )}
                 </TableCell>
                 <TableCell className="py-2 pr-2">
                   <Input
@@ -229,6 +239,8 @@ export default function AdminHomepageSections() {
       <p className="text-xs text-muted-foreground text-center">
         {sections.length} section{sections.length !== 1 ? "s" : ""} · Changes are saved when you click "Save Changes"
       </p>
+
+      <ManageCategorySections open={showCategoryModal} onClose={() => setShowCategoryModal(false)} />
     </div>
   );
 }
