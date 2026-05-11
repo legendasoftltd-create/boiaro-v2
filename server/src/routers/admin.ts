@@ -1243,12 +1243,32 @@ export const adminRouter = router({
       return { success: true };
     }),
 
-  listAdminUserRoles: adminProcedure.query(() =>
-    prisma.adminUserRole.findMany({
+  listAdminUserRoles: adminProcedure.query(async () => {
+    const rows = await prisma.adminUserRole.findMany({
       orderBy: { created_at: "desc" },
       include: { admin_role: { select: { label: true, name: true } } },
-    })
-  ),
+    });
+    const userIds = [...new Set(rows.map((r) => r.user_id))];
+    const profiles = userIds.length
+      ? await prisma.profile.findMany({
+          where: { user_id: { in: userIds } },
+          select: { user_id: true, display_name: true },
+        })
+      : [];
+    const emails = userIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, email: true },
+        })
+      : [];
+    const profileMap = new Map(profiles.map((p) => [p.user_id, p.display_name]));
+    const emailMap = new Map(emails.map((u) => [u.id, u.email]));
+    return rows.map((r) => ({
+      ...r,
+      user_email: emailMap.get(r.user_id) ?? null,
+      user_name: profileMap.get(r.user_id) ?? null,
+    }));
+  }),
 
   assignAdminRoleToUser: adminProcedure
     .input(
