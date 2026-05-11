@@ -576,8 +576,11 @@ export default function EbookReader() {
         }
 
         setFileUrl(resolvedUrl);
-        setFileType(detectFileType(resolvedUrl, undefined));
-        if (ebookFmt.pages) setTotalPages(ebookFmt.pages);
+        const detectedType = detectFileType(resolvedUrl, undefined);
+        setFileType(detectedType);
+        // For PDF: totalPages will be set accurately by pdf.numPages via onTotalPagesChange.
+        // For EPUB: set format page count as initial fallback; epubPageTotal overrides it once generated.
+        if (detectedType === "epub" && ebookFmt.pages) setTotalPages(ebookFmt.pages);
         setLoading(false);
 
         if (user) logAccess(dbBook.id, "ebook", true);
@@ -895,6 +898,7 @@ export default function EbookReader() {
                 initialCfi={epubCfi || undefined}
                 onTocLoaded={(toc) => setTocItems(toc)}
                 onLocationChange={handleEpubLocationChange}
+                onTotalPagesEstimated={(total) => setEpubPageTotal(total)}
                 onError={(err) => toast.error(err)}
               />
 

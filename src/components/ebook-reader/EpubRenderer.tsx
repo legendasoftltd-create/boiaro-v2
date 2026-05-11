@@ -17,6 +17,7 @@ interface EpubRendererProps {
   isDarkMode: boolean;
   onTocLoaded: (toc: NavItem[]) => void;
   onLocationChange: (info: { percentage: number; cfi: string; chapter?: string; page?: number; pageTotal?: number }) => void;
+  onTotalPagesEstimated?: (total: number) => void;
   onError: (error: string) => void;
   initialCfi?: string;
 }
@@ -44,8 +45,25 @@ type RuntimeBook = {
   destroy?: () => void;
 };
 
+function getLocationCount(book: RuntimeBook | null): number {
+  const loc = book?.locations;
+  if (!loc) return 0;
+  if (Array.isArray(loc)) return loc.length;
+  if (typeof (loc as any).length === "function") return (loc as any).length();
+  return 0;
+}
+
+function generateLocations(book: RuntimeBook, chars: number): Promise<unknown> {
+  const loc = book.locations;
+  if (loc && !Array.isArray(loc) && typeof (loc as any).generate === "function")
+    return (loc as any).generate(chars);
+  if (typeof book.generateLocations === "function")
+    return book.generateLocations(chars);
+  return Promise.resolve();
+}
+
 export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
-  ({ url, fontSize, isDarkMode, onTocLoaded, onLocationChange, onError, initialCfi }, ref) => {
+  ({ url, fontSize, isDarkMode, onTocLoaded, onLocationChange, onTotalPagesEstimated, onError, initialCfi }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const bookRef = useRef<RuntimeBook | null>(null);
     const renditionRef = useRef<any>(null);
@@ -310,6 +328,14 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           console.debug("[EpubRenderer] First section rendered successfully");
           if (timeoutId) clearTimeout(timeoutId);
           setLoaded(true);
+
+          // Generate locations in background solely to get a reliable total-page count.
+          // We do NOT call reportLocation() afterward, so no spurious relocated event fires.
+          generateLocations(book, 1500).then(() => {
+            if (destroyed) return;
+            const count = getLocationCount(book);
+            if (count > 0 && onTotalPagesEstimated) onTotalPagesEstimated(count);
+          }).catch(() => {});
 
           // Handle relocated event for progress tracking
           rendition.on("relocated", (location: any) => {
