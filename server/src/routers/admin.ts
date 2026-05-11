@@ -1187,15 +1187,11 @@ export const adminRouter = router({
   listAdminRolePermissions: adminProcedure
     .input(z.object({ roleId: z.string() }))
     .query(async ({ input }) => {
-      const role = await prisma.adminRole.findUnique({
-        where: { id: input.roleId },
-        select: { id: true, name: true },
+      const rows = await prisma.adminRolePermission.findMany({
+        where: { admin_role_id: input.roleId },
       });
-      if (!role) throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
-      if (!APP_ROLE_VALUES.includes(role.name as (typeof APP_ROLE_VALUES)[number])) return [];
-      return prisma.rolePermission.findMany({
-        where: { role: role.name as (typeof APP_ROLE_VALUES)[number] },
-      });
+      // Return in the same shape the frontend expects
+      return rows.map((r) => ({ permission_key: r.permission_key, is_allowed: r.is_allowed }));
     }),
 
   replaceAdminRolePermissions: adminProcedure
@@ -1214,27 +1210,21 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const role = await prisma.adminRole.findUnique({
-        where: { id: input.roleId },
-        select: { id: true, name: true },
-      });
+      const role = await prisma.adminRole.findUnique({ where: { id: input.roleId }, select: { id: true } });
       if (!role) throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
-      if (!APP_ROLE_VALUES.includes(role.name as (typeof APP_ROLE_VALUES)[number])) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Permissions require a mapped app role name" });
-      }
-      const appRole = role.name as (typeof APP_ROLE_VALUES)[number];
+
       const keys = input.modules.flatMap((entry) =>
-        PERMISSION_ACTIONS.filter((action) => entry[`can_${action}` as const]).map((action) => ({
-          permission_key: `${entry.module}:${action}`,
-        }))
+        PERMISSION_ACTIONS.filter((action) => entry[`can_${action}` as const]).map((action) =>
+          `${entry.module}:${action}`
+        )
       );
 
       await prisma.$transaction([
-        prisma.rolePermission.deleteMany({ where: { role: appRole } }),
+        prisma.adminRolePermission.deleteMany({ where: { admin_role_id: input.roleId } }),
         ...(keys.length
           ? [
-              prisma.rolePermission.createMany({
-                data: keys.map((key) => ({ role: appRole, permission_key: key.permission_key, is_allowed: true })),
+              prisma.adminRolePermission.createMany({
+                data: keys.map((key) => ({ admin_role_id: input.roleId, permission_key: key, is_allowed: true })),
                 skipDuplicates: true,
               }),
             ]
@@ -1312,6 +1302,27 @@ export const adminRouter = router({
         data: { is_active: input.is_active },
       })
     ),
+
+  searchUsersForRoleAssign: adminProcedure
+    .input(z.object({ search: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const users = await prisma.user.findMany({
+        where: {
+          OR: [
+            { email: { contains: input.search, mode: "insensitive" } },
+            { profile: { display_name: { contains: input.search, mode: "insensitive" } } },
+          ],
+        },
+        take: 8,
+        select: {
+          id: true,
+          email: true,
+          profile: { select: { display_name: true } },
+        },
+        orderBy: { created_at: "desc" },
+      });
+      return users.map((u) => ({ id: u.id, email: u.email, display_name: u.profile?.display_name ?? null }));
+    }),
 
   // ── Permissions ─────────────────────────────────────────────────────────────
   myPermissions: protectedProcedure.query(async ({ ctx }) => {

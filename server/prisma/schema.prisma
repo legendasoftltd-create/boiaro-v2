@@ -156,9 +156,24 @@ model AdminRole {
   name        String   @unique
   updated_at  DateTime @updatedAt
 
-  admin_user_roles AdminUserRole[]
+  admin_user_roles   AdminUserRole[]
+  admin_permissions  AdminRolePermission[]
 
   @@map("admin_roles")
+}
+
+model AdminRolePermission {
+  id             String   @id @default(uuid())
+  admin_role_id  String
+  permission_key String
+  is_allowed     Boolean  @default(true)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  admin_role AdminRole @relation(fields: [admin_role_id], references: [id], onDelete: Cascade)
+
+  @@unique([admin_role_id, permission_key])
+  @@map("admin_role_permissions")
 }
 
 model AdminUserRole {

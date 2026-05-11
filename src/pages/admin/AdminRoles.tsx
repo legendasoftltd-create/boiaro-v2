@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Pencil, Trash2, Shield, Users, ShieldCheck } from "lucide-react";
+import { Plus, Pencil, Trash2, Shield, Users, ShieldCheck, Search, User } from "lucide-react";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
 import { trpc } from "@/lib/trpc";
 
@@ -50,14 +50,43 @@ function emptyMatrix(): PermMatrix {
 export default function AdminRoles() {
   const utils = trpc.useUtils();
   const [tab, setTab] = useState("roles");
+
+  // Role form state
   const [roleDialog, setRoleDialog] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleForm, setRoleForm] = useState({ name: "", label: "", description: "" });
+
+  // Permission matrix state
   const [permMatrix, setPermMatrix] = useState<PermMatrix>(emptyMatrix);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
+
+  // Assign role dialog state
   const [assignDialog, setAssignDialog] = useState(false);
-  const [assignForm, setAssignForm] = useState({ user_id: "", admin_role_id: "" });
+  const [userSearch, setUserSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [selectedUser, setSelectedUser] = useState<{ id: string; email: string; display_name: string | null } | null>(null);
+  const [assignRoleId, setAssignRoleId] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
   const { log } = useAdminLogger();
+
+  // Debounce user search input
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(userSearch), 300);
+    return () => clearTimeout(t);
+  }, [userSearch]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: roles = [] } = trpc.admin.listAdminRoles.useQuery();
@@ -68,6 +97,11 @@ export default function AdminRoles() {
   );
 
   const { data: adminUsers = [] } = trpc.admin.listAdminUserRoles.useQuery();
+
+  const { data: userResults = [] } = trpc.admin.searchUsersForRoleAssign.useQuery(
+    { search: debouncedSearch },
+    { enabled: debouncedSearch.length >= 1 }
+  );
 
   // Rebuild local matrix whenever the fetched permissions change
   useEffect(() => {
@@ -84,7 +118,6 @@ export default function AdminRoles() {
     setPermMatrix(m);
   }, [rolePermissions]);
 
-  // Reset matrix when role selection changes
   useEffect(() => {
     if (!selectedRoleId) setPermMatrix(emptyMatrix());
   }, [selectedRoleId]);
@@ -125,11 +158,11 @@ export default function AdminRoles() {
   const assignMutation = trpc.admin.assignAdminRoleToUser.useMutation({
     onSuccess: async () => {
       await utils.admin.listAdminUserRoles.invalidate();
-      const { user_id, admin_role_id } = assignForm;
-      setAssignDialog(false);
+      const uid = selectedUser?.id || "";
+      const roleLabel = (roles as Role[]).find(r => r.id === assignRoleId)?.label || "";
+      closeAssignDialog();
       toast({ title: "Role assigned" });
-      const role = (roles as Role[]).find(r => r.id === admin_role_id);
-      log({ module: "roles", action: `Admin role assigned: ${role?.label || ""}`, actionType: "assign", targetType: "user", targetId: user_id, riskLevel: "critical" });
+      log({ module: "roles", action: `Admin role assigned: ${roleLabel}`, actionType: "assign", targetType: "user", targetId: uid, riskLevel: "critical" });
     },
     onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -177,6 +210,28 @@ export default function AdminRoles() {
     setPermMatrix(prev => ({ ...prev, [modKey]: { ...prev[modKey], [action]: value } }));
   };
 
+  const openAssignDialog = () => {
+    setSelectedUser(null);
+    setUserSearch("");
+    setDebouncedSearch("");
+    setAssignRoleId("");
+    setShowDropdown(false);
+    setAssignDialog(true);
+  };
+
+  const closeAssignDialog = () => {
+    setAssignDialog(false);
+    setSelectedUser(null);
+    setUserSearch("");
+    setAssignRoleId("");
+  };
+
+  const selectUser = (u: { id: string; email: string; display_name: string | null }) => {
+    setSelectedUser(u);
+    setUserSearch(u.display_name ? `${u.display_name} (${u.email})` : u.email);
+    setShowDropdown(false);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -213,17 +268,21 @@ export default function AdminRoles() {
                 )}
                 {(roles as Role[]).map(r => (
                   <TableRow key={r.id}>
-                    <TableCell className="font-medium flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />{r.label}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />{r.label}</div>
+                    </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">{r.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[300px] truncate">{r.description || "—"}</TableCell>
                     <TableCell><Badge variant={r.is_system ? "default" : "secondary"}>{r.is_system ? "System" : "Custom"}</Badge></TableCell>
-                    <TableCell className="flex gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => openEditRole(r)}><Pencil className="h-4 w-4" /></Button>
-                      {!r.is_system && (
-                        <Button size="icon" variant="ghost" className="text-destructive" disabled={deleteRoleMutation.isPending} onClick={() => handleDeleteRole(r)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => openEditRole(r)}><Pencil className="h-4 w-4" /></Button>
+                        {!r.is_system && (
+                          <Button size="icon" variant="ghost" className="text-destructive" disabled={deleteRoleMutation.isPending} onClick={() => handleDeleteRole(r)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -283,9 +342,7 @@ export default function AdminRoles() {
         {/* ── Admin Users Tab ── */}
         <TabsContent value="admins" className="space-y-4">
           <div className="flex justify-end">
-            <Button onClick={() => { setAssignForm({ user_id: "", admin_role_id: "" }); setAssignDialog(true); }}>
-              <Plus className="h-4 w-4 mr-2" />Assign Role
-            </Button>
+            <Button onClick={openAssignDialog}><Plus className="h-4 w-4 mr-2" />Assign Role</Button>
           </div>
           <div className="rounded-lg border border-border/40 bg-card/60">
             <Table>
@@ -355,22 +412,74 @@ export default function AdminRoles() {
       </Dialog>
 
       {/* ── Assign Role Dialog ── */}
-      <Dialog open={assignDialog} onOpenChange={setAssignDialog}>
+      <Dialog open={assignDialog} onOpenChange={v => { if (!v) closeAssignDialog(); else setAssignDialog(true); }}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Assign Role</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Assign Admin Role</DialogTitle></DialogHeader>
           <div className="space-y-4">
+            {/* User search */}
             <div>
-              <label className="text-sm font-medium">User ID</label>
-              <Input value={assignForm.user_id} onChange={e => setAssignForm(f => ({ ...f, user_id: e.target.value }))} placeholder="UUID" />
+              <label className="text-sm font-medium mb-1.5 block">Search user by name or email</label>
+              <div ref={searchRef} className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={userSearch}
+                    onChange={e => {
+                      setUserSearch(e.target.value);
+                      setSelectedUser(null);
+                      setShowDropdown(true);
+                    }}
+                    onFocus={() => { if (userSearch.length > 0) setShowDropdown(true); }}
+                    placeholder="Type name or email…"
+                    className="pl-9"
+                  />
+                </div>
+                {showDropdown && debouncedSearch.length >= 1 && (
+                  <div className="absolute z-50 w-full mt-1 rounded-md border border-border bg-popover shadow-md max-h-52 overflow-auto">
+                    {userResults.length === 0 ? (
+                      <div className="px-3 py-4 text-sm text-center text-muted-foreground">No users found</div>
+                    ) : userResults.map(u => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-accent transition-colors"
+                        onClick={() => selectUser(u)}
+                      >
+                        <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium truncate">{u.display_name || u.email}</div>
+                          {u.display_name && <div className="text-xs text-muted-foreground truncate">{u.email}</div>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {selectedUser && (
+                <p className="mt-1.5 text-xs text-muted-foreground flex items-center gap-1">
+                  <span className="text-green-500">✓</span>
+                  Selected: <span className="font-medium">{selectedUser.display_name || selectedUser.email}</span>
+                </p>
+              )}
             </div>
+
+            {/* Role select */}
             <div>
-              <label className="text-sm font-medium">Role</label>
-              <Select value={assignForm.admin_role_id} onValueChange={v => setAssignForm(f => ({ ...f, admin_role_id: v }))}>
+              <label className="text-sm font-medium mb-1.5 block">Role</label>
+              <Select value={assignRoleId} onValueChange={setAssignRoleId}>
                 <SelectTrigger><SelectValue placeholder="Select a role" /></SelectTrigger>
                 <SelectContent>{(roles as Role[]).map(r => <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
-            <Button className="w-full" disabled={assignMutation.isPending} onClick={() => assignMutation.mutate(assignForm)}>
+
+            <Button
+              className="w-full"
+              disabled={assignMutation.isPending || !selectedUser || !assignRoleId}
+              onClick={() => {
+                if (!selectedUser || !assignRoleId) return;
+                assignMutation.mutate({ user_id: selectedUser.id, admin_role_id: assignRoleId });
+              }}
+            >
               {assignMutation.isPending ? "Assigning..." : "Assign"}
             </Button>
           </div>
