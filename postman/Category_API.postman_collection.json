@@ -1,0 +1,65 @@
+{
+  "info": {
+    "name": "Boiaro Category API",
+    "description": "Category REST API for Boiaro mobile app and third-party clients.\nBase URL: {{base_url}}/api/v1/categories\n\nAll icon URLs are fully resolved absolute URLs (S3 or server-hosted).\nBook counts reflect only approved books.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "boiaro-category-api-v1"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://api.boiaro.com", "type": "string" },
+    { "key": "category_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "List All Categories",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/categories",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "categories"]
+        },
+        "description": "Returns all active categories ordered by priority.\n\nEach category includes:\n- Resolved absolute icon URL (S3 or server-hosted)\n- book_count: number of approved books in this category\n- Both Bengali (name_bn) and English (name_en) names"
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"success\": true,\n  \"categories\": [\n    {\n      \"id\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\n      \"name\": \"উপন্যাস\",\n      \"name_bn\": \"উপন্যাস\",\n      \"name_en\": \"Novel\",\n      \"slug\": \"novel\",\n      \"icon\": \"https://cdn.boiaro.com/uploads/categories/novel-icon.webp\",\n      \"color\": \"#6366f1\",\n      \"is_featured\": true,\n      \"is_trending\": false,\n      \"priority\": 1,\n      \"book_count\": 48\n    },\n    {\n      \"id\": \"b2c3d4e5-f6a7-8901-bcde-f12345678901\",\n      \"name\": \"ইসলামিক\",\n      \"name_bn\": \"ইসলামিক\",\n      \"name_en\": \"Islamic\",\n      \"slug\": \"islamic\",\n      \"icon\": \"https://cdn.boiaro.com/uploads/categories/islamic-icon.webp\",\n      \"color\": \"#10b981\",\n      \"is_featured\": true,\n      \"is_trending\": true,\n      \"priority\": 2,\n      \"book_count\": 35\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Get Category by ID or Slug",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/categories/{{category_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "categories", "{{category_id}}"]
+        },
+        "description": "Returns a single active category by its UUID or slug.\n\nExamples:\n  GET /api/v1/categories/a1b2c3d4-e5f6-7890-abcd-ef1234567890\n  GET /api/v1/categories/novel"
+      },
+      "response": [
+        {
+          "name": "Found",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"success\": true,\n  \"category\": {\n    \"id\": \"a1b2c3d4-e5f6-7890-abcd-ef1234567890\",\n    \"name\": \"উপন্যাস\",\n    \"name_bn\": \"উপন্যাস\",\n    \"name_en\": \"Novel\",\n    \"slug\": \"novel\",\n    \"icon\": \"https://cdn.boiaro.com/uploads/categories/novel-icon.webp\",\n    \"color\": \"#6366f1\",\n    \"is_featured\": true,\n    \"is_trending\": false,\n    \"priority\": 1,\n    \"book_count\": 48\n  }\n}"
+        },
+        {
+          "name": "Not Found",
+          "status": "Not Found",
+          "code": 404,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"success\": false,\n  \"error\": \"Category not found\"\n}"
+        }
+      ]
+    }
+  ]
+}

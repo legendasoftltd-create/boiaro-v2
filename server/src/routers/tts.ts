@@ -120,13 +120,13 @@ const DEFAULT_AMBIENT_TRACKS = [
 ];
 
 // ─── DB helpers ─────────────────────────────────────────────────────────────
-async function getStoredVoices() {
+export async function getStoredVoices() {
   const row = await prisma.platformSetting.findUnique({ where: { key: VOICE_CONFIG_KEY } });
   if (row?.value) { try { return JSON.parse(row.value) as typeof BENGALI_VOICES; } catch {} }
   return BENGALI_VOICES;
 }
 
-async function getStoredAmbientTracks() {
+export async function getStoredAmbientTracks() {
   const row = await prisma.platformSetting.findUnique({ where: { key: AMBIENT_CONFIG_KEY } });
   if (row?.value) { try { return JSON.parse(row.value) as typeof DEFAULT_AMBIENT_TRACKS; } catch {} }
   return DEFAULT_AMBIENT_TRACKS;

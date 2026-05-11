@@ -1,16 +1,36 @@
-// routes/rest/categories.router.ts
+/**
+ * REST Categories API
+ * Base prefix: /api/v1/categories
+ *
+ *  GET  /          — list all active categories (with book counts + resolved icon URLs)
+ *  GET  /:id       — single category by id or slug
+ */
 
 import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
-import { getAllCategories } from "../../services/categories.service.js";
+import { getAllCategories, getCategoryById } from "../../services/categories.service.js";
 
 export const categoriesRestRouter = Router();
 
-categoriesRestRouter.get("/", async (req, res) => {
+// GET /api/v1/categories
+categoriesRestRouter.get("/", async (_req, res) => {
   try {
     const result = await getAllCategories();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
 
-    res.json(result);
+// GET /api/v1/categories/:id   (id or slug)
+categoriesRestRouter.get("/:id", async (req, res) => {
+  try {
+    const category = await getCategoryById(String(req.params.id));
+    if (!category) {
+      res.status(404).json({ success: false, error: "Category not found" });
+      return;
+    }
+    res.json({ success: true, category });
   } catch (error) {
     sendHttpError(res, error);
   }

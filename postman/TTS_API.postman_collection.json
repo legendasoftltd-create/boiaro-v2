@@ -1,0 +1,276 @@
+{
+  "info": {
+    "name": "Boiaro TTS API",
+    "description": "Text-to-Speech REST API for Boiaro mobile app and third-party clients.\nBase URL: {{base_url}}/api/v1/tts\n\nAuthentication: Bearer token in Authorization header.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "boiaro-tts-api-v1"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://api.boiaro.com", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "book_id", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Voices",
+      "item": [
+        {
+          "name": "List AI Voices",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tts/voices",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tts", "voices"]
+            },
+            "description": "Returns all enabled Bengali AI voices. No authentication required."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"voices\": [\n    {\n      \"id\": \"EXAVITQu4vr4xnSDxMaL\",\n      \"name\": \"Sarah\",\n      \"label\": \"সারা (মহিলা)\",\n      \"lang\": \"bn\",\n      \"category\": null\n    },\n    {\n      \"id\": \"pFZP5JQG7iQjIQuC4Bku\",\n      \"name\": \"Lily\",\n      \"label\": \"লিলি (মহিলা)\",\n      \"lang\": \"bn\",\n      \"category\": null\n    },\n    {\n      \"id\": \"JBFqnCBsd6RMkjVDRZzb\",\n      \"name\": \"George\",\n      \"label\": \"জর্জ (পুরুষ)\",\n      \"lang\": \"bn\",\n      \"category\": null\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ambient Tracks",
+      "item": [
+        {
+          "name": "List Ambient Tracks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tts/ambient-tracks",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tts", "ambient-tracks"]
+            },
+            "description": "Returns all enabled ambient background sound tracks. No authentication required.\nThe `url` field is a fully resolved absolute URL ready for playback."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"tracks\": [\n    {\n      \"id\": \"calm\",\n      \"name\": \"Calm\",\n      \"label\": \"শান্ত\",\n      \"emoji\": \"🌿\",\n      \"url\": \"https://cdn.boiaro.com/ambient/calm.mp3\"\n    },\n    {\n      \"id\": \"romance\",\n      \"name\": \"Romance\",\n      \"label\": \"রোমান্স\",\n      \"emoji\": \"💕\",\n      \"url\": \"https://cdn.boiaro.com/ambient/romance.mp3\"\n    },\n    {\n      \"id\": \"horror\",\n      \"name\": \"Horror\",\n      \"label\": \"ভৌতিক\",\n      \"emoji\": \"👻\",\n      \"url\": \"https://cdn.boiaro.com/ambient/horror.mp3\"\n    },\n    {\n      \"id\": \"suspense\",\n      \"name\": \"Suspense\",\n      \"label\": \"সাসপেন্স\",\n      \"emoji\": \"⚡\",\n      \"url\": \"https://cdn.boiaro.com/ambient/suspense.mp3\"\n    },\n    {\n      \"id\": \"adventure\",\n      \"name\": \"Adventure\",\n      \"label\": \"অ্যাডভেঞ্চার\",\n      \"emoji\": \"⚔️\",\n      \"url\": \"https://cdn.boiaro.com/ambient/adventure.mp3\"\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Access",
+      "item": [
+        {
+          "name": "Check TTS Access",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tts/access/{{book_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tts", "access", "{{book_id}}"]
+            },
+            "description": "Check whether the authenticated user has TTS access for a specific book.\nReturns unlock status, access type, coin price, and current wallet balance."
+          },
+          "response": [
+            {
+              "name": "Accessible (free)",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": true,\n  \"unlocked\": true,\n  \"access_type\": \"free\",\n  \"coin_price\": 0,\n  \"wallet_balance\": 150\n}"
+            },
+            {
+              "name": "Locked (coin purchase needed)",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": true,\n  \"unlocked\": false,\n  \"access_type\": \"paid\",\n  \"coin_price\": 50,\n  \"wallet_balance\": 120,\n  \"message\": \"Purchase required — unlock with coins to use AI Voice\"\n}"
+            },
+            {
+              "name": "Premium Voice disabled",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": false,\n  \"unlocked\": false,\n  \"access_type\": null,\n  \"coin_price\": null\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Unlock",
+      "item": [
+        {
+          "name": "Unlock TTS with Coins",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"book_id\": \"{{book_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/tts/unlock",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tts", "unlock"]
+            },
+            "description": "Spend coins to unlock premium AI Voice for a book.\nDeducts `coin_price` from the user's wallet and creates a ContentUnlock record."
+          },
+          "response": [
+            {
+              "name": "Unlocked successfully",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"message\": \"AI Voice unlocked successfully\",\n  \"coins_spent\": 50\n}"
+            },
+            {
+              "name": "Already unlocked",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"already_unlocked\": true,\n  \"message\": \"Already unlocked\"\n}"
+            },
+            {
+              "name": "Insufficient coins",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"error\": \"Insufficient coin balance\",\n  \"required\": 50,\n  \"balance\": 20\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Generate",
+      "item": [
+        {
+          "name": "Generate Paragraph Audio",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"book_id\": \"{{book_id}}\",\n  \"text\": \"এটি একটি পরীক্ষামূলক অনুচ্ছেদ। এখানে বাংলা টেক্সট টু স্পিচ পরীক্ষা করা হচ্ছে।\",\n  \"voice_id\": \"EXAVITQu4vr4xnSDxMaL\",\n  \"paragraph_index\": 0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/tts/generate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tts", "generate"]
+            },
+            "description": "Generate (or retrieve cached) AI audio for a single paragraph.\n\nFields:\n- book_id (required): The book the paragraph belongs to.\n- text (required): Bengali text, max 3000 characters.\n- voice_id (optional): ElevenLabs voice ID. Defaults to first enabled voice.\n- paragraph_index (optional): 0-based index used for cache keying. Default 0.\n\nThe returned `audio_url` is an absolute URL ready for direct playback."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"audio_url\": \"https://cdn.boiaro.com/tts/abc123.mp3\",\n  \"voice_id\": \"EXAVITQu4vr4xnSDxMaL\",\n  \"paragraph_index\": 0\n}"
+            },
+            {
+              "name": "Access denied",
+              "status": "Forbidden",
+              "code": 403,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"error\": \"Purchase required — unlock with coins to use AI Voice\",\n  \"access_type\": \"paid\",\n  \"coin_price\": 50\n}"
+            },
+            {
+              "name": "ElevenLabs quota exceeded",
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"error\": \"ElevenLabs quota exceeded. Please try again later.\",\n  \"quota_exceeded\": true\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Prefetch",
+      "item": [
+        {
+          "name": "Prefetch Paragraphs",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"book_id\": \"{{book_id}}\",\n  \"voice_id\": \"EXAVITQu4vr4xnSDxMaL\",\n  \"paragraphs\": [\n    { \"text\": \"প্রথম অনুচ্ছেদের টেক্সট এখানে।\", \"index\": 1 },\n    { \"text\": \"দ্বিতীয় অনুচ্ছেদের টেক্সট এখানে।\", \"index\": 2 },\n    { \"text\": \"তৃতীয় অনুচ্ছেদের টেক্সট এখানে।\", \"index\": 3 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/tts/prefetch",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tts", "prefetch"]
+            },
+            "description": "Fire-and-forget prefetch of up to 3 upcoming paragraphs.\nCall this as the user is reading the current paragraph so audio is cached before they need it.\nMax 3 paragraphs per request. Response is immediate — generation happens in background."
+          },
+          "response": [
+            {
+              "name": "Queued",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"queued\": 3\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cache",
+      "item": [
+        {
+          "name": "Check Audio Cache",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/tts/cache/{{book_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "tts", "cache", "{{book_id}}"]
+            },
+            "description": "Check how many audio segments are already cached for a book.\nUseful to show a cache indicator in the reader UI. No auth required."
+          },
+          "response": [
+            {
+              "name": "Has cache",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"has_cache\": true,\n  \"segment_count\": 12,\n  \"latest_at\": \"2026-05-10T14:32:00.000Z\",\n  \"voice_id\": \"EXAVITQu4vr4xnSDxMaL\"\n}"
+            },
+            {
+              "name": "No cache",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"has_cache\": false,\n  \"segment_count\": 0,\n  \"latest_at\": null,\n  \"voice_id\": null\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

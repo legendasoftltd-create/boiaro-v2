@@ -24,6 +24,7 @@ import { paymentsRestRouter } from "./payments.js";
 import { shippingRestRouter } from "./shipping.js";
 import { couponsRestRouter } from "./coupons.js";
 import { ttsRestRouter } from "./tts.js";
+import { categorySectionsRestRouter } from "./category-sections.js";
 
 export const restRouter = Router();
 
@@ -52,3 +53,4 @@ restRouter.use("/payments", paymentsRestRouter);
 restRouter.use("/shipping", shippingRestRouter);
 restRouter.use("/coupons", couponsRestRouter);
 restRouter.use("/tts", ttsRestRouter);
+restRouter.use("/category-sections", categorySectionsRestRouter);
