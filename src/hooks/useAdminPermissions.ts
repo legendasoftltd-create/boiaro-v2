@@ -68,20 +68,41 @@ const SUPER_ADMIN_PERMISSIONS: Permission[] = MODULES.map(m => ({
   can_delete: true,
 }));
 
+// Moderators have full view access but cannot delete or change roles/settings.
+const MODERATOR_RESTRICTED: string[] = ["roles", "settings"];
+const MODERATOR_PERMISSIONS: Permission[] = MODULES.map(m => ({
+  module: m,
+  can_view: true,
+  can_create: !MODERATOR_RESTRICTED.includes(m),
+  can_edit: !MODERATOR_RESTRICTED.includes(m),
+  can_delete: false,
+}));
+
 export function useAdminPermissions() {
   const { user, loading } = useAuth();
-  const isAdmin = ((user?.roles as string[]) || []).includes("admin");
+  const roles = (user?.roles as string[]) || [];
+  const isAdmin = roles.includes("admin");
+  const isModerator = !isAdmin && roles.includes("moderator");
+  const hasAccess = isAdmin || isModerator;
 
   const isSuperAdmin = isAdmin;
-  const permissions = isAdmin ? SUPER_ADMIN_PERMISSIONS : [];
-  const roleName = isAdmin ? "super_admin" : null;
+  const permissions = isAdmin ? SUPER_ADMIN_PERMISSIONS : isModerator ? MODERATOR_PERMISSIONS : [];
+  const roleName = isAdmin ? "super_admin" : isModerator ? "moderator" : null;
 
-  const can = (_module: string, _action: "view" | "create" | "edit" | "delete") => {
-    return isAdmin;
+  const can = (module: string, action: "view" | "create" | "edit" | "delete") => {
+    if (!hasAccess) return false;
+    const perm = permissions.find(p => p.module === module);
+    if (!perm) return isAdmin;
+    return perm[`can_${action}`];
   };
 
-  const canAccessPath = (_path: string) => {
-    return isAdmin;
+  const canAccessPath = (path: string) => {
+    if (!hasAccess) return false;
+    if (isAdmin) return true;
+    // Moderators cannot access roles or settings pages
+    const module = MODULE_MAP[path];
+    if (!module) return true;
+    return !MODERATOR_RESTRICTED.includes(module);
   };
 
   return {

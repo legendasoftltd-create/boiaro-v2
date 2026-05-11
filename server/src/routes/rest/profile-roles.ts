@@ -12,7 +12,7 @@ profileRolesRestRouter.get(
   requireAuth,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const userId = req.auth.userId;
+      const userId = req.auth.userId!; // guaranteed non-null by requireAuth
 
       const result = await getUserRoles(userId);
 

@@ -176,7 +176,7 @@ function AdminGateway() {
   if (loading) return <PageLoader />;
   if (!user) return <AdminAuth />;
   const roles = (user?.roles as string[]) || [];
-  if (!roles.includes("admin")) return <Navigate to="/dashboard" replace />;
+  if (!roles.includes("admin") && !roles.includes("moderator")) return <Navigate to="/dashboard" replace />;
   return <Outlet />;
 }
 
