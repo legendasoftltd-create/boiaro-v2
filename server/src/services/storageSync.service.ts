@@ -61,6 +61,9 @@ async function patchAllDbUrls(localUrl: string, s3Url: string): Promise<void> {
 
     // Ebook chapters
     prisma.ebookChapter.updateMany({ where: { file_url: localUrl }, data: { file_url: s3Url } }),
+
+    // Categories
+    prisma.category.updateMany({ where: { icon: localUrl }, data: { icon: s3Url } }),
   ]);
 }
 
