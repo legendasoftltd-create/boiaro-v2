@@ -384,9 +384,22 @@ export default function AdminLayout() {
 
       <main className={cn("flex-1 overflow-y-auto", isMobile && "pt-14")}>
         <div className="p-5 max-w-7xl mx-auto">
-          <ErrorBoundary resetKey={location.pathname}>
-            <Outlet />
-          </ErrorBoundary>
+          {canAccessPath(location.pathname) ? (
+            <ErrorBoundary resetKey={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
+              <Shield className="h-14 w-14 text-muted-foreground/40" />
+              <h2 className="text-xl font-semibold">Access Denied</h2>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                You don't have permission to view this page. Contact your admin to request access.
+              </p>
+              <a href="/admin" className="text-sm text-primary underline underline-offset-4">
+                Go to Dashboard
+              </a>
+            </div>
+          )}
         </div>
       </main>
     </div>

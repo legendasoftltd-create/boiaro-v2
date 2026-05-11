@@ -1,12 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { trpc } from "@/lib/trpc";
 
-const MODULES = [
-  "books", "users", "orders", "payments", "reports", "support", "content",
-  "settings", "roles", "email", "notifications", "analytics", "cms",
-  "subscriptions", "coupons", "shipping", "withdrawals", "revenue",
-];
-
-const MODULE_MAP: Record<string, string> = {
+export const MODULE_MAP: Record<string, string> = {
   "/admin": "reports",
   "/admin/books": "books",
   "/admin/authors": "content",
@@ -52,64 +47,48 @@ const MODULE_MAP: Record<string, string> = {
   "/admin/site-settings": "settings",
 };
 
-interface Permission {
-  module: string;
-  can_view: boolean;
-  can_create: boolean;
-  can_edit: boolean;
-  can_delete: boolean;
-}
-
-const SUPER_ADMIN_PERMISSIONS: Permission[] = MODULES.map(m => ({
-  module: m,
-  can_view: true,
-  can_create: true,
-  can_edit: true,
-  can_delete: true,
-}));
-
-// Moderators have full view access but cannot delete or change roles/settings.
-const MODERATOR_RESTRICTED: string[] = ["roles", "settings"];
-const MODERATOR_PERMISSIONS: Permission[] = MODULES.map(m => ({
-  module: m,
-  can_view: true,
-  can_create: !MODERATOR_RESTRICTED.includes(m),
-  can_edit: !MODERATOR_RESTRICTED.includes(m),
-  can_delete: false,
-}));
-
 export function useAdminPermissions() {
-  const { user, loading } = useAuth();
-  const roles = (user?.roles as string[]) || [];
-  const isAdmin = roles.includes("admin");
-  const isModerator = !isAdmin && roles.includes("moderator");
-  const hasAccess = isAdmin || isModerator;
+  const { user, loading: authLoading } = useAuth();
 
-  const isSuperAdmin = isAdmin;
-  const permissions = isAdmin ? SUPER_ADMIN_PERMISSIONS : isModerator ? MODERATOR_PERMISSIONS : [];
-  const roleName = isAdmin ? "super_admin" : isModerator ? "moderator" : null;
+  const { data, isLoading: queryLoading } = trpc.admin.myPermissions.useQuery(undefined, {
+    enabled: !!user && !authLoading,
+    staleTime: 2 * 60 * 1000,
+  });
 
-  const can = (module: string, action: "view" | "create" | "edit" | "delete") => {
+  const isLoading = authLoading || (!!user && queryLoading);
+  const permissions = data?.permissions ?? [];
+  const roleName = data?.roleName ?? null;
+  const isSuperAdmin = data?.isSuperAdmin ?? false;
+  const hasAccess = !!roleName;
+
+  const can = (module: string, action: "view" | "create" | "edit" | "delete"): boolean => {
     if (!hasAccess) return false;
+    if (isSuperAdmin) return true;
     const perm = permissions.find(p => p.module === module);
-    if (!perm) return isAdmin;
+    if (!perm) return false;
     return perm[`can_${action}`];
   };
 
-  const canAccessPath = (path: string) => {
+  const canAccessPath = (path: string): boolean => {
     if (!hasAccess) return false;
-    if (isAdmin) return true;
-    // Moderators cannot access roles or settings pages
+    if (isSuperAdmin) return true;
+    // Exact match in MODULE_MAP
     const module = MODULE_MAP[path];
-    if (!module) return true;
-    return !MODERATOR_RESTRICTED.includes(module);
+    if (module) return can(module, "view");
+    // Prefix match for sub-paths like /admin/users/123
+    const parent = Object.entries(MODULE_MAP)
+      .filter(([p]) => path.startsWith(p + "/"))
+      .sort((a, b) => b[0].length - a[0].length)[0];
+    if (parent) return can(parent[1], "view");
+    // Not in MODULE_MAP — don't restrict (dashboard overview, etc.)
+    return true;
   };
 
   return {
     permissions,
     roleName,
     isSuperAdmin,
-    isLoading: loading,
+    isLoading,
     can,
     canAccessPath,
     MODULE_MAP,

@@ -157,7 +157,10 @@ export default function AdminRoles() {
 
   const assignMutation = trpc.admin.assignAdminRoleToUser.useMutation({
     onSuccess: async () => {
-      await utils.admin.listAdminUserRoles.invalidate();
+      await Promise.all([
+        utils.admin.listAdminUserRoles.invalidate(),
+        utils.admin.myPermissions.invalidate(),
+      ]);
       const uid = selectedUser?.id || "";
       const roleLabel = (roles as Role[]).find(r => r.id === assignRoleId)?.label || "";
       closeAssignDialog();
@@ -168,7 +171,10 @@ export default function AdminRoles() {
   });
 
   const toggleActiveMutation = trpc.admin.setAdminUserRoleActive.useMutation({
-    onSuccess: () => utils.admin.listAdminUserRoles.invalidate(),
+    onSuccess: () => Promise.all([
+      utils.admin.listAdminUserRoles.invalidate(),
+      utils.admin.myPermissions.invalidate(),
+    ]),
     onError: (err) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 

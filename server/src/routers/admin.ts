@@ -1284,9 +1284,19 @@ export const adminRouter = router({
           });
 
       if (APP_ROLE_VALUES.includes(role.name as (typeof APP_ROLE_VALUES)[number])) {
+        // Named app role (admin/moderator/writer/etc.) — sync directly
         await prisma.userRole.upsert({
           where: { user_id_role: { user_id: input.user_id, role: role.name as (typeof APP_ROLE_VALUES)[number] } },
           create: { user_id: input.user_id, role: role.name as (typeof APP_ROLE_VALUES)[number] },
+          update: {},
+        });
+      } else {
+        // Custom admin role — grant moderator as the base app role so the
+        // user can enter the admin panel. myPermissions will enforce their
+        // actual permissions from admin_role_permissions.
+        await prisma.userRole.upsert({
+          where: { user_id_role: { user_id: input.user_id, role: "moderator" } },
+          create: { user_id: input.user_id, role: "moderator" },
           update: {},
         });
       }
@@ -1326,29 +1336,58 @@ export const adminRouter = router({
 
   // ── Permissions ─────────────────────────────────────────────────────────────
   myPermissions: protectedProcedure.query(async ({ ctx }) => {
-    const isAdmin = await prisma.userRole.findFirst({
-      where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } },
-    });
-    if (!isAdmin) return { roleName: null, permissions: [], isSuperAdmin: false };
-
-    const MODULES = [
+    const PERM_MODULES = [
       "books", "users", "orders", "payments", "reports", "support", "content",
       "settings", "roles", "email", "notifications", "analytics", "cms",
       "subscriptions", "coupons", "shipping", "withdrawals", "revenue",
     ];
+    const MODERATOR_RESTRICTED = ["roles", "settings"];
 
-    if (isAdmin.role === "admin") {
+    // Check for an active custom admin role assignment first
+    const customAssignment = await prisma.adminUserRole.findFirst({
+      where: { user_id: ctx.userId, is_active: true },
+      include: { admin_role: { include: { admin_permissions: true } } },
+    });
+
+    if (customAssignment && customAssignment.admin_role.admin_permissions.length > 0) {
+      const perms = customAssignment.admin_role.admin_permissions;
+      return {
+        roleName: customAssignment.admin_role.name,
+        isSuperAdmin: false,
+        permissions: PERM_MODULES.map((m) => ({
+          module: m,
+          can_view:   perms.some(p => p.permission_key === `${m}:view`   && p.is_allowed),
+          can_create: perms.some(p => p.permission_key === `${m}:create` && p.is_allowed),
+          can_edit:   perms.some(p => p.permission_key === `${m}:edit`   && p.is_allowed),
+          can_delete: perms.some(p => p.permission_key === `${m}:delete` && p.is_allowed),
+        })),
+      };
+    }
+
+    // Fall back to system app role (admin / moderator)
+    const appRole = await prisma.userRole.findFirst({
+      where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } },
+    });
+    if (!appRole) return { roleName: null, permissions: [], isSuperAdmin: false };
+
+    if (appRole.role === "admin") {
       return {
         roleName: "super_admin",
         isSuperAdmin: true,
-        permissions: MODULES.map((m) => ({ module: m, can_view: true, can_create: true, can_edit: true, can_delete: true })),
+        permissions: PERM_MODULES.map((m) => ({ module: m, can_view: true, can_create: true, can_edit: true, can_delete: true })),
       };
     }
 
     return {
       roleName: "moderator",
       isSuperAdmin: false,
-      permissions: MODULES.map((m) => ({ module: m, can_view: true, can_create: false, can_edit: false, can_delete: false })),
+      permissions: PERM_MODULES.map((m) => ({
+        module: m,
+        can_view:   true,
+        can_create: !MODERATOR_RESTRICTED.includes(m),
+        can_edit:   !MODERATOR_RESTRICTED.includes(m),
+        can_delete: false,
+      })),
     };
   }),
 
