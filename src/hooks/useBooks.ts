@@ -258,7 +258,7 @@ export function useCategories() {
     id: c.id,
     name: c.name,
     nameBn: c.name_bn || c.name,
-    icon: c.icon || "BookOpen",
+    icon: c.icon || "",
     count: String(c._count?.books ?? 0),
     color: c.color || "primary",
   }));

@@ -3,9 +3,25 @@ import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Grid, BookOpen, Heart, Sword, Ghost, Sparkles, GraduationCap, Baby, History, Lightbulb, Music, Globe, Feather } from "lucide-react"
 import { useCategories } from "@/hooks/useBooks"
+import { toMediaUrl } from "@/lib/mediaUrl"
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   BookOpen, Heart, Sword, Ghost, Sparkles, GraduationCap, Baby, History, Lightbulb, Music, Globe, Feather,
+}
+
+function CategoryIcon({ icon }: { icon: string }) {
+  const isUrl = icon.startsWith("/") || icon.startsWith("http")
+  if (isUrl) {
+    return (
+      <img
+        src={toMediaUrl(icon)}
+        alt=""
+        className="w-8 h-8 object-contain"
+      />
+    )
+  }
+  const Icon = iconMap[icon] || BookOpen
+  return <Icon className="w-5 h-5 text-primary" />
 }
 
 export function Categories() {
@@ -34,18 +50,17 @@ export function Categories() {
           </div>
         </div>
         <div ref={scrollRef} className="scroll-row stagger-children">
-          {categories.map((category) => {
-            const Icon = iconMap[category.icon] || BookOpen
-            return (
-              <Link key={category.id} to={`/books?category=${category.id}`} className="flex-shrink-0 snap-start group">
-                <div className={`relative w-24 md:w-32 p-3 md:p-4 rounded-xl md:rounded-2xl bg-gradient-to-br ${category.color} border border-border/40 hover:border-primary/30 transition-all duration-300 hover:scale-[1.03] hover:shadow-lg hover:shadow-primary/[0.04]`}>
-                  <div className="w-10 h-10 rounded-xl bg-background/40 flex items-center justify-center mb-2.5 mx-auto"><Icon className="w-5 h-5 text-primary" /></div>
-                  <h3 className="font-medium text-foreground text-[13px] text-center mb-0.5 group-hover:text-primary transition-colors line-clamp-1">{category.nameBn}</h3>
-                  <p className="text-[11px] text-muted-foreground text-center">{category.count} বই</p>
+          {categories.map((category) => (
+            <Link key={category.id} to={`/books?category=${category.id}`} className="flex-shrink-0 snap-start group">
+              <div className={`relative w-24 md:w-32 p-3 md:p-4 rounded-xl md:rounded-2xl bg-gradient-to-br ${category.color || "from-primary/10 to-primary/5"} border border-border/40 hover:border-primary/30 transition-all duration-300 hover:scale-[1.03] hover:shadow-lg hover:shadow-primary/[0.04]`}>
+                <div className="w-10 h-10 rounded-xl bg-background/40 flex items-center justify-center mb-2.5 mx-auto">
+                  <CategoryIcon icon={category.icon} />
                 </div>
-              </Link>
-            )
-          })}
+                <h3 className="font-medium text-foreground text-[13px] text-center mb-0.5 group-hover:text-primary transition-colors line-clamp-1">{category.nameBn}</h3>
+                <p className="text-[11px] text-muted-foreground text-center">{category.count} বই</p>
+              </div>
+            </Link>
+          ))}
         </div>
         <div className="text-center mt-5 md:mt-8">
           <Link to="/books"><Button variant="outline" className="btn-gold-outline h-10 px-6 text-[13px]">View All Categories</Button></Link>
