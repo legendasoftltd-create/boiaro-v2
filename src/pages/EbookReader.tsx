@@ -62,6 +62,7 @@ export default function EbookReader() {
   const [previewPct, setPreviewPct] = useState<number | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [epubPageTotal, setEpubPageTotal] = useState(0); // visual page total for EPUB
   const totalPagesRef = useRef(0);
   const [percentage, setPercentage] = useState(0);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -606,20 +607,18 @@ export default function EbookReader() {
 
   // ──────── Auto-save progress (debounced) ────────
   useEffect(() => {
-    if (!bookId || totalPages === 0) return;
+    const effectiveTotal = fileType === "epub" ? (epubPageTotal || totalPages) : totalPages;
+    if (!bookId || effectiveTotal === 0) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       if (fileType === "epub") {
-        // For EPUB: pass the actual displayed percentage and CFI directly.
-        // currentPage is estimated from percentage for display only — don't recalculate.
-        saveProgress(currentPage, totalPages, percentage, epubCfi || undefined);
+        saveProgress(currentPage, effectiveTotal, percentage, epubCfi || undefined);
       } else {
-        // For PDF: percentage is derived accurately from page/total
         saveProgress(currentPage, totalPages);
       }
     }, 2000);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [currentPage, totalPages, percentage, epubCfi, fileType, saveProgress, bookId]);
+  }, [currentPage, totalPages, epubPageTotal, percentage, epubCfi, fileType, saveProgress, bookId]);
 
   // ──────── Controls auto-hide ────────
   const resetControlsTimer = useCallback(() => {
@@ -657,14 +656,20 @@ export default function EbookReader() {
 
   // ──────── EPUB location change handler with paywall check ────────
   const handleEpubLocationChange = useCallback(
-    ({ percentage: pct, cfi, chapter }: { percentage: number; cfi: string; chapter?: string }) => {
+    ({ percentage: pct, cfi, chapter, page, pageTotal }: {
+      percentage: number; cfi: string; chapter?: string; page?: number; pageTotal?: number;
+    }) => {
       setPercentage(pct);
       setEpubCfi(cfi);
       if (chapter) setCurrentHref(chapter);
       const tocItem = tocItems.find((t) => chapter && t.href && chapter.includes(t.href));
       setChapterTitle(tocItem?.label || "");
-      if (totalPagesRef.current > 0) {
-        setCurrentPage(Math.max(1, Math.round((pct / 100) * totalPagesRef.current)));
+      // Use visual page directly (increments by 1 per page turn) instead of estimating from %
+      if (page && page > 0) {
+        setCurrentPage(page);
+      }
+      if (pageTotal && pageTotal > 0) {
+        setEpubPageTotal(pageTotal);
       }
 
       if (shouldEnforcePreviewLimit && access.isPercentageBlocked(pct) && !showPaywall) {
@@ -990,7 +995,7 @@ export default function EbookReader() {
         show={showControls}
         isDarkMode={isDarkMode}
         currentPage={currentPage}
-        totalPages={totalPages}
+        totalPages={fileType === "epub" ? (epubPageTotal || totalPages) : totalPages}
         percentage={percentage}
         fileType={fileType}
         zoom={zoom}

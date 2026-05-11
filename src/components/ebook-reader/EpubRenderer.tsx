@@ -16,7 +16,7 @@ interface EpubRendererProps {
   fontSize: number;
   isDarkMode: boolean;
   onTocLoaded: (toc: NavItem[]) => void;
-  onLocationChange: (info: { percentage: number; cfi: string; chapter?: string }) => void;
+  onLocationChange: (info: { percentage: number; cfi: string; chapter?: string; page?: number; pageTotal?: number }) => void;
   onError: (error: string) => void;
   initialCfi?: string;
 }
@@ -310,8 +310,6 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           setLoaded(true);
 
           // Handle relocated event for progress tracking
-          // Uses displayed.page / displayed.total per spine item for accurate visual-page progress.
-          // Tracks each spine's page count as chapters are visited — no location pre-generation needed.
           rendition.on("relocated", (location: any) => {
             if (destroyed) return;
             try {
@@ -323,27 +321,32 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
               const atLastSpine = spineIdx >= spineLen - 1;
               const atLastPage = displayedPage >= displayedTotal;
 
-              // Learn and remember the page count for this spine item
-              if (displayedTotal > (spinePageCountsRef.current[spineIdx] ?? 0)) {
-                spinePageCountsRef.current[spineIdx] = displayedTotal;
-              }
-
-              // Estimate total book pages: known counts for visited spines, 1 for unvisited
-              const estimated = Array.from({ length: spineLen }, (_, i) => spinePageCountsRef.current[i] ?? 1);
-              const totalEstimated = estimated.reduce((a, b) => a + b, 0);
-              const pagesBefore = estimated.slice(0, spineIdx).reduce((a, b) => a + b, 0);
-
+              // PERCENTAGE: stable spine-based formula (always increases forward, never jumps back)
+              // Each spine item = equal share of total book (1/spineLen).
+              // Within a spine: fraction of pages read within that chapter.
               let pct: number;
               if (atLastSpine && atLastPage) {
                 pct = 100;
               } else {
-                // (displayedPage - 1) so first page = 0%, progress grows with each turn
-                pct = Math.min(99, Math.max(0, Math.round(((pagesBefore + displayedPage - 1) / totalEstimated) * 100)));
+                const spineWeight = 1 / spineLen;
+                const spineProgress = spineIdx * spineWeight;
+                const pageInChapter = displayedTotal > 1 ? (displayedPage - 1) / displayedTotal : 0;
+                pct = Math.min(99, Math.max(0, Math.round((spineProgress + pageInChapter * spineWeight) * 100)));
               }
+
+              // VISUAL PAGE: accurate page-turn counter using discovered spine page counts
+              // Track max displayed.total per spine so totals only grow as new chapters are visited
+              if (displayedTotal > (spinePageCountsRef.current[spineIdx] ?? 0)) {
+                spinePageCountsRef.current[spineIdx] = displayedTotal;
+              }
+              const estimated = Array.from({ length: spineLen }, (_, i) => spinePageCountsRef.current[i] ?? 1);
+              const totalEstimated = estimated.reduce((a, b) => a + b, 0);
+              const pagesBefore = estimated.slice(0, spineIdx).reduce((a, b) => a + b, 0);
+              const visualPage = pagesBefore + displayedPage;
 
               const cfi = location.start?.cfi || "";
               const chapter = location.start?.href || "";
-              onLocationChange({ percentage: pct, cfi, chapter });
+              onLocationChange({ percentage: pct, cfi, chapter, page: visualPage, pageTotal: totalEstimated });
             } catch {}
           });
 
