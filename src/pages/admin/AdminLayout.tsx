@@ -384,7 +384,7 @@ export default function AdminLayout() {
 
       <main className={cn("flex-1 overflow-y-auto", isMobile && "pt-14")}>
         <div className="p-5 max-w-7xl mx-auto">
-          <ErrorBoundary key={location.pathname}>
+          <ErrorBoundary resetKey={location.pathname}>
             <Outlet />
           </ErrorBoundary>
         </div>

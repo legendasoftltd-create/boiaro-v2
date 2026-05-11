@@ -8,7 +8,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { AudioPlayerProvider } from "@/contexts/AudioPlayerContext";
-import { Sentry } from "@/lib/sentry";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -154,30 +153,14 @@ function LegacyCheckoutCallbackRedirect({ status }: { status: "success" | "faile
   return <Navigate to={`/payment/callback?${queryPrefix}status=${status}`} replace />;
 }
 
-const SentryErrorBoundary = Sentry.ErrorBoundary;
-
-// Resets the error boundary on every route change so a crash on one page
-// does not leave all subsequent navigations stuck on the error screen.
-// Uses resetKeys instead of key= so children are NOT unmounted on navigation —
-// only the error state is cleared. Using key= was unmounting the entire admin
-// layout on every page change, causing re-mount crashes.
+// Resets automatically when the pathname changes via getDerivedStateFromProps,
+// so a crash on one page never blocks navigation to another page.
 function NavigationErrorBoundary({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   return (
-    <SentryErrorBoundary
-      resetKeys={[location.pathname]}
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
-          <div className="text-center space-y-4">
-            <h1 className="text-2xl font-bold">Something went wrong</h1>
-            <p className="text-muted-foreground">An unexpected error occurred. Please try again.</p>
-            <button onClick={() => window.location.reload()} className="px-4 py-2 bg-primary text-primary-foreground rounded-md">Refresh</button>
-          </div>
-        </div>
-      }
-    >
+    <ErrorBoundary resetKey={location.pathname} fullPage>
       {children}
-    </SentryErrorBoundary>
+    </ErrorBoundary>
   );
 }
 
