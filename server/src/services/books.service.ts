@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 import { resolveBookUrls } from "../lib/mediaUrl.js";
+import { isS3Url, createPresignedGetUrl } from "../lib/s3.js";
 import type {
   bookListSchema,
   bookReviewsQuerySchema,
@@ -161,10 +162,32 @@ export async function getBookById(id: string) {
   return resolveBookUrls(book);
 }
 
-function appendFollowedStatusToBookDetails(
+async function appendFollowedStatusToBookDetails(
   book: any,
   followedProfileIds: Set<string>
 ) {
+  const formats = await Promise.all(
+    book.formats.map(async (format: any) => {
+      let file_url: string | null = null;
+      if (format.format === "ebook" && format.file_url) {
+        try {
+          file_url = isS3Url(format.file_url)
+            ? await createPresignedGetUrl(format.file_url, 3600)
+            : format.file_url;
+        } catch {
+          file_url = null;
+        }
+      }
+      return {
+        ...format,
+        file_url,
+        narrator: format.narrator
+          ? { ...format.narrator, followed: followedProfileIds.has(format.narrator.id) }
+          : null,
+      };
+    })
+  );
+
   return {
     ...book,
     author: book.author
@@ -173,18 +196,7 @@ function appendFollowedStatusToBookDetails(
     publisher: book.publisher
       ? { ...book.publisher, followed: followedProfileIds.has(book.publisher.id) }
       : null,
-    formats: book.formats.map((format: any) => ({
-      ...format,
-      // Strip raw S3 file_url from public responses — mobile app must use
-      // POST /api/v1/content/ebook-url to get a time-limited presigned URL.
-      file_url: null,
-      narrator: format.narrator
-        ? {
-            ...format.narrator,
-            followed: followedProfileIds.has(format.narrator.id),
-          }
-        : null,
-    })),
+    formats,
   };
 }
 
@@ -219,10 +231,7 @@ export async function getBookByIdForRest(
   userId?: string | null
 ) {
   const book = await getBookById(id);
-  const followedProfileIds = await getFollowedProfileIdsForBookDetails(
-    userId,
-    book
-  );
+  const followedProfileIds = await getFollowedProfileIdsForBookDetails(userId, book);
   return appendFollowedStatusToBookDetails(book, followedProfileIds);
 }
 
