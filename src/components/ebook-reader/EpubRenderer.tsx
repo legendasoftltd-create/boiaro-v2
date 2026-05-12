@@ -341,7 +341,8 @@ export const EpubRenderer = forwardRef<EpubRendererHandle, EpubRendererProps>(
           rendition.on("relocated", (location: any) => {
             if (destroyed) return;
             try {
-              const spineItems = (book as any)?.spine?.items;
+              // epub.js 0.4.x stores spine items as spine.spineItems (not spine.items)
+              const spineItems = (book as any)?.spine?.spineItems ?? (book as any)?.spine?.items;
               const spineLen = Math.max(1, Array.isArray(spineItems) ? spineItems.length : 1);
               const spineIdx = Math.max(0, location.start?.index ?? 0);
               const displayedPage = Math.max(1, location.start?.displayed?.page ?? 1);

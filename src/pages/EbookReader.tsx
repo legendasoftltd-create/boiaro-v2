@@ -100,7 +100,7 @@ export default function EbookReader() {
   const [premiumVoiceEnabled, setPremiumVoiceEnabled] = useState(false);
   const [voiceAccessType, setVoiceAccessType] = useState<"free" | "paid" | "subscription">("paid");
   const [voiceCoinPrice, setVoiceCoinPrice] = useState(0);
-  const [ebookFormatId, setEbookFormatId] = useState<string | null>(null);
+
   const [showVoiceGate, setShowVoiceGate] = useState(false);
   const [pdfPageText, setPdfPageText] = useState("");
   const [selectedVoiceId, setSelectedVoiceId] = useState<import("@/hooks/usePremiumTTS").BengaliVoiceId>("EXAVITQu4vr4xnSDxMaL");
@@ -534,7 +534,7 @@ export default function EbookReader() {
         const vat = (dbBook as any).voice_access_type;
         setVoiceAccessType(vat === "free" ? "free" : vat === "subscription" ? "subscription" : "paid");
         setVoiceCoinPrice(Number((dbBook as any).voice_coin_price) || 0);
-        setEbookFormatId((ebookFmt as any).id ?? null);
+
         // Only auto-detect genre if user hasn't manually chosen one
         if (!userOverrodeGenre) {
           try {
@@ -567,9 +567,6 @@ export default function EbookReader() {
         setFileUrl(resolvedUrl);
         const detectedType = detectFileType(resolvedUrl, undefined);
         setFileType(detectedType);
-        // For PDF: totalPages will be set accurately by pdf.numPages via onTotalPagesChange.
-        // For EPUB: set format page count as initial fallback; epubPageTotal overrides it once generated.
-        if (detectedType === "epub" && ebookFmt.pages) setTotalPages(ebookFmt.pages);
         setLoading(false);
 
         if (user) logAccess(dbBook.id, "ebook", true);
