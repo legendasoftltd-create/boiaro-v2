@@ -168,14 +168,13 @@ async function appendFollowedStatusToBookDetails(
 ) {
   const formats = await Promise.all(
     book.formats.map(async (format: any) => {
-      let file_url: string | null = null;
-      if (format.format === "ebook" && format.file_url) {
+      let file_url: string | null = format.file_url ?? null;
+      if (format.format === "ebook" && format.file_url && isS3Url(format.file_url)) {
         try {
-          file_url = isS3Url(format.file_url)
-            ? await createPresignedGetUrl(format.file_url, 3600)
-            : format.file_url;
-        } catch {
-          file_url = null;
+          file_url = await createPresignedGetUrl(format.file_url, 3600);
+        } catch (err) {
+          console.error("[books] Failed to presign ebook URL, returning raw:", err);
+          file_url = format.file_url;
         }
       }
       return {
