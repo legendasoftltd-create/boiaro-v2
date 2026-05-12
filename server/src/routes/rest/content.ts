@@ -1,11 +1,19 @@
 import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
 import { AuthenticatedRequest, requireAuth } from "../../middleware/auth.js";
-import { getEbookSignedUrl } from "../../services/content.service.js";
+import { getEbookSignedUrl, streamEbookDownload } from "../../services/content.service.js";
 import { prisma } from "../../lib/prisma.js";
 import { resolveFileUrl } from "../../lib/mediaUrl.js";
 
 export const contentRestRouter = Router();
+
+contentRestRouter.get("/download/ebook/:bookId", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    await streamEbookDownload(req.auth.userId, req.params.bookId as string, res);
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
 
 contentRestRouter.post("/ebook-url", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
