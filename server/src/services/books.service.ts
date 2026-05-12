@@ -175,6 +175,9 @@ function appendFollowedStatusToBookDetails(
       : null,
     formats: book.formats.map((format: any) => ({
       ...format,
+      // Strip raw S3 file_url from public responses — mobile app must use
+      // POST /api/v1/content/ebook-url to get a time-limited presigned URL.
+      file_url: null,
       narrator: format.narrator
         ? {
             ...format.narrator,
