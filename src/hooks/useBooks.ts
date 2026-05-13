@@ -4,6 +4,19 @@ import type { MasterBook, Author, Publisher, Category } from "@/lib/types";
 import { toMediaUrl } from "@/lib/mediaUrl";
 import { formatDuration } from "@/lib/duration";
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function trpcBookToMasterBook(book: any): MasterBook {
   const author: Author = book.author
     ? {
@@ -106,8 +119,8 @@ export function trpcBookToMasterBook(book: any): MasterBook {
     publisher,
     category,
     cover: toMediaUrl(book.cover_url) || "",
-    description: book.description || "",
-    descriptionBn: book.description_bn || book.description || "",
+    description: stripHtml(book.description || ""),
+    descriptionBn: stripHtml(book.description_bn || book.description || ""),
     rating: Number(book.rating) || 0,
     reviewsCount: book.reviews_count || 0,
     totalReads: String(book.total_reads || 0),
