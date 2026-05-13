@@ -7,6 +7,8 @@ import { formatDuration } from "@/lib/duration";
 function stripHtml(html: string): string {
   return html
     .replace(/<[^>]*>/g, " ")
+    .replace(/\\r\\n|\\n|\\r/g, " ")
+    .replace(/\r\n|\r|\n/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
