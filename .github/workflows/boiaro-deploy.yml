@@ -30,6 +30,13 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_FACEBOOK_APP_ID: ${{ secrets.VITE_FACEBOOK_APP_ID }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          VITE_REDX_ENV: ${{ secrets.VITE_REDX_ENV }}
+          VITE_APP_VERSION: ${{ secrets.VITE_APP_VERSION }}
 
       # ── Upload built artifacts to server via rsync ────────────────────────
       - name: Setup SSH key
