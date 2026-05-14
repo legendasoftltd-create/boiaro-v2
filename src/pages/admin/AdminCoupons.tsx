@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { stripHtml } from "@/lib/stripHtml";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -179,7 +180,7 @@ export default function AdminCoupons() {
               <TableRow key={c.id}>
                 <TableCell>
                   <p className="font-mono font-bold text-sm">{c.code}</p>
-                  {c.description && <p className="text-xs text-muted-foreground truncate max-w-[150px]">{c.description}</p>}
+                  {c.description && <p className="text-xs text-muted-foreground truncate max-w-[150px]">{stripHtml(c.description)}</p>}
                 </TableCell>
                 <TableCell className="font-semibold">
                   {c.discount_type === "percentage" ? `${c.discount_value}%` : `৳${c.discount_value}`}

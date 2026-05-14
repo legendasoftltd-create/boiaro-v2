@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
+import { stripHtml } from "@/lib/stripHtml";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -368,7 +369,7 @@ export default function AdminLiveMonitoring() {
                       <TableRow key={t.id}>
                         <TableCell className="text-green-500 font-semibold">+{t.amount}</TableCell>
                         <TableCell><Badge variant="secondary" className="text-[10px]">{t.source || "—"}</Badge></TableCell>
-                        <TableCell className="text-xs max-w-[150px] truncate">{t.description}</TableCell>
+                        <TableCell className="text-xs max-w-[150px] truncate">{stripHtml(t.description)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{fmtDate(t.created_at)}</TableCell>
                       </TableRow>
                     ))}
@@ -387,7 +388,7 @@ export default function AdminLiveMonitoring() {
                       <TableRow key={t.id}>
                         <TableCell className="text-destructive font-semibold">{t.amount}</TableCell>
                         <TableCell><Badge variant="secondary" className="text-[10px]">{t.source || "—"}</Badge></TableCell>
-                        <TableCell className="text-xs max-w-[150px] truncate">{t.description}</TableCell>
+                        <TableCell className="text-xs max-w-[150px] truncate">{stripHtml(t.description)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{fmtDate(t.created_at)}</TableCell>
                       </TableRow>
                     ))}

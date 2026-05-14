@@ -3,21 +3,7 @@ import { trpc } from "@/lib/trpc";
 import type { MasterBook, Author, Publisher, Category } from "@/lib/types";
 import { toMediaUrl } from "@/lib/mediaUrl";
 import { formatDuration } from "@/lib/duration";
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\\r\\n|\\n|\\r/g, " ")
-    .replace(/\r\n|\r|\n/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+import { stripHtml } from "@/lib/stripHtml";
 
 export function trpcBookToMasterBook(book: any): MasterBook {
   const author: Author = book.author

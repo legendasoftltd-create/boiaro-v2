@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle, XCircle, Eye, BookOpen, Image, Loader2, User2, RotateCcw, FileAudio, Pencil } from "lucide-react";
+import { stripHtml } from "@/lib/stripHtml";
 import { toast } from "sonner";
 
 export default function AdminSubmissions() {
@@ -35,7 +36,7 @@ export default function AdminSubmissions() {
   const updateStatusMutation = trpc.admin.updateSubmissionStatus.useMutation({
     onSuccess: (_data, vars) => {
       const msgs: Record<string, string> = { approved: "Content approved and is now live!", rejected: "Content rejected.", draft: "Sent back for correction." };
-      toast.success(msgs[vars.status] || "Updated");
+      toast.success(msgs[(vars as any)?.status] || "Updated");
       utils.admin.listSubmissions.invalidate();
       setPreviewBook(null);
       setActionLoading(null);
@@ -246,7 +247,7 @@ export default function AdminSubmissions() {
               {previewBook.description && (
                 <div className="p-3 rounded-lg bg-secondary/30">
                   <p className="text-xs font-medium text-muted-foreground mb-1">Description</p>
-                  <p className="text-sm">{previewBook.description}</p>
+                  <p className="text-sm">{stripHtml(previewBook.description)}</p>
                 </div>
               )}
 

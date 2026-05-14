@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { trpc } from "@/lib/trpc";
+import { stripHtml } from "@/lib/stripHtml";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -508,7 +509,7 @@ export default function AdminDashboard() {
               <div className="space-y-2">
                 {stats.recentLedger.length > 0 ? stats.recentLedger.map((t, i) => (
                   <div key={i} className="flex items-center justify-between text-sm hover:bg-secondary/30 rounded px-1.5 py-1 transition-colors">
-                    <span className="truncate max-w-[180px]">{t.description}</span>
+                    <span className="truncate max-w-[180px]">{stripHtml(t.description)}</span>
                     <div className="flex items-center gap-2">
                       <span className={`font-medium ${t.type === "income" ? "text-emerald-400" : "text-red-400"}`}>
                         {t.type === "income" ? "+" : "-"}৳{t.amount}
@@ -745,7 +746,7 @@ export default function AdminDashboard() {
                   <div><p className="text-muted-foreground text-xs">Applied Role</p><p className="capitalize">{selectedApp.role}</p></div>
                   <div><p className="text-muted-foreground text-xs">Applied Date</p><p>{selectedApp.date}</p></div>
                 </div>
-                {selectedApp.bio && <div><p className="text-muted-foreground text-xs mb-1">Bio</p><p className="text-sm bg-muted/50 rounded p-2">{selectedApp.bio}</p></div>}
+                {selectedApp.bio && <div><p className="text-muted-foreground text-xs mb-1">Bio</p><p className="text-sm bg-muted/50 rounded p-2">{stripHtml(selectedApp.bio)}</p></div>}
                 {selectedApp.experience && <div><p className="text-muted-foreground text-xs mb-1">Experience</p><p className="text-sm bg-muted/50 rounded p-2">{selectedApp.experience}</p></div>}
                 {selectedApp.message && <div><p className="text-muted-foreground text-xs mb-1">Message</p><p className="text-sm bg-muted/50 rounded p-2">{selectedApp.message}</p></div>}
                 {(selectedApp.facebook_url || selectedApp.instagram_url || selectedApp.youtube_url || selectedApp.website_url || selectedApp.portfolio_url) && (

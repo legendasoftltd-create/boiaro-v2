@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
+import { stripHtml } from "@/lib/stripHtml";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -175,7 +176,7 @@ export default function AdminGamification() {
                     <Badge variant="outline" className="text-[10px]">{b.category}</Badge>
                     <Badge variant="outline" className="text-[10px]">{b.condition_type}: {b.condition_value}</Badge>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">{b.description} · Reward: {b.coin_reward} coins</p>
+                  <p className="text-[11px] text-muted-foreground">{stripHtml(b.description)} · Reward: {b.coin_reward} coins</p>
                 </div>
                 <Switch checked={b.is_active ?? true} onCheckedChange={v => toggleBadge(b.id, v)} />
                 <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(b)}><Edit className="w-3.5 h-3.5" /></Button>

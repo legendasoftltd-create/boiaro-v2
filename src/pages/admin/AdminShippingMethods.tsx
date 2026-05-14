@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { stripHtml } from "@/lib/stripHtml";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -97,7 +98,7 @@ export default function AdminShippingMethods() {
                 <TableCell>
                   <div>
                     <p className="font-medium text-sm">{m.name}</p>
-                    {m.description && <p className="text-xs text-muted-foreground">{m.description}</p>}
+                    {m.description && <p className="text-xs text-muted-foreground">{stripHtml(m.description)}</p>}
                   </div>
                 </TableCell>
                 <TableCell>{m.zone ? <Badge variant="outline" className="text-[10px]">{m.zone}</Badge> : "—"}</TableCell>

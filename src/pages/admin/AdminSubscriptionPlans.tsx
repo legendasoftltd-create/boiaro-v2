@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { stripHtml } from "@/lib/stripHtml";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -192,7 +193,7 @@ export default function AdminSubscriptionPlans() {
                 <TableCell>
                   <div>
                     <p className="font-medium text-sm">{p.name}</p>
-                    {p.description && <p className="text-xs text-muted-foreground line-clamp-1">{p.description}</p>}
+                    {p.description && <p className="text-xs text-muted-foreground line-clamp-1">{stripHtml(p.description)}</p>}
                   </div>
                 </TableCell>
                 <TableCell className="text-sm">{p.duration_days} days</TableCell>

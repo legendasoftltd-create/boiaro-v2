@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { stripHtml } from "@/lib/stripHtml";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import { Navbar } from "@/components/Navbar";
@@ -216,7 +217,7 @@ export default function GamificationPage() {
                         <div key={b.id} className={`p-3 rounded-xl border text-center transition-all ${earned ? "border-primary/30 bg-primary/5" : "border-border/20 bg-secondary/10 opacity-50"}`}>
                           <CatIcon className={`w-8 h-8 mx-auto mb-2 ${earned ? "text-primary" : "text-muted-foreground"}`} />
                           <p className={`text-[13px] font-medium ${earned ? "text-foreground" : "text-muted-foreground"}`}>{b.title}</p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">{b.description}</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">{stripHtml(b.description)}</p>
                           {b.coin_reward && b.coin_reward > 0 && (
                             <Badge variant="outline" className="mt-1.5 text-[10px]"><Coins className="w-2.5 h-2.5 mr-0.5" />{b.coin_reward}</Badge>
                           )}

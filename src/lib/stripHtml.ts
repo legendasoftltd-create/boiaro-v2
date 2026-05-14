@@ -2,6 +2,8 @@ export function stripHtml(html: string | null | undefined): string {
   if (!html) return ""
   return html
     .replace(/<[^>]*>/g, " ")
+    .replace(/\\r\\n|\\n|\\r/g, " ")
+    .replace(/\r\n|\r|\n/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { stripHtml } from "@/lib/stripHtml";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -193,7 +194,7 @@ function OrderAuditTool() {
                             ৳{Number(e.amount).toLocaleString()}
                           </TableCell>
                           <TableCell className="text-sm">{e.entry_date}</TableCell>
-                          <TableCell className="text-sm max-w-[200px] truncate">{e.description}</TableCell>
+                          <TableCell className="text-sm max-w-[200px] truncate">{stripHtml(e.description)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
