@@ -10,6 +10,7 @@ import { Eye, EyeOff } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import logoBoiaro from "@/assets/logo_boiaro.png"
 import type { LucideIcon } from "lucide-react"
+import { trpc } from "@/lib/trpc"
 
 export type AuthRoleConfig = {
   roleKey: string
@@ -37,11 +38,14 @@ const ROLE_ROUTES: Record<string, string> = {
 }
 
 export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
-  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login")
+  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "verify-otp">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [displayName, setDisplayName] = useState("")
+  const [otp, setOtp] = useState("")
+  const [newPassword, setNewPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
   const [searchParams] = useSearchParams()
@@ -50,14 +54,41 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
   const navigate = useNavigate()
   const { toast } = useToast()
 
+  const requestResetMutation = trpc.auth.requestPasswordReset.useMutation()
+  const confirmResetMutation = trpc.auth.confirmPasswordReset.useMutation()
+
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    setTimeout(() => {
+    try {
+      await requestResetMutation.mutateAsync({ email })
+      toast({ title: "OTP Sent", description: "Check your email for the 6-digit reset code." })
+      setMode("verify-otp")
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to send OTP", variant: "destructive" })
+    } finally {
       setIsLoading(false)
-      toast({ title: "Reset requested", description: "If this email exists, a reset link will be sent." })
+    }
+  }
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (newPassword.length < 6) {
+      toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" })
+      return
+    }
+    setIsLoading(true)
+    try {
+      await confirmResetMutation.mutateAsync({ email, otp, password: newPassword })
+      toast({ title: "Password Reset", description: "Your password has been updated. Please sign in." })
+      setOtp("")
+      setNewPassword("")
       setMode("login")
-    }, 800)
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Invalid or expired OTP", variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -199,6 +230,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
 
             {mode === "forgot" && (
               <form onSubmit={handleForgotPassword} className="space-y-3.5">
+                <p className="text-[13px] text-muted-foreground">Enter your email and we'll send you a 6-digit OTP.</p>
                 <div className="space-y-1.5">
                   <Label className="text-[13px]">Email</Label>
                   <Input
@@ -208,11 +240,48 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
                   />
                 </div>
                 <Button type="submit" className="w-full btn-gold h-10 text-[13px]" disabled={isLoading}>
-                  {isLoading ? "Sending..." : "Send Reset Link"}
+                  {isLoading ? "Sending OTP..." : "Send OTP"}
                 </Button>
                 <p className="text-center text-[12px] text-muted-foreground">
                   <button type="button" onClick={() => setMode("login")} className="text-primary hover:underline">
                     Back to Sign In
+                  </button>
+                </p>
+              </form>
+            )}
+
+            {mode === "verify-otp" && (
+              <form onSubmit={handleVerifyOtp} className="space-y-3.5">
+                <p className="text-[13px] text-muted-foreground">Enter the 6-digit OTP sent to <strong>{email}</strong> and choose a new password.</p>
+                <div className="space-y-1.5">
+                  <Label className="text-[13px]">OTP Code</Label>
+                  <Input
+                    type="text" placeholder="123456" value={otp} maxLength={6}
+                    onChange={e => setOtp(e.target.value.replace(/\D/g, ""))} required
+                    className="h-10 rounded-xl bg-secondary/40 border-border/30 text-center tracking-widest text-lg font-bold"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[13px]">New Password</Label>
+                  <div className="relative">
+                    <Input
+                      type={showNewPassword ? "text" : "password"} placeholder="Min. 6 characters"
+                      value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6}
+                      className="h-10 rounded-xl pr-10 bg-secondary/40 border-border/30"
+                    />
+                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <Button type="submit" className="w-full btn-gold h-10 text-[13px]" disabled={isLoading}>
+                  {isLoading ? "Resetting..." : "Reset Password"}
+                </Button>
+                <p className="text-center text-[12px] text-muted-foreground">
+                  Didn't receive it?{" "}
+                  <button type="button" onClick={() => setMode("forgot")} className="text-primary hover:underline">
+                    Resend OTP
                   </button>
                 </p>
               </form>

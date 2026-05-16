@@ -4,6 +4,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings, calculateOrderEarnings } from "../../lib/earnings.js";
+import { sendNotificationEmail } from "../../lib/mailer.js";
 
 export const paymentsRestRouter = Router();
 
@@ -100,6 +101,33 @@ async function finalizePaidOrder(params: { orderId: string; paymentMethod: strin
       where: { id: params.orderId },
       data: { status: "confirmed" },
     });
+  }
+
+  const orderUser = await prisma.user.findUnique({ where: { id: order.user_id }, select: { email: true } });
+  if (orderUser?.email) {
+    const itemLines = order.items
+      .map((i) => `<tr><td style="padding:6px 0">${i.format}</td><td style="padding:6px 0;text-align:right">৳${Number(i.price).toFixed(2)}</td></tr>`)
+      .join("");
+    sendNotificationEmail({
+      to: orderUser.email,
+      subject: `Order Confirmed – #${(order as any).order_number || order.id.slice(0, 8).toUpperCase()}`,
+      templateType: "order_confirmation",
+      bodyHtml: `<h2 style="color:#16a34a">Order Confirmed ✓</h2>
+        <p>Thank you for your purchase! Your order has been confirmed.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0">
+          <thead><tr style="border-bottom:2px solid #e5e7eb">
+            <th style="text-align:left;padding:6px 0;color:#6b7280;font-weight:500">Item</th>
+            <th style="text-align:right;padding:6px 0;color:#6b7280;font-weight:500">Price</th>
+          </tr></thead>
+          <tbody>${itemLines}</tbody>
+          <tfoot><tr style="border-top:2px solid #e5e7eb">
+            <td style="padding:8px 0;font-weight:700">Total</td>
+            <td style="padding:8px 0;font-weight:700;text-align:right">৳${Number(order.total_amount).toFixed(2)}</td>
+          </tr></tfoot>
+        </table>
+        <a href="https://boiaro.com/dashboard" style="display:inline-block;padding:10px 24px;background:#6d28d9;color:#fff;border-radius:8px;text-decoration:none">View My Library</a>`,
+      text: `Order confirmed. Total: ৳${Number(order.total_amount).toFixed(2)}`,
+    }).catch(() => {});
   }
 
   return true;

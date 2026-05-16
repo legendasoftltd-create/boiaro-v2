@@ -1,0 +1,187 @@
+{
+  "info": {
+    "name": "BoiAro — Email APIs (Mobile)",
+    "_postman_id": "boiaro-email-mobile-v1",
+    "description": "Password reset OTP flow for the BoiAro mobile app.\n\n**Flow:**\n1. Call `Request Password Reset OTP` with the user's email.\n2. User receives a 6-digit OTP in their inbox (valid 15 minutes).\n3. Call `Confirm OTP & Set New Password` with email + OTP + new password.\n\nAll other emails (welcome, order confirmation, subscription) fire automatically from their respective actions — no extra call needed.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3001",
+      "type": "string",
+      "description": "Change to your production URL, e.g. https://api.boiaro.com"
+    }
+  ],
+  "item": [
+    {
+      "name": "Password Reset",
+      "description": "Two-step OTP flow for resetting a forgotten password.",
+      "item": [
+        {
+          "name": "1 · Request Password Reset OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/reset-password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "reset-password"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Generates a 6-digit OTP and emails it to the registered address.\n\nAlways returns 200 — never reveals whether the email exists in the system (security best practice).\n\n**OTP expires in 15 minutes.**"
+          },
+          "response": [
+            {
+              "name": "200 — OTP Sent",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"message\": \"If that email is registered, a reset OTP has been sent.\"\n}"
+            },
+            {
+              "name": "400 — Missing email",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"Missing required fields\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "2 · Confirm OTP & Set New Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/reset-password-confirm",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "reset-password-confirm"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"482910\",\n  \"password\": \"newpassword123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Verifies the OTP and sets the new password.\n\n- OTP must match exactly and not be expired (15 min window).\n- OTP is invalidated after one successful use.\n- Password must be at least 6 characters."
+          },
+          "response": [
+            {
+              "name": "200 — Password Reset",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"message\": \"Password reset successfully\"\n}"
+            },
+            {
+              "name": "400 — Wrong or Expired OTP",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"Invalid or expired OTP\"\n}"
+            },
+            {
+              "name": "400 — Missing fields",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"Missing required fields\"\n}"
+            },
+            {
+              "name": "422 — Password too short",
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"Password must be at least 6 characters\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Automatic Emails (reference only — no call needed)",
+      "description": "These emails fire automatically when the mobile app calls its normal endpoints. No separate API call is required.",
+      "item": [
+        {
+          "name": "[Auto] Welcome Email — fires on signup",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/signup",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "signup"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"display_name\": \"John Doe\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "A **Welcome Email** is automatically sent to the new user after successful signup. No extra call needed."
+          },
+          "response": []
+        },
+        {
+          "name": "[Auto] Order Confirmation — fires on payment success",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/api/v1/payments/callback",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "payments", "callback"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "An **Order Confirmation Email** with itemised receipt is automatically sent to the buyer when a payment is finalised."
+          },
+          "response": []
+        },
+        {
+          "name": "[Auto] Subscription Activated — fires on plan purchase",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/trpc/wallet.subscribe",
+              "host": ["{{base_url}}"],
+              "path": ["trpc", "wallet.subscribe"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "A **Subscription Activated Email** with plan name and validity dates is automatically sent when a subscription is purchased."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

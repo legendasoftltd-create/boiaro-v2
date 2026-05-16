@@ -8,6 +8,7 @@ import { prisma } from "../lib/prisma.js";
 import { calculateOrderEarnings } from "../lib/earnings.js";
 import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
+import { sendMail, sendNotificationEmail, testSmtpConnection } from "../lib/mailer.js";
 
 function orderSellableAmount(order: { total_amount?: number | null; shipping_cost?: number | null }) {
   return Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
@@ -2217,18 +2218,63 @@ export const adminRouter = router({
   sendTestEmail: adminProcedure
     .input(z.object({ recipientEmail: z.string().email() }))
     .mutation(async ({ input }) => {
-      const now = new Date();
+      const result = await sendMail({
+        to: input.recipientEmail,
+        subject: "BoiAro Email Test",
+        html: `<div style="font-family:sans-serif;padding:24px"><h2 style="color:#6d28d9">BoiAro Email Test</h2><p>Your SMTP configuration is working correctly!</p></div>`,
+        text: "Your SMTP configuration is working correctly!",
+      });
       await prisma.emailLog.create({
         data: {
           recipient_email: input.recipientEmail,
           template_type: "test-email",
           subject: "BoiAro Email Test",
-          status: "sent",
-          sent_at: now,
+          status: result.success ? "sent" : "failed",
+          error_message: result.error ?? null,
+          sent_at: result.success ? new Date() : null,
         },
       });
+      if (!result.success) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error });
       return { success: true };
     }),
+
+  getSmtpSettings: adminProcedure.query(async () => {
+    const keys = ["smtp_host", "smtp_port", "smtp_user", "smtp_from_email", "smtp_from_name", "smtp_secure"];
+    const settings = await prisma.platformSetting.findMany({ where: { key: { in: keys } } });
+    return Object.fromEntries(settings.map((s) => [s.key, s.value]));
+  }),
+
+  saveSmtpSettings: adminProcedure
+    .input(
+      z.object({
+        smtp_host: z.string().min(1),
+        smtp_port: z.string().default("587"),
+        smtp_user: z.string().min(1),
+        smtp_pass: z.string().optional(),
+        smtp_from_email: z.string().email(),
+        smtp_from_name: z.string().default("BoiAro"),
+        smtp_secure: z.string().default("false"),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const pairs = Object.entries(input)
+        .filter(([, v]) => v !== undefined && v !== "")
+        .map(([key, value]) => ({ key, value: value as string }));
+      await Promise.all(
+        pairs.map((s) =>
+          prisma.platformSetting.upsert({
+            where: { key: s.key },
+            create: { key: s.key, value: s.value },
+            update: { value: s.value },
+          })
+        )
+      );
+      return { success: true };
+    }),
+
+  testSmtpConnection: adminProcedure.mutation(async () => {
+    return testSmtpConnection();
+  }),
 
   listSystemAlerts: adminProcedure.query(async () => {
     const logs = await prisma.systemLog.findMany({
@@ -3451,12 +3497,27 @@ export const adminRouter = router({
 
   processWithdrawal: adminProcedure
     .input(z.object({ id: z.string(), status: z.string(), adminNotes: z.string().optional() }))
-    .mutation(({ input }) =>
-      prisma.withdrawalRequest.update({
+    .mutation(async ({ input }) => {
+      const withdrawal = await prisma.withdrawalRequest.update({
         where: { id: input.id },
         data: { status: input.status, notes: input.adminNotes ?? null },
-      })
-    ),
+      });
+      const user = await prisma.user.findUnique({ where: { id: withdrawal.user_id }, select: { email: true } });
+      if (user?.email) {
+        const approved = input.status === "approved";
+        sendNotificationEmail({
+          to: user.email,
+          subject: `Your Withdrawal Request has been ${approved ? "Approved" : "Rejected"}`,
+          templateType: approved ? "withdrawal_approved" : "withdrawal_rejected",
+          bodyHtml: `<h2 style="color:${approved ? "#16a34a" : "#dc2626"}">${approved ? "Withdrawal Approved ✓" : "Withdrawal Rejected"}</h2>
+            <p>Your withdrawal request for <strong>৳${Number(withdrawal.amount).toFixed(2)}</strong> has been <strong>${input.status}</strong>.</p>
+            ${input.adminNotes ? `<p style="background:#f3f4f6;padding:12px;border-radius:8px;font-size:13px"><strong>Note:</strong> ${input.adminNotes}</p>` : ""}
+            ${approved ? "<p>Funds will be transferred to your registered account within 2–5 business days.</p>" : "<p>Please contact support if you have questions.</p>"}`,
+          text: `Your withdrawal of ৳${Number(withdrawal.amount).toFixed(2)} was ${input.status}.`,
+        }).catch(() => {});
+      }
+      return withdrawal;
+    }),
 
   // ── Submissions ────────────────────────────────────────────────────────────
   listSubmissions: adminProcedure
@@ -3811,17 +3872,48 @@ export const adminRouter = router({
         await prisma.profile.update({ where: { user_id: input.userId }, data: { display_name: app.display_name } });
       }
 
+      const approvedUser = await prisma.user.findUnique({ where: { id: input.userId }, select: { email: true } });
+      if (approvedUser?.email) {
+        sendNotificationEmail({
+          to: approvedUser.email,
+          subject: `Your ${input.role} application has been approved!`,
+          templateType: "creator_approved",
+          bodyHtml: `<h2 style="color:#16a34a">Application Approved ✓</h2>
+            <p>Congratulations, <strong>${app.display_name || "there"}</strong>! Your application for the <strong>${input.role}</strong> role on BoiAro has been approved.</p>
+            <p>You can now access your creator dashboard and start publishing.</p>
+            <a href="https://boiaro.com/creator" style="display:inline-block;margin-top:12px;padding:10px 24px;background:#6d28d9;color:#fff;border-radius:8px;text-decoration:none">Go to Creator Dashboard</a>`,
+          text: `Congratulations! Your ${input.role} application has been approved.`,
+        }).catch(() => {});
+      }
+
       return { success: true };
     }),
 
   rejectApplication: adminProcedure
     .input(z.object({ applicationId: z.string() }))
-    .mutation(({ ctx, input }) =>
-      prisma.roleApplication.update({
+    .mutation(async ({ ctx, input }) => {
+      const app = await prisma.roleApplication.findUnique({ where: { id: input.applicationId } });
+      const result = await prisma.roleApplication.update({
         where: { id: input.applicationId },
         data: { status: "rejected", reviewed_by: ctx.userId, reviewed_at: new Date() },
-      })
-    ),
+      });
+      if (app?.user_id) {
+        const rejectedUser = await prisma.user.findUnique({ where: { id: app.user_id }, select: { email: true } });
+        if (rejectedUser?.email) {
+          sendNotificationEmail({
+            to: rejectedUser.email,
+            subject: "Update on your BoiAro creator application",
+            templateType: "creator_rejected",
+            bodyHtml: `<h2 style="color:#dc2626">Application Update</h2>
+              <p>Hi <strong>${app.display_name || "there"}</strong>, thank you for applying to become a <strong>${app.applied_role || "creator"}</strong> on BoiAro.</p>
+              <p>After careful review, we are unable to approve your application at this time. You are welcome to apply again in the future.</p>
+              <p>If you have questions, please reach out to our support team.</p>`,
+            text: `Your ${app.applied_role || "creator"} application was not approved. You may apply again in the future.`,
+          }).catch(() => {});
+        }
+      }
+      return result;
+    }),
 
   // ── Revenue Splits ─────────────────────────────────────────────────────────
   listDefaultRevenueRules: adminProcedure.query(async () => {

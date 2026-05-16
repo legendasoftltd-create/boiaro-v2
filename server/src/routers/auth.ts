@@ -11,6 +11,7 @@ import {
   refreshAuthTokens,
   signInUser,
 } from "../services/auth.service.js";
+import { sendNotificationEmail } from "../lib/mailer.js";
 
 function generateReferralCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -43,6 +44,16 @@ export const authRouter = router({
           roles: { create: { role: "user" } },
         },
       });
+
+      sendNotificationEmail({
+        to: user.email,
+        subject: "Welcome to BoiAro!",
+        templateType: "welcome",
+        bodyHtml: `<h2 style="color:#6d28d9">Welcome to BoiAro, ${input.displayName || user.email.split("@")[0]}!</h2>
+          <p>Your account has been created successfully. Start exploring thousands of books today.</p>
+          <a href="https://boiaro.com" style="display:inline-block;margin-top:12px;padding:10px 24px;background:#6d28d9;color:#fff;border-radius:8px;text-decoration:none">Browse Books</a>`,
+        text: `Welcome to BoiAro! Your account is ready.`,
+      }).catch(() => {});
 
       return { user: { id: user.id, email: user.email } };
     }),
@@ -255,6 +266,53 @@ export const authRouter = router({
     .mutation(async ({ input }) => refreshAuthTokens(input.refreshToken)),
 
   me: protectedProcedure.query(async ({ ctx }) => getMe(ctx.userId!)),
+
+  requestPasswordReset: publicProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ input }) => {
+      const user = await prisma.user.findUnique({ where: { email: input.email } });
+      if (user) {
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expires = new Date(Date.now() + 15 * 60 * 1000);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { reset_otp: otp, reset_otp_expires: expires },
+        });
+        sendNotificationEmail({
+          to: user.email,
+          subject: "Your BoiAro Password Reset OTP",
+          templateType: "password_reset",
+          bodyHtml: `<h2 style="color:#6d28d9">Password Reset</h2>
+            <p>Use the OTP below to reset your password. It expires in <strong>15 minutes</strong>.</p>
+            <div style="font-size:36px;font-weight:bold;letter-spacing:8px;text-align:center;
+                        background:#f3f0ff;border-radius:8px;padding:20px;color:#6d28d9;margin:24px 0">${otp}</div>
+            <p style="color:#6b7280;font-size:13px">If you did not request a password reset, you can safely ignore this email.</p>`,
+          text: `Your password reset OTP is: ${otp} (expires in 15 minutes)`,
+        }).catch(() => {});
+      }
+      return { message: "If that email is registered, a reset OTP has been sent." };
+    }),
+
+  confirmPasswordReset: publicProcedure
+    .input(z.object({ email: z.string().email(), otp: z.string(), password: z.string().min(6) }))
+    .mutation(async ({ input }) => {
+      const user = await prisma.user.findUnique({ where: { email: input.email } });
+      if (
+        !user ||
+        !user.reset_otp ||
+        user.reset_otp !== input.otp ||
+        !user.reset_otp_expires ||
+        user.reset_otp_expires < new Date()
+      ) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired OTP" });
+      }
+      const password_hash = await bcrypt.hash(input.password, 12);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password_hash, reset_otp: null, reset_otp_expires: null },
+      });
+      return { message: "Password reset successfully" };
+    }),
 
   updateProfile: protectedProcedure
     .input(z.object({

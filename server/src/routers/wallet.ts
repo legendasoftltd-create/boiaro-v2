@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
+import { sendNotificationEmail } from "../lib/mailer.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
 
 export const walletRouter = router({
@@ -355,6 +356,26 @@ export const walletRouter = router({
           });
           await prisma.coupon.update({ where: { id: coupon.id }, data: { used_count: { increment: 1 } } });
         }
+      }
+
+      const subUser = await prisma.user.findUnique({ where: { id: ctx.userId }, select: { email: true } });
+      if (subUser?.email) {
+        const fmt = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+        sendNotificationEmail({
+          to: subUser.email,
+          subject: `Your ${plan.name} subscription is now active!`,
+          templateType: "subscription_activated",
+          bodyHtml: `<h2 style="color:#6d28d9">Subscription Activated ✓</h2>
+            <p>Your <strong>${plan.name}</strong> subscription has been activated successfully.</p>
+            <table style="width:100%;border-collapse:collapse;margin-top:12px">
+              <tr><td style="padding:8px 0;color:#6b7280">Plan</td><td style="padding:8px 0;font-weight:600">${plan.name}</td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280">Valid From</td><td style="padding:8px 0">${fmt(now)}</td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280">Valid Until</td><td style="padding:8px 0">${fmt(endDate)}</td></tr>
+              <tr><td style="padding:8px 0;color:#6b7280">Amount Paid</td><td style="padding:8px 0;font-weight:600">৳${finalAmount.toFixed(2)}</td></tr>
+            </table>
+            <a href="https://boiaro.com" style="display:inline-block;margin-top:16px;padding:10px 24px;background:#6d28d9;color:#fff;border-radius:8px;text-decoration:none">Start Reading</a>`,
+          text: `Your ${plan.name} subscription is active until ${fmt(endDate)}.`,
+        }).catch(() => {});
       }
 
       return sub;

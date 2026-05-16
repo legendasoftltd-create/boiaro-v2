@@ -40,12 +40,14 @@ enum BookFormatType {
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 model User {
-  id             String    @id @default(uuid())
-  email          String    @unique
-  password_hash  String
-  email_verified Boolean   @default(false)
-  created_at     DateTime  @default(now())
-  updated_at     DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  password_hash       String
+  email_verified      Boolean   @default(false)
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  reset_otp           String?
+  reset_otp_expires   DateTime?
 
   profile   Profile?
   roles     UserRole[]
