@@ -2,49 +2,93 @@ import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 
 export const MODULE_MAP: Record<string, string> = {
-  "/admin": "reports",
-  "/admin/books": "books",
-  "/admin/authors": "content",
-  "/admin/narrators": "content",
-  "/admin/publishers": "content",
-  "/admin/orders": "orders",
-  "/admin/payments": "payments",
-  "/admin/payment-gateways": "settings",
-  "/admin/reviews": "content",
-  "/admin/categories": "content",
-  "/admin/applications": "users",
-  "/admin/submissions": "content",
-  "/admin/shipping": "shipping",
-  "/admin/subscriptions": "subscriptions",
-  "/admin/coupons": "coupons",
-  "/admin/revenue": "revenue",
-  "/admin/withdrawals": "withdrawals",
-  "/admin/notifications": "notifications",
-  "/admin/email-templates": "email",
-  "/admin/email-logs": "email",
-  "/admin/email-settings": "email",
-  "/admin/analytics": "analytics",
-  "/admin/users": "users",
-  "/admin/pages": "cms",
-  "/admin/blog": "cms",
-  "/admin/homepage-sections": "cms",
-  "/admin/banners": "cms",
-  "/admin/tickets": "support",
-  "/admin/roles": "roles",
-  "/admin/activity-logs": "roles",
-  "/admin/wallets": "payments",
-  "/admin/coin-settings": "settings",
-  "/admin/ad-placements": "settings",
-  "/admin/ad-banners": "settings",
-  "/admin/ad-campaigns": "settings",
-  "/admin/ad-settings": "settings",
-  "/admin/ad-reports": "analytics",
-  "/admin/recommendations": "analytics",
-  "/admin/drm-settings": "settings",
-  "/admin/referrals": "settings",
-  "/admin/gamification": "settings",
+  // Dashboard / Reports
+  "/admin":                     "reports",
+  "/admin/weekly-report":       "reports",
+  "/admin/performance":         "reports",
+  "/admin/live-monitoring":     "reports",
+  "/admin/alerts":              "reports",
+  "/admin/system-logs":         "reports",
+  "/admin/db-health":           "settings",
+  "/admin/backup-status":       "settings",
+  "/admin/r2-dashboard":        "settings",
+
+  // Analytics
+  "/admin/analytics":           "analytics",
+  "/admin/user-analytics":      "analytics",
+  "/admin/reading-analytics":   "analytics",
+  "/admin/ad-reports":          "analytics",
+  "/admin/recommendations":     "analytics",
+
+  // Books / Content
+  "/admin/books":               "books",
+  "/admin/authors":             "content",
+  "/admin/narrators":           "content",
+  "/admin/publishers":          "content",
+  "/admin/categories":          "content",
+  "/admin/submissions":         "content",
+  "/admin/reviews":             "content",
+  "/admin/tts-management":      "content",
+
+  // Users & Roles
+  "/admin/users":               "users",
+  "/admin/applications":        "users",
   "/admin/creator-permissions": "users",
-  "/admin/site-settings": "settings",
+  "/admin/roles":               "roles",
+  "/admin/activity-logs":       "roles",
+
+  // Orders & Finance
+  "/admin/orders":              "orders",
+  "/admin/payments":            "payments",
+  "/admin/wallets":             "payments",
+  "/admin/payment-gateways":    "settings",
+  "/admin/revenue":             "revenue",
+  "/admin/revenue-dashboard":   "revenue",
+  "/admin/revenue-audit":       "revenue",
+  "/admin/earnings":            "revenue",
+  "/admin/accounting":          "revenue",
+  "/admin/financial-reports":   "revenue",
+  "/admin/investor-report":     "revenue",
+  "/admin/purchase-report":     "revenue",
+  "/admin/withdrawals":         "withdrawals",
+
+  // Subscriptions / Coupons / Coins
+  "/admin/subscriptions":       "subscriptions",
+  "/admin/coupons":             "coupons",
+  "/admin/coin-settings":       "settings",
+  "/admin/coin-packages":       "settings",
+
+  // Shipping
+  "/admin/shipping":            "shipping",
+  "/admin/free-shipping":       "shipping",
+
+  // Marketing / Ads
+  "/admin/banners":             "cms",
+  "/admin/ad-placements":       "settings",
+  "/admin/ad-banners":          "settings",
+  "/admin/ad-campaigns":        "settings",
+  "/admin/ad-settings":         "settings",
+  "/admin/referrals":           "settings",
+  "/admin/gamification":        "settings",
+  "/admin/drm-settings":        "settings",
+
+  // CMS
+  "/admin/pages":               "cms",
+  "/admin/blog":                "cms",
+  "/admin/homepage-sections":   "cms",
+  "/admin/radio":               "cms",
+  "/admin/rj-management":       "cms",
+  "/admin/site-settings":       "settings",
+
+  // Notifications / Email
+  "/admin/notifications":       "notifications",
+  "/admin/email-templates":     "email",
+  "/admin/email-logs":          "email",
+  "/admin/email-settings":      "email",
+  "/admin/sms":                 "notifications",
+
+  // Support
+  "/admin/tickets":             "support",
 };
 
 export function useAdminPermissions() {
@@ -72,16 +116,19 @@ export function useAdminPermissions() {
   const canAccessPath = (path: string): boolean => {
     if (!hasAccess) return false;
     if (isSuperAdmin) return true;
-    // Exact match in MODULE_MAP
+
+    // Exact match
     const module = MODULE_MAP[path];
     if (module) return can(module, "view");
-    // Prefix match for sub-paths like /admin/users/123
+
+    // Prefix match for sub-paths like /admin/users/abc123
     const parent = Object.entries(MODULE_MAP)
       .filter(([p]) => path.startsWith(p + "/"))
       .sort((a, b) => b[0].length - a[0].length)[0];
     if (parent) return can(parent[1], "view");
-    // Not in MODULE_MAP — don't restrict (dashboard overview, etc.)
-    return true;
+
+    // Not mapped — deny by default (prevents direct URL bypass)
+    return false;
   };
 
   return {

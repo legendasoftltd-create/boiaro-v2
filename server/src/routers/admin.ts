@@ -1338,13 +1338,12 @@ export const adminRouter = router({
   // ── Permissions ─────────────────────────────────────────────────────────────
   myPermissions: protectedProcedure.query(async ({ ctx }) => {
     const PERM_MODULES = [
-      "books", "users", "orders", "payments", "reports", "support", "content",
-      "settings", "roles", "email", "notifications", "analytics", "cms",
-      "subscriptions", "coupons", "shipping", "withdrawals", "revenue",
+      "books", "content", "users", "orders", "payments", "revenue", "reports",
+      "support", "settings", "roles", "email", "notifications", "analytics",
+      "cms", "subscriptions", "coupons", "shipping", "withdrawals",
     ];
-    const MODERATOR_RESTRICTED = ["roles", "settings"];
 
-    // Check for an active custom admin role assignment first
+    // 1. Check for an active custom admin role assignment first
     const customAssignment = await prisma.adminUserRole.findFirst({
       where: { user_id: ctx.userId, is_active: true },
       include: { admin_role: { include: { admin_permissions: true } } },
@@ -1365,9 +1364,10 @@ export const adminRouter = router({
       };
     }
 
-    // Fall back to system app role (admin / moderator)
+    // 2. Fall back to system AppRole (admin / moderator)
     const appRole = await prisma.userRole.findFirst({
       where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } },
+      orderBy: { role: "asc" }, // "admin" < "moderator" — prefer admin
     });
     if (!appRole) return { roleName: null, permissions: [], isSuperAdmin: false };
 
@@ -1379,18 +1379,69 @@ export const adminRouter = router({
       };
     }
 
+    // 3. Moderator — read from role_permissions table first
+    const dbPerms = await prisma.rolePermission.findMany({ where: { role: "moderator" } });
+
+    if (dbPerms.length > 0) {
+      return {
+        roleName: "moderator",
+        isSuperAdmin: false,
+        permissions: PERM_MODULES.map((m) => ({
+          module: m,
+          can_view:   dbPerms.some(p => p.permission_key === `${m}:view`   && p.is_allowed),
+          can_create: dbPerms.some(p => p.permission_key === `${m}:create` && p.is_allowed),
+          can_edit:   dbPerms.some(p => p.permission_key === `${m}:edit`   && p.is_allowed),
+          can_delete: dbPerms.some(p => p.permission_key === `${m}:delete` && p.is_allowed),
+        })),
+      };
+    }
+
+    // 4. Fallback hardcoded defaults (used until role_permissions are seeded)
+    const RESTRICTED = ["roles", "settings"];
     return {
       roleName: "moderator",
       isSuperAdmin: false,
       permissions: PERM_MODULES.map((m) => ({
         module: m,
         can_view:   true,
-        can_create: !MODERATOR_RESTRICTED.includes(m),
-        can_edit:   !MODERATOR_RESTRICTED.includes(m),
+        can_create: !RESTRICTED.includes(m),
+        can_edit:   !RESTRICTED.includes(m),
         can_delete: false,
       })),
     };
   }),
+
+  // Allow super-admin to update the role_permissions table for a given AppRole
+  setRolePermissions: adminProcedure
+    .input(z.object({
+      role: z.enum(["moderator", "admin"]),
+      permissions: z.array(z.object({
+        module: z.string(),
+        can_view:   z.boolean(),
+        can_create: z.boolean(),
+        can_edit:   z.boolean(),
+        can_delete: z.boolean(),
+      })),
+    }))
+    .mutation(async ({ input }) => {
+      const pairs: { key: string; allowed: boolean }[] = [];
+      for (const p of input.permissions) {
+        pairs.push(
+          { key: `${p.module}:view`,   allowed: p.can_view },
+          { key: `${p.module}:create`, allowed: p.can_create },
+          { key: `${p.module}:edit`,   allowed: p.can_edit },
+          { key: `${p.module}:delete`, allowed: p.can_delete },
+        );
+      }
+      await Promise.all(pairs.map(({ key, allowed }) =>
+        prisma.rolePermission.upsert({
+          where: { role_permission_key: { role: input.role as any, permission_key: key } },
+          create: { role: input.role as any, permission_key: key, is_allowed: allowed },
+          update: { is_allowed: allowed },
+        })
+      ));
+      return { success: true };
+    }),
 
   // ── Content Edit Requests ───────────────────────────────────────────────────
   submitEditRequest: protectedProcedure
