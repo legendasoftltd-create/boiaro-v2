@@ -18,6 +18,24 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # ── SSH setup first so we can fetch env vars before building ────────
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.PROD_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.PROD_VPS_IP }}" >> ~/.ssh/known_hosts
+
+      - name: Fetch VITE_* env vars from production server
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }} \
+            "cat /var/www/html/boiaro.com/.env" \
+            | sed 's/"//g' \
+            | grep -E '^VITE_' \
+            >> $GITHUB_ENV
+
       # ── Build on the runner ──────────────────────────────────────────────
 
       - name: Install frontend dependencies
@@ -31,8 +49,6 @@ jobs:
         run: npx prisma generate
         working-directory: server
         env:
-          # prisma.config.ts calls env('DATABASE_URL') at load time.
-          # A dummy value satisfies the check — generate never connects to DB.
           DATABASE_URL: "postgresql://ci:ci@localhost/ci"
 
       - name: Build server
@@ -41,22 +57,10 @@ jobs:
 
       - name: Build frontend
         run: npm run build
-        env:
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
-          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-          VITE_FACEBOOK_APP_ID: ${{ secrets.VITE_FACEBOOK_APP_ID }}
-          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
-          VITE_REDX_ENV: ${{ secrets.VITE_REDX_ENV }}
-          VITE_APP_VERSION: ${{ secrets.VITE_APP_VERSION }}
+        # VITE_GOOGLE_CLIENT_ID, VITE_FACEBOOK_APP_ID, VITE_REDX_ENV etc.
+        # are injected into $GITHUB_ENV by the "Fetch VITE_* env vars" step above.
 
       # ── Upload built artifacts to server via rsync ───────────────────────
-
-      - name: Setup SSH key
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.PROD_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.PROD_VPS_IP }}" >> ~/.ssh/known_hosts
 
       - name: Sync frontend dist
         run: |
