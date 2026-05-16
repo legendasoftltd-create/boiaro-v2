@@ -575,8 +575,8 @@ export default function Checkout() {
                     </div>
                     {couponApplied && <p className="text-xs text-emerald-400 mt-1.5">✓ ৳{couponDiscount} discount applied</p>}
                   </div>
-                  <Button className="w-full h-12 font-semibold gap-2" onClick={handlePlaceOrder} disabled={loading || !method}>
-                    {method === "demo" ? `🧪 Demo Pay ৳${grandTotal}` : method === "cod" ? "Place Order (COD)" : `Pay ৳${grandTotal} with ${selectedGw?.label || method}`}
+                  <Button className="w-full h-12 font-semibold gap-2" onClick={handlePlaceOrder} disabled={loading || placeOrderMutation.isPending || !method}>
+                    {(loading || placeOrderMutation.isPending) ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : method === "demo" ? `🧪 Demo Pay ৳${grandTotal}` : method === "cod" ? "Place Order (COD)" : `Pay ৳${grandTotal} with ${selectedGw?.label || method}`}
                   </Button>
                 </CardContent>
               </Card>

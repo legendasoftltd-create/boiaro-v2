@@ -133,6 +133,33 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
     const hardcopyItems = items.filter((i: any) => i.format === "hardcopy");
     const digitalItems = items.filter((i: any) => i.format !== "hardcopy");
 
+    // ── Idempotency: reuse a recent pending/awaiting order for same items ──
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const inputKeys = items.map((i: any) => `${i.book_id}:${i.format}`).sort().join(",");
+    const recentPending = await prisma.order.findFirst({
+      where: {
+        user_id: userId,
+        status: { in: ["pending", "awaiting_payment"] },
+        payment_method,
+        created_at: { gte: fiveMinutesAgo },
+      },
+      include: { items: { select: { book_id: true, format: true } }, payments: { select: { status: true } } },
+      orderBy: { created_at: "desc" },
+    });
+    if (recentPending) {
+      const existingKeys = recentPending.items.map((i: any) => `${i.book_id}:${i.format}`).sort().join(",");
+      if (existingKeys === inputKeys) {
+        res.json({
+          order_id: recentPending.id,
+          order_number: recentPending.order_number,
+          status: recentPending.status,
+          payment_status: recentPending.payments[0]?.status ?? null,
+          gateway_url: null,
+        });
+        return;
+      }
+    }
+
     // Stock check for hardcopy items — mirrors tRPC
     for (const item of hardcopyItems) {
       const fmt = await prisma.bookFormat.findFirst({

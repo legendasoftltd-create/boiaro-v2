@@ -223,6 +223,42 @@ export const ordersRouter = router({
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.userId;
 
+      // ── Idempotency: reuse a recent pending/awaiting order for same items ──
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const inputBookFormatKeys = input.items
+        .map(i => `${i.bookId}:${i.format}`)
+        .sort()
+        .join(",");
+
+      const recentPending = await prisma.order.findFirst({
+        where: {
+          user_id: userId,
+          status: { in: ["pending", "awaiting_payment"] },
+          payment_method: input.paymentMethod,
+          created_at: { gte: fiveMinutesAgo },
+        },
+        include: { items: { select: { book_id: true, format: true } }, payments: { select: { status: true } } },
+        orderBy: { created_at: "desc" },
+      });
+
+      if (recentPending) {
+        const existingKeys = recentPending.items
+          .map(i => `${i.book_id}:${i.format}`)
+          .sort()
+          .join(",");
+        if (existingKeys === inputBookFormatKeys) {
+          // Return the existing order instead of creating a duplicate
+          const existingPayment = recentPending.payments[0];
+          return {
+            orderId: recentPending.id,
+            orderNumber: recentPending.order_number,
+            status: recentPending.status,
+            paymentStatus: existingPayment?.status ?? null,
+            gatewayUrl: null,
+          };
+        }
+      }
+
       // Stock check for hardcopy items
       const hardcopyItems = input.items.filter(i => i.format === "hardcopy");
       for (const item of hardcopyItems) {
