@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import {
   BookOpen, Headphones, ShoppingBag, Bookmark, Settings, LogOut,
-  Play, Eye, Trash2, BookCopy, Clock,
+  Play, Eye, Trash2, BookCopy, Clock, Phone,
 } from "lucide-react"
 import { useNavigate, Link } from "react-router-dom"
 import { useToast } from "@/hooks/use-toast"
@@ -25,12 +25,14 @@ export default function Profile() {
   const { toast } = useToast()
   const [displayName, setDisplayName] = useState("")
   const [bio, setBio] = useState("")
+  const [phone, setPhone] = useState("")
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (profile) {
       setDisplayName(profile.display_name || "")
       setBio(profile.bio || "")
+      setPhone((profile as any).phone || "")
     }
   }, [profile])
 
@@ -53,7 +55,7 @@ export default function Profile() {
 
   const handleSave = async () => {
     setSaving(true)
-    await updateProfile({ display_name: displayName, bio })
+    await updateProfile({ display_name: displayName, bio, phone: phone || undefined })
     setSaving(false)
     toast({ title: "Profile updated!" })
   }
@@ -159,6 +161,11 @@ export default function Profile() {
             <div>
               <h1 className="text-xl font-serif font-bold text-foreground">{profile?.display_name || "User"}</h1>
               <p className="text-[13px] text-muted-foreground">{user.email}</p>
+              {(profile as any)?.phone && (
+                <p className="text-[12px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                  <Phone className="w-3 h-3" />{(profile as any).phone}
+                </p>
+              )}
               <div className="flex gap-3 mt-1.5 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" />{reading.length} reading</span>
                 <span className="flex items-center gap-1"><Headphones className="w-3 h-3" />{listening.length} listening</span>
@@ -280,6 +287,16 @@ export default function Profile() {
                   <div className="space-y-1.5">
                     <Label className="text-[13px]">Display Name</Label>
                     <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" className="h-10 rounded-xl bg-secondary/40 border-border/40" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[13px]">Phone Number</Label>
+                    <Input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+880 1XXXXXXXXX"
+                      className="h-10 rounded-xl bg-secondary/40 border-border/40"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-[13px]">Bio</Label>
