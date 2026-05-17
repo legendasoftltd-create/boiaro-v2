@@ -12,7 +12,7 @@ import { SearchableSelect } from "@/components/admin/SearchableSelect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle, Sparkles, Mic } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle, Sparkles, Mic, Download } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -97,6 +97,31 @@ export default function AdminBooks() {
   const deleteTrackMutation = trpc.admin.deleteAudiobookTrackAdmin.useMutation();
   const createLedgerEntryMutation = trpc.admin.createAccountingLedgerEntry.useMutation();
   const savePremiumVoiceMutation = trpc.admin.savePremiumVoiceSettings.useMutation();
+  const getDownloadUrlMutation = trpc.admin.getBookDownloadUrl.useMutation();
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleDownload = async (opts: { bookFormatId?: string; trackId?: string; label: string }) => {
+    const key = opts.trackId ?? opts.bookFormatId ?? "";
+    setDownloadingId(key);
+    try {
+      const { url, filename } = await getDownloadUrlMutation.mutateAsync({
+        bookFormatId: opts.bookFormatId,
+        trackId: opts.trackId,
+      });
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast.success(`Downloading ${opts.label}`);
+    } catch (err: any) {
+      toast.error(err.message || "Download failed");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   useEffect(() => {
     if (!formatOpen || !selectedBookId) return;
@@ -939,7 +964,35 @@ export default function AdminBooks() {
                         >
                           {(f.is_available ?? true) ? "Active" : "Inactive"}
                         </button>
-                        {f.format === "ebook" && f.file_url && <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-400">File ✓</Badge>}
+                        {f.format === "ebook" && f.file_url && (
+                          <>
+                            <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-400">File ✓</Badge>
+                            <Button
+                              size="sm" variant="ghost"
+                              className="h-6 px-1.5 text-[10px] text-primary hover:text-primary"
+                              disabled={downloadingId === f.id}
+                              onClick={() => handleDownload({ bookFormatId: f.id, label: "ebook" })}
+                              title="Download ebook file"
+                            >
+                              {downloadingId === f.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <Download className="h-3 w-3" />}
+                            </Button>
+                          </>
+                        )}
+                        {f.format === "hardcopy" && f.file_url && (
+                          <Button
+                            size="sm" variant="ghost"
+                            className="h-6 px-1.5 text-[10px] text-primary hover:text-primary"
+                            disabled={downloadingId === f.id}
+                            onClick={() => handleDownload({ bookFormatId: f.id, label: "file" })}
+                            title="Download file"
+                          >
+                            {downloadingId === f.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <Download className="h-3 w-3" />}
+                          </Button>
+                        )}
                         {f.format === "audiobook" && (
                           <Button size="sm" variant="outline" className="text-[10px] h-6 px-2" onClick={() => openTracks(f.id)}>
                             <Music className="h-3 w-3 mr-1" />Tracks
@@ -1559,6 +1612,18 @@ export default function AdminBooks() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-0.5">
+                      {(t.audio_url || t.file_url) && (
+                        <Button
+                          size="icon" variant="ghost" className="h-7 w-7 text-primary hover:text-primary"
+                          disabled={downloadingId === t.id}
+                          onClick={() => handleDownload({ trackId: t.id, label: t.title || `Track ${t.track_number}` })}
+                          title="Download track"
+                        >
+                          {downloadingId === t.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Download className="h-3 w-3" />}
+                        </Button>
+                      )}
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingTrackId(t.id); setEditingTrackTitle(t.title); setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : ""); }}>
                         <Pencil className="h-3 w-3" />
                       </Button>

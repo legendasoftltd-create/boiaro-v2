@@ -329,6 +329,27 @@ export async function createPresignedGetUrl(keyOrUrl: string, expiresIn = 3600):
   return getSignedUrl(s3Client, new GetObjectCommand({ Bucket: AWS_S3_BUCKET!, Key: key }), { expiresIn });
 }
 
+export async function createPresignedDownloadUrl(
+  keyOrUrl: string,
+  filename: string,
+  expiresIn = 3600,
+): Promise<string> {
+  if (!s3Configured) throw new Error("S3 not configured");
+  const base = getS3PublicUrl("");
+  let key = keyOrUrl;
+  if (keyOrUrl.startsWith("http")) {
+    key = keyOrUrl.startsWith(base)
+      ? keyOrUrl.slice(base.length)
+      : new URL(keyOrUrl).pathname.replace(/^\//, "");
+  }
+  const disposition = `attachment; filename="${encodeURIComponent(filename)}"`;
+  return getSignedUrl(
+    s3Client,
+    new GetObjectCommand({ Bucket: AWS_S3_BUCKET!, Key: key, ResponseContentDisposition: disposition }),
+    { expiresIn },
+  );
+}
+
 export function isS3Url(url: string): boolean {
   if (!url) return false;
   const base = getS3PublicUrl("");

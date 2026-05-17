@@ -9,6 +9,8 @@ import { calculateOrderEarnings } from "../lib/earnings.js";
 import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
 import { sendMail, sendNotificationEmail, testSmtpConnection } from "../lib/mailer.js";
+import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
+import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 
 function orderSellableAmount(order: { total_amount?: number | null; shipping_cost?: number | null }) {
   return Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
@@ -155,6 +157,48 @@ export const adminRouter = router({
         select: { price: true },
       })
     ),
+
+  getBookDownloadUrl: adminProcedure
+    .input(z.object({
+      bookFormatId: z.string().optional(),
+      trackId: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      let fileUrl: string | null = null;
+      let filename = "download";
+
+      if (input.trackId) {
+        const track = await prisma.audiobookTrack.findUnique({
+          where: { id: input.trackId },
+          select: { audio_url: true, title: true, track_number: true },
+        });
+        if (!track?.audio_url) throw new TRPCError({ code: "NOT_FOUND", message: "Track file not found" });
+        fileUrl = track.audio_url;
+        filename = `track-${track.track_number ?? ""}-${(track.title || "audio").replace(/[^a-z0-9]/gi, "_")}.mp3`;
+      } else if (input.bookFormatId) {
+        const format = await prisma.bookFormat.findUnique({
+          where: { id: input.bookFormatId },
+          select: { file_url: true, format: true, book: { select: { title: true, slug: true } } },
+        });
+        if (!format?.file_url) throw new TRPCError({ code: "NOT_FOUND", message: "File not found for this format" });
+        fileUrl = format.file_url;
+        const safeTitle = (format.book?.slug || format.book?.title || "book").replace(/[^a-z0-9]/gi, "_");
+        const ext = format.format === "ebook" ? "epub" : "pdf";
+        filename = `${safeTitle}.${ext}`;
+      } else {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Provide bookFormatId or trackId" });
+      }
+
+      // If S3 — return a signed download URL (forces browser to download)
+      if (isS3Url(fileUrl)) {
+        const url = await createPresignedDownloadUrl(fileUrl, filename, 3600);
+        return { url, filename };
+      }
+
+      // For local/CDN URLs — resolve and return directly
+      const resolved = resolveUrl(fileUrl) ?? fileUrl;
+      return { url: resolved, filename };
+    }),
 
   upsertBook: adminProcedure
     .input(
