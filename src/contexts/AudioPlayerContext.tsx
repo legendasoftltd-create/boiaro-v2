@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useRef, useEffect, useCallback, ty
 import { useAuth } from "@/contexts/AuthContext"
 import { useSecureContent } from "@/hooks/useSecureContent"
 import { recordPlaybackError } from "@/hooks/useSecureContent"
+import { usePresence } from "@/hooks/usePresence"
 import { trpc } from "@/lib/trpc"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { toast } from "sonner"
@@ -73,6 +74,7 @@ const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(und
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const { getSecureUrl, prefetchBatchUrls } = useSecureContent()
+  const { setActivity } = usePresence()
   const utils = trpc.useUtils()
   const updateListeningProgressMutation = trpc.profiles.updateListeningProgress.useMutation()
   const updateListeningProgressRef = useRef(updateListeningProgressMutation.mutateAsync)
@@ -130,6 +132,16 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   /** Returns the media type of the currently active track */
   const currentMediaType: MediaType = state.tracks[state.currentTrackIndex]?.mediaType || "audio"
+
+  // Update user presence when playback starts/stops
+  useEffect(() => {
+    if (!user) return
+    if (state.isPlaying && state.book?.id) {
+      setActivity("listening", state.book.id)
+    } else {
+      setActivity("browsing")
+    }
+  }, [state.isPlaying, state.book?.id, user, setActivity])
 
   // Resolve audio URL for a track
   const resolveTrackUrl = useCallback(async (track: AudioTrack, bookId: string): Promise<string | null> => {
