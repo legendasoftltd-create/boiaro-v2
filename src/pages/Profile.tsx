@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/contexts/AuthContext"
 import { trpc } from "@/lib/trpc"
 import { Navbar } from "@/components/Navbar"
@@ -13,26 +13,30 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import {
   BookOpen, Headphones, ShoppingBag, Bookmark, Settings, LogOut,
-  Play, Eye, Trash2, BookCopy, Clock, Phone,
+  Play, Eye, Trash2, BookCopy, Clock, Phone, Camera, Loader2,
 } from "lucide-react"
 import { useNavigate, Link } from "react-router-dom"
 import { useToast } from "@/hooks/use-toast"
 import { toMediaUrl } from "@/lib/mediaUrl"
 
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? ""
+
 export default function Profile() {
-  const { user, profile, signOut, updateProfile } = useAuth()
+  const { user, profile, signOut, updateProfile, setProfileAvatar } = useAuth()
   const navigate = useNavigate()
   const { toast } = useToast()
   const [displayName, setDisplayName] = useState("")
   const [bio, setBio] = useState("")
   const [phone, setPhone] = useState("")
   const [saving, setSaving] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (profile) {
       setDisplayName(profile.display_name || "")
       setBio(profile.bio || "")
-      setPhone((profile as any).phone || "")
+      setPhone(profile.phone || "")
     }
   }, [profile])
 
@@ -46,8 +50,6 @@ export default function Profile() {
     onSuccess: () => utils.books.userBookmarks.invalidate(),
   })
 
-  const loadingData = readingLoading || listeningLoading || bookmarksLoading || ordersLoading
-
   if (!user) {
     navigate("/auth")
     return null
@@ -55,9 +57,50 @@ export default function Profile() {
 
   const handleSave = async () => {
     setSaving(true)
-    await updateProfile({ display_name: displayName, bio, phone: phone || undefined })
+    await updateProfile({
+      display_name: displayName,
+      bio,
+      phone: phone.trim() || undefined,
+    })
     setSaving(false)
     toast({ title: "Profile updated!" })
+  }
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    // Reset input so same file can be re-selected
+    e.target.value = ""
+
+    setUploadingAvatar(true)
+    try {
+      const token = localStorage.getItem("access_token")
+      const formData = new FormData()
+      formData.append("image", file)
+
+      const res = await fetch(`${API_BASE}/api/v1/profile/upload-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error((err as any).error || "Upload failed")
+      }
+
+      const data = await res.json() as { avatar_url: string }
+      setProfileAvatar(data.avatar_url)
+      toast({ title: "Photo updated!" })
+    } catch (err: any) {
+      toast({ title: "Upload failed", description: err.message, variant: "destructive" })
+    } finally {
+      setUploadingAvatar(false)
+    }
   }
 
   const handleSignOut = async () => {
@@ -71,6 +114,7 @@ export default function Profile() {
   }
 
   const initials = (profile?.display_name || user.email || "U").slice(0, 2).toUpperCase()
+  const avatarSrc = toMediaUrl(profile?.avatar_url)
 
   const statusColors: Record<string, string> = {
     pending: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
@@ -154,16 +198,37 @@ export default function Profile() {
         <div className="max-w-5xl mx-auto">
           {/* Profile Header */}
           <div className="flex items-center gap-5 mb-7">
-            <Avatar className="w-16 h-16 border-2 border-primary/30">
-              <AvatarImage src={profile?.avatar_url || undefined} />
-              <AvatarFallback className="bg-primary/10 text-primary text-lg font-serif">{initials}</AvatarFallback>
-            </Avatar>
+            {/* Clickable avatar with upload overlay */}
+            <div className="relative shrink-0 cursor-pointer group" onClick={handleAvatarClick}>
+              <Avatar className="w-16 h-16 border-2 border-primary/30">
+                <AvatarImage src={avatarSrc || undefined} />
+                <AvatarFallback className="bg-primary/10 text-primary text-lg font-serif">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                {uploadingAvatar
+                  ? <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  : <Camera className="w-5 h-5 text-white" />}
+              </div>
+              {uploadingAvatar && (
+                <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-white animate-spin" />
+                </div>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={handleAvatarFileChange}
+            />
+
             <div>
               <h1 className="text-xl font-serif font-bold text-foreground">{profile?.display_name || "User"}</h1>
               <p className="text-[13px] text-muted-foreground">{user.email}</p>
-              {(profile as any)?.phone && (
+              {profile?.phone && (
                 <p className="text-[12px] text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <Phone className="w-3 h-3" />{(profile as any).phone}
+                  <Phone className="w-3 h-3" />{profile.phone}
                 </p>
               )}
               <div className="flex gap-3 mt-1.5 text-[11px] text-muted-foreground">
@@ -283,7 +348,41 @@ export default function Profile() {
             <TabsContent value="settings">
               <Card className="border-border/30 bg-card/60">
                 <CardHeader className="pb-3"><CardTitle className="text-base">Edit Profile</CardTitle></CardHeader>
-                <CardContent className="space-y-3.5">
+                <CardContent className="space-y-4">
+                  {/* Avatar upload in settings */}
+                  <div className="flex items-center gap-4">
+                    <div className="relative cursor-pointer group" onClick={handleAvatarClick}>
+                      <Avatar className="w-14 h-14 border-2 border-primary/30">
+                        <AvatarImage src={avatarSrc || undefined} />
+                        <AvatarFallback className="bg-primary/10 text-primary font-serif">{initials}</AvatarFallback>
+                      </Avatar>
+                      <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        {uploadingAvatar
+                          ? <Loader2 className="w-4 h-4 text-white animate-spin" />
+                          : <Camera className="w-4 h-4 text-white" />}
+                      </div>
+                      {uploadingAvatar && (
+                        <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
+                          <Loader2 className="w-4 h-4 text-white animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-medium">Profile Photo</p>
+                      <p className="text-[12px] text-muted-foreground">JPG, PNG or WebP · max 5MB</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-1.5 h-7 text-[12px] gap-1.5 rounded-lg"
+                        onClick={handleAvatarClick}
+                        disabled={uploadingAvatar}
+                      >
+                        {uploadingAvatar ? <Loader2 className="w-3 h-3 animate-spin" /> : <Camera className="w-3 h-3" />}
+                        {uploadingAvatar ? "Uploading..." : "Change Photo"}
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="space-y-1.5">
                     <Label className="text-[13px]">Display Name</Label>
                     <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" className="h-10 rounded-xl bg-secondary/40 border-border/40" />

@@ -9,11 +9,12 @@ export interface AuthUser {
   roles?: string[]
 }
 
-interface Profile {
+export interface Profile {
   user_id: string
   display_name: string | null
   avatar_url: string | null
   bio: string | null
+  phone: string | null
   preferred_language: string | null
   is_active: boolean
   referral_code: string | null
@@ -31,6 +32,7 @@ interface AuthContextType {
   signInWithFacebook: (accessToken: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<void>
+  setProfileAvatar: (url: string) => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -152,8 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(prev => prev ? { ...prev, ...updates } : null)
   }
 
+  const setProfileAvatar = (url: string) => {
+    setProfile(prev => prev ? { ...prev, avatar_url: url } : null)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, session: null, profile, loading, signIn, signInWithGoogle, signInWithFacebook, signUp, signOut, updateProfile }}>
+    <AuthContext.Provider value={{ user, session: null, profile, loading, signIn, signInWithGoogle, signInWithFacebook, signUp, signOut, updateProfile, setProfileAvatar }}>
       {children}
     </AuthContext.Provider>
   )

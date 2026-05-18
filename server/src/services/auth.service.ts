@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 import { signTokens, verifyRefreshToken } from "../lib/auth.js";
+import { resolveUrls } from "../lib/mediaUrl.js";
 import type { signInSchema } from "../schemas/auth.js";
 import type { z } from "zod";
 
@@ -66,7 +67,7 @@ export async function getMe(userId: string) {
     id: user.id,
     email: user.email,
     roles: user.roles.map((role) => role.role),
-    profile: user.profile,
+    profile: user.profile ? resolveUrls(user.profile) : null,
   };
 }
 
