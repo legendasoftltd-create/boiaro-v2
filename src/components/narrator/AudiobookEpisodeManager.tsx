@@ -8,9 +8,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Plus, Loader2, Lock, FileAudio, Music, Pencil, Trash2, Unlock,
-  CheckCircle, Video, GripVertical, AlertTriangle, Coins, Upload, Check,
+  Video, GripVertical, AlertTriangle, Coins, Upload, CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { validateMediaFile, sanitizeTrackTitle, ACCEPTED_FILE_INPUT } from "@/lib/audioValidation";
 
 interface AudiobookEpisodeManagerProps {
   bookFormatId: string;
@@ -22,7 +23,7 @@ interface AudiobookEpisodeManagerProps {
 const DEFAULT_CHAPTER_PRICE = 100;
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
-async function uploadAudioFile(file: File): Promise<{ url: string; mediaType: string }> {
+async function uploadViaApi(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
   const token = localStorage.getItem("access_token");
@@ -36,8 +37,7 @@ async function uploadAudioFile(file: File): Promise<{ url: string; mediaType: st
     throw new Error(err.error || "Upload failed");
   }
   const data = await res.json() as { url: string };
-  const mediaType = file.type.startsWith("video/") ? "video" : "audio";
-  return { url: data.url, mediaType };
+  return data.url;
 }
 
 export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenChange }: AudiobookEpisodeManagerProps) {
@@ -90,7 +90,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
   });
 
   const uploadTrackMutation = trpc.books.uploadTrackAudio.useMutation({
-    onSuccess: () => { invalidate(); toast.success("Audio attached"); },
+    onSuccess: () => { invalidate(); toast.success("Audio attached to episode"); },
     onError: (err) => toast.error(err.message),
   });
 
@@ -103,15 +103,31 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     onError: () => { invalidate(); toast.error("Reorder failed"); },
   });
 
+  /* ── File upload helpers ── */
+
+  const processAndUpload = async (file: File): Promise<{ url: string; mediaType: string; duration: string; title: string }> => {
+    const validation = await validateMediaFile(file);
+    if (validation.valid === false) throw new Error(validation.error);
+    const { file: validatedFile, durationLabel, mediaType } = validation.data;
+    const url = await uploadViaApi(validatedFile);
+    return { url, mediaType, duration: durationLabel, title: sanitizeTrackTitle(file.name) };
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
     setUploading(true);
     try {
-      const { url, mediaType } = await uploadAudioFile(file);
-      setForm(f => ({ ...f, audioUrl: url, mediaType }));
-      toast.success("Audio uploaded");
+      const { url, mediaType, duration, title } = await processAndUpload(file);
+      setForm(f => ({
+        ...f,
+        audioUrl: url,
+        mediaType,
+        duration: f.duration || duration,
+        title: f.title || title,
+      }));
+      toast.success(`${mediaType === "video" ? "Video" : "Audio"} uploaded`);
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -125,8 +141,8 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     e.target.value = "";
     setUploadingForTrack(trackId);
     try {
-      const { url, mediaType } = await uploadAudioFile(file);
-      uploadTrackMutation.mutate({ trackId, audioUrl: url, mediaType });
+      const { url, mediaType, duration } = await processAndUpload(file);
+      uploadTrackMutation.mutate({ trackId, audioUrl: url, mediaType, duration });
     } catch (err: any) {
       toast.error(err.message);
     } finally {
@@ -134,25 +150,28 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     }
   };
 
+  /* ── Save new episode ── */
+
   const saveEpisode = () => {
     if (!form.title.trim()) { toast.error("Episode title is required"); return; }
+    if (!form.audioUrl) { toast.error("Please upload an audio/video file first"); return; }
     addMutation.mutate({
       bookFormatId,
       title: form.title.trim(),
       duration: form.duration || undefined,
       chapterPrice: form.chapter_price ? Number(form.chapter_price) : undefined,
-      audioUrl: form.audioUrl || undefined,
+      audioUrl: form.audioUrl,
       mediaType: form.mediaType || undefined,
     });
   };
+
+  /* ── Drag / touch reorder ── */
 
   const handleDragStart = useCallback((idx: number) => { setDragIdx(idx); }, []);
   const handleDragOver = useCallback((e: React.DragEvent, idx: number) => { e.preventDefault(); setOverIdx(idx); }, []);
 
   const handleDragEnd = useCallback(async () => {
-    if (dragIdx === null || overIdx === null || dragIdx === overIdx) {
-      setDragIdx(null); setOverIdx(null); return;
-    }
+    if (dragIdx === null || overIdx === null || dragIdx === overIdx) { setDragIdx(null); setOverIdx(null); return; }
     const reordered = [...episodes];
     const [moved] = reordered.splice(dragIdx, 1);
     reordered.splice(overIdx, 0, moved);
@@ -196,13 +215,11 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     }
   }, [overIdx, episodes]);
 
-  const totalChapterCoinPrice = episodes.reduce((sum, ep) => {
-    if (ep.is_preview) return sum;
-    return sum + (ep.chapter_price ?? DEFAULT_CHAPTER_PRICE);
-  }, 0);
+  /* ── Derived totals ── */
+
+  const totalChapterCoinPrice = episodes.reduce((sum, ep) => ep.is_preview ? sum : sum + (ep.chapter_price ?? DEFAULT_CHAPTER_PRICE), 0);
   const totalChapterBDT = totalChapterCoinPrice * 0.05;
   const priceWarning = fullAudiobookPrice !== null && fullAudiobookPrice > 0 && totalChapterBDT < fullAudiobookPrice;
-
   const isLocked = (status: string) => status !== "draft";
 
   const statusBadge = (status: string) => {
@@ -230,6 +247,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
           <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : (
           <>
+            {/* Pricing summary */}
             {episodes.length > 0 && (
               <div className="rounded-lg border border-border/40 bg-secondary/20 p-3 space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
@@ -245,7 +263,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                   </div>
                 )}
                 {priceWarning && (
-                  <div className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-500/10 rounded px-2 py-1 mt-1">
+                  <div className="flex items-center gap-1.5 text-xs text-yellow-400 bg-yellow-500/10 rounded px-2 py-1">
                     <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
                     Full audiobook price (৳{fullAudiobookPrice}) is higher than total chapter value (≈ ৳{totalChapterBDT.toFixed(0)}).
                   </div>
@@ -259,9 +277,10 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
               </div>
             )}
 
+            {/* Episode list */}
             {episodes.length > 0 && (
-              <div className="space-y-0">
-                <div className="grid grid-cols-[2rem_2rem_1fr_5rem_4.5rem_4.5rem_auto] items-center gap-2 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/30">
+              <div className="space-y-0 rounded-lg border border-border/30 overflow-hidden">
+                <div className="grid grid-cols-[2rem_2rem_1fr_5rem_4.5rem_4.5rem_auto] items-center gap-2 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider bg-secondary/30 border-b border-border/30">
                   <span></span><span>#</span><span>Title</span><span>Duration</span><span>Price</span><span>Preview</span><span>Actions</span>
                 </div>
                 {episodes.map((ep, idx) => {
@@ -281,8 +300,8 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                       onTouchStart={e => !locked && handleTouchStart(idx, e)}
                       onTouchMove={handleTouchMove}
                       onTouchEnd={handleTouchEnd}
-                      className={`grid grid-cols-[2rem_2rem_1fr_5rem_4.5rem_4.5rem_auto] items-center gap-2 px-3 py-2.5 border-b transition-all duration-150 ${
-                        isDragging ? "opacity-40 border-primary/40 bg-primary/5" : isOver ? "border-primary border-dashed bg-primary/5" : "border-border/10 hover:bg-secondary/30"
+                      className={`grid grid-cols-[2rem_2rem_1fr_5rem_4.5rem_4.5rem_auto] items-center gap-2 px-3 py-2.5 border-b border-border/10 transition-all duration-150 ${
+                        isDragging ? "opacity-40 bg-primary/5" : isOver ? "border-primary border-dashed bg-primary/5" : "hover:bg-secondary/30"
                       } ${!locked ? "cursor-grab active:cursor-grabbing" : ""}`}
                     >
                       <div className="flex-shrink-0">
@@ -293,12 +312,12 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                       </div>
                       <div className="min-w-0">
                         {editingEpisode?.id === ep.id ? (
-                          <div className="space-y-2">
+                          <div className="space-y-1.5">
                             <div className="flex gap-2">
                               <Input value={editingEpisode.title} onChange={e => setEditingEpisode({ ...editingEpisode, title: e.target.value })} className="h-7 text-sm" placeholder="Episode title" />
-                              <Input value={editingEpisode.chapter_price} onChange={e => setEditingEpisode({ ...editingEpisode, chapter_price: e.target.value })} className="h-7 text-sm w-24" placeholder={String(DEFAULT_CHAPTER_PRICE)} type="number" min="1" />
+                              <Input value={editingEpisode.chapter_price} onChange={e => setEditingEpisode({ ...editingEpisode, chapter_price: e.target.value })} className="h-7 text-sm w-20" placeholder={String(DEFAULT_CHAPTER_PRICE)} type="number" min="1" />
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-1.5">
                               <Button size="sm" className="h-7" onClick={() => updateMutation.mutate({ trackId: ep.id, title: editingEpisode.title, chapterPrice: editingEpisode.chapter_price ? Number(editingEpisode.chapter_price) : null })}>Save</Button>
                               <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditingEpisode(null)}>Cancel</Button>
                             </div>
@@ -318,7 +337,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                                     : <><Music className="h-2.5 w-2.5 mr-0.5" />Audio</>}
                                 </Badge>
                               ) : !locked ? (
-                                <Badge variant="outline" className="text-[9px] bg-yellow-500/10 text-yellow-400">No file</Badge>
+                                <Badge variant="outline" className="text-[9px] bg-amber-500/10 text-amber-400">No file</Badge>
                               ) : null}
                             </div>
                           </>
@@ -339,14 +358,12 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                         )}
                       </div>
                       <div className="flex justify-center">
-                        {ep.is_preview ? (
-                          <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-400">✓</Badge>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">—</span>
-                        )}
+                        {ep.is_preview
+                          ? <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-400">✓</Badge>
+                          : <span className="text-[10px] text-muted-foreground">—</span>}
                       </div>
                       <div className="flex items-center gap-1">
-                        {!locked && (
+                        {!locked ? (
                           <>
                             {/* Upload audio for this track */}
                             <Button
@@ -359,16 +376,16 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                             >
                               {uploadingForTrack === ep.id
                                 ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : ep.audio_url ? <Check className="h-3 w-3 text-emerald-400" /> : <Upload className="h-3 w-3" />}
+                                : ep.audio_url ? <CheckCircle className="h-3 w-3 text-emerald-400" /> : <Upload className="h-3 w-3" />}
                             </Button>
                             <input
                               type="file"
-                              accept="audio/*,video/*,.mp3,.aac,.wav,.ogg,.m4a,.m4b,.flac,.opus"
+                              accept={ACCEPTED_FILE_INPUT}
                               className="hidden"
                               ref={el => { trackFileRefs.current[ep.id] = el; }}
                               onChange={e => handleTrackFileSelect(ep.id, e)}
                             />
-                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => submitMutation.mutate({ trackId: ep.id })} disabled={submitMutation.isPending || !ep.audio_url}>
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => submitMutation.mutate({ trackId: ep.id })} disabled={submitMutation.isPending || !ep.audio_url} title={!ep.audio_url ? "Upload audio first" : undefined}>
                               Submit
                             </Button>
                             <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => togglePreviewMutation.mutate({ trackId: ep.id, isPreview: !ep.is_preview })} title={ep.is_preview ? "Remove preview" : "Set as preview"}>
@@ -381,10 +398,9 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </>
-                        )}
-                        {locked && ep.status === "approved" && (
+                        ) : ep.status === "approved" ? (
                           <CheckCircle className="h-4 w-4 text-emerald-400" />
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -393,62 +409,95 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
             )}
 
             {episodes.length === 0 && !adding && (
-              <div className="text-center py-6 text-muted-foreground">
+              <div className="text-center py-8 text-muted-foreground">
                 <FileAudio className="h-8 w-8 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">No episodes yet. Add your first episode below.</p>
               </div>
             )}
 
+            {/* Add episode form */}
             {adding ? (
-              <Card className="border-border/30">
+              <Card className="border-primary/20">
                 <CardContent className="p-4 space-y-3">
+                  {/* File upload — primary action */}
+                  <div>
+                    <Label>Audio / Video File *</Label>
+                    <div
+                      className="mt-1.5 border-2 border-dashed border-border/40 rounded-lg p-4 text-center cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                      onClick={() => !uploading && fileInputRef.current?.click()}
+                    >
+                      {uploading ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                          <p className="text-sm text-muted-foreground">Uploading and reading metadata…</p>
+                        </div>
+                      ) : form.audioUrl ? (
+                        <div className="flex flex-col items-center gap-1">
+                          {form.mediaType === "video"
+                            ? <Video className="h-6 w-6 text-emerald-400" />
+                            : <Music className="h-6 w-6 text-emerald-400" />}
+                          <p className="text-sm font-medium text-emerald-400">
+                            {form.mediaType === "video" ? "Video" : "Audio"} uploaded
+                          </p>
+                          {form.duration && <p className="text-xs text-muted-foreground">Duration: {form.duration}</p>}
+                          <p className="text-xs text-muted-foreground mt-1">Click to replace</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-2">
+                          <Upload className="h-6 w-6 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">Click to upload MP3, M4A, or MP4</p>
+                          <p className="text-[11px] text-muted-foreground">Duration auto-detected · S3 storage with local fallback</p>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept={ACCEPTED_FILE_INPUT}
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+                  </div>
+
                   <div>
                     <Label>Episode Title *</Label>
-                    <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder={`Episode ${episodes.length + 1}`} />
+                    <Input
+                      value={form.title}
+                      onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                      placeholder={`Episode ${episodes.length + 1}`}
+                    />
+                    {form.audioUrl && !form.title && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Title auto-filled from filename — edit if needed</p>
+                    )}
                   </div>
-                  <div>
-                    <Label>Upload Audio / Video File *</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="gap-2 text-sm"
-                        disabled={uploading}
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                        {uploading ? "Uploading…" : form.audioUrl ? "Replace File" : "Choose File"}
-                      </Button>
-                      {form.audioUrl && (
-                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 gap-1">
-                          <Check className="h-3 w-3" />
-                          {form.mediaType === "video" ? "Video ready" : "Audio ready"}
-                        </Badge>
-                      )}
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="audio/*,video/*,.mp3,.aac,.wav,.ogg,.m4a,.m4b,.flac,.opus"
-                        className="hidden"
-                        onChange={handleFileSelect}
-                      />
-                    </div>
-                    <p className="text-[11px] text-muted-foreground mt-1">MP3, AAC, WAV, OGG, M4A, or video · max 500 MB</p>
-                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label>Chapter Price (coins)</Label>
-                      <Input value={form.chapter_price} onChange={e => setForm(f => ({ ...f, chapter_price: e.target.value }))} placeholder={`Default: ${DEFAULT_CHAPTER_PRICE}`} type="number" min="1" />
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Leave blank for default ({DEFAULT_CHAPTER_PRICE} coins ≈ ৳{(DEFAULT_CHAPTER_PRICE * 0.05).toFixed(0)})</p>
+                      <Label>Duration</Label>
+                      <Input
+                        value={form.duration}
+                        onChange={e => setForm(f => ({ ...f, duration: e.target.value }))}
+                        placeholder="Auto-detected"
+                        readOnly={!!form.audioUrl && !!form.duration}
+                        className={form.audioUrl && form.duration ? "bg-muted/50" : ""}
+                      />
                     </div>
                     <div>
-                      <Label>Duration</Label>
-                      <Input value={form.duration} onChange={e => setForm(f => ({ ...f, duration: e.target.value }))} placeholder="e.g. 45:30" />
+                      <Label>Chapter Price (coins)</Label>
+                      <Input
+                        value={form.chapter_price}
+                        onChange={e => setForm(f => ({ ...f, chapter_price: e.target.value }))}
+                        placeholder={`Default: ${DEFAULT_CHAPTER_PRICE}`}
+                        type="number"
+                        min="1"
+                      />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Default: {DEFAULT_CHAPTER_PRICE} coins ≈ ৳{(DEFAULT_CHAPTER_PRICE * 0.05).toFixed(0)}</p>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button onClick={saveEpisode} disabled={addMutation.isPending || uploading} className="flex-1">
-                      {addMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Episode"}
+
+                  <div className="flex gap-2 pt-1">
+                    <Button onClick={saveEpisode} disabled={addMutation.isPending || uploading || !form.audioUrl} className="flex-1">
+                      {addMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Saving…</> : "Save Episode"}
                     </Button>
                     <Button variant="outline" onClick={() => { setAdding(false); setForm({ title: "", duration: "", chapter_price: "", audioUrl: "", mediaType: "audio" }); }}>
                       Cancel
@@ -457,11 +506,11 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                 </CardContent>
               </Card>
             ) : (
-              <div className="mt-2 p-4 border border-dashed border-border/40 rounded-lg text-center">
+              <div className="p-4 border border-dashed border-border/40 rounded-lg text-center">
                 <Button variant="outline" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4 mr-2" />Add Episode
                 </Button>
-                <p className="text-[10px] text-muted-foreground mt-2">Drag to reorder · MP3/AAC/WAV/video upload supported</p>
+                <p className="text-[10px] text-muted-foreground mt-2">MP3 · M4A · MP4 video · drag to reorder</p>
               </div>
             )}
           </>
