@@ -958,13 +958,57 @@ export const booksRouter = router({
     }),
 
   updateAudiobookTrack: protectedProcedure
-    .input(z.object({ trackId: z.string(), title: z.string().min(1), chapterPrice: z.number().nullable() }))
+    .input(z.object({
+      trackId: z.string(),
+      title: z.string().min(1).optional(),
+      chapterPrice: z.number().nullable().optional(),
+      audioUrl: z.string().optional(),
+      mediaType: z.string().optional(),
+      duration: z.string().optional(),
+    }))
+    .mutation(({ input }) => {
+      const { trackId, ...fields } = input;
+      const data: any = {};
+      if (fields.title !== undefined) data.title = fields.title;
+      if (fields.chapterPrice !== undefined) data.chapter_price = fields.chapterPrice;
+      if (fields.audioUrl !== undefined) data.audio_url = fields.audioUrl;
+      if (fields.mediaType !== undefined) data.media_type = fields.mediaType;
+      if (fields.duration !== undefined) data.duration = fields.duration;
+      return prisma.audiobookTrack.update({ where: { id: trackId }, data });
+    }),
+
+  uploadTrackAudio: protectedProcedure
+    .input(z.object({ trackId: z.string(), audioUrl: z.string(), mediaType: z.string().optional(), duration: z.string().optional() }))
     .mutation(({ input }) =>
       prisma.audiobookTrack.update({
         where: { id: input.trackId },
-        data: { title: input.title, chapter_price: input.chapterPrice },
+        data: { audio_url: input.audioUrl, media_type: input.mediaType || "audio", duration: input.duration || null },
       })
     ),
+
+  updateEbookChapter: protectedProcedure
+    .input(z.object({
+      chapterId: z.string(),
+      title: z.string().min(1).optional(),
+      content: z.string().optional(),
+      fileUrl: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const { chapterId, title, content, fileUrl } = input;
+      const data: any = {};
+      if (title !== undefined) data.chapter_title = title;
+      if (content !== undefined) data.content = content;
+      if (fileUrl !== undefined) data.file_url = fileUrl;
+      const chapter = await prisma.ebookChapter.update({ where: { id: chapterId }, data });
+      // Sync first chapter file_url to parent BookFormat
+      if (fileUrl !== undefined && chapter.chapter_order === 1) {
+        await prisma.bookFormat.update({
+          where: { id: chapter.book_format_id },
+          data: { file_url: fileUrl },
+        });
+      }
+      return chapter;
+    }),
 
   toggleTrackPreview: protectedProcedure
     .input(z.object({ trackId: z.string(), isPreview: z.boolean() }))

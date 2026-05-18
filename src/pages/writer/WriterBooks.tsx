@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useState, useRef, type ChangeEvent } from "react";
 import { stripHtml } from "@/lib/stripHtml";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, Plus, Loader2, Pencil, Image, Link2, Layers, Lock } from "lucide-react";
+import { BookOpen, Plus, Loader2, Pencil, Image, Link2, Layers, Lock, Upload, Check } from "lucide-react";
 import { toast } from "sonner";
 import { EbookChapterManager } from "@/components/writer/EbookChapterManager";
 import { useCreatorPermissions } from "@/hooks/useCreatorPermissions";
@@ -24,6 +24,23 @@ const emptyForm = () => ({
   title: "", title_en: "", description: "", category_id: "", cover_url: "",
   language: "bn", tags: "", price: "", pages: "", chapters_count: "", file_url: "", file_size: "",
 });
+
+async function uploadEbookFile(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const token = localStorage.getItem("access_token");
+  const res = await fetch(`${API_BASE}/upload/media`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as any;
+    throw new Error(err.error || "Upload failed");
+  }
+  const data = await res.json() as { url: string };
+  return data.url;
+}
 
 type BookWithFormats = {
   id: string; title: string; cover_url: string | null; submission_status: string;
@@ -44,6 +61,24 @@ export default function WriterBooks() {
   const [attachedBook, setAttachedBook] = useState<{ id: string; title: string; cover_url: string | null } | null>(null);
   const [form, setForm] = useState(emptyForm());
   const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingEbook, setUploadingEbook] = useState(false);
+  const ebookFileRef = useRef<HTMLInputElement>(null);
+
+  const handleEbookUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploadingEbook(true);
+    try {
+      const url = await uploadEbookFile(file);
+      setForm(f => ({ ...f, file_url: url, file_size: `${(file.size / (1024 * 1024)).toFixed(1)} MB` }));
+      toast.success("eBook file uploaded");
+    } catch (err: any) {
+      toast.error("Upload failed: " + (err.message || "Unknown error"));
+    } finally {
+      setUploadingEbook(false);
+    }
+  };
 
   const { data: books = [], isLoading } = trpc.books.myCreatorBooks.useQuery({ role: "writer" });
   const { data: categories = [] } = trpc.books.categories.useQuery();
@@ -241,6 +276,22 @@ export default function WriterBooks() {
         <div><Label>Pages</Label><Input type="number" value={form.pages} onChange={e => setForm(f => ({ ...f, pages: e.target.value }))} /></div>
         <div><Label>Tags (comma separated)</Label><Input value={form.tags} onChange={e => setForm(f => ({ ...f, tags: e.target.value }))} /></div>
         <div><Label>Language</Label><Input value={form.language} onChange={e => setForm(f => ({ ...f, language: e.target.value }))} /></div>
+        <div className="col-span-2">
+          <Label>eBook File (EPUB or PDF)</Label>
+          <div className="flex items-center gap-2 mt-1.5">
+            <Button type="button" variant="outline" className="gap-2 text-sm shrink-0" disabled={uploadingEbook} onClick={() => ebookFileRef.current?.click()}>
+              {uploadingEbook ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {uploadingEbook ? "Uploading…" : form.file_url ? "Replace File" : "Choose File"}
+            </Button>
+            {form.file_url && (
+              <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 gap-1">
+                <Check className="h-3 w-3" />{form.file_size || "File ready"}
+              </Badge>
+            )}
+            <input ref={ebookFileRef} type="file" accept=".epub,.pdf,application/epub+zip,application/pdf" className="hidden" onChange={handleEbookUpload} />
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-1">EPUB or PDF · max 500 MB. You can also add per-chapter files later via the Chapters button.</p>
+        </div>
       </div>
       {editBook && form.price && Number(form.price) > 0 && (
         <VendorEarningsPreview bookId={editBook.id} format="ebook" basePrice={Number(form.price)} role="writer" />

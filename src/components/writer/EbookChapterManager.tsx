@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Loader2, BookOpen, Lock, FileText, Hash } from "lucide-react";
+import { Plus, Loader2, BookOpen, Lock, FileText, Hash, Upload, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface EbookChapterManagerProps {
@@ -17,10 +17,33 @@ interface EbookChapterManagerProps {
   onOpenChange: (open: boolean) => void;
 }
 
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+
+async function uploadFile(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const token = localStorage.getItem("access_token");
+  const res = await fetch(`${API_BASE}/upload/media`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as any;
+    throw new Error(err.error || "Upload failed");
+  }
+  const data = await res.json() as { url: string };
+  return data.url;
+}
+
 export function EbookChapterManager({ bookFormatId, bookTitle, open, onOpenChange }: EbookChapterManagerProps) {
   const utils = trpc.useUtils();
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ title: "", content: "" });
+  const [form, setForm] = useState({ title: "", content: "", fileUrl: "" });
+  const [uploading, setUploading] = useState(false);
+  const [uploadingForTrack, setUploadingForTrack] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const trackFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const { data: chapters = [], isLoading } = trpc.books.ebookChapters.useQuery(
     { bookFormatId },
@@ -31,8 +54,16 @@ export function EbookChapterManager({ bookFormatId, bookTitle, open, onOpenChang
     onSuccess: () => {
       utils.books.ebookChapters.invalidate({ bookFormatId });
       setAdding(false);
-      setForm({ title: "", content: "" });
+      setForm({ title: "", content: "", fileUrl: "" });
       toast.success(`Chapter ${chapters.length + 1} added`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateMutation = trpc.books.updateEbookChapter.useMutation({
+    onSuccess: () => {
+      utils.books.ebookChapters.invalidate({ bookFormatId });
+      toast.success("File attached to chapter");
     },
     onError: (err) => toast.error(err.message),
   });
@@ -45,10 +76,45 @@ export function EbookChapterManager({ bookFormatId, bookTitle, open, onOpenChang
     onSuccess: () => { utils.books.ebookChapters.invalidate({ bookFormatId }); toast.success("Chapter deleted"); },
   });
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploading(true);
+    try {
+      const url = await uploadFile(file);
+      setForm(f => ({ ...f, fileUrl: url }));
+      toast.success("File uploaded");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleTrackFileSelect = async (chapterId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploadingForTrack(chapterId);
+    try {
+      const url = await uploadFile(file);
+      updateMutation.mutate({ chapterId, fileUrl: url });
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUploadingForTrack(null);
+    }
+  };
+
   const saveChapter = () => {
     if (!form.title.trim()) { toast.error("Chapter title is required"); return; }
-    if (!form.content.trim()) { toast.error("Please add chapter content"); return; }
-    addMutation.mutate({ bookFormatId, title: form.title.trim(), content: form.content.trim() });
+    addMutation.mutate({
+      bookFormatId,
+      title: form.title.trim(),
+      content: form.content.trim() || undefined,
+      fileUrl: form.fileUrl || undefined,
+    });
   };
 
   const isLocked = (status: string) => status !== "draft";
@@ -104,9 +170,29 @@ export function EbookChapterManager({ bookFormatId, bookTitle, open, onOpenChang
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       {ch.status === "draft" && (
                         <>
+                          {/* Upload file to existing draft chapter */}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1"
+                            disabled={uploadingForTrack === ch.id || updateMutation.isPending}
+                            onClick={() => trackFileRefs.current[ch.id]?.click()}
+                          >
+                            {uploadingForTrack === ch.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : ch.file_url ? <Check className="h-3 w-3 text-emerald-400" /> : <Upload className="h-3 w-3" />}
+                            {ch.file_url ? "Replace" : "Upload"}
+                          </Button>
+                          <input
+                            type="file"
+                            accept=".epub,.pdf,application/epub+zip,application/pdf"
+                            className="hidden"
+                            ref={el => { trackFileRefs.current[ch.id] = el; }}
+                            onChange={e => handleTrackFileSelect(ch.id, e)}
+                          />
                           <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => submitMutation.mutate({ chapterId: ch.id })} disabled={submitMutation.isPending}>
                             Submit
                           </Button>
@@ -140,20 +226,47 @@ export function EbookChapterManager({ bookFormatId, bookTitle, open, onOpenChang
                     />
                   </div>
                   <div>
-                    <Label>Content *</Label>
+                    <Label>Upload File (EPUB or PDF)</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2 text-sm"
+                        disabled={uploading}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        {uploading ? "Uploading…" : form.fileUrl ? "Replace File" : "Choose File"}
+                      </Button>
+                      {form.fileUrl && (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 gap-1">
+                          <Check className="h-3 w-3" /> File ready
+                        </Badge>
+                      )}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".epub,.pdf,application/epub+zip,application/pdf"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">EPUB or PDF · max 500 MB</p>
+                  </div>
+                  <div>
+                    <Label>Or paste chapter text (optional)</Label>
                     <Textarea
                       value={form.content}
                       onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
-                      rows={5}
-                      placeholder="Write chapter content here..."
+                      rows={4}
+                      placeholder="Write chapter content here…"
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">File upload available in Phase 5 (storage provider pending)</p>
                   <div className="flex gap-2">
-                    <Button onClick={saveChapter} disabled={addMutation.isPending} className="flex-1">
+                    <Button onClick={saveChapter} disabled={addMutation.isPending || uploading} className="flex-1">
                       {addMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Chapter"}
                     </Button>
-                    <Button variant="outline" onClick={() => { setAdding(false); setForm({ title: "", content: "" }); }}>
+                    <Button variant="outline" onClick={() => { setAdding(false); setForm({ title: "", content: "", fileUrl: "" }); }}>
                       Cancel
                     </Button>
                   </div>
@@ -164,7 +277,7 @@ export function EbookChapterManager({ bookFormatId, bookTitle, open, onOpenChang
                 <Button variant="outline" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4 mr-2" />Add Chapter
                 </Button>
-                <p className="text-[10px] text-muted-foreground mt-2">Add chapters one at a time. You can come back and add more later.</p>
+                <p className="text-[10px] text-muted-foreground mt-2">Add chapters one at a time. EPUB/PDF upload supported.</p>
               </div>
             )}
           </>

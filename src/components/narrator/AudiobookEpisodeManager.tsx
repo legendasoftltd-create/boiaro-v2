@@ -6,7 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Loader2, Lock, FileAudio, Music, Pencil, Trash2, Unlock, CheckCircle, Video, GripVertical, AlertTriangle, Coins } from "lucide-react";
+import {
+  Plus, Loader2, Lock, FileAudio, Music, Pencil, Trash2, Unlock,
+  CheckCircle, Video, GripVertical, AlertTriangle, Coins, Upload, Check,
+} from "lucide-react";
 import { toast } from "sonner";
 
 interface AudiobookEpisodeManagerProps {
@@ -17,6 +20,25 @@ interface AudiobookEpisodeManagerProps {
 }
 
 const DEFAULT_CHAPTER_PRICE = 100;
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+
+async function uploadAudioFile(file: File): Promise<{ url: string; mediaType: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const token = localStorage.getItem("access_token");
+  const res = await fetch(`${API_BASE}/upload/media`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({})) as any;
+    throw new Error(err.error || "Upload failed");
+  }
+  const data = await res.json() as { url: string };
+  const mediaType = file.type.startsWith("video/") ? "video" : "audio";
+  return { url: data.url, mediaType };
+}
 
 export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenChange }: AudiobookEpisodeManagerProps) {
   const utils = trpc.useUtils();
@@ -25,8 +47,12 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [reordering, setReordering] = useState(false);
-  const [form, setForm] = useState({ title: "", duration: "", chapter_price: "" });
+  const [form, setForm] = useState({ title: "", duration: "", chapter_price: "", audioUrl: "", mediaType: "audio" });
+  const [uploading, setUploading] = useState(false);
+  const [uploadingForTrack, setUploadingForTrack] = useState<string | null>(null);
   const touchState = useRef<{ idx: number; startY: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const trackFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const { data: episodes = [], isLoading } = trpc.books.audiobookTracks.useQuery(
     { bookFormatId },
@@ -44,7 +70,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     onSuccess: () => {
       invalidate();
       setAdding(false);
-      setForm({ title: "", duration: "", chapter_price: "" });
+      setForm({ title: "", duration: "", chapter_price: "", audioUrl: "", mediaType: "audio" });
       toast.success(`Episode ${episodes.length + 1} added`);
     },
     onError: (err) => toast.error(err.message),
@@ -63,6 +89,11 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     onSuccess: () => { invalidate(); setEditingEpisode(null); toast.success("Episode updated"); },
   });
 
+  const uploadTrackMutation = trpc.books.uploadTrackAudio.useMutation({
+    onSuccess: () => { invalidate(); toast.success("Audio attached"); },
+    onError: (err) => toast.error(err.message),
+  });
+
   const togglePreviewMutation = trpc.books.toggleTrackPreview.useMutation({
     onSuccess: () => invalidate(),
   });
@@ -72,6 +103,37 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     onError: () => { invalidate(); toast.error("Reorder failed"); },
   });
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploading(true);
+    try {
+      const { url, mediaType } = await uploadAudioFile(file);
+      setForm(f => ({ ...f, audioUrl: url, mediaType }));
+      toast.success("Audio uploaded");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleTrackFileSelect = async (trackId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploadingForTrack(trackId);
+    try {
+      const { url, mediaType } = await uploadAudioFile(file);
+      uploadTrackMutation.mutate({ trackId, audioUrl: url, mediaType });
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setUploadingForTrack(null);
+    }
+  };
+
   const saveEpisode = () => {
     if (!form.title.trim()) { toast.error("Episode title is required"); return; }
     addMutation.mutate({
@@ -79,6 +141,8 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
       title: form.title.trim(),
       duration: form.duration || undefined,
       chapterPrice: form.chapter_price ? Number(form.chapter_price) : undefined,
+      audioUrl: form.audioUrl || undefined,
+      mediaType: form.mediaType || undefined,
     });
   };
 
@@ -247,14 +311,15 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                             </div>
                             <div className="flex items-center gap-1.5 mt-0.5">
                               {statusBadge(ep.status)}
-                              {ep.audio_url && (
-                                <Badge variant="outline" className="text-[9px] bg-primary/10 text-primary">
+                              {ep.audio_url ? (
+                                <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-400">
                                   {ep.media_type === "video"
                                     ? <><Video className="h-2.5 w-2.5 mr-0.5" />Video</>
-                                    : <><Music className="h-2.5 w-2.5 mr-0.5" />Audio</>
-                                  }
+                                    : <><Music className="h-2.5 w-2.5 mr-0.5" />Audio</>}
                                 </Badge>
-                              )}
+                              ) : !locked ? (
+                                <Badge variant="outline" className="text-[9px] bg-yellow-500/10 text-yellow-400">No file</Badge>
+                              ) : null}
                             </div>
                           </>
                         )}
@@ -283,7 +348,27 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                       <div className="flex items-center gap-1">
                         {!locked && (
                           <>
-                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => submitMutation.mutate({ trackId: ep.id })} disabled={submitMutation.isPending}>
+                            {/* Upload audio for this track */}
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-7 w-7"
+                              title={ep.audio_url ? "Replace audio" : "Upload audio"}
+                              disabled={uploadingForTrack === ep.id}
+                              onClick={() => trackFileRefs.current[ep.id]?.click()}
+                            >
+                              {uploadingForTrack === ep.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : ep.audio_url ? <Check className="h-3 w-3 text-emerald-400" /> : <Upload className="h-3 w-3" />}
+                            </Button>
+                            <input
+                              type="file"
+                              accept="audio/*,video/*,.mp3,.aac,.wav,.ogg,.m4a,.m4b,.flac,.opus"
+                              className="hidden"
+                              ref={el => { trackFileRefs.current[ep.id] = el; }}
+                              onChange={e => handleTrackFileSelect(ep.id, e)}
+                            />
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => submitMutation.mutate({ trackId: ep.id })} disabled={submitMutation.isPending || !ep.audio_url}>
                               Submit
                             </Button>
                             <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => togglePreviewMutation.mutate({ trackId: ep.id, isPreview: !ep.is_preview })} title={ep.is_preview ? "Remove preview" : "Set as preview"}>
@@ -296,6 +381,9 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </>
+                        )}
+                        {locked && ep.status === "approved" && (
+                          <CheckCircle className="h-4 w-4 text-emerald-400" />
                         )}
                       </div>
                     </div>
@@ -319,20 +407,50 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                     <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder={`Episode ${episodes.length + 1}`} />
                   </div>
                   <div>
-                    <Label>Chapter Price (coins)</Label>
-                    <Input value={form.chapter_price} onChange={e => setForm(f => ({ ...f, chapter_price: e.target.value }))} placeholder={`Default: ${DEFAULT_CHAPTER_PRICE}`} type="number" min="1" />
-                    <p className="text-[10px] text-muted-foreground mt-0.5">Leave blank for default ({DEFAULT_CHAPTER_PRICE} coins ≈ ৳{(DEFAULT_CHAPTER_PRICE * 0.05).toFixed(0)})</p>
+                    <Label>Upload Audio / Video File *</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="gap-2 text-sm"
+                        disabled={uploading}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        {uploading ? "Uploading…" : form.audioUrl ? "Replace File" : "Choose File"}
+                      </Button>
+                      {form.audioUrl && (
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 gap-1">
+                          <Check className="h-3 w-3" />
+                          {form.mediaType === "video" ? "Video ready" : "Audio ready"}
+                        </Badge>
+                      )}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="audio/*,video/*,.mp3,.aac,.wav,.ogg,.m4a,.m4b,.flac,.opus"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">MP3, AAC, WAV, OGG, M4A, or video · max 500 MB</p>
                   </div>
-                  <div>
-                    <Label>Duration</Label>
-                    <Input value={form.duration} onChange={e => setForm(f => ({ ...f, duration: e.target.value }))} placeholder="e.g. 45:30" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Chapter Price (coins)</Label>
+                      <Input value={form.chapter_price} onChange={e => setForm(f => ({ ...f, chapter_price: e.target.value }))} placeholder={`Default: ${DEFAULT_CHAPTER_PRICE}`} type="number" min="1" />
+                      <p className="text-[10px] text-muted-foreground mt-0.5">Leave blank for default ({DEFAULT_CHAPTER_PRICE} coins ≈ ৳{(DEFAULT_CHAPTER_PRICE * 0.05).toFixed(0)})</p>
+                    </div>
+                    <div>
+                      <Label>Duration</Label>
+                      <Input value={form.duration} onChange={e => setForm(f => ({ ...f, duration: e.target.value }))} placeholder="e.g. 45:30" />
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Audio/video file upload available in Phase 5 (storage provider pending)</p>
                   <div className="flex gap-2">
-                    <Button onClick={saveEpisode} disabled={addMutation.isPending} className="flex-1">
+                    <Button onClick={saveEpisode} disabled={addMutation.isPending || uploading} className="flex-1">
                       {addMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Episode"}
                     </Button>
-                    <Button variant="outline" onClick={() => { setAdding(false); setForm({ title: "", duration: "", chapter_price: "" }); }}>
+                    <Button variant="outline" onClick={() => { setAdding(false); setForm({ title: "", duration: "", chapter_price: "", audioUrl: "", mediaType: "audio" }); }}>
                       Cancel
                     </Button>
                   </div>
@@ -343,7 +461,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                 <Button variant="outline" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4 mr-2" />Add Episode
                 </Button>
-                <p className="text-[10px] text-muted-foreground mt-2">Drag to reorder episodes</p>
+                <p className="text-[10px] text-muted-foreground mt-2">Drag to reorder · MP3/AAC/WAV/video upload supported</p>
               </div>
             )}
           </>
