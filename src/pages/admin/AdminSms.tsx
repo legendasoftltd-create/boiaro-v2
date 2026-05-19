@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,8 +53,7 @@ export default function AdminSms() {
     queryFn: () => utils.admin.listSmsTemplates.fetch(),
   });
 
-  const sendMutation = useMutation({
-    mutationFn: (payload: { recipients: Recipient[]; message: string }) => utils.admin.sendSms.fetch(payload),
+  const sendMutation = trpc.admin.sendSms.useMutation({
     onSuccess: (data) => {
       toast.success(`SMS sent: ${data.sent} success, ${data.failed} failed, ${data.skipped} skipped`);
       queryClient.invalidateQueries({ queryKey: ["sms-logs"] });
@@ -67,9 +66,7 @@ export default function AdminSms() {
     },
   });
 
-  const saveTemplateMutation = useMutation({
-    mutationFn: (payload: { name: string; content: string }) =>
-      utils.admin.createSmsTemplate.fetch({ name: payload.name, body: payload.content }),
+  const saveTemplateMutation = trpc.admin.createSmsTemplate.useMutation({
     onSuccess: () => {
       toast.success("Template saved");
       queryClient.invalidateQueries({ queryKey: ["sms-templates"] });
@@ -104,7 +101,7 @@ export default function AdminSms() {
     if (!message.trim()) return toast.error("Write a message first");
     const name = prompt("Template name:");
     if (!name?.trim()) return;
-    saveTemplateMutation.mutate({ name: name.trim(), content: message.trim() });
+    saveTemplateMutation.mutate({ name: name.trim(), body: message.trim() });
   };
 
   return (
