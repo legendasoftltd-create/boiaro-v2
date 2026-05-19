@@ -24,6 +24,7 @@ export default function AdminUserDetail() {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
   const setUserTempPasswordMutation = trpc.admin.setUserTempPassword.useMutation();
+  const requestPasswordResetMutation = trpc.auth.requestPasswordReset.useMutation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [record, setRecord] = useState<any>(null);
@@ -133,7 +134,14 @@ export default function AdminUserDetail() {
   };
 
   const handlePasswordReset = async () => {
-    toast.error("Password reset email is not configured yet.");
+    const email = authMeta?.email;
+    if (!email) { toast.error("User email not found"); return; }
+    try {
+      await requestPasswordResetMutation.mutateAsync({ email });
+      toast.success(`Password reset OTP sent to ${email}`);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to send reset email");
+    }
   };
 
   const handleSetTempPassword = async () => {
