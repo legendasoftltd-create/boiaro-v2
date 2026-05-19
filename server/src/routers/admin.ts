@@ -3729,29 +3729,59 @@ export const adminRouter = router({
       const req = await prisma.contentEditRequest.findUnique({ where: { id: input.requestId } });
       if (!req) throw new TRPCError({ code: "NOT_FOUND" });
       const changes = (() => { try { return JSON.parse(req.details || "{}"); } catch { return {}; } })();
+
+      // Whitelist of scalar fields that actually exist on the Book model
+      const BOOK_SCALAR_FIELDS = new Set([
+        "title", "title_en", "slug", "description", "language", "tags",
+        "cover_url", "is_featured", "is_bestseller", "is_new", "is_free",
+        "published_date", "rating", "reviews_count",
+      ]);
+      // Whitelist of scalar fields that exist on BookFormat
+      const FORMAT_SCALAR_FIELDS = new Set([
+        "price", "original_price", "discount", "duration", "audio_quality",
+        "file_url", "file_size", "pages", "chapters_count", "preview_chapters",
+        "preview_percentage", "stock_count", "binding", "weight", "dimensions",
+        "delivery_days", "is_available", "in_stock", "isbn",
+      ]);
+
       await prisma.$transaction(async (tx: any) => {
         if (changes.book && req.book_id && req.request_type === "book") {
-          const {
-            submission_status: _ss, submitted_by: _sb,
-            category_id, author_id, publisher_id,
-            ...scalarUpdates
-          } = changes.book;
+          const raw = changes.book as Record<string, any>;
 
-          // FK fields must use Prisma relation syntax, not raw scalar ids
+          // Only pick valid Book scalar fields — drop FK ids and format-only fields
+          const scalarUpdates: Record<string, any> = {};
+          for (const [k, v] of Object.entries(raw)) {
+            if (BOOK_SCALAR_FIELDS.has(k) && v !== undefined && v !== null && v !== "") {
+              scalarUpdates[k] = v;
+            }
+          }
+
+          // Convert FK id fields to Prisma relation connect syntax
           const relationalUpdates: any = {};
-          if (category_id) relationalUpdates.category = { connect: { id: category_id } };
-          if (author_id)   relationalUpdates.author   = { connect: { id: author_id } };
-          if (publisher_id) relationalUpdates.publisher = { connect: { id: publisher_id } };
+          if (raw.category_id) relationalUpdates.category = { connect: { id: raw.category_id } };
+          if (raw.author_id)   relationalUpdates.author   = { connect: { id: raw.author_id } };
+          if (raw.publisher_id) relationalUpdates.publisher = { connect: { id: raw.publisher_id } };
 
           const data = { ...scalarUpdates, ...relationalUpdates };
           if (Object.keys(data).length > 0) {
             await tx.book.update({ where: { id: req.book_id }, data });
           }
         }
+
         if (changes.format?.format_id) {
-          const { format_id, ...formatUpdates } = changes.format;
-          if (Object.keys(formatUpdates).length > 0) await tx.bookFormat.update({ where: { id: format_id }, data: formatUpdates });
+          const { format_id, ...rawFormatUpdates } = changes.format as Record<string, any>;
+          // Only pick valid BookFormat scalar fields
+          const formatUpdates: Record<string, any> = {};
+          for (const [k, v] of Object.entries(rawFormatUpdates)) {
+            if (FORMAT_SCALAR_FIELDS.has(k) && v !== undefined && v !== null && v !== "") {
+              formatUpdates[k] = v;
+            }
+          }
+          if (Object.keys(formatUpdates).length > 0) {
+            await tx.bookFormat.update({ where: { id: format_id }, data: formatUpdates });
+          }
         }
+
         await tx.contentEditRequest.update({
           where: { id: input.requestId },
           data: { status: "approved", reviewer_id: ctx.userId },
