@@ -11,6 +11,13 @@ import { stripHtml } from "@/lib/stripHtml";
 import { toast } from "sonner";
 import { toMediaUrl } from "@/lib/mediaUrl";
 
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+
+function ebookProxyUrl(fileUrl: string): string {
+  const token = localStorage.getItem("access_token") ?? "";
+  return `${API_BASE}/api/v1/ebook-preview?token=${encodeURIComponent(token)}&url=${encodeURIComponent(fileUrl)}`;
+}
+
 export default function AdminSubmissions() {
   const utils = trpc.useUtils();
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "draft" | "edit_requests">("pending");
@@ -354,7 +361,7 @@ export default function AdminSubmissions() {
                     </div>
                   </div>
                   <iframe
-                    src={previewingFileUrl}
+                    src={ebookProxyUrl(previewingFileUrl)}
                     className="w-full"
                     style={{ height: "520px" }}
                     title="eBook Preview"
@@ -511,7 +518,7 @@ export default function AdminSubmissions() {
                                 <button onClick={() => setPreviewingFileUrl(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
                               </div>
                             </div>
-                            <iframe src={url} className="w-full" style={{ height: "520px" }} title="eBook Preview" />
+                            <iframe src={ebookProxyUrl(url)} className="w-full" style={{ height: "520px" }} title="eBook Preview" />
                           </div>
                         )}
                       </div>

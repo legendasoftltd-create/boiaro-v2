@@ -25,6 +25,7 @@ import { shippingRestRouter } from "./shipping.js";
 import { couponsRestRouter } from "./coupons.js";
 import { ttsRestRouter } from "./tts.js";
 import { categorySectionsRestRouter } from "./category-sections.js";
+import { ebookPreviewRouter } from "./ebook-preview.js";
 
 export const restRouter = Router();
 
@@ -54,3 +55,4 @@ restRouter.use("/shipping", shippingRestRouter);
 restRouter.use("/coupons", couponsRestRouter);
 restRouter.use("/tts", ttsRestRouter);
 restRouter.use("/category-sections", categorySectionsRestRouter);
+restRouter.use("/ebook-preview", ebookPreviewRouter);
