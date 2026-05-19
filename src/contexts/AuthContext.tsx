@@ -30,6 +30,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signInWithGoogle: (accessToken: string) => Promise<{ error: Error | null }>
   signInWithFacebook: (accessToken: string) => Promise<{ error: Error | null }>
+  signInWithPhone: (phone: string, otp: string) => Promise<{ error: Error | null }>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<void>
   setProfileAvatar: (url: string) => void
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInMutation = trpc.auth.signIn.useMutation()
   const signInWithGoogleMutation = trpc.auth.signInWithGoogle.useMutation()
   const signInWithFacebookMutation = trpc.auth.signInWithFacebook.useMutation()
+  const verifyPhoneOtpMutation = trpc.auth.verifyPhoneOtp.useMutation()
   const signUpMutation = trpc.auth.signUp.useMutation()
   const updateProfileMutation = trpc.auth.updateProfile.useMutation()
 
@@ -130,6 +132,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const signInWithPhone = async (phone: string, otp: string) => {
+    try {
+      const result = await verifyPhoneOtpMutation.mutateAsync({ phone, otp })
+      localStorage.setItem("access_token", result.accessToken)
+      localStorage.setItem("refresh_token", result.refreshToken)
+      const u = { id: result.user.id, email: result.user.email, roles: result.user.roles }
+      setUser(u)
+      setProfile(result.user.profile as Profile)
+      setSentryUser({ id: u.id, email: u.email })
+      return { error: null }
+    } catch (err: any) {
+      return { error: new Error(err?.message || "Phone login failed") }
+    }
+  }
+
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
       await signUpMutation.mutateAsync({ email, password, displayName })
@@ -159,7 +176,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, session: null, profile, loading, signIn, signInWithGoogle, signInWithFacebook, signUp, signOut, updateProfile, setProfileAvatar }}>
+    <AuthContext.Provider value={{ user, session: null, profile, loading, signIn, signInWithGoogle, signInWithFacebook, signInWithPhone, signUp, signOut, updateProfile, setProfileAvatar }}>
       {children}
     </AuthContext.Provider>
   )

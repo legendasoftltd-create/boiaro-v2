@@ -1385,6 +1385,18 @@ model SmsTemplate {
   @@map("sms_templates")
 }
 
+model PhoneOtp {
+  id         String   @id @default(uuid())
+  phone      String
+  otp_hash   String
+  expires_at DateTime
+  used       Boolean  @default(false)
+  created_at DateTime @default(now())
+
+  @@index([phone])
+  @@map("phone_otps")
+}
+
 model SubscriptionPlan {
   id            String   @id @default(uuid())
   created_at    DateTime @default(now())

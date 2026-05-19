@@ -17,6 +17,7 @@ export default function Auth() {
         showApply: false,
         showGoogle: true,
         showFacebook: true,
+        showPhone: true,
       }}
     />
   )

@@ -14,6 +14,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { signTokens } from "../../lib/auth.js";
 import { sendMail } from "../../lib/mailer.js";
+import { sendOtpSms, normalizeBdPhone } from "../../lib/sms.js";
 
 export const authRestRouter = Router();
 
@@ -569,6 +570,123 @@ authRestRouter.post("/facebook", async (req, res) => {
       },
       jwtAccessToken,
       jwtRefreshToken
+    );
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── Phone OTP login ───────────────────────────────────────────────────────────
+
+authRestRouter.post("/phone/send-otp", async (req, res) => {
+  try {
+    const rawPhone = req.body?.phone;
+    if (!rawPhone || typeof rawPhone !== "string") {
+      res.status(400).json({ error: "phone is required" });
+      return;
+    }
+    const phone = normalizeBdPhone(rawPhone);
+
+    const recent = await prisma.phoneOtp.findFirst({
+      where: { phone, created_at: { gte: new Date(Date.now() - 60_000) } },
+      orderBy: { created_at: "desc" },
+    });
+    if (recent) {
+      res.status(429).json({ error: "Please wait before requesting another OTP." });
+      return;
+    }
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otp_hash = await bcrypt.hash(otp, 10);
+    await prisma.phoneOtp.create({ data: { phone, otp_hash, expires_at: new Date(Date.now() + 5 * 60 * 1000) } });
+
+    const result = await sendOtpSms(phone, `Your BoiAro verification code is: ${otp}. Valid for 5 minutes.`);
+    if (!result.success) {
+      res.status(500).json({ error: result.error || "Failed to send OTP." });
+      return;
+    }
+    res.json({ sent: true });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+authRestRouter.post("/phone/verify-otp", async (req, res) => {
+  try {
+    const rawPhone = req.body?.phone;
+    const otp = req.body?.otp;
+    if (!rawPhone || !otp) {
+      res.status(400).json({ error: "phone and otp are required" });
+      return;
+    }
+    const phone = normalizeBdPhone(rawPhone);
+
+    const record = await prisma.phoneOtp.findFirst({
+      where: { phone, used: false, expires_at: { gt: new Date() } },
+      orderBy: { created_at: "desc" },
+    });
+    if (!record) {
+      res.status(400).json({ error: "OTP expired or not found. Please request a new one." });
+      return;
+    }
+    const valid = await bcrypt.compare(String(otp), record.otp_hash);
+    if (!valid) {
+      res.status(400).json({ error: "Incorrect OTP. Please try again." });
+      return;
+    }
+    await prisma.phoneOtp.update({ where: { id: record.id }, data: { used: true } });
+
+    const existingProfile = await prisma.profile.findFirst({
+      where: { phone },
+      include: { user: { include: { roles: true } } },
+    });
+
+    let userId: string;
+    let userEmail: string;
+    let userRoles: string[];
+    let userProfile: unknown;
+
+    if (existingProfile?.user) {
+      if (existingProfile.deleted_at) {
+        res.status(403).json({ error: "Account deleted. Contact support." });
+        return;
+      }
+      if (existingProfile.is_active === false) {
+        res.status(403).json({ error: "Account deactivated. Contact support." });
+        return;
+      }
+      userId = existingProfile.user.id;
+      userEmail = existingProfile.user.email;
+      userRoles = existingProfile.user.roles.map((r) => r.role);
+      userProfile = existingProfile;
+    } else {
+      const email = `phone_${phone}@boiaro.local`;
+      let u = await prisma.user.findUnique({ where: { email }, include: { roles: true, profile: true } });
+      if (!u) {
+        const referral_code = generateReferralCode();
+        u = await prisma.user.create({
+          data: {
+            email,
+            password_hash: await bcrypt.hash(crypto.randomUUID(), 12),
+            email_verified: true,
+            profile: { create: { display_name: phone, phone, referral_code } },
+            roles: { create: { role: "user" } },
+          },
+          include: { roles: true, profile: true },
+        });
+      }
+      userId = u.id;
+      userEmail = u.email;
+      userRoles = u.roles.map((r) => r.role);
+      userProfile = u.profile;
+    }
+
+    const { accessToken, refreshToken } = signTokens(userId, userEmail);
+    sendSocialLoginResponse(
+      res,
+      { id: userId, email: userEmail, roles: userRoles, profile: userProfile },
+      accessToken,
+      refreshToken
     );
   } catch (error) {
     sendHttpError(res, error);

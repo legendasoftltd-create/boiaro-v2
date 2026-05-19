@@ -12,6 +12,7 @@ import {
   signInUser,
 } from "../services/auth.service.js";
 import { sendNotificationEmail } from "../lib/mailer.js";
+import { sendOtpSms, normalizeBdPhone } from "../lib/sms.js";
 
 function generateReferralCode() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -325,6 +326,112 @@ export const authRouter = router({
         data: { password_hash, reset_otp: null, reset_otp_expires: null },
       });
       return { message: "Password reset successfully" };
+    }),
+
+  sendPhoneOtp: publicProcedure
+    .input(z.object({ phone: z.string().min(6) }))
+    .mutation(async ({ input }) => {
+      const phone = normalizeBdPhone(input.phone);
+
+      // Rate-limit: no more than 1 OTP per minute per phone
+      const recent = await prisma.phoneOtp.findFirst({
+        where: {
+          phone,
+          created_at: { gte: new Date(Date.now() - 60_000) },
+        },
+        orderBy: { created_at: "desc" },
+      });
+      if (recent) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Please wait before requesting another OTP." });
+      }
+
+      const otp = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit
+      const otp_hash = await bcrypt.hash(otp, 10);
+      const expires_at = new Date(Date.now() + 5 * 60 * 1000); // 5 min
+
+      await prisma.phoneOtp.create({ data: { phone, otp_hash, expires_at } });
+
+      const result = await sendOtpSms(phone, `Your BoiAro verification code is: ${otp}. Valid for 5 minutes.`);
+      if (!result.success) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: result.error || "Failed to send OTP." });
+      }
+
+      return { sent: true };
+    }),
+
+  verifyPhoneOtp: publicProcedure
+    .input(z.object({ phone: z.string().min(6), otp: z.string().length(6) }))
+    .mutation(async ({ input }) => {
+      const phone = normalizeBdPhone(input.phone);
+
+      const record = await prisma.phoneOtp.findFirst({
+        where: { phone, used: false, expires_at: { gt: new Date() } },
+        orderBy: { created_at: "desc" },
+      });
+
+      if (!record) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "OTP expired or not found. Please request a new one." });
+      }
+
+      const valid = await bcrypt.compare(input.otp, record.otp_hash);
+      if (!valid) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Incorrect OTP. Please try again." });
+      }
+
+      // Mark used
+      await prisma.phoneOtp.update({ where: { id: record.id }, data: { used: true } });
+
+      // Find user by profile phone, or create one
+      const existingProfile = await prisma.profile.findFirst({
+        where: { phone },
+        include: { user: { include: { roles: true } } },
+      });
+
+      let user: { id: string; email: string; roles: { role: string }[]; profile: any };
+
+      if (existingProfile?.user) {
+        const u = existingProfile.user;
+        if (existingProfile.deleted_at) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
+        }
+        if (existingProfile.is_active === false) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
+        }
+        user = { id: u.id, email: u.email, roles: u.roles, profile: existingProfile };
+      } else {
+        // New user — create account keyed to phone
+        const email = `phone_${phone}@boiaro.local`;
+        const existingByEmail = await prisma.user.findUnique({ where: { email } });
+        if (existingByEmail) {
+          const profile = await prisma.profile.findUnique({ where: { user_id: existingByEmail.id } });
+          user = { id: existingByEmail.id, email: existingByEmail.email, roles: [], profile };
+        } else {
+          const referral_code = Math.random().toString(36).substring(2, 8).toUpperCase();
+          const newUser = await prisma.user.create({
+            data: {
+              email,
+              password_hash: await bcrypt.hash(crypto.randomUUID(), 12),
+              email_verified: true,
+              profile: { create: { display_name: phone, phone, referral_code } },
+              roles: { create: { role: "user" } },
+            },
+            include: { roles: true, profile: true },
+          });
+          user = { id: newUser.id, email: newUser.email, roles: newUser.roles, profile: newUser.profile };
+        }
+      }
+
+      const { accessToken, refreshToken } = signTokens(user.id, user.email);
+      return {
+        accessToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          roles: user.roles.map((r) => r.role),
+          profile: user.profile,
+        },
+      };
     }),
 
   updateProfile: protectedProcedure

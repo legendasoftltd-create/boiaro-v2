@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Smartphone, ArrowLeft } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import logoBoiaro from "@/assets/logo_boiaro.png"
 import type { LucideIcon } from "lucide-react"
@@ -24,6 +24,7 @@ export type AuthRoleConfig = {
   showApply: boolean
   showGoogle: boolean
   showFacebook?: boolean
+  showPhone?: boolean
   applyMessage?: string
   showForgotPassword?: boolean
 }
@@ -38,20 +39,31 @@ const ROLE_ROUTES: Record<string, string> = {
 }
 
 export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
-  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "link-sent">("login")
+  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "link-sent" | "phone-enter" | "phone-otp">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [displayName, setDisplayName] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
+  const [phone, setPhone] = useState("")
+  const [otp, setOtp] = useState("")
+  const [otpCountdown, setOtpCountdown] = useState(0)
   const [searchParams] = useSearchParams()
   const refCode = searchParams.get("ref") || ""
-  const { signIn, signInWithGoogle, signInWithFacebook, signUp, user } = useAuth()
+  const { signIn, signInWithGoogle, signInWithFacebook, signInWithPhone, signUp, user } = useAuth()
   const navigate = useNavigate()
   const { toast } = useToast()
 
   const requestResetMutation = trpc.auth.requestPasswordReset.useMutation()
+  const sendPhoneOtpMutation = trpc.auth.sendPhoneOtp.useMutation()
+
+  // Countdown timer for OTP resend
+  useEffect(() => {
+    if (otpCountdown <= 0) return
+    const t = setTimeout(() => setOtpCountdown(c => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [otpCountdown])
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -134,7 +146,52 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
     }
   }
 
+  const handleSendPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!phone.trim()) return
+    setIsLoading(true)
+    try {
+      await sendPhoneOtpMutation.mutateAsync({ phone: phone.trim() })
+      setOtpCountdown(60)
+      setMode("phone-otp")
+      toast({ title: "OTP Sent", description: "Check your phone for the 6-digit code." })
+    } catch (err: any) {
+      toast({ title: "Failed to send OTP", description: err.message || "Please try again.", variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    const { error } = await signInWithPhone(phone.trim(), otp.trim())
+    if (error) {
+      setIsLoading(false)
+      toast({ title: "Verification failed", description: error.message, variant: "destructive" })
+      return
+    }
+    resolveRedirect()
+    setIsLoading(false)
+  }
+
+  const handleResendOtp = async () => {
+    if (otpCountdown > 0) return
+    setIsLoading(true)
+    try {
+      await sendPhoneOtpMutation.mutateAsync({ phone: phone.trim() })
+      setOtpCountdown(60)
+      setOtp("")
+      toast({ title: "OTP Resent", description: "A new code was sent to your phone." })
+    } catch (err: any) {
+      toast({ title: "Failed", description: err.message, variant: "destructive" })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const Icon = config.icon
+  const showPhoneOption = config.showPhone !== false && (config.showGoogle || config.showFacebook || config.showPhone)
 
   return (
     <div className="min-h-[100svh] bg-background flex items-center justify-center p-4 relative overflow-hidden">
@@ -283,12 +340,78 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </form>
             )}
 
-            {(config.showGoogle || config.showFacebook) && mode === "login" && (
+            {/* Phone number entry */}
+            {mode === "phone-enter" && (
+              <form onSubmit={handleSendPhoneOtp} className="space-y-3.5">
+                <div className="flex items-center gap-2 mb-1">
+                  <button type="button" onClick={() => setMode("login")}
+                    className="text-muted-foreground hover:text-foreground transition-colors">
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                  <p className="text-[13px] text-muted-foreground">Enter your phone number to receive a one-time code.</p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[13px]">Phone Number</Label>
+                  <Input
+                    type="tel" placeholder="01XXXXXXXXX" value={phone}
+                    onChange={e => setPhone(e.target.value)} required
+                    className="h-10 rounded-xl bg-secondary/40 border-border/30 focus:border-primary/50"
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-muted-foreground">Bangladesh number (01X XXXX XXXX)</p>
+                </div>
+                <Button type="submit" className="w-full btn-gold h-10 text-[13px]" disabled={isLoading}>
+                  {isLoading ? "Sending code..." : "Send Code"}
+                </Button>
+              </form>
+            )}
+
+            {/* OTP verification */}
+            {mode === "phone-otp" && (
+              <form onSubmit={handleVerifyPhoneOtp} className="space-y-3.5">
+                <div className="flex items-center gap-2 mb-1">
+                  <button type="button" onClick={() => setMode("phone-enter")}
+                    className="text-muted-foreground hover:text-foreground transition-colors">
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                  <p className="text-[13px] text-muted-foreground">
+                    Code sent to <strong>{phone}</strong>
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-[13px]">6-Digit Code</Label>
+                  <Input
+                    type="text" inputMode="numeric" pattern="\d{6}" maxLength={6}
+                    placeholder="• • • • • •"
+                    value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, ""))}
+                    required
+                    className="h-12 rounded-xl bg-secondary/40 border-border/30 focus:border-primary/50 text-center text-xl tracking-[0.5em] font-mono"
+                    autoFocus
+                  />
+                </div>
+                <Button type="submit" className="w-full btn-gold h-10 text-[13px]" disabled={isLoading || otp.length < 6}>
+                  {isLoading ? "Verifying..." : "Verify & Sign In"}
+                </Button>
+                <p className="text-center text-[12px] text-muted-foreground">
+                  Didn't receive it?{" "}
+                  {otpCountdown > 0 ? (
+                    <span className="text-muted-foreground">Resend in {otpCountdown}s</span>
+                  ) : (
+                    <button type="button" onClick={handleResendOtp} disabled={isLoading}
+                      className="text-primary hover:underline">
+                      Resend code
+                    </button>
+                  )}
+                </p>
+              </form>
+            )}
+
+            {(config.showGoogle || config.showFacebook || showPhoneOption) && mode === "login" && (
               <>
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border/30" /></div>
                   <div className="relative flex justify-center text-[11px]">
-                    <span className="bg-card px-3 text-muted-foreground">or</span>
+                    <span className="bg-card px-3 text-muted-foreground">or continue with</span>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -349,6 +472,15 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
                       Continue with Facebook
                     </Button>
                   )}
+                  {config.showPhone !== false && (
+                    <Button type="button" variant="outline"
+                      className="w-full h-10 text-[13px] gap-2 border-border/30 hover:bg-emerald-500/10 hover:border-emerald-500/40 hover:text-emerald-600"
+                      disabled={isLoading}
+                      onClick={() => { setPhone(""); setOtp(""); setMode("phone-enter") }}>
+                      <Smartphone className="w-4 h-4" />
+                      Continue with Phone
+                    </Button>
+                  )}
                 </div>
               </>
             )}
@@ -363,7 +495,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </div>
             )}
 
-            {config.showSignup && mode !== "forgot" && mode !== "link-sent" && (
+            {config.showSignup && mode !== "forgot" && mode !== "link-sent" && mode !== "phone-enter" && mode !== "phone-otp" && (
               <p className="text-center text-[12px] text-muted-foreground">
                 {mode === "login" ? (
                   <>Don't have an account?{" "}
