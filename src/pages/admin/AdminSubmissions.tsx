@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle, XCircle, Eye, BookOpen, Image, Loader2, User2, RotateCcw, FileAudio, Pencil } from "lucide-react";
+import { CheckCircle, XCircle, Eye, BookOpen, Image, Loader2, User2, RotateCcw, FileAudio, Pencil, Play, Pause, ExternalLink, Square } from "lucide-react";
 import { stripHtml } from "@/lib/stripHtml";
 import { toast } from "sonner";
+import { toMediaUrl } from "@/lib/mediaUrl";
 
 export default function AdminSubmissions() {
   const utils = trpc.useUtils();
@@ -17,6 +18,9 @@ export default function AdminSubmissions() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [reviewingRequest, setReviewingRequest] = useState<any>(null);
   const [adminNotes, setAdminNotes] = useState("");
+  const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const { data: submissions = [], isLoading } = trpc.admin.listSubmissions.useQuery(
     { status: filter },
@@ -70,6 +74,36 @@ export default function AdminSubmissions() {
     setActionLoading(bookId);
     updateStatusMutation.mutate({ bookId, status: action });
   };
+
+  const stopAudio = () => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.currentTime = 0; }
+    setPlayingTrackId(null);
+    setIsPlaying(false);
+  };
+
+  const playTrack = (track: any) => {
+    const url = toMediaUrl(track.audio_url);
+    if (!url) { toast.error("No audio file for this track"); return; }
+    if (playingTrackId === track.id && audioRef.current) {
+      if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+      else { audioRef.current.play(); setIsPlaying(true); }
+      return;
+    }
+    stopAudio();
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.onplay = () => setIsPlaying(true);
+    audio.onpause = () => setIsPlaying(false);
+    audio.onended = () => { setPlayingTrackId(null); setIsPlaying(false); };
+    audio.onerror = () => { toast.error("Failed to load audio"); setPlayingTrackId(null); setIsPlaying(false); };
+    setPlayingTrackId(track.id);
+    audio.play().catch(() => toast.error("Playback blocked — click play again"));
+  };
+
+  // Stop audio when review dialog closes
+  useEffect(() => {
+    if (!previewBook) stopAudio();
+  }, [previewBook]);
 
   const formatBadge = (fmt: string) => {
     const config: Record<string, { label: string; cls: string }> = {
@@ -258,7 +292,19 @@ export default function AdminSubmissions() {
                     <div key={f.id} className="flex items-center gap-3 p-2.5 bg-secondary/30 rounded-lg flex-wrap">
                       {formatBadge(f.format)}
                       <span className="text-sm font-medium">৳{f.price}</span>
-                      {f.file_url && <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400">File uploaded</Badge>}
+                      {f.file_url && (
+                        <a
+                          href={toMediaUrl(f.file_url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <BookOpen className="w-3 h-3" />
+                          {f.format === "ebook" ? "Read" : "Open File"}
+                          <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
+                        </a>
+                      )}
                       {f.stock_count !== null && <span className="text-xs text-muted-foreground">Stock: {f.stock_count}</span>}
                       {f.duration && <span className="text-xs text-muted-foreground">{f.duration}</span>}
                       {f.audio_quality && <span className="text-xs text-muted-foreground uppercase">{f.audio_quality}</span>}
@@ -273,19 +319,49 @@ export default function AdminSubmissions() {
                     <FileAudio className="w-3.5 h-3.5" /> Episodes ({(tracks as any[]).length})
                   </h3>
                   <div className="space-y-1.5">
-                    {(tracks as any[]).map((t: any) => (
-                      <div key={t.id} className="flex items-center gap-3 p-2 bg-secondary/20 rounded-lg">
-                        <div className="w-7 h-7 rounded bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                          {t.track_number}
+                    {(tracks as any[]).map((t: any) => {
+                      const isThisPlaying = playingTrackId === t.id && isPlaying;
+                      const isThisLoaded = playingTrackId === t.id;
+                      return (
+                        <div key={t.id} className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${isThisLoaded ? "bg-primary/10 border border-primary/20" : "bg-secondary/20"}`}>
+                          <div className="w-7 h-7 rounded bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                            {t.track_number}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{t.title}</p>
+                            <p className="text-[10px] text-muted-foreground">{t.duration || "—"}</p>
+                          </div>
+                          {t.is_preview && <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-400">Preview</Badge>}
+                          {t.audio_url ? (
+                            <Button
+                              size="icon"
+                              variant={isThisLoaded ? "default" : "outline"}
+                              className="h-7 w-7 shrink-0"
+                              onClick={() => playTrack(t)}
+                              title={isThisPlaying ? "Pause" : "Play"}
+                            >
+                              {isThisPlaying
+                                ? <Pause className="h-3.5 w-3.5" />
+                                : <Play className="h-3.5 w-3.5" />}
+                            </Button>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground shrink-0">No file</span>
+                          )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{t.title}</p>
-                          <p className="text-[10px] text-muted-foreground">{t.duration || "—"}</p>
-                        </div>
-                        {t.is_preview && <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-400">Preview</Badge>}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
+                  {playingTrackId && (
+                    <div className="mt-2 flex items-center justify-between p-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                        <span>Playing: {(tracks as any[]).find((t: any) => t.id === playingTrackId)?.title}</span>
+                      </div>
+                      <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-destructive" onClick={stopAudio}>
+                        <Square className="h-3 w-3" /> Stop
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
