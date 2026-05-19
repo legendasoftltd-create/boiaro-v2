@@ -3722,8 +3722,22 @@ export const adminRouter = router({
       const changes = (() => { try { return JSON.parse(req.details || "{}"); } catch { return {}; } })();
       await prisma.$transaction(async (tx: any) => {
         if (changes.book && req.book_id && req.request_type === "book") {
-          const { submission_status: _ss, submitted_by: _sb, ...bookUpdates } = changes.book;
-          if (Object.keys(bookUpdates).length > 0) await tx.book.update({ where: { id: req.book_id }, data: bookUpdates });
+          const {
+            submission_status: _ss, submitted_by: _sb,
+            category_id, author_id, publisher_id,
+            ...scalarUpdates
+          } = changes.book;
+
+          // FK fields must use Prisma relation syntax, not raw scalar ids
+          const relationalUpdates: any = {};
+          if (category_id) relationalUpdates.category = { connect: { id: category_id } };
+          if (author_id)   relationalUpdates.author   = { connect: { id: author_id } };
+          if (publisher_id) relationalUpdates.publisher = { connect: { id: publisher_id } };
+
+          const data = { ...scalarUpdates, ...relationalUpdates };
+          if (Object.keys(data).length > 0) {
+            await tx.book.update({ where: { id: req.book_id }, data });
+          }
         }
         if (changes.format?.format_id) {
           const { format_id, ...formatUpdates } = changes.format;
