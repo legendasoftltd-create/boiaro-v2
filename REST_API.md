@@ -1,8 +1,8 @@
 # BoiAro REST API — Mobile Reference
 
-**Version:** 2.1  
+**Version:** 2.2  
 **Base URL (local):** `http://localhost:3001/api/v1`  
-**Base URL (staging):** `https://staging.boiaro.com/api/v1`
+**Base URL (production):** `https://boiaro.com/api/v1`
 
 ---
 
@@ -218,6 +218,183 @@ Get the current authenticated user.
   "roles": ["user"],
   "profile": { "display_name": "User" }
 }
+```
+
+---
+
+### `POST /auth/social/google`
+
+Sign in or register with a Google OAuth token. Creates an account automatically on first login.
+
+| | |
+| :--- | :--- |
+| Auth required | No |
+
+**Request body:**
+
+```json
+{ "id_token": "google_id_token_from_sdk" }
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| id_token | string | ✅ (preferred) | Google ID token from Google Sign-In SDK |
+| access_token | string | ✅ (legacy) | Google OAuth2 access token (use id_token when possible) |
+
+**Success (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "expires_in": 3600,
+  "user_id": "uuid",
+  "user": {
+    "id": "uuid",
+    "email": "user@gmail.com",
+    "roles": ["user"],
+    "profile": { "display_name": "John Doe", "avatar_url": "https://..." }
+  }
+}
+```
+
+**Error (401):** `{ "error": "Invalid Google ID token." }`  
+**Error (403):** `{ "error": "Account deactivated. Contact support." }`  
+**Error (500):** `{ "error": "Server Google login is not configured (missing GOOGLE_CLIENT_ID)." }`
+
+---
+
+### `POST /auth/social/facebook`
+
+Sign in or register with a Facebook OAuth access token. Creates an account automatically on first login.
+
+| | |
+| :--- | :--- |
+| Auth required | No |
+
+**Request body:**
+
+```json
+{ "access_token": "facebook_oauth_access_token" }
+```
+
+**Success (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "expires_in": 3600,
+  "user_id": "uuid",
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "roles": ["user"],
+    "profile": { "display_name": "John Doe", "avatar_url": "https://..." }
+  }
+}
+```
+
+**Error (400):** `{ "error": "Missing access_token" }`  
+**Error (401):** `{ "error": "Invalid Facebook access token." }`  
+**Error (403):** `{ "error": "Account deactivated. Contact support." }`
+
+---
+
+### `POST /auth/phone/send-otp`
+
+Send a 6-digit OTP to a phone number via SMS. Creates a new account automatically on first login (no registration step needed). Rate-limited to **1 request per minute** per phone number.
+
+| | |
+| :--- | :--- |
+| Auth required | No |
+
+**Request body:**
+
+```json
+{ "phone": "01712345678" }
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| phone | string | ✅ | Bangladesh phone number — accepts `01X…`, `+8801X…`, or `8801X…` formats |
+
+**Phone number formats accepted:**
+
+| Input | Normalized internally |
+| :--- | :--- |
+| `01712345678` | `88017XXXXXXXX` |
+| `+8801712345678` | `88017XXXXXXXX` |
+| `8801712345678` | `88017XXXXXXXX` |
+
+**Success (200):**
+```json
+{ "sent": true }
+```
+
+**Error (400):** `{ "error": "phone is required" }`  
+**Error (429):** `{ "error": "Please wait before requesting another OTP." }`  
+**Error (500):** `{ "error": "SSL Wireless OTP credentials not configured" }` *(server misconfiguration)*
+
+---
+
+### `POST /auth/phone/verify-otp`
+
+Verify the 6-digit OTP and complete login. Returns JWT tokens. If the phone number has no existing account, a new one is created automatically.
+
+| | |
+| :--- | :--- |
+| Auth required | No |
+
+**Request body:**
+
+```json
+{
+  "phone": "01712345678",
+  "otp": "482931"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| phone | string | ✅ | Same phone number used in `send-otp` |
+| otp | string | ✅ | 6-digit code received via SMS |
+
+**Success (200):**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIs...",
+  "expires_in": 3600,
+  "user_id": "uuid",
+  "user": {
+    "id": "uuid",
+    "email": "phone_8801712345678@boiaro.local",
+    "roles": ["user"],
+    "profile": {
+      "display_name": "88017XXXXXXXX",
+      "phone": "88017XXXXXXXX",
+      "avatar_url": null
+    }
+  }
+}
+```
+
+> **Note:** For phone-created accounts, `email` will be `phone_<msisdn>@boiaro.local`. The user can update their display name and link a real email from their profile settings.
+
+**Error (400):** `{ "error": "phone and otp are required" }`  
+**Error (400):** `{ "error": "OTP expired or not found. Please request a new one." }`  
+**Error (400):** `{ "error": "Incorrect OTP. Please try again." }`  
+**Error (403):** `{ "error": "Account deactivated. Contact support." }`
+
+---
+
+### Phone OTP Login — Full Flow
+
+```
+1. POST /auth/phone/send-otp   { "phone": "01712345678" }
+        ↓  SMS with 6-digit code sent (valid 5 min)
+2. POST /auth/phone/verify-otp { "phone": "01712345678", "otp": "482931" }
+        ↓  Returns access_token + refresh_token
+3. Use Bearer token for all subsequent authenticated requests
 ```
 
 ---
