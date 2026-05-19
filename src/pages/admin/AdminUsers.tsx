@@ -72,7 +72,7 @@ export default function AdminUsers() {
       display_name: user.profile?.display_name ?? null,
       full_name: null,
       avatar_url: user.profile?.avatar_url ?? null,
-      phone: null,
+      phone: user.profile?.phone ?? null,
       bio: null,
       created_at: user.created_at,
       is_active: user.profile?.is_active !== false,
@@ -314,6 +314,7 @@ export default function AdminUsers() {
                     </Avatar>
                     <div className="min-w-0">
                       <p className="text-[13px] font-medium truncate max-w-[140px]">{u.display_name || u.full_name || "—"}</p>
+                      {u.phone && <p className="text-[11px] text-muted-foreground truncate max-w-[140px]">{u.phone}</p>}
                     </div>
                   </div>
                 </TableCell>

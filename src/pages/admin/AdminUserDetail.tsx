@@ -69,6 +69,7 @@ export default function AdminUserDetail() {
           display_name: prof?.display_name || "",
           bio: prof?.bio || "",
           avatar_url: prof?.avatar_url || "",
+          phone: (prof as any)?.phone || "",
         });
       } else {
         const rec = data?.record;
@@ -102,6 +103,7 @@ export default function AdminUserDetail() {
           display_name: form.display_name,
           bio: form.bio,
           avatar_url: form.avatar_url,
+          phone: (form as any).phone || null,
         });
       } else if (isCreator && id) {
         await utils.admin.updateAdminCreatorProfile.fetch({
@@ -212,6 +214,7 @@ export default function AdminUserDetail() {
                 {type === "user" ? (
                   <>
                     <div><Label className="text-xs text-muted-foreground">Display Name</Label><Input value={form.display_name} onChange={e => setForm({ ...form, display_name: e.target.value })} /></div>
+                    <div><Label className="text-xs text-muted-foreground">Phone Number</Label><Input type="tel" value={form.phone || ""} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+880 1XXXXXXXXX" /></div>
                     <div><Label className="text-xs text-muted-foreground">Avatar URL</Label><Input value={form.avatar_url} onChange={e => setForm({ ...form, avatar_url: e.target.value })} /></div>
                     <div><Label className="text-xs text-muted-foreground">Bio</Label><Textarea value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} rows={3} /></div>
                   </>

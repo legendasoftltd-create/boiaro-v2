@@ -635,6 +635,7 @@ export const adminRouter = router({
               OR: [
                 { email: { contains: input.search, mode: "insensitive" } },
                 { profile: { display_name: { contains: input.search, mode: "insensitive" } } },
+                { profile: { phone: { contains: input.search, mode: "insensitive" } } },
               ],
             }
           : undefined,
@@ -644,6 +645,7 @@ export const adminRouter = router({
             select: {
               display_name: true,
               avatar_url: true,
+              phone: true,
               is_active: true,
               deleted_at: true,
               deleted_reason: true,
@@ -2535,6 +2537,7 @@ export const adminRouter = router({
         display_name: z.string().optional(),
         bio: z.string().optional(),
         avatar_url: z.string().optional(),
+        phone: z.string().optional().nullable(),
       })
     )
     .mutation(({ input }) =>
@@ -2544,6 +2547,7 @@ export const adminRouter = router({
           display_name: input.display_name,
           bio: input.bio,
           avatar_url: input.avatar_url,
+          phone: input.phone ?? undefined,
         },
       })
     ),
