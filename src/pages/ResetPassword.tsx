@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { KeyRound, Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react"
+import { KeyRound, Eye, EyeOff, Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import logoBoiaro from "@/assets/logo_boiaro.png"
 
@@ -13,8 +13,9 @@ export default function ResetPassword() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
 
-  const [email, setEmail] = useState(params.get("email") ?? "")
-  const [otp, setOtp] = useState("")
+  const email = params.get("email") ?? ""
+  const token = params.get("token") ?? ""
+
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
   const [showPw, setShowPw] = useState(false)
@@ -22,16 +23,16 @@ export default function ResetPassword() {
 
   const resetMutation = trpc.auth.confirmPasswordReset.useMutation({
     onSuccess: () => setDone(true),
-    onError: (err) => toast.error(err.message || "Invalid OTP or email"),
+    onError: (err) => toast.error(err.message || "Link is invalid or expired"),
   })
+
+  const isValidLink = !!email && !!token
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email.trim()) { toast.error("Enter your email"); return }
-    if (otp.length !== 6) { toast.error("OTP must be 6 digits"); return }
     if (password.length < 6) { toast.error("Password must be at least 6 characters"); return }
     if (password !== confirm) { toast.error("Passwords do not match"); return }
-    resetMutation.mutate({ email: email.trim(), otp, password })
+    resetMutation.mutate({ email, otp: token, password })
   }
 
   return (
@@ -53,7 +54,9 @@ export default function ResetPassword() {
               </div>
               <div>
                 <h1 className="text-lg font-serif font-semibold">Reset Password</h1>
-                <p className="text-xs text-muted-foreground">Enter the OTP sent to your email</p>
+                {isValidLink && (
+                  <p className="text-xs text-muted-foreground truncate max-w-[260px]">{email}</p>
+                )}
               </div>
             </div>
 
@@ -66,34 +69,20 @@ export default function ResetPassword() {
                   Sign In
                 </Button>
               </div>
+            ) : !isValidLink ? (
+              <div className="space-y-4">
+                <div className="flex items-start gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+                  <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+                  <p className="text-sm text-destructive">
+                    Invalid or missing reset link. Please request a new password reset from the login page or ask an admin.
+                  </p>
+                </div>
+                <Button variant="outline" className="w-full" onClick={() => navigate("/auth")}>
+                  Back to Sign In
+                </Button>
+              </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label className="text-[13px]">Email</Label>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    placeholder="your@email.com"
-                    className="h-10"
-                    autoComplete="email"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-[13px]">OTP Code</Label>
-                  <Input
-                    value={otp}
-                    onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="6-digit code from email"
-                    className="h-10 tracking-[0.3em] text-center font-mono text-lg"
-                    maxLength={6}
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                  />
-                  <p className="text-[11px] text-muted-foreground">Check your inbox — the OTP expires in 15 minutes.</p>
-                </div>
-
                 <div className="space-y-1.5">
                   <Label className="text-[13px]">New Password</Label>
                   <div className="relative">
@@ -104,6 +93,7 @@ export default function ResetPassword() {
                       placeholder="At least 6 characters"
                       className="h-10 pr-10"
                       autoComplete="new-password"
+                      autoFocus
                     />
                     <button
                       type="button"
@@ -134,7 +124,7 @@ export default function ResetPassword() {
                 >
                   {resetMutation.isPending
                     ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Resetting…</>
-                    : "Reset Password"}
+                    : "Set New Password"}
                 </Button>
 
                 <p className="text-center text-xs text-muted-foreground">

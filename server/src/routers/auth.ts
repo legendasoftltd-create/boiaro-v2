@@ -272,25 +272,38 @@ export const authRouter = router({
     .mutation(async ({ input }) => {
       const user = await prisma.user.findUnique({ where: { email: input.email } });
       if (user) {
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        const expires = new Date(Date.now() + 15 * 60 * 1000);
+        const token = crypto.randomBytes(32).toString("hex");
+        const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
         await prisma.user.update({
           where: { id: user.id },
-          data: { reset_otp: otp, reset_otp_expires: expires },
+          data: { reset_otp: token, reset_otp_expires: expires },
         });
+        const appUrl = (process.env.FRONTEND_URL || process.env.BASE_URL || "https://boiaro.com.bd").replace(/\/$/, "");
+        const resetLink = `${appUrl}/reset-password?email=${encodeURIComponent(user.email)}&token=${token}`;
         sendNotificationEmail({
           to: user.email,
-          subject: "Your BoiAro Password Reset OTP",
+          subject: "Reset Your BoiAro Password",
           templateType: "password_reset",
-          bodyHtml: `<h2 style="color:#6d28d9">Password Reset</h2>
-            <p>Use the OTP below to reset your password. It expires in <strong>15 minutes</strong>.</p>
-            <div style="font-size:36px;font-weight:bold;letter-spacing:8px;text-align:center;
-                        background:#f3f0ff;border-radius:8px;padding:20px;color:#6d28d9;margin:24px 0">${otp}</div>
-            <p style="color:#6b7280;font-size:13px">If you did not request a password reset, you can safely ignore this email.</p>`,
-          text: `Your password reset OTP is: ${otp} (expires in 15 minutes)`,
+          bodyHtml: `
+            <h2 style="color:#6d28d9">Reset Your Password</h2>
+            <p>Click the button below to reset your BoiAro password. This link expires in <strong>1 hour</strong>.</p>
+            <div style="text-align:center;margin:32px 0">
+              <a href="${resetLink}"
+                 style="background:#6d28d9;color:#fff;text-decoration:none;padding:14px 32px;
+                        border-radius:8px;font-size:15px;font-weight:600;display:inline-block">
+                Reset Password
+              </a>
+            </div>
+            <p style="color:#6b7280;font-size:13px">Or copy this link:<br>
+              <a href="${resetLink}" style="color:#6d28d9;word-break:break-all">${resetLink}</a>
+            </p>
+            <p style="color:#9ca3af;font-size:12px;margin-top:24px">
+              If you did not request a password reset, you can safely ignore this email.
+            </p>`,
+          text: `Reset your BoiAro password by visiting:\n${resetLink}\n\nThis link expires in 1 hour.`,
         }).catch(() => {});
       }
-      return { message: "If that email is registered, a reset OTP has been sent." };
+      return { message: "If that email is registered, a reset link has been sent." };
     }),
 
   confirmPasswordReset: publicProcedure
