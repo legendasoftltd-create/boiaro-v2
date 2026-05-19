@@ -9,6 +9,7 @@ import { calculateOrderEarnings } from "../lib/earnings.js";
 import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
 import { sendMail, sendNotificationEmail, testSmtpConnection } from "../lib/mailer.js";
+import { sendSslWirelessSms } from "../lib/sms.js";
 import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 
@@ -5119,15 +5120,26 @@ export const adminRouter = router({
     .input(z.object({ recipients: z.array(z.object({ phone: z.string().min(1), name: z.string().optional(), group: z.string().optional() })), message: z.string().min(1) }))
     .mutation(async ({ input }) => {
       if (!input.recipients.length) return { sent: 0, failed: 0, skipped: 0 };
-      const normalized = input.recipients.map((r) => ({ ...r, phone: r.phone.trim() })).filter((r) => r.phone.length > 0);
-      const rows = normalized.map((r) => ({
-        phone_number: r.phone,
+      const normalized = input.recipients
+        .map((r) => ({ ...r, phone: r.phone.trim() }))
+        .filter((r) => r.phone.length > 0);
+
+      const skipped = input.recipients.length - normalized.length;
+      const phones = normalized.map((r) => r.phone);
+
+      const results = await sendSslWirelessSms(phones, input.message);
+
+      const logRows = results.map((result) => ({
+        phone_number: result.phone,
         message: input.message,
-        provider: "app",
-        status: "sent",
+        provider: "ssl_wireless",
+        status: result.status,
       }));
-      await prisma.smsLog.createMany({ data: rows });
-      return { sent: rows.length, failed: 0, skipped: input.recipients.length - rows.length };
+      await prisma.smsLog.createMany({ data: logRows });
+
+      const sent = results.filter((r) => r.status === "sent").length;
+      const failed = results.filter((r) => r.status === "failed").length;
+      return { sent, failed, skipped };
     }),
 
   liveMonitoringData: adminProcedure
