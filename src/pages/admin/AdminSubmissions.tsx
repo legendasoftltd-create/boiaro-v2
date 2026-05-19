@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle, XCircle, Eye, BookOpen, Image, Loader2, User2, RotateCcw, FileAudio, Pencil, Play, Pause, ExternalLink, Square } from "lucide-react";
+import { CheckCircle, XCircle, Eye, BookOpen, Image, Loader2, User2, RotateCcw, FileAudio, Pencil, Play, Pause, ExternalLink, Square, Download, ChevronDown, ChevronUp } from "lucide-react";
 import { stripHtml } from "@/lib/stripHtml";
 import { toast } from "sonner";
 import { toMediaUrl } from "@/lib/mediaUrl";
@@ -21,6 +21,7 @@ export default function AdminSubmissions() {
   const [playingTrackId, setPlayingTrackId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [previewingFileUrl, setPreviewingFileUrl] = useState<string | null>(null);
 
   const { data: submissions = [], isLoading } = trpc.admin.listSubmissions.useQuery(
     { status: filter },
@@ -111,9 +112,12 @@ export default function AdminSubmissions() {
     audio.play().catch(() => toast.error("Playback blocked — click play again"));
   };
 
-  // Stop audio when either review dialog closes
+  // Stop audio and close inline viewer when either review dialog closes
   useEffect(() => {
-    if (!previewBook && !reviewingRequest) stopAudio();
+    if (!previewBook && !reviewingRequest) {
+      stopAudio();
+      setPreviewingFileUrl(null);
+    }
   }, [previewBook, reviewingRequest]);
 
   const formatBadge = (fmt: string) => {
@@ -303,19 +307,30 @@ export default function AdminSubmissions() {
                     <div key={f.id} className="flex items-center gap-3 p-2.5 bg-secondary/30 rounded-lg flex-wrap">
                       {formatBadge(f.format)}
                       <span className="text-sm font-medium">৳{f.price}</span>
-                      {f.file_url && (
-                        <a
-                          href={toMediaUrl(f.file_url)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 transition-colors"
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <BookOpen className="w-3 h-3" />
-                          {f.format === "ebook" ? "Read" : "Open File"}
-                          <ExternalLink className="w-2.5 h-2.5 ml-0.5" />
-                        </a>
-                      )}
+                      {f.file_url && (() => {
+                        const url = toMediaUrl(f.file_url);
+                        const isPreviewing = previewingFileUrl === url;
+                        return (
+                          <div className="flex items-center gap-1.5 ml-auto flex-wrap justify-end">
+                            <button
+                              onClick={() => setPreviewingFileUrl(isPreviewing ? null : url)}
+                              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 transition-colors"
+                            >
+                              <BookOpen className="w-3 h-3" />
+                              {isPreviewing ? "Close" : "Read"}
+                              {isPreviewing ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                            </button>
+                            <a
+                              href={url}
+                              download
+                              className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 transition-colors"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <Download className="w-3 h-3" /> Download
+                            </a>
+                          </div>
+                        );
+                      })()}
                       {f.stock_count !== null && <span className="text-xs text-muted-foreground">Stock: {f.stock_count}</span>}
                       {f.duration && <span className="text-xs text-muted-foreground">{f.duration}</span>}
                       {f.audio_quality && <span className="text-xs text-muted-foreground uppercase">{f.audio_quality}</span>}
@@ -323,6 +338,29 @@ export default function AdminSubmissions() {
                   ))}
                 </div>
               </div>
+
+              {/* Inline ebook viewer */}
+              {previewingFileUrl && (
+                <div className="rounded-lg border border-border/40 overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-2 bg-secondary/40 border-b border-border/30">
+                    <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5" /> eBook Preview
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <a href={previewingFileUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-400 hover:underline flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" /> Open in tab
+                      </a>
+                      <button onClick={() => setPreviewingFileUrl(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                    </div>
+                  </div>
+                  <iframe
+                    src={previewingFileUrl}
+                    className="w-full"
+                    style={{ height: "520px" }}
+                    title="eBook Preview"
+                  />
+                </div>
+              )}
 
               {(tracks as any[]).length > 0 && (
                 <div>
@@ -438,21 +476,47 @@ export default function AdminSubmissions() {
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Current Media</h3>
 
                   {/* Ebook — open file */}
-                  {(editReqFormats as any[]).filter((f: any) => f.format === "ebook" && f.file_url).map((f: any) => (
-                    <div key={f.id} className="flex items-center gap-3 p-2.5 bg-secondary/30 rounded-lg">
-                      {formatBadge(f.format)}
-                      <span className="text-sm">৳{f.price}</span>
-                      <a
-                        href={toMediaUrl(f.file_url)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ml-auto inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 transition-colors"
-                        onClick={e => e.stopPropagation()}
-                      >
-                        <BookOpen className="w-3 h-3" /> Read <ExternalLink className="w-2.5 h-2.5" />
-                      </a>
-                    </div>
-                  ))}
+                  {(editReqFormats as any[]).filter((f: any) => f.format === "ebook" && f.file_url).map((f: any) => {
+                    const url = toMediaUrl(f.file_url);
+                    const isPreviewing = previewingFileUrl === url;
+                    return (
+                      <div key={f.id} className="space-y-2">
+                        <div className="flex items-center gap-3 p-2.5 bg-secondary/30 rounded-lg">
+                          {formatBadge(f.format)}
+                          <span className="text-sm">৳{f.price}</span>
+                          <div className="ml-auto flex items-center gap-1.5">
+                            <button
+                              onClick={() => setPreviewingFileUrl(isPreviewing ? null : url)}
+                              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 transition-colors"
+                            >
+                              <BookOpen className="w-3 h-3" />
+                              {isPreviewing ? "Close" : "Read"}
+                              {isPreviewing ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                            </button>
+                            <a href={url} download className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 transition-colors">
+                              <Download className="w-3 h-3" /> Download
+                            </a>
+                          </div>
+                        </div>
+                        {isPreviewing && (
+                          <div className="rounded-lg border border-border/40 overflow-hidden">
+                            <div className="flex items-center justify-between px-3 py-2 bg-secondary/40 border-b border-border/30">
+                              <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                                <BookOpen className="w-3.5 h-3.5" /> eBook Preview
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <a href={url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-400 hover:underline flex items-center gap-1">
+                                  <ExternalLink className="w-3 h-3" /> Open in tab
+                                </a>
+                                <button onClick={() => setPreviewingFileUrl(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+                              </div>
+                            </div>
+                            <iframe src={url} className="w-full" style={{ height: "520px" }} title="eBook Preview" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
 
                   {/* Audiobook tracks */}
                   {(editReqTracks as any[]).length > 0 && (
