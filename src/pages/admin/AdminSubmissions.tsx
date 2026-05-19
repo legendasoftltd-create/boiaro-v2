@@ -37,6 +37,17 @@ export default function AdminSubmissions() {
     { enabled: !!previewBook?.book_formats?.find((f: any) => f.format === "audiobook") }
   );
 
+  // For edit-request review — fetch current formats and tracks for that book
+  const { data: editReqFormats = [] } = trpc.admin.getBookFormatsAdmin.useQuery(
+    { bookId: reviewingRequest?._book?.id || "" },
+    { enabled: !!reviewingRequest?._book?.id }
+  );
+  const editReqAudioFmt = (editReqFormats as any[]).find((f: any) => f.format === "audiobook");
+  const { data: editReqTracks = [] } = trpc.admin.getAudiobookTracksForFormat.useQuery(
+    { bookFormatId: editReqAudioFmt?.id || "" },
+    { enabled: !!editReqAudioFmt?.id }
+  );
+
   const updateStatusMutation = trpc.admin.updateSubmissionStatus.useMutation({
     onSuccess: (_data, vars) => {
       const msgs: Record<string, string> = { approved: "Content approved and is now live!", rejected: "Content rejected.", draft: "Sent back for correction." };
@@ -100,10 +111,10 @@ export default function AdminSubmissions() {
     audio.play().catch(() => toast.error("Playback blocked — click play again"));
   };
 
-  // Stop audio when review dialog closes
+  // Stop audio when either review dialog closes
   useEffect(() => {
-    if (!previewBook) stopAudio();
-  }, [previewBook]);
+    if (!previewBook && !reviewingRequest) stopAudio();
+  }, [previewBook, reviewingRequest]);
 
   const formatBadge = (fmt: string) => {
     const config: Record<string, { label: string; cls: string }> = {
@@ -420,6 +431,73 @@ export default function AdminSubmissions() {
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Proposed Changes</h3>
                 {renderChanges(reviewingRequest.proposed_changes)}
               </div>
+
+              {/* Current media preview — ebook read + audiobook play */}
+              {(editReqFormats as any[]).length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Current Media</h3>
+
+                  {/* Ebook — open file */}
+                  {(editReqFormats as any[]).filter((f: any) => f.format === "ebook" && f.file_url).map((f: any) => (
+                    <div key={f.id} className="flex items-center gap-3 p-2.5 bg-secondary/30 rounded-lg">
+                      {formatBadge(f.format)}
+                      <span className="text-sm">৳{f.price}</span>
+                      <a
+                        href={toMediaUrl(f.file_url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20 transition-colors"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <BookOpen className="w-3 h-3" /> Read <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    </div>
+                  ))}
+
+                  {/* Audiobook tracks */}
+                  {(editReqTracks as any[]).length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <FileAudio className="w-3.5 h-3.5" /> Episodes ({(editReqTracks as any[]).length})
+                      </p>
+                      {(editReqTracks as any[]).map((t: any) => {
+                        const isThisPlaying = playingTrackId === t.id && isPlaying;
+                        const isThisLoaded = playingTrackId === t.id;
+                        return (
+                          <div key={t.id} className={`flex items-center gap-3 p-2 rounded-lg transition-colors ${isThisLoaded ? "bg-primary/10 border border-primary/20" : "bg-secondary/20"}`}>
+                            <div className="w-7 h-7 rounded bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                              {t.track_number}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{t.title}</p>
+                              <p className="text-[10px] text-muted-foreground">{t.duration || "—"}</p>
+                            </div>
+                            {t.is_preview && <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-400">Preview</Badge>}
+                            {t.audio_url ? (
+                              <Button size="icon" variant={isThisLoaded ? "default" : "outline"} className="h-7 w-7 shrink-0" onClick={() => playTrack(t)}>
+                                {isThisPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                              </Button>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground shrink-0">No file</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {playingTrackId && (
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                            <span>Playing: {(editReqTracks as any[]).find((t: any) => t.id === playingTrackId)?.title}</span>
+                          </div>
+                          <Button size="sm" variant="ghost" className="h-6 text-[11px] gap-1 text-destructive" onClick={stopAudio}>
+                            <Square className="h-3 w-3" /> Stop
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="text-sm font-medium text-muted-foreground">Admin Notes (optional)</label>

@@ -3696,6 +3696,15 @@ export const adminRouter = router({
       prisma.audiobookTrack.findMany({ where: { book_format_id: input.bookFormatId }, orderBy: { track_number: "asc" } })
     ),
 
+  getBookFormatsAdmin: adminProcedure
+    .input(z.object({ bookId: z.string() }))
+    .query(({ input }) =>
+      prisma.bookFormat.findMany({
+        where: { book_id: input.bookId },
+        select: { id: true, format: true, price: true, file_url: true, duration: true, audio_quality: true, stock_count: true },
+      })
+    ),
+
   listEditRequests: adminProcedure.query(async () => {
     const requests = await prisma.contentEditRequest.findMany({ where: { status: "pending" }, orderBy: { created_at: "desc" } });
     const userIds = [...new Set(requests.map(r => r.user_id))];
