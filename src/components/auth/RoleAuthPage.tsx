@@ -38,14 +38,11 @@ const ROLE_ROUTES: Record<string, string> = {
 }
 
 export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
-  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "verify-otp">("login")
+  const [mode, setMode] = useState<"login" | "signup" | "forgot" | "link-sent">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [displayName, setDisplayName] = useState("")
-  const [otp, setOtp] = useState("")
-  const [newPassword, setNewPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [showNewPassword, setShowNewPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
   const [searchParams] = useSearchParams()
@@ -55,37 +52,16 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
   const { toast } = useToast()
 
   const requestResetMutation = trpc.auth.requestPasswordReset.useMutation()
-  const confirmResetMutation = trpc.auth.confirmPasswordReset.useMutation()
 
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     try {
       await requestResetMutation.mutateAsync({ email })
-      toast({ title: "OTP Sent", description: "Check your email for the 6-digit reset code." })
-      setMode("verify-otp")
+      toast({ title: "Reset Link Sent", description: `Check your inbox at ${email} and click the reset link.` })
+      setMode("link-sent")
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Failed to send OTP", variant: "destructive" })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (newPassword.length < 6) {
-      toast({ title: "Error", description: "Password must be at least 6 characters", variant: "destructive" })
-      return
-    }
-    setIsLoading(true)
-    try {
-      await confirmResetMutation.mutateAsync({ email, otp, password: newPassword })
-      toast({ title: "Password Reset", description: "Your password has been updated. Please sign in." })
-      setOtp("")
-      setNewPassword("")
-      setMode("login")
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Invalid or expired OTP", variant: "destructive" })
+      toast({ title: "Error", description: err.message || "Failed to send reset link", variant: "destructive" })
     } finally {
       setIsLoading(false)
     }
@@ -230,7 +206,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
 
             {mode === "forgot" && (
               <form onSubmit={handleForgotPassword} className="space-y-3.5">
-                <p className="text-[13px] text-muted-foreground">Enter your email and we'll send you a 6-digit OTP.</p>
+                <p className="text-[13px] text-muted-foreground">Enter your email and we'll send you a password reset link.</p>
                 <div className="space-y-1.5">
                   <Label className="text-[13px]">Email</Label>
                   <Input
@@ -240,7 +216,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
                   />
                 </div>
                 <Button type="submit" className="w-full btn-gold h-10 text-[13px]" disabled={isLoading}>
-                  {isLoading ? "Sending OTP..." : "Send OTP"}
+                  {isLoading ? "Sending..." : "Send Reset Link"}
                 </Button>
                 <p className="text-center text-[12px] text-muted-foreground">
                   <button type="button" onClick={() => setMode("login")} className="text-primary hover:underline">
@@ -250,41 +226,29 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </form>
             )}
 
-            {mode === "verify-otp" && (
-              <form onSubmit={handleVerifyOtp} className="space-y-3.5">
-                <p className="text-[13px] text-muted-foreground">Enter the 6-digit OTP sent to <strong>{email}</strong> and choose a new password.</p>
-                <div className="space-y-1.5">
-                  <Label className="text-[13px]">OTP Code</Label>
-                  <Input
-                    type="text" placeholder="123456" value={otp} maxLength={6}
-                    onChange={e => setOtp(e.target.value.replace(/\D/g, ""))} required
-                    className="h-10 rounded-xl bg-secondary/40 border-border/30 text-center tracking-widest text-lg font-bold"
-                  />
+            {mode === "link-sent" && (
+              <div className="space-y-4 text-center py-1">
+                <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
+                  <svg className="w-7 h-7 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-[13px]">New Password</Label>
-                  <div className="relative">
-                    <Input
-                      type={showNewPassword ? "text" : "password"} placeholder="Min. 6 characters"
-                      value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6}
-                      className="h-10 rounded-xl pr-10 bg-secondary/40 border-border/30"
-                    />
-                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
+                <div>
+                  <p className="text-[14px] font-semibold">Check your inbox</p>
+                  <p className="text-[12px] text-muted-foreground mt-1">
+                    A reset link was sent to <strong>{email}</strong>.<br />Click it to set a new password. Link expires in 1 hour.
+                  </p>
                 </div>
-                <Button type="submit" className="w-full btn-gold h-10 text-[13px]" disabled={isLoading}>
-                  {isLoading ? "Resetting..." : "Reset Password"}
-                </Button>
-                <p className="text-center text-[12px] text-muted-foreground">
+                <p className="text-[12px] text-muted-foreground">
                   Didn't receive it?{" "}
                   <button type="button" onClick={() => setMode("forgot")} className="text-primary hover:underline">
-                    Resend OTP
+                    Resend link
                   </button>
                 </p>
-              </form>
+                <button type="button" onClick={() => setMode("login")} className="text-[12px] text-primary hover:underline">
+                  Back to Sign In
+                </button>
+              </div>
             )}
 
             {mode === "signup" && config.showSignup && (
@@ -399,7 +363,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </div>
             )}
 
-            {config.showSignup && mode !== "forgot" && (
+            {config.showSignup && mode !== "forgot" && mode !== "link-sent" && (
               <p className="text-center text-[12px] text-muted-foreground">
                 {mode === "login" ? (
                   <>Don't have an account?{" "}

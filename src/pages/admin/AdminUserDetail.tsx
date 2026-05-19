@@ -138,7 +138,7 @@ export default function AdminUserDetail() {
     if (!email) { toast.error("User email not found"); return; }
     try {
       await requestPasswordResetMutation.mutateAsync({ email });
-      toast.success(`Password reset OTP sent to ${email}`);
+      toast.success(`Password reset link sent to ${email}`);
     } catch (err: any) {
       toast.error(err?.message || "Failed to send reset email");
     }
