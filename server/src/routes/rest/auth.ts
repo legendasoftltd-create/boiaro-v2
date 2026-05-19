@@ -126,31 +126,40 @@ authRestRouter.post("/reset-password", async (req, res) => {
     }
     const user = await prisma.user.findUnique({ where: { email } });
     if (user) {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
-      const expires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      const token = crypto.randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
       await prisma.user.update({
         where: { id: user.id },
-        data: { reset_otp: otp, reset_otp_expires: expires },
+        data: { reset_otp: token, reset_otp_expires: expires },
       });
+      const appUrl = (process.env.FRONTEND_URL || process.env.BASE_URL || "https://boiaro.com.bd").replace(/\/$/, "");
+      const resetLink = `${appUrl}/reset-password?email=${encodeURIComponent(user.email)}&token=${token}`;
       await sendMail({
         to: email,
-        subject: "Your Password Reset OTP",
+        subject: "Reset Your BoiAro Password",
         html: `
           <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-            <h2 style="color:#6d28d9">Password Reset</h2>
-            <p>Use the OTP below to reset your password. It expires in <strong>15 minutes</strong>.</p>
-            <div style="font-size:36px;font-weight:bold;letter-spacing:8px;text-align:center;
-                        background:#f3f0ff;border-radius:8px;padding:20px;color:#6d28d9;margin:24px 0">
-              ${otp}
+            <h2 style="color:#6d28d9">Reset Your Password</h2>
+            <p>Click the button below to reset your BoiAro password. This link expires in <strong>1 hour</strong>.</p>
+            <div style="text-align:center;margin:32px 0">
+              <a href="${resetLink}"
+                 style="background:#6d28d9;color:#fff;text-decoration:none;padding:14px 32px;
+                        border-radius:8px;font-size:15px;font-weight:600;display:inline-block">
+                Reset Password
+              </a>
             </div>
-            <p style="color:#6b7280;font-size:13px">If you did not request a password reset, you can safely ignore this email.</p>
+            <p style="color:#6b7280;font-size:13px">Or copy this link:<br>
+              <a href="${resetLink}" style="color:#6d28d9;word-break:break-all">${resetLink}</a>
+            </p>
+            <p style="color:#9ca3af;font-size:12px;margin-top:24px">
+              If you did not request a password reset, you can safely ignore this email.
+            </p>
           </div>
         `,
-        text: `Your password reset OTP is: ${otp} (expires in 15 minutes)`,
+        text: `Reset your BoiAro password by visiting:\n${resetLink}\n\nThis link expires in 1 hour.`,
       });
     }
-    // Always respond the same way regardless of whether the user exists
-    res.json({ message: "If that email is registered, a reset OTP has been sent." });
+    res.json({ message: "If that email is registered, a reset link has been sent." });
   } catch (error) {
     sendHttpError(res, error);
   }
@@ -158,8 +167,9 @@ authRestRouter.post("/reset-password", async (req, res) => {
 
 authRestRouter.post("/reset-password-confirm", async (req, res) => {
   try {
-    const { email, otp, password } = req.body;
-    if (!email || !otp || !password) {
+    const { email, token, otp, password } = req.body;
+    const resetToken = token ?? otp; // accept both field names for compatibility
+    if (!email || !resetToken || !password) {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
@@ -171,11 +181,11 @@ authRestRouter.post("/reset-password-confirm", async (req, res) => {
     if (
       !user ||
       !user.reset_otp ||
-      user.reset_otp !== otp.toString() ||
+      user.reset_otp !== resetToken.toString() ||
       !user.reset_otp_expires ||
       user.reset_otp_expires < new Date()
     ) {
-      res.status(400).json({ error: "Invalid or expired OTP" });
+      res.status(400).json({ error: "Invalid or expired reset link" });
       return;
     }
     const password_hash = await bcrypt.hash(password, 12);
