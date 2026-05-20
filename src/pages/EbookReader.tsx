@@ -317,7 +317,7 @@ export default function EbookReader() {
       bgMusic.stop();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tts.isPlaying, tts.isPaused, ambientEnabled, bgMusic.available, bgMusic.isPlaying, musicGenre]);
+  }, [tts.isPlaying, tts.isPaused, ambientEnabled, bgMusic.available, musicGenre]);
 
 
   const handleTtsPlay = useCallback(() => {
@@ -342,6 +342,8 @@ export default function EbookReader() {
 
     
     ttsAutoPlayRef.current = true;
+    // Must call bgMusic.play() here (user gesture context) so AudioContext can unlock
+    if (ambientEnabled) bgMusic.play();
     tts.play(text);
   }, [ambientEnabled, bgMusic, fileType, tts, pdfPageText]);
 

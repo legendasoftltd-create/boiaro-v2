@@ -151,11 +151,18 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
 
   const beginFadeIn = useCallback((durationMs = 2000) => {
     const nodes = ensureNodes("fadeIn");
+    if (!nodes) return;
     const target = mutedRef.current ? 0 : volumeRef.current;
     bgLog(`fadeIn → target: ${target}, type: ${nodes.type}`);
 
     if (target <= 0) {
       nodes.gainNode.gain.value = 0;
+      return;
+    }
+
+    // Already at or above target volume — no need to restart fade
+    if (nodes.gainNode.gain.value >= target && !faderId.current) {
+      bgLog("fadeIn → already at target, skipping");
       return;
     }
 
