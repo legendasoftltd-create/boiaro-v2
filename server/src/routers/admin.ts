@@ -5084,6 +5084,10 @@ export const adminRouter = router({
       return rows.filter((r) => !!r.phone).map((r) => ({ phone: r.phone!, name: r.stage_name, group: "rj" }));
     }),
 
+  smsStatus: adminProcedure.query(() => ({
+    configured: !!(process.env.SSL_SMS_API_TOKEN && process.env.SSL_SMS_SID),
+  })),
+
   listSmsLogs: adminProcedure
     .input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional())
     .query(({ input }) =>
@@ -5139,7 +5143,11 @@ export const adminRouter = router({
 
       const sent = results.filter((r) => r.status === "sent").length;
       const failed = results.filter((r) => r.status === "failed").length;
-      return { sent, failed, skipped };
+      const errors = results
+        .filter((r) => r.status === "failed" && r.error)
+        .map((r) => r.error as string)
+        .filter((v, i, a) => a.indexOf(v) === i); // unique errors
+      return { sent, failed, skipped, errors };
     }),
 
   liveMonitoringData: adminProcedure

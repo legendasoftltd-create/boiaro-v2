@@ -27,14 +27,14 @@ export function normalizeBdPhone(raw: string): string {
 // ── AES-256-CBC + HMAC-SHA256 for Secure OTP ─────────────────────────────────
 
 function encryptOtpSms(plainText: string, secretKey: string): string {
-  // Key = first 32 chars of SHA256(secretKey) hex
+  // Key = first 32 ASCII chars of SHA256(secretKey) hex — matches SSL Wireless spec
   const keyHex = crypto.createHash("sha256").update(secretKey).digest("hex");
   const key = Buffer.from(keyHex.slice(0, 32));
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
   let encryptedRaw = cipher.update(plainText, "utf8");
   encryptedRaw = Buffer.concat([encryptedRaw, cipher.final()]);
-  // base64(raw_iv + base64(ciphertext))
+  // base64(raw_iv + base64(ciphertext)) — SSL Wireless double-encoding format
   const encryptedBase64 = encryptedRaw.toString("base64");
   return Buffer.concat([iv, Buffer.from(encryptedBase64)]).toString("base64");
 }

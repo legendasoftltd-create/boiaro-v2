@@ -31,6 +31,8 @@ export default function AdminSms() {
   const [customPhone, setCustomPhone] = useState("");
   const [selectedRecipients, setSelectedRecipients] = useState<Recipient[]>([]);
 
+  const { data: smsStatus } = trpc.admin.smsStatus.useQuery();
+
   // Fetch group recipients
   const fetchGroupRecipients = async (group: RecipientGroup): Promise<Recipient[]> => {
     if (group === "custom") return [];
@@ -55,7 +57,11 @@ export default function AdminSms() {
 
   const sendMutation = trpc.admin.sendSms.useMutation({
     onSuccess: (data) => {
-      toast.success(`SMS sent: ${data.sent} success, ${data.failed} failed, ${data.skipped} skipped`);
+      if (data.failed > 0 && data.errors?.length) {
+        toast.error(`SMS: ${data.sent} sent, ${data.failed} failed — ${data.errors.join("; ")}`);
+      } else {
+        toast.success(`SMS sent: ${data.sent} success, ${data.failed} failed, ${data.skipped} skipped`);
+      }
       queryClient.invalidateQueries({ queryKey: ["sms-logs"] });
       setMessage("");
       setSelectedRecipients([]);
@@ -111,14 +117,16 @@ export default function AdminSms() {
         <h1 className="text-2xl font-bold">SMS Center</h1>
       </div>
 
-      <Alert>
-        <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>SSL Wireless Integration</AlertTitle>
-        <AlertDescription>
-          SMS sending requires <strong>SSL_SMS_API_TOKEN</strong> and <strong>SSL_SMS_SID</strong> secrets.
-          Messages will be logged but delivery will fail until credentials are configured.
-        </AlertDescription>
-      </Alert>
+      {smsStatus && !smsStatus.configured && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>SSL Wireless Not Configured</AlertTitle>
+          <AlertDescription>
+            SMS sending requires <strong>SSL_SMS_API_TOKEN</strong> and <strong>SSL_SMS_SID</strong> in the server environment.
+            Messages will be logged but delivery will fail until credentials are set.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs defaultValue="compose">
         <TabsList>
