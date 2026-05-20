@@ -6,19 +6,14 @@ import {
   startRealPlayback,
   pauseRealPlayback,
   probeRealAudio,
-  unlockAudioContext,
-  isAudioUnlocked,
+  getSharedAudioContext,
   bgLog,
   SYNTHETIC_GENRES,
   type AudioNodes,
 } from "@/lib/ambientAudioGenerator";
 
-// Widened to string so admin-configured dynamic tracks work
 export type MusicGenre = string;
 
-/**
- * Maps book category/tag strings to a music genre.
- */
 export function detectMusicGenre(
   category?: string | null,
   tags?: string[] | null
@@ -35,7 +30,7 @@ export function detectMusicGenre(
   return "calm";
 }
 
-// ---- localStorage persistence helpers ----
+// ── localStorage persistence ──────────────────────────────────────────────────
 
 const LS_KEY = "bgmusic_prefs";
 
@@ -73,7 +68,7 @@ export function getSavedPrefs(): BgMusicPrefs {
   return loadPrefs();
 }
 
-// ---- Hook ----
+// ── Hook ──────────────────────────────────────────────────────────────────────
 
 interface MusicState {
   isPlaying: boolean;
@@ -82,7 +77,6 @@ interface MusicState {
   genre: MusicGenre;
   available: boolean;
   needsUnlock: boolean;
-  /** Whether real MP3 is being used (vs synthetic fallback) */
   isRealAudio: boolean;
 }
 
@@ -91,6 +85,15 @@ let activeAudioId = 0;
 export function useBackgroundMusic(genre: MusicGenre = "calm") {
   const instanceId = useRef(0);
   const desiredPlayingRef = useRef(false);
+  const nodesRef = useRef<AudioNodes | null>(null);
+  const faderId = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef = useRef(true);
+  const volumeRef = useRef(loadPrefs().volume);
+  const mutedRef = useRef(loadPrefs().muted);
+  const genreRef = useRef(genre);
+  const hasRealAudioRef = useRef(false);
+
+  genreRef.current = genre;
 
   const [state, setState] = useState<MusicState>(() => {
     const prefs = loadPrefs();
@@ -104,19 +107,8 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
       isRealAudio: false,
     };
   });
-
-  const nodesRef = useRef<AudioNodes | null>(null);
-  const faderId = useRef<ReturnType<typeof setInterval> | null>(null);
-  const mountedRef = useRef(true);
-  const volumeRef = useRef(state.volume);
-  const mutedRef = useRef(state.isMuted);
-  const genreRef = useRef(genre);
-  const hasRealAudioRef = useRef(false);
-  // Ref to beginFadeIn — set after declaration to break the circular dep
-  const beginFadeInRef = useRef<((durationMs?: number) => void) | null>(null);
   volumeRef.current = state.volume;
   mutedRef.current = state.isMuted;
-  genreRef.current = genre;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -128,81 +120,75 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
   }, []);
 
   const clearFader = useCallback(() => {
-    if (faderId.current) {
-      clearInterval(faderId.current);
-      faderId.current = null;
-    }
+    if (faderId.current) { clearInterval(faderId.current); faderId.current = null; }
   }, []);
 
-  const ensureNodes = useCallback((reason: string) => {
-    if (!nodesRef.current) {
-      const g = genreRef.current;
-      if (hasRealAudioRef.current) {
-        bgLog(`${reason}: creating REAL audio source`, { genre: g });
-        nodesRef.current = createRealAudio(g, () => {
-          // Real audio failed to load — fall back to synthetic
-          hasRealAudioRef.current = false;
-          if (nodesRef.current?.type === "real") {
-            disposeNodes(nodesRef.current);
-            nodesRef.current = null;
-          }
-          if (SYNTHETIC_GENRES.has(genreRef.current) && desiredPlayingRef.current) {
-            nodesRef.current = createAmbientAudio(genreRef.current);
-            safeSetState((s) => ({ ...s, isRealAudio: false }));
-            beginFadeInRef.current?.(800); // ref avoids circular dep with beginFadeIn
-          }
-        });
-      } else if (SYNTHETIC_GENRES.has(g)) {
-        bgLog(`${reason}: creating SYNTHETIC audio source`, { genre: g });
-        nodesRef.current = createAmbientAudio(g);
-      }
-      // else: custom genre with no real audio — remains null (unavailable)
+  // ── Core: build audio nodes ─────────────────────────────────────────────────
+
+  const buildNodes = useCallback((g: string): AudioNodes | null => {
+    if (nodesRef.current) return nodesRef.current;
+
+    if (hasRealAudioRef.current) {
+      bgLog("buildNodes: REAL audio", { genre: g });
+      const nodes = createRealAudio(g, () => {
+        // Real audio failed — fall back to synthetic
+        bgLog("Real audio error — switching to synthetic");
+        hasRealAudioRef.current = false;
+        if (nodesRef.current?.type === "real") {
+          disposeNodes(nodesRef.current);
+          nodesRef.current = null;
+        }
+        if (SYNTHETIC_GENRES.has(genreRef.current) && desiredPlayingRef.current) {
+          const synthNodes = createAmbientAudio(genreRef.current);
+          nodesRef.current = synthNodes;
+          safeSetState((s) => ({ ...s, isRealAudio: false }));
+          // Resume context then fade in
+          const ctx = synthNodes.ctx;
+          const resume = ctx.state !== "running" ? ctx.resume() : Promise.resolve();
+          resume.then(() => {
+            if (!desiredPlayingRef.current || !nodesRef.current) return;
+            startFade(nodesRef.current, mutedRef.current ? 0 : volumeRef.current, 800);
+          }).catch(() => {});
+        }
+      });
+      nodesRef.current = nodes;
+      return nodes;
     }
-    return nodesRef.current;
+
+    if (SYNTHETIC_GENRES.has(g)) {
+      bgLog("buildNodes: SYNTHETIC audio", { genre: g });
+      const nodes = createAmbientAudio(g);
+      nodesRef.current = nodes;
+      return nodes;
+    }
+
+    return null;
   }, [safeSetState]);
 
-  /* ── Fade helpers ──────────────────────────────────────────────── */
+  // ── Fade helpers ────────────────────────────────────────────────────────────
 
-  const beginFadeIn = useCallback((durationMs = 2000) => {
-    const nodes = ensureNodes("fadeIn");
-    if (!nodes) return;
-    const target = mutedRef.current ? 0 : volumeRef.current;
-    bgLog(`fadeIn → target: ${target}, type: ${nodes.type}`);
-
+  function startFade(nodes: AudioNodes, target: number, durationMs = 2000) {
     if (target <= 0) {
       nodes.gainNode.gain.value = 0;
       return;
     }
-
-    // Already at or above target volume — no need to restart fade
-    if (nodes.gainNode.gain.value >= target && !faderId.current) {
-      bgLog("fadeIn → already at target, skipping");
-      return;
-    }
+    // Skip if already at target and no active fader
+    if (nodes.gainNode.gain.value >= target && !faderId.current) return;
 
     nodes.gainNode.gain.value = 0;
     const steps = Math.max(durationMs / 50, 1);
     const step = target / steps;
-    clearFader();
-
-    // For real audio, start playback
-    if (nodes.type === "real") {
-      void startRealPlayback(nodes);
-    }
-
+    if (faderId.current) { clearInterval(faderId.current); faderId.current = null; }
     faderId.current = setInterval(() => {
       const n = nodesRef.current;
-      if (!n) { clearFader(); return; }
+      if (!n) { clearInterval(faderId.current!); faderId.current = null; return; }
       const next = Math.min(n.gainNode.gain.value + step, target);
       n.gainNode.gain.value = next;
-      if (next >= target) clearFader();
+      if (next >= target) { clearInterval(faderId.current!); faderId.current = null; }
     }, 50);
-  }, [clearFader, ensureNodes]);
-  beginFadeInRef.current = beginFadeIn;
+  }
 
-  const fadeOut = useCallback((durationMs = 1200) => {
-    const nodes = nodesRef.current;
-    if (!nodes) return;
+  function stopFade(nodes: AudioNodes, durationMs = 1200) {
     const currentVol = nodes.gainNode.gain.value;
     if (currentVol <= 0) {
       if (nodes.type === "real") pauseRealPlayback(nodes);
@@ -211,160 +197,75 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
     }
     const steps = Math.max(durationMs / 50, 1);
     const step = currentVol / steps;
-    clearFader();
+    if (faderId.current) { clearInterval(faderId.current); faderId.current = null; }
     faderId.current = setInterval(() => {
       const n = nodesRef.current;
-      if (!n) { clearFader(); return; }
+      if (!n) { clearInterval(faderId.current!); faderId.current = null; return; }
       const next = Math.max(n.gainNode.gain.value - step, 0);
       n.gainNode.gain.value = next;
       if (next <= 0) {
         if (n.type === "real") pauseRealPlayback(n);
         else n.ctx.suspend().catch(() => {});
-        clearFader();
+        clearInterval(faderId.current!); faderId.current = null;
       }
     }, 50);
-  }, [clearFader]);
+  }
 
-  /* ── Attempt to start playback ─────────────────────────────────── */
-
-  const attemptPlay = useCallback(async () => {
-    const unlocked = await unlockAudioContext();
-    if (!unlocked) {
-      bgLog("attemptPlay: AudioContext still locked");
-      safeSetState((s) => ({ ...s, needsUnlock: true }));
-      return false;
-    }
-    // Abort if stop() was called while we were waiting on unlockAudioContext
-    if (!desiredPlayingRef.current) {
-      bgLog("attemptPlay: aborted (stop called during unlock)");
-      return false;
-    }
-    safeSetState((s) => ({ ...s, needsUnlock: false }));
-    ensureNodes("attemptPlay");
-    beginFadeIn();
-    safeSetState((s) => ({ ...s, isPlaying: true }));
-    return true;
-  }, [beginFadeIn, ensureNodes, safeSetState]);
-
-  /* ── Global user-gesture unlock listener ───────────────────────── */
-
-  useEffect(() => {
-    const onUserGesture = async () => {
-      const wasLocked = !isAudioUnlocked();
-      const nowUnlocked = await unlockAudioContext();
-
-      if (wasLocked && nowUnlocked) {
-        bgLog("Global gesture unlocked AudioContext");
-      }
-
-      if (nowUnlocked && desiredPlayingRef.current && mountedRef.current) {
-        safeSetState((s) => ({ ...s, needsUnlock: false }));
-        ensureNodes("gestureRetry");
-        beginFadeIn(800);
-        safeSetState((s) => ({ ...s, isPlaying: true }));
-      }
-    };
-
-    const opts: AddEventListenerOptions = { passive: true };
-    window.addEventListener("pointerdown", onUserGesture, opts);
-    window.addEventListener("touchstart", onUserGesture, opts);
-    window.addEventListener("click", onUserGesture, opts);
-    window.addEventListener("keydown", onUserGesture, opts);
-
-    return () => {
-      window.removeEventListener("pointerdown", onUserGesture);
-      window.removeEventListener("touchstart", onUserGesture);
-      window.removeEventListener("click", onUserGesture);
-      window.removeEventListener("keydown", onUserGesture);
-    };
-  }, [beginFadeIn, ensureNodes, safeSetState]);
-
-  /* ── Tab visibility: suspend/resume ────────────────────────────── */
-
-  useEffect(() => {
-    const handleVisibility = async () => {
-      if (document.hidden) {
-        if (nodesRef.current) {
-          if (nodesRef.current.type === "real") {
-            pauseRealPlayback(nodesRef.current);
-          } else if (nodesRef.current.ctx.state === "running") {
-            nodesRef.current.ctx.suspend().catch(() => {});
-          }
-          bgLog("Suspended (tab hidden)");
-        }
-      } else {
-        if (desiredPlayingRef.current && nodesRef.current) {
-          try {
-            if (nodesRef.current.type === "real") {
-              await nodesRef.current.ctx.resume();
-              void startRealPlayback(nodesRef.current);
-            } else {
-              await nodesRef.current.ctx.resume();
-            }
-            bgLog("Resumed (tab visible)");
-          } catch { /* ignore */ }
-        }
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, []);
-
-  /* ── Genre change: probe for real audio, dispose old nodes ─────── */
-
-  useEffect(() => {
-    const myId = ++activeAudioId;
-    instanceId.current = myId;
-    desiredPlayingRef.current = false;
-
-    if (nodesRef.current) {
-      disposeNodes(nodesRef.current);
-      nodesRef.current = null;
-    }
-    clearFader();
-
-    // Probe for real MP3 file
-    safeSetState((s) => ({ ...s, genre, isPlaying: false, available: false, needsUnlock: false, isRealAudio: false }));
-
-    probeRealAudio(genre).then((hasReal) => {
-      if (instanceId.current !== myId || !mountedRef.current) return;
-      hasRealAudioRef.current = hasReal;
-      const hasSynthetic = SYNTHETIC_GENRES.has(genre);
-      bgLog(`Genre "${genre}" ready — ${hasReal ? "REAL MP3" : hasSynthetic ? "SYNTHETIC fallback" : "UNAVAILABLE"}`);
-      safeSetState((s) => ({ ...s, available: hasReal || hasSynthetic, isRealAudio: hasReal }));
-    });
-
-    return () => {
-      if (nodesRef.current) {
-        disposeNodes(nodesRef.current);
-        nodesRef.current = null;
-      }
-      clearFader();
-    };
-  }, [genre, clearFader, safeSetState]);
-
-  // Keep volume in sync
-  useEffect(() => {
-    if (nodesRef.current && !faderId.current) {
-      const targetVol = state.isMuted ? 0 : state.volume;
-      nodesRef.current.gainNode.gain.value = targetVol;
-    }
-  }, [state.volume, state.isMuted]);
-
-  /* ── Public API ──────────────────────────────────────────────── */
+  // ── play() — MUST be called in user gesture context ─────────────────────────
+  // We call ctx.resume() and audio.play() synchronously here (before any await)
+  // so Chrome's autoplay policy is satisfied.
 
   const play = useCallback(() => {
     desiredPlayingRef.current = true;
     bgLog("play() called");
-    void attemptPlay();
-  }, [attemptPlay]);
+
+    const g = genreRef.current;
+    const nodes = buildNodes(g);
+    if (!nodes) {
+      bgLog("play(): no nodes available");
+      return;
+    }
+
+    const ctx = getSharedAudioContext();
+    const target = mutedRef.current ? 0 : volumeRef.current;
+
+    // Resume AudioContext synchronously (user gesture context)
+    if (ctx.state !== "running") {
+      ctx.resume().catch(() => { bgLog("ctx.resume failed"); });
+    }
+
+    // For real audio: call play() synchronously (user gesture context)
+    if (nodes.type === "real") {
+      startRealPlayback(nodes).catch(() => {
+        bgLog("audio.play() rejected — switching to synthetic");
+        // Autoplay blocked — dispose and use synthetic
+        disposeNodes(nodes);
+        nodesRef.current = null;
+        hasRealAudioRef.current = false;
+        if (SYNTHETIC_GENRES.has(g) && desiredPlayingRef.current) {
+          const synthNodes = createAmbientAudio(g);
+          nodesRef.current = synthNodes;
+          safeSetState((s) => ({ ...s, isRealAudio: false }));
+          ctx.resume().then(() => {
+            if (desiredPlayingRef.current && nodesRef.current) {
+              startFade(nodesRef.current, target, 800);
+            }
+          }).catch(() => {});
+        }
+      });
+    }
+
+    // Start fade (works for both real and synthetic)
+    startFade(nodes, target);
+    safeSetState((s) => ({ ...s, isPlaying: true, needsUnlock: false }));
+  }, [buildNodes, safeSetState]);
 
   const pause = useCallback(() => {
     desiredPlayingRef.current = false;
     bgLog("pause()");
-    fadeOut();
-    safeSetState((s) => ({ ...s, isPlaying: false, needsUnlock: false }));
-  }, [fadeOut, safeSetState]);
+    if (nodesRef.current) stopFade(nodesRef.current);
+    safeSetState((s) => ({ ...s, isPlaying: false }));
+  }, [safeSetState]);
 
   const stop = useCallback(() => {
     desiredPlayingRef.current = false;
@@ -381,6 +282,65 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
     safeSetState((s) => ({ ...s, isPlaying: false, needsUnlock: false }));
   }, [clearFader, safeSetState]);
 
+  // ── Genre change effect ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const myId = ++activeAudioId;
+    instanceId.current = myId;
+    desiredPlayingRef.current = false;
+
+    clearFader();
+    if (nodesRef.current) { disposeNodes(nodesRef.current); nodesRef.current = null; }
+
+    safeSetState((s) => ({ ...s, genre, isPlaying: false, available: false, needsUnlock: false, isRealAudio: false }));
+
+    probeRealAudio(genre).then((hasReal) => {
+      if (instanceId.current !== myId || !mountedRef.current) return;
+      hasRealAudioRef.current = hasReal;
+      const hasSynthetic = SYNTHETIC_GENRES.has(genre);
+      bgLog(`Genre "${genre}" — ${hasReal ? "REAL MP3" : hasSynthetic ? "SYNTHETIC" : "UNAVAILABLE"}`);
+      safeSetState((s) => ({ ...s, available: hasReal || hasSynthetic, isRealAudio: hasReal }));
+    });
+
+    return () => {
+      clearFader();
+      if (nodesRef.current) { disposeNodes(nodesRef.current); nodesRef.current = null; }
+    };
+  }, [genre, clearFader, safeSetState]);
+
+  // ── Tab visibility ──────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (nodesRef.current) {
+          if (nodesRef.current.type === "real") pauseRealPlayback(nodesRef.current);
+          else nodesRef.current.ctx.suspend().catch(() => {});
+        }
+      } else if (desiredPlayingRef.current && nodesRef.current) {
+        if (nodesRef.current.type === "real") {
+          nodesRef.current.ctx.resume().then(() => {
+            if (nodesRef.current?.type === "real") void startRealPlayback(nodesRef.current);
+          }).catch(() => {});
+        } else {
+          nodesRef.current.ctx.resume().catch(() => {});
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
+  // ── Volume sync ─────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (nodesRef.current && !faderId.current) {
+      nodesRef.current.gainNode.gain.value = state.isMuted ? 0 : state.volume;
+    }
+  }, [state.volume, state.isMuted]);
+
+  // ── Public setters ──────────────────────────────────────────────────────────
+
   const setVolume = useCallback((v: number) => {
     const clamped = Math.max(0, Math.min(0.30, v));
     safeSetState((s) => ({ ...s, volume: clamped }));
@@ -395,16 +355,11 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
     });
   }, [safeSetState]);
 
-  const manualUnlock = useCallback(async () => {
-    const ok = await unlockAudioContext();
-    if (ok && desiredPlayingRef.current) {
-      ensureNodes("manualUnlock");
-      beginFadeIn(800);
-      safeSetState((s) => ({ ...s, isPlaying: true, needsUnlock: false }));
-    } else {
-      safeSetState((s) => ({ ...s, needsUnlock: !ok }));
-    }
-  }, [beginFadeIn, ensureNodes, safeSetState]);
+  const manualUnlock = useCallback(() => {
+    // Called directly by user tap — use as gesture to start playback
+    if (desiredPlayingRef.current) play();
+    else safeSetState((s) => ({ ...s, needsUnlock: false }));
+  }, [play, safeSetState]);
 
   return { ...state, play, pause, stop, setVolume, toggleMute, manualUnlock };
 }
