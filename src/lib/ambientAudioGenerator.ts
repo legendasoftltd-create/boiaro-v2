@@ -125,55 +125,43 @@ export async function probeRealAudio(trackId: string): Promise<boolean> {
   }
 }
 
-/* ── Real audio nodes (HTML Audio → Web Audio for volume control) */
+/* ── Real audio nodes (plain HTMLAudioElement, no Web Audio API) ───────────
+ * Using createMediaElementSource() requires crossOrigin="anonymous" which
+ * can fail with SecurityError when the browser has the file cached from a
+ * non-CORS context (e.g. direct URL open, CDN, another tab).
+ * Fix: control volume directly via audio.volume — no Web Audio graph needed.
+ */
 
 export interface RealAudioNodes {
   type: "real";
   ctx: AudioContext;
-  gainNode: GainNode;
+  gainNode: { gain: { value: number } };  // proxy to audio.volume
   audio: HTMLAudioElement;
-  source: MediaElementAudioSourceNode;
 }
 
 export function createRealAudio(trackId: string): RealAudioNodes {
   const ctx = getSharedAudioContext();
   const url = getMusicFileUrl(trackId);
 
-  // Reuse or create audio element
   let audio = _audioElements.get(trackId);
-  if (!audio) {
+  if (!audio || audio.src !== url) {
     audio = new Audio();
-    audio.crossOrigin = "anonymous";
-    audio.loop = true;
-    audio.preload = "auto";
-    _audioElements.set(trackId, audio);
-  }
-  audio.src = url;
-
-  const gainNode = ctx.createGain();
-  gainNode.gain.value = 0;
-  gainNode.connect(ctx.destination);
-
-  // MediaElementSource can only be created once per element
-  let source: MediaElementAudioSourceNode;
-  try {
-    source = ctx.createMediaElementSource(audio);
-  } catch {
-    // Already connected — need a fresh element
-    bgLog(`Reusing existing MediaElementSource for ${trackId}`);
-    audio = new Audio();
-    audio.crossOrigin = "anonymous";
     audio.loop = true;
     audio.preload = "auto";
     audio.src = url;
     _audioElements.set(trackId, audio);
-    source = ctx.createMediaElementSource(audio);
   }
 
-  source.connect(gainNode);
+  // Proxy gainNode.gain.value → audio.volume so the rest of the hook works unchanged
+  const gainNode = {
+    gain: {
+      get value() { return audio!.volume; },
+      set value(v: number) { audio!.volume = Math.max(0, Math.min(1, v)); },
+    },
+  };
 
   bgLog(`Created REAL audio: trackId=${trackId}, url=${url}`);
-  return { type: "real", ctx, gainNode, audio, source };
+  return { type: "real", ctx, gainNode, audio };
 }
 
 export function disposeRealAudio(nodes: RealAudioNodes) {
@@ -181,7 +169,6 @@ export function disposeRealAudio(nodes: RealAudioNodes) {
     nodes.audio.pause();
     nodes.audio.removeAttribute("src");
     nodes.audio.load();
-    nodes.gainNode.disconnect();
     bgLog("Disposed real audio nodes");
   } catch { /* ignore */ }
 }
