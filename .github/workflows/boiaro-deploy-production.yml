@@ -62,6 +62,12 @@ jobs:
 
       # ── Upload built artifacts to server via rsync ───────────────────────
 
+      - name: Clear stale dist on server
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.PROD_VPS_USER }}@${{ secrets.PROD_VPS_IP }} \
+            "rm -rf /var/www/html/boiaro.com/dist && mkdir -p /var/www/html/boiaro.com/dist"
+
       - name: Sync frontend dist
         run: |
           rsync -az --delete \

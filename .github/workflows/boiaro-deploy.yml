@@ -46,6 +46,12 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "${{ secrets.VPS_IP }}" >> ~/.ssh/known_hosts
 
+      - name: Clear stale dist on server
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }} \
+            "rm -rf /var/www/html/staging.boiaro.com/dist && mkdir -p /var/www/html/staging.boiaro.com/dist"
+
       - name: Sync frontend dist
         run: |
           rsync -az --delete \
