@@ -112,6 +112,8 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
   const mutedRef = useRef(state.isMuted);
   const genreRef = useRef(genre);
   const hasRealAudioRef = useRef(false);
+  // Ref to beginFadeIn — set after declaration to break the circular dep
+  const beginFadeInRef = useRef<((durationMs?: number) => void) | null>(null);
   volumeRef.current = state.volume;
   mutedRef.current = state.isMuted;
   genreRef.current = genre;
@@ -138,7 +140,7 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
       if (hasRealAudioRef.current) {
         bgLog(`${reason}: creating REAL audio source`, { genre: g });
         nodesRef.current = createRealAudio(g, () => {
-          // Real audio failed to load — fall back to synthetic if available
+          // Real audio failed to load — fall back to synthetic
           hasRealAudioRef.current = false;
           if (nodesRef.current?.type === "real") {
             disposeNodes(nodesRef.current);
@@ -147,7 +149,7 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
           if (SYNTHETIC_GENRES.has(genreRef.current) && desiredPlayingRef.current) {
             nodesRef.current = createAmbientAudio(genreRef.current);
             safeSetState((s) => ({ ...s, isRealAudio: false }));
-            beginFadeIn(800);
+            beginFadeInRef.current?.(800); // ref avoids circular dep with beginFadeIn
           }
         });
       } else if (SYNTHETIC_GENRES.has(g)) {
@@ -157,7 +159,7 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
       // else: custom genre with no real audio — remains null (unavailable)
     }
     return nodesRef.current;
-  }, [beginFadeIn, safeSetState]);
+  }, [safeSetState]);
 
   /* ── Fade helpers ──────────────────────────────────────────────── */
 
@@ -196,6 +198,7 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
       if (next >= target) clearFader();
     }, 50);
   }, [clearFader, ensureNodes]);
+  beginFadeInRef.current = beginFadeIn;
 
   const fadeOut = useCallback((durationMs = 1200) => {
     const nodes = nodesRef.current;
