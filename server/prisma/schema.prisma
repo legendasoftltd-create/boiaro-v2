@@ -1659,6 +1659,20 @@ model Voice {
   @@map("voices")
 }
 
+model SmsSid {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  label      String
+  sid        String
+  api_token  String
+  otp_secret String?
+  is_default Boolean  @default(false)
+  is_active  Boolean  @default(true)
+
+  @@map("sms_sids")
+}
+
 model WithdrawalRequest {
   id             String   @id @default(uuid())
   amount         Float

@@ -1,13 +1,35 @@
 import crypto from "crypto";
+import { prisma } from "./prisma.js";
 
 const API_BASE = "https://smsplus.sslwireless.com/api/v3";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function getCredentials() {
+interface SidCredentials {
+  apiToken: string;
+  sid: string;
+  otpSecret?: string;
+}
+
+// Fetch the default active SID from DB; fall back to env vars if none configured
+async function getCredentials(): Promise<SidCredentials | null> {
+  const dbSid = await prisma.smsSid.findFirst({
+    where: { is_default: true, is_active: true },
+  });
+
+  if (dbSid) {
+    return {
+      apiToken: dbSid.api_token,
+      sid: dbSid.sid,
+      otpSecret: dbSid.otp_secret ?? undefined,
+    };
+  }
+
+  // Env fallback
   const apiToken = process.env.SSL_SMS_API_TOKEN;
   const sid = process.env.SSL_SMS_SID;
-  return { apiToken, sid };
+  if (!apiToken || !sid) return null;
+  return { apiToken, sid, otpSecret: process.env.SSL_SMS_OTP_SECRET };
 }
 
 function makeCsmsId() {
@@ -51,17 +73,18 @@ function generateOtpSignature(csmsId: string, msisdn: string, sid: string, encry
 // ── Send secure OTP via ISMS Plus /secure/otp-sms ────────────────────────────
 
 export async function sendOtpSms(rawPhone: string, otpText: string): Promise<{ success: boolean; error?: string }> {
-  const { apiToken, sid } = getCredentials();
-  const secretKey = process.env.SSL_SMS_OTP_SECRET;
-
-  if (!apiToken || !sid || !secretKey) {
-    return { success: false, error: "SSL Wireless OTP credentials not configured (SSL_SMS_API_TOKEN, SSL_SMS_SID, SSL_SMS_OTP_SECRET)" };
+  const creds = await getCredentials();
+  if (!creds) {
+    return { success: false, error: "SSL Wireless credentials not configured. Add a SID in Admin → SMS Center → SID Management." };
+  }
+  if (!creds.otpSecret) {
+    return { success: false, error: "OTP Secret not set for the active SID. Edit it in Admin → SMS Center → SID Management." };
   }
 
   const msisdn = normalizeBdPhone(rawPhone);
   const csmsId = makeCsmsId();
-  const encryptedSms = encryptOtpSms(otpText, secretKey);
-  const signature = generateOtpSignature(csmsId, msisdn, sid, encryptedSms, secretKey);
+  const encryptedSms = encryptOtpSms(otpText, creds.otpSecret);
+  const signature = generateOtpSignature(csmsId, msisdn, creds.sid, encryptedSms, creds.otpSecret);
 
   try {
     const response = await fetch(`${API_BASE}/secure/otp-sms`, {
@@ -70,7 +93,7 @@ export async function sendOtpSms(rawPhone: string, otpText: string): Promise<{ s
         "Content-Type": "application/json",
         "X-Signature": signature,
       },
-      body: JSON.stringify({ api_token: apiToken, sid, msisdn, sms: encryptedSms, csms_id: csmsId }),
+      body: JSON.stringify({ api_token: creds.apiToken, sid: creds.sid, msisdn, sms: encryptedSms, csms_id: csmsId }),
       signal: AbortSignal.timeout(15_000),
     });
 
@@ -92,14 +115,21 @@ interface SmsResult {
   error?: string;
 }
 
-export async function sendSslWirelessSms(phones: string[], message: string): Promise<SmsResult[]> {
-  const { apiToken, sid } = getCredentials();
+export async function sendSslWirelessSms(phones: string[], message: string, sidId?: string): Promise<SmsResult[]> {
+  let creds: SidCredentials | null;
 
-  if (!apiToken || !sid) {
+  if (sidId) {
+    const dbSid = await prisma.smsSid.findUnique({ where: { id: sidId } });
+    creds = dbSid ? { apiToken: dbSid.api_token, sid: dbSid.sid } : null;
+  } else {
+    creds = await getCredentials();
+  }
+
+  if (!creds) {
     return phones.map((phone) => ({
       phone,
       status: "failed" as const,
-      error: "SSL Wireless credentials not configured (SSL_SMS_API_TOKEN, SSL_SMS_SID)",
+      error: "SSL Wireless credentials not configured. Add a SID in Admin → SMS Center → SID Management.",
     }));
   }
 
@@ -116,7 +146,7 @@ export async function sendSslWirelessSms(phones: string[], message: string): Pro
       const response = await fetch(`${API_BASE}/send-sms/bulk`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_token: apiToken, sid, msisdn: msisdns, sms: message, batch_csms_id: batchCsmsId }),
+        body: JSON.stringify({ api_token: creds.apiToken, sid: creds.sid, msisdn: msisdns, sms: message, batch_csms_id: batchCsmsId }),
         signal: AbortSignal.timeout(30_000),
       });
 

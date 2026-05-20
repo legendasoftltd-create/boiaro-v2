@@ -5084,9 +5084,78 @@ export const adminRouter = router({
       return rows.filter((r) => !!r.phone).map((r) => ({ phone: r.phone!, name: r.stage_name, group: "rj" }));
     }),
 
-  smsStatus: adminProcedure.query(() => ({
-    configured: !!(process.env.SSL_SMS_API_TOKEN && process.env.SSL_SMS_SID),
-  })),
+  smsStatus: adminProcedure.query(async () => {
+    const hasDbSid = await prisma.smsSid.findFirst({ where: { is_default: true, is_active: true } });
+    const configured = !!(hasDbSid || (process.env.SSL_SMS_API_TOKEN && process.env.SSL_SMS_SID));
+    return { configured };
+  }),
+
+  listSmsSids: adminProcedure.query(() =>
+    prisma.smsSid.findMany({ orderBy: { created_at: "asc" } })
+  ),
+
+  createSmsSid: adminProcedure
+    .input(z.object({
+      label: z.string().min(1),
+      sid: z.string().min(1),
+      api_token: z.string().min(1),
+      otp_secret: z.string().optional(),
+      is_default: z.boolean().default(false),
+      is_active: z.boolean().default(true),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.is_default) {
+        await prisma.smsSid.updateMany({ data: { is_default: false } });
+      }
+      return prisma.smsSid.create({
+        data: {
+          label: input.label,
+          sid: input.sid,
+          api_token: input.api_token,
+          otp_secret: input.otp_secret ?? null,
+          is_default: input.is_default,
+          is_active: input.is_active,
+        },
+      });
+    }),
+
+  updateSmsSid: adminProcedure
+    .input(z.object({
+      id: z.string(),
+      label: z.string().min(1).optional(),
+      sid: z.string().min(1).optional(),
+      api_token: z.string().min(1).optional(),
+      otp_secret: z.string().nullable().optional(),
+      is_default: z.boolean().optional(),
+      is_active: z.boolean().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      if (input.is_default) {
+        await prisma.smsSid.updateMany({ where: { id: { not: input.id } }, data: { is_default: false } });
+      }
+      return prisma.smsSid.update({
+        where: { id: input.id },
+        data: {
+          ...(input.label !== undefined && { label: input.label }),
+          ...(input.sid !== undefined && { sid: input.sid }),
+          ...(input.api_token !== undefined && { api_token: input.api_token }),
+          ...(input.otp_secret !== undefined && { otp_secret: input.otp_secret }),
+          ...(input.is_default !== undefined && { is_default: input.is_default }),
+          ...(input.is_active !== undefined && { is_active: input.is_active }),
+        },
+      });
+    }),
+
+  deleteSmsSid: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.smsSid.delete({ where: { id: input.id } })),
+
+  setDefaultSmsSid: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.smsSid.updateMany({ data: { is_default: false } });
+      return prisma.smsSid.update({ where: { id: input.id }, data: { is_default: true, is_active: true } });
+    }),
 
   listSmsLogs: adminProcedure
     .input(z.object({ limit: z.number().int().min(1).max(500).default(100) }).optional())
