@@ -212,6 +212,11 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
       safeSetState((s) => ({ ...s, needsUnlock: true }));
       return false;
     }
+    // Abort if stop() was called while we were waiting on unlockAudioContext
+    if (!desiredPlayingRef.current) {
+      bgLog("attemptPlay: aborted (stop called during unlock)");
+      return false;
+    }
     safeSetState((s) => ({ ...s, needsUnlock: false }));
     ensureNodes("attemptPlay");
     beginFadeIn();

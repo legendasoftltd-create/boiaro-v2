@@ -317,16 +317,8 @@ export default function EbookReader() {
       bgMusic.stop();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tts.isPlaying, tts.isPaused, ambientEnabled, bgMusic.available, musicGenre]);
+  }, [tts.isPlaying, tts.isPaused, ambientEnabled, bgMusic.available, bgMusic.isPlaying, musicGenre]);
 
-  // Safety: if TTS is not playing, music must not be playing
-  useEffect(() => {
-    if (!tts.isPlaying && bgMusic.isPlaying) {
-      console.log("[EbookAmbient] safety stop — TTS not playing but music is");
-      bgMusic.stop();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tts.isPlaying, bgMusic.isPlaying]);
 
   const handleTtsPlay = useCallback(() => {
     if ((tts as any).isGenerating || (tts as any).isLoading) return;
@@ -350,9 +342,6 @@ export default function EbookReader() {
 
     
     ttsAutoPlayRef.current = true;
-    if (ambientEnabled) {
-      bgMusic.play();
-    }
     tts.play(text);
   }, [ambientEnabled, bgMusic, fileType, tts, pdfPageText]);
 
