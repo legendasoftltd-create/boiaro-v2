@@ -41,6 +41,7 @@ function AudioPlayer({ url }: { url: string }) {
   const toggle = () => {
     if (!audioRef.current) {
       audioRef.current = new Audio(url);
+      audioRef.current.loop = true;
       audioRef.current.onended = () => setPlaying(false);
       audioRef.current.onerror = () => { setPlaying(false); toast.error("Audio playback failed"); };
     }
