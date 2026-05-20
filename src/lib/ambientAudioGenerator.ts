@@ -95,34 +95,25 @@ const _fileAvailability = new Map<string, "unknown" | "available" | "unavailable
 const _audioElements = new Map<string, HTMLAudioElement>();
 
 /**
- * Probe whether a real MP3 file exists for a track.
- * Results are cached so we only check once per session.
- * Call setAmbientTracks() first to register URLs from the API.
+ * Check whether a real audio URL is configured for a track.
+ * No network request — if the admin set a URL we trust it.
+ * Actual load errors are handled by the audio element's onerror.
  */
-export async function probeRealAudio(trackId: string): Promise<boolean> {
+export function probeRealAudio(trackId: string): Promise<boolean> {
   const cached = _fileAvailability.get(trackId);
-  if (cached === "available") return true;
-  if (cached === "unavailable") return false;
+  if (cached === "available") return Promise.resolve(true);
+  if (cached === "unavailable") return Promise.resolve(false);
 
   const url = getMusicFileUrl(trackId);
   if (!url) {
     _fileAvailability.set(trackId, "unavailable");
-    return false;
+    bgLog(`Probe ${trackId}: no URL configured`);
+    return Promise.resolve(false);
   }
 
-  try {
-    const resp = await fetch(url, { method: "HEAD" });
-    const ct = resp.headers.get("content-type") || "";
-    // Accept audio/* MIME types OR octet-stream (storage may not set correct MIME)
-    const ok = resp.ok && (ct.includes("audio") || ct.includes("octet-stream"));
-    _fileAvailability.set(trackId, ok ? "available" : "unavailable");
-    bgLog(`Probe ${trackId}: ${ok ? "FOUND" : "NOT FOUND"} (${resp.status})`);
-    return ok;
-  } catch {
-    _fileAvailability.set(trackId, "unavailable");
-    bgLog(`Probe ${trackId}: FAILED (network error)`);
-    return false;
-  }
+  _fileAvailability.set(trackId, "available");
+  bgLog(`Probe ${trackId}: URL configured, treating as available`);
+  return Promise.resolve(true);
 }
 
 /* ── Real audio nodes (plain HTMLAudioElement, no Web Audio API) ───────────
@@ -139,7 +130,10 @@ export interface RealAudioNodes {
   audio: HTMLAudioElement;
 }
 
-export function createRealAudio(trackId: string): RealAudioNodes {
+export function createRealAudio(
+  trackId: string,
+  onLoadError?: () => void,
+): RealAudioNodes {
   const ctx = getSharedAudioContext();
   const url = getMusicFileUrl(trackId);
 
@@ -151,6 +145,13 @@ export function createRealAudio(trackId: string): RealAudioNodes {
     audio.src = url;
     _audioElements.set(trackId, audio);
   }
+
+  // If the file can't load (CORS, 404, etc.) notify the caller to fall back
+  audio.onerror = () => {
+    bgLog(`Real audio load error for ${trackId} — falling back`);
+    _fileAvailability.set(trackId, "unavailable");
+    onLoadError?.();
+  };
 
   // Proxy gainNode.gain.value → audio.volume so the rest of the hook works unchanged
   const gainNode = {

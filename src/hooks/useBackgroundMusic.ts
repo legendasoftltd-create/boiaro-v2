@@ -137,7 +137,19 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
       const g = genreRef.current;
       if (hasRealAudioRef.current) {
         bgLog(`${reason}: creating REAL audio source`, { genre: g });
-        nodesRef.current = createRealAudio(g);
+        nodesRef.current = createRealAudio(g, () => {
+          // Real audio failed to load — fall back to synthetic if available
+          hasRealAudioRef.current = false;
+          if (nodesRef.current?.type === "real") {
+            disposeNodes(nodesRef.current);
+            nodesRef.current = null;
+          }
+          if (SYNTHETIC_GENRES.has(genreRef.current) && desiredPlayingRef.current) {
+            nodesRef.current = createAmbientAudio(genreRef.current);
+            safeSetState((s) => ({ ...s, isRealAudio: false }));
+            beginFadeIn(800);
+          }
+        });
       } else if (SYNTHETIC_GENRES.has(g)) {
         bgLog(`${reason}: creating SYNTHETIC audio source`, { genre: g });
         nodesRef.current = createAmbientAudio(g);
@@ -145,7 +157,7 @@ export function useBackgroundMusic(genre: MusicGenre = "calm") {
       // else: custom genre with no real audio — remains null (unavailable)
     }
     return nodesRef.current;
-  }, []);
+  }, [beginFadeIn, safeSetState]);
 
   /* ── Fade helpers ──────────────────────────────────────────────── */
 
