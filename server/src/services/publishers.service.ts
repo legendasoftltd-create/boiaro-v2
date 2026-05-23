@@ -48,3 +48,35 @@ export const getAllPublishers = async (userId?: string | null) => {
     })),
   };
 };
+
+export const getPublisherById = async (id: string, userId?: string | null) => {
+  const [publisher, followers_count, books_count, followRow] = await Promise.all([
+    prisma.publisher.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        name_en: true,
+        logo_url: true,
+        description: true,
+        is_verified: true,
+        is_featured: true,
+      },
+    }),
+    prisma.follow.count({ where: { followee_id: id } }),
+    prisma.book.count({ where: { publisher_id: id } }),
+    userId
+      ? prisma.follow.findFirst({ where: { follower_id: userId, followee_id: id }, select: { id: true } })
+      : Promise.resolve(null),
+  ]);
+
+  if (!publisher) return { error: "Publisher not found" };
+
+  return {
+    ...publisher,
+    logo_url: resolveFileUrl(publisher.logo_url),
+    followers_count,
+    books_count,
+    is_following: !!followRow,
+  };
+};

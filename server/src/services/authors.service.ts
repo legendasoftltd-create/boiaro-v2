@@ -70,26 +70,35 @@ export const getAllAuthors = async (
 };
 
 
-export const getAuthorById = async (id: string) => {
-    const author = await prisma.author.findUnique({
-        where: {
-            id,
-        },
-        select: {
-            id: true,
-            name: true,
-            name_en: true,
-            avatar_url: true,
-            bio: true,
-            genre: true,
-            is_featured: true,
-            is_trending: true,
-        },
-    });
+export const getAuthorById = async (id: string, userId?: string | null) => {
+    const [author, followers_count, books_count, followRow] = await Promise.all([
+        prisma.author.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                name: true,
+                name_en: true,
+                avatar_url: true,
+                bio: true,
+                genre: true,
+                is_featured: true,
+                is_trending: true,
+            },
+        }),
+        prisma.follow.count({ where: { followee_id: id } }),
+        prisma.book.count({ where: { author_id: id } }),
+        userId
+            ? prisma.follow.findFirst({ where: { follower_id: userId, followee_id: id }, select: { id: true } })
+            : Promise.resolve(null),
+    ]);
 
-    if (!author) {
-        return ({ error: "Author not found" });
-    }
+    if (!author) return { error: "Author not found" };
 
-    return { ...author, avatar_url: resolveFileUrl(author.avatar_url) };
+    return {
+        ...author,
+        avatar_url: resolveFileUrl(author.avatar_url),
+        followers_count,
+        books_count,
+        is_following: !!followRow,
+    };
 };

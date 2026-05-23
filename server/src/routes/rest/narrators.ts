@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
-import { getAllNarrators } from "../../services/narrators.service.js";
+import { getAllNarrators, getNarratorById } from "../../services/narrators.service.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { followProfile, unfollowProfile } from "../../services/follows.service.js";
@@ -10,6 +10,16 @@ export const narratorsRestRouter = Router();
 narratorsRestRouter.get("/", async (req: AuthenticatedRequest, res) => {
   try {
     const result = await getAllNarrators(req.auth?.userId);
+    res.json(result);
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+narratorsRestRouter.get("/:id", async (req: AuthenticatedRequest, res) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const result = await getNarratorById(id, req.auth?.userId);
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);

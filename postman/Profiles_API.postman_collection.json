@@ -1,0 +1,307 @@
+{
+  "info": {
+    "name": "BoiAro — Author / Narrator / Publisher Profiles API",
+    "description": "Get a single author, narrator, or publisher by ID.\n\nEach response includes:\n- **`followers_count`** — total number of users following this profile\n- **`books_count`** — total books/audiobooks associated with this profile\n- **`is_following`** — whether the authenticated user currently follows this profile (`false` for unauthenticated requests)\n\n**Base URL (production):** `https://boiaro.com.bd`\n**Auth:** Optional. Pass `Authorization: Bearer {{access_token}}` to get a correct `is_following` value.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://boiaro.com.bd", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "author_id", "value": "", "type": "string" },
+    { "key": "narrator_id", "value": "", "type": "string" },
+    { "key": "publisher_id", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "Authors",
+      "item": [
+        {
+          "name": "Get All Authors",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/authors?limit=20&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "authors"],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Returns paginated list of active authors. Pass auth token to get `followed` status per author."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Author by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/authors/{{author_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "authors", "{{author_id}}"]
+            },
+            "description": "Returns full author profile with follower count, book count, and current user's follow status.\n\n**Auth:** Optional. Without a token `is_following` is always `false`.\n\n**Response fields:**\n```\nid              String\nname            String   — Bangla name\nname_en         String?  — English name\navatar_url      String?\nbio             String?\ngenre           String?\nis_featured     Boolean\nis_trending     Boolean\nfollowers_count Number   — total followers\nbooks_count     Number   — total published books\nis_following    Boolean  — true if current user follows this author\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": \"abc-123\",\n  \"name\": \"হুমায়ূন আহমেদ\",\n  \"name_en\": \"Humayun Ahmed\",\n  \"avatar_url\": \"https://boiaro.com.bd/uploads/avatar.png\",\n  \"bio\": \"বাংলাদেশের জনপ্রিয় লেখক।\",\n  \"genre\": \"Fiction\",\n  \"is_featured\": true,\n  \"is_trending\": false,\n  \"followers_count\": 1240,\n  \"books_count\": 38,\n  \"is_following\": true\n}"
+            },
+            {
+              "name": "Not Found",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"error\": \"Author not found\" }"
+            }
+          ]
+        },
+        {
+          "name": "Follow Author",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/authors/{{author_id}}/follow",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "authors", "{{author_id}}", "follow"]
+            },
+            "description": "Follow an author. Idempotent — safe to call multiple times.\n\n**Response:** `{ following: true, count: number }`"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"following\": true, \"count\": 1241 }"
+            }
+          ]
+        },
+        {
+          "name": "Unfollow Author",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/authors/{{author_id}}/unfollow",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "authors", "{{author_id}}", "unfollow"]
+            },
+            "description": "Unfollow an author.\n\n**Response:** `{ following: false, count: number }`"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"following\": false, \"count\": 1240 }"
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "Narrators",
+      "item": [
+        {
+          "name": "Get All Narrators",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/narrators",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "narrators"]
+            },
+            "description": "Returns all active narrators. Pass auth token to get `followed` status."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Narrator by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/narrators/{{narrator_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "narrators", "{{narrator_id}}"]
+            },
+            "description": "Returns full narrator profile with follower count, audiobook count, and current user's follow status.\n\n**Auth:** Optional. Without a token `is_following` is always `false`.\n\n**Response fields:**\n```\nid              String\nname            String   — Bangla name\nname_en         String?  — English name\navatar_url      String?\nbio             String?\nspecialty       String?\nrating          Float?\nis_featured     Boolean\nis_trending     Boolean\nfollowers_count Number   — total followers\nbooks_count     Number   — total audiobook formats narrated\nis_following    Boolean  — true if current user follows this narrator\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": \"nar-456\",\n  \"name\": \"রাহেলা পারভীন\",\n  \"name_en\": \"Rahela Parveen\",\n  \"avatar_url\": \"https://boiaro.com.bd/uploads/nar.png\",\n  \"bio\": \"পেশাদার কণ্ঠশিল্পী।\",\n  \"specialty\": \"Drama\",\n  \"rating\": 4.8,\n  \"is_featured\": true,\n  \"is_trending\": true,\n  \"followers_count\": 530,\n  \"books_count\": 12,\n  \"is_following\": false\n}"
+            },
+            {
+              "name": "Not Found",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"error\": \"Narrator not found\" }"
+            }
+          ]
+        },
+        {
+          "name": "Follow Narrator",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/narrators/{{narrator_id}}/follow",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "narrators", "{{narrator_id}}", "follow"]
+            },
+            "description": "Follow a narrator."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"following\": true, \"count\": 531 }"
+            }
+          ]
+        },
+        {
+          "name": "Unfollow Narrator",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/narrators/{{narrator_id}}/unfollow",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "narrators", "{{narrator_id}}", "unfollow"]
+            },
+            "description": "Unfollow a narrator."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"following\": false, \"count\": 530 }"
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "Publishers",
+      "item": [
+        {
+          "name": "Get All Publishers",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/publishers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "publishers"]
+            },
+            "description": "Returns all active publishers. Pass auth token to get `followed` status."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Publisher by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/publishers/{{publisher_id}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "publishers", "{{publisher_id}}"]
+            },
+            "description": "Returns full publisher profile with follower count, book count, and current user's follow status.\n\n**Auth:** Optional. Without a token `is_following` is always `false`.\n\n**Response fields:**\n```\nid              String\nname            String   — Bangla name\nname_en         String?  — English name\nlogo_url        String?\ndescription     String?\nis_verified     Boolean\nis_featured     Boolean\nfollowers_count Number   — total followers\nbooks_count     Number   — total books under this publisher\nis_following    Boolean  — true if current user follows this publisher\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"id\": \"pub-789\",\n  \"name\": \"প্রথমা প্রকাশন\",\n  \"name_en\": \"Prothoma Prokashon\",\n  \"logo_url\": \"https://boiaro.com.bd/uploads/pub.png\",\n  \"description\": \"বাংলাদেশের অন্যতম প্রকাশনী।\",\n  \"is_verified\": true,\n  \"is_featured\": true,\n  \"followers_count\": 820,\n  \"books_count\": 145,\n  \"is_following\": true\n}"
+            },
+            {
+              "name": "Not Found",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"error\": \"Publisher not found\" }"
+            }
+          ]
+        },
+        {
+          "name": "Follow Publisher",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/publishers/{{publisher_id}}/follow",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "publishers", "{{publisher_id}}", "follow"]
+            },
+            "description": "Follow a publisher."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"following\": true, \"count\": 821 }"
+            }
+          ]
+        },
+        {
+          "name": "Unfollow Publisher",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/publishers/{{publisher_id}}/unfollow",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "publishers", "{{publisher_id}}", "unfollow"]
+            },
+            "description": "Unfollow a publisher."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"following\": false, \"count\": 820 }"
+            }
+          ]
+        }
+      ]
+    }
+
+  ]
+}

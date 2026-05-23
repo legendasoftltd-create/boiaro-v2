@@ -53,3 +53,37 @@ export const getAllNarrators = async (userId?: string | null) => {
     })),
   };
 };
+
+export const getNarratorById = async (id: string, userId?: string | null) => {
+  const [narrator, followers_count, books_count, followRow] = await Promise.all([
+    prisma.narrator.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        name_en: true,
+        avatar_url: true,
+        bio: true,
+        specialty: true,
+        rating: true,
+        is_featured: true,
+        is_trending: true,
+      },
+    }),
+    prisma.follow.count({ where: { followee_id: id } }),
+    prisma.bookFormat.count({ where: { narrator_id: id } }),
+    userId
+      ? prisma.follow.findFirst({ where: { follower_id: userId, followee_id: id }, select: { id: true } })
+      : Promise.resolve(null),
+  ]);
+
+  if (!narrator) return { error: "Narrator not found" };
+
+  return {
+    ...narrator,
+    avatar_url: resolveFileUrl(narrator.avatar_url),
+    followers_count,
+    books_count,
+    is_following: !!followRow,
+  };
+};

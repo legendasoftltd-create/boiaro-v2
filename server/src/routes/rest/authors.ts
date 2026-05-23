@@ -22,12 +22,10 @@ authorsRestRouter.get("/", async (req: AuthenticatedRequest, res) => {
   }
 });
 
-authorsRestRouter.get("/:id", async (req, res) => {
+authorsRestRouter.get("/:id", async (req: AuthenticatedRequest, res) => {
   try {
-    const { id } = req.params;
-
-    const result = await getAuthorById(id);
-
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const result = await getAuthorById(id, req.auth?.userId);
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);
