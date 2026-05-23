@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LiveUsersModal, type LiveUserFilter } from "@/components/admin/LiveUsersModal";
 import { trpc } from "@/lib/trpc";
 import { stripHtml } from "@/lib/stripHtml";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -87,7 +86,6 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [selectedApp, setSelectedApp] = useState<any | null>(null);
   const [chartsVisible, setChartsVisible] = useState(false);
-  const [liveFilter, setLiveFilter] = useState<LiveUserFilter>(null);
   const [activeAlerts, setActiveAlerts] = useState(0);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -208,7 +206,7 @@ export default function AdminDashboard() {
             <Badge variant="outline" className="text-[10px]">Live</Badge>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3 items-stretch">
-            <div className="bg-card/80 rounded-lg p-3 border border-border/30 cursor-pointer hover:border-primary/30 transition-colors" onClick={() => setLiveFilter("online")}>
+            <div className="bg-card/80 rounded-lg p-3 border border-border/30 cursor-pointer hover:border-primary/30 transition-colors" onClick={() => navigate("/admin/user-analytics")}>
               <div className="flex items-center gap-2 mb-1">
                 <Users className="h-3.5 w-3.5 text-purple-400" />
                 <span className="text-[10px] text-muted-foreground">Active Now</span>
@@ -321,16 +319,15 @@ export default function AdminDashboard() {
         {/* === SECTION 2.5: Live Activity === */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-stretch">
           <StaggeredItem index={10}>
-            <KPICard icon={Activity} label="Online Now" value={stats.onlineNow} tooltip="Click to see who's active (web + mobile)" color="text-green-400" bgColor="bg-green-500/10" onClick={() => setLiveFilter("online")} />
+            <KPICard icon={Activity} label="Online Now" value={stats.onlineNow} tooltip="Users active in last 5 minutes" color="text-green-400" bgColor="bg-green-500/10" onClick={() => navigate("/admin/reading-analytics")} />
           </StaggeredItem>
           <StaggeredItem index={11}>
-            <KPICard icon={BookOpen} label="Reading Now" value={stats.readingNow} tooltip="Click to see who's reading (web + mobile)" color="text-blue-400" bgColor="bg-blue-500/10" onClick={() => setLiveFilter("reading")} />
+            <KPICard icon={BookOpen} label="Reading Now" value={stats.readingNow} tooltip="Users currently reading ebooks" color="text-blue-400" bgColor="bg-blue-500/10" onClick={() => navigate("/admin/reading-analytics")} />
           </StaggeredItem>
           <StaggeredItem index={12}>
-            <KPICard icon={Headphones} label="Listening Now" value={stats.listeningNow} tooltip="Click to see who's listening (web + mobile)" color="text-purple-400" bgColor="bg-purple-500/10" onClick={() => setLiveFilter("listening")} />
+            <KPICard icon={Headphones} label="Listening Now" value={stats.listeningNow} tooltip="Users currently listening to audiobooks" color="text-purple-400" bgColor="bg-purple-500/10" onClick={() => navigate("/admin/reading-analytics")} />
           </StaggeredItem>
         </div>
-        <LiveUsersModal filter={liveFilter} onClose={() => setLiveFilter(null)} />
 
         {/* === SECTION 3: Revenue vs Cost vs Profit Chart + Format Distribution === */}
         <div className={`grid md:grid-cols-3 gap-4 transition-all duration-700 ${chartsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
