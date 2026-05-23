@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
+import { Capacitor } from "@capacitor/core";
 
 type ActivityType = "browsing" | "reading" | "listening";
 
@@ -40,6 +41,7 @@ export function usePresence() {
         currentBookId: bookId,
         activityType: type,
         sessionId: sid,
+        platform: Capacitor.isNativePlatform() ? "mobile" : "web",
       });
     } catch {
       // Silently ignore

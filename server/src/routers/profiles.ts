@@ -214,6 +214,7 @@ export const profilesRouter = router({
         currentBookId: z.string().optional(),
         currentPage: z.string().optional(),
         sessionId: z.string().optional(),
+        platform: z.enum(["web", "mobile"]).optional().default("web"),
       })
     )
     .mutation(({ ctx, input }) =>
@@ -225,7 +226,7 @@ export const profilesRouter = router({
           current_book_id: input.currentBookId,
           current_page: input.currentPage,
           session_id: input.sessionId,
-          platform: "web",
+          platform: input.platform,
           last_seen: new Date(),
         },
         update: {
@@ -233,7 +234,7 @@ export const profilesRouter = router({
           current_book_id: input.currentBookId,
           current_page: input.currentPage,
           session_id: input.sessionId,
-          platform: "web",
+          platform: input.platform,
           last_seen: new Date(),
         },
       } as any)
