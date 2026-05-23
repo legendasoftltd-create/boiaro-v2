@@ -1,0 +1,231 @@
+{
+  "info": {
+    "name": "BoiAro — Presence & Live Users API",
+    "description": "APIs for reporting user presence from the mobile app and reading live user data in the admin panel.\n\n**Base URL (production):** `https://boiaro.com.bd`\n**Base URL (local):** `http://localhost:3001`\n\n**Auth:** Set the `access_token` variable after login. All protected endpoints use `Authorization: Bearer {{access_token}}`.\n\n---\n\n## How it works\n\n1. Mobile app calls **POST /api/v1/presence/heartbeat** every 45 seconds while the app is open.\n2. Each heartbeat upserts a record in the `user_presence` table with `platform: \"mobile\"`.\n3. Admin panel reads that table to show **Active Now / Online Now / Reading Now / Listening Now** counts.\n4. A user is considered active if their `last_seen` is within the last **5 minutes**.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://boiaro.com.bd", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "book_id", "value": "", "type": "string" },
+    { "key": "session_id", "value": "sess_{{$randomUUID}}", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "1. Heartbeat — Browsing (app open, no book)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/presence/heartbeat",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "presence", "heartbeat"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"activity_type\": \"browsing\",\n  \"session_id\": \"sess_mobile_001\"\n}"
+        },
+        "description": "Call this every 45 seconds while the app is open and the user is not reading or listening.\n\n**When to call:**\n- App launch\n- User is on home/browse/library screen\n- User closes a book\n\n**Response:**\n```json\n{ \"success\": true }\n```"
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": true }"
+        },
+        {
+          "name": "Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"error\": \"Unauthorized\" }"
+        }
+      ]
+    },
+
+    {
+      "name": "2. Heartbeat — Reading (book open)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/presence/heartbeat",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "presence", "heartbeat"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"activity_type\": \"reading\",\n  \"book_id\": \"{{book_id}}\",\n  \"current_page\": \"Chapter 5\",\n  \"session_id\": \"sess_mobile_001\"\n}"
+        },
+        "description": "Call immediately when the user opens a book to read, then every 45 seconds while they stay on the reading screen.\n\n**Fields:**\n- `book_id` — UUID of the book the user has open (required for this activity type)\n- `current_page` — human-readable label: chapter name, page number, EPUB CFI, etc.\n- `session_id` — stable UUID stored in device storage (same value across app restarts)\n\nThis makes the user appear under **Reading Now** in the admin panel."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": true }"
+        }
+      ]
+    },
+
+    {
+      "name": "3. Heartbeat — Listening (audiobook playing)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/presence/heartbeat",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "presence", "heartbeat"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"activity_type\": \"listening\",\n  \"book_id\": \"{{book_id}}\",\n  \"current_page\": \"00:12:34\",\n  \"session_id\": \"sess_mobile_001\"\n}"
+        },
+        "description": "Call immediately when the user starts playing an audiobook, then every 45 seconds while audio is playing.\n\n**Fields:**\n- `book_id` — UUID of the audiobook\n- `current_page` — playback timestamp in `HH:MM:SS` format\n- `session_id` — stable UUID stored in device storage\n\nThis makes the user appear under **Listening Now** in the admin panel."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": true }"
+        }
+      ]
+    },
+
+    {
+      "name": "4. Heartbeat — Idle (background / paused)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/presence/heartbeat",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "presence", "heartbeat"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"activity_type\": \"idle\",\n  \"session_id\": \"sess_mobile_001\"\n}"
+        },
+        "description": "Optional. Call when the app is in the background or paused. Interval can be stretched to every 120 seconds.\n\nIf the app stops sending heartbeats entirely (killed / no network), the user will naturally disappear from the live counts after 5 minutes."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": true }"
+        }
+      ]
+    },
+
+    {
+      "name": "5. Get Live Users (Admin only)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/presence/live?filter=online&minutes=5",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "presence", "live"],
+          "query": [
+            { "key": "filter", "value": "online", "description": "Options: online | reading | listening. Omit for all active users." },
+            { "key": "minutes", "value": "5", "description": "Active window in minutes. Range: 1–60. Default: 5." }
+          ]
+        },
+        "description": "Returns all users active within the last N minutes, enriched with profile and book info.\n\n**Requires admin or moderator role.** The mobile app does NOT need to call this — it is used by the admin panel.\n\n**Response fields:**\n```\ntotal      — total active users\nreading    — count reading\nlistening  — count listening\nbrowsing   — count browsing\nusers[]    — array of user objects\n  user_id\n  display_name\n  avatar_url\n  activity_type   reading | listening | browsing\n  last_seen       ISO 8601 timestamp\n  current_page    chapter / timestamp label\n  session_id\n  book\n    title\n    cover_url\n```"
+      },
+      "response": [
+        {
+          "name": "Success — users found",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"success\": true,\n  \"total\": 3,\n  \"reading\": 1,\n  \"listening\": 1,\n  \"browsing\": 1,\n  \"users\": [\n    {\n      \"user_id\": \"abc123\",\n      \"display_name\": \"Rahim Uddin\",\n      \"avatar_url\": \"https://boiaro.com.bd/uploads/abc.png\",\n      \"activity_type\": \"reading\",\n      \"last_seen\": \"2026-05-23T09:05:00.000Z\",\n      \"current_page\": \"Chapter 3\",\n      \"session_id\": \"sess_mobile_001\",\n      \"book\": {\n        \"title\": \"আলো আঁধারি\",\n        \"cover_url\": \"https://boiaro.com.bd/uploads/cover.png\"\n      }\n    },\n    {\n      \"user_id\": \"def456\",\n      \"display_name\": \"Nasrin\",\n      \"avatar_url\": null,\n      \"activity_type\": \"listening\",\n      \"last_seen\": \"2026-05-23T09:04:45.000Z\",\n      \"current_page\": \"00:12:34\",\n      \"session_id\": \"sess_mobile_002\",\n      \"book\": {\n        \"title\": \"গল্পের আসর\",\n        \"cover_url\": null\n      }\n    },\n    {\n      \"user_id\": \"ghi789\",\n      \"display_name\": \"Karim\",\n      \"avatar_url\": null,\n      \"activity_type\": \"browsing\",\n      \"last_seen\": \"2026-05-23T09:03:10.000Z\",\n      \"current_page\": null,\n      \"session_id\": \"sess_web_003\",\n      \"book\": null\n    }\n  ]\n}"
+        },
+        {
+          "name": "Success — no active users",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": true, \"total\": 0, \"reading\": 0, \"listening\": 0, \"browsing\": 0, \"users\": [] }"
+        },
+        {
+          "name": "Forbidden — not admin",
+          "status": "Forbidden",
+          "code": 403,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": false, \"error\": \"Admin access required\" }"
+        }
+      ]
+    },
+
+    {
+      "name": "5a. Get Live Users — Reading only",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/presence/live?filter=reading",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "presence", "live"],
+          "query": [
+            { "key": "filter", "value": "reading" }
+          ]
+        },
+        "description": "Returns only users currently reading an ebook."
+      },
+      "response": []
+    },
+
+    {
+      "name": "5b. Get Live Users — Listening only",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/presence/live?filter=listening",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "presence", "live"],
+          "query": [
+            { "key": "filter", "value": "listening" }
+          ]
+        },
+        "description": "Returns only users currently listening to an audiobook."
+      },
+      "response": []
+    },
+
+    {
+      "name": "5c. Get Live Users — Extended window (15 min)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/presence/live?minutes=15",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "presence", "live"],
+          "query": [
+            { "key": "filter", "value": "", "disabled": true },
+            { "key": "minutes", "value": "15" }
+          ]
+        },
+        "description": "Returns all active users from the last 15 minutes instead of 5."
+      },
+      "response": []
+    }
+
+  ]
+}
