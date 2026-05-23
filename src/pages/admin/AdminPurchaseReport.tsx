@@ -136,8 +136,8 @@ export default function AdminPurchaseReport() {
       const items = itemsByOrder[order.id] || [];
       if (items.length === 0) return;
 
-      const sellable = getOrderSellableAmount(order as RevenueOrder);
-      // Distribute sellable proportionally across items by unit_price * qty
+      // Use item-level price directly — avoids inflating hardcopy revenue with ebook/audiobook
+      // revenue when the same order contains multiple formats.
       const totalItemValue = items.reduce((s, i) => s + (i.unit_price || 0) * (i.quantity || 1), 0);
 
       items.forEach(item => {
@@ -145,8 +145,9 @@ export default function AdminPurchaseReport() {
         if (!map[bk]) map[bk] = { revenue: 0, cost: 0, profit: 0, soldQty: 0 };
 
         const qty = item.quantity || 1;
-        const proportion = totalItemValue > 0 ? ((item.unit_price || 0) * qty) / totalItemValue : 0;
-        const itemRevenue = sellable * proportion;
+        const itemRevenue = (item.unit_price || 0) * qty;
+        // Distribute order-level costs proportionally across items
+        const proportion = totalItemValue > 0 ? itemRevenue / totalItemValue : (items.length > 0 ? 1 / items.length : 0);
 
         let itemCost: number;
         if (order.is_purchased && (order.purchase_cost_per_unit ?? 0) > 0) {

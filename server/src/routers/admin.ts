@@ -4459,8 +4459,9 @@ export const adminRouter = router({
     const duplicateInLedger: any[] = [];
     positiveLedger.forEach((e) => {
       if (!e.order_id) return;
-      if (seen.has(e.order_id)) duplicateInLedger.push(e);
-      seen.add(e.order_id);
+      const key = `${e.order_id}_${e.category}`;
+      if (seen.has(key)) duplicateInLedger.push(e);
+      seen.add(key);
     });
     return {
       orderRevenue,
@@ -4597,7 +4598,7 @@ export const adminRouter = router({
   }),
 
   investorReportData: adminProcedure.query(async () => {
-    const [orders, orderItems, ledger, earnings, profiles, withdrawals, bookFormats, books] = await Promise.all([
+    const [orders, orderItems, ledger, earnings, profiles, totalUsersCount, withdrawals, bookFormats, books] = await Promise.all([
       prisma.order.findMany({
         select: {
           id: true,
@@ -4622,7 +4623,8 @@ export const adminRouter = router({
       prisma.contributorEarning.findMany({
         select: { book_id: true, format: true, role: true, earned_amount: true, sale_amount: true, status: true, created_at: true },
       }),
-      prisma.profile.findMany({ select: { id: true, created_at: true }, take: 1000 }),
+      prisma.profile.findMany({ select: { id: true, created_at: true } }),
+      prisma.profile.count(),
       prisma.withdrawalRequest.findMany({
         select: { id: true, amount: true, status: true, created_at: true },
         orderBy: { created_at: "desc" },
@@ -4641,6 +4643,7 @@ export const adminRouter = router({
       ledger,
       earnings,
       profiles,
+      totalUsersCount,
       withdrawals,
       bookFormats,
     };
@@ -4825,7 +4828,7 @@ export const adminRouter = router({
     const profileNameByUserId = Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || "User"]));
     const spentByUserId: Record<string, number> = {};
     paidOrders.forEach((order) => {
-      spentByUserId[order.user_id] = (spentByUserId[order.user_id] || 0) + Number(order.total_amount || 0);
+      spentByUserId[order.user_id] = (spentByUserId[order.user_id] || 0) + orderSellableAmount(order);
     });
     const topUsers = Object.entries(spentByUserId)
       .map(([userId, spent]) => ({ name: profileNameByUserId[userId] || "User", spent: Math.round(spent) }))

@@ -9,7 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   TrendingUp, TrendingDown, Download, Printer,
   BookOpen, Users, ShoppingCart, BarChart3, Presentation,
-  ArrowUpRight, ArrowDownRight, Banknote, Landmark, HandCoins, Receipt,
+  ArrowUpRight, ArrowDownRight, Banknote, Landmark, HandCoins,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -31,6 +31,7 @@ export default function AdminInvestorReport() {
   const [ledger, setLedger] = useState<any[]>([]);
   const [earnings, setEarnings] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
+  const [totalUsersCount, setTotalUsersCount] = useState<number>(0);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [bookFormatCosts, setBookFormatCosts] = useState<any[]>([]);
   const [periodFilter, setPeriodFilter] = useState<RevenuePeriod>("all");
@@ -49,6 +50,7 @@ export default function AdminInvestorReport() {
     setLedger((data.ledger as any[]) || []);
     setEarnings(data.earnings || []);
     setProfiles(data.profiles || []);
+    setTotalUsersCount((data as any).totalUsersCount || data.profiles?.length || 0);
     setWithdrawals((data.withdrawals as any[]) || []);
     setBookFormatCosts((data.bookFormats as any[]) || []);
   }, [data]);
@@ -90,7 +92,6 @@ export default function AdminInvestorReport() {
   const totalBuyingCost = enrichedItems.reduce((s, i) => s + getItemBuyingCost(i) * i.quantity, 0);
   const totalPackaging = paidOrders.reduce((s, o) => s + (o.packaging_cost || 0), 0);
   const totalFulfillment = paidOrders.reduce((s, o) => s + (o.fulfillment_cost || 0), 0);
-  const totalShipping = paidOrders.reduce((s, o) => s + (o.shipping_cost || 0), 0);
   const creatorPayouts = earnings.filter(e => e.role !== "platform" && e.status !== "reversed" && filterByPeriod(e.created_at))
     .reduce((s, e) => s + Number(e.earned_amount), 0);
   // Gross profit via unified logic (respects is_purchased + purchase_cost_per_unit)
@@ -100,7 +101,7 @@ export default function AdminInvestorReport() {
   const totalOrderCount = paidOrders.length;
   const avgOrderValue = totalOrderCount > 0 ? totalRevenue / totalOrderCount : 0;
   const uniqueCustomers = new Set(paidOrders.map(o => o.user_id).filter(Boolean)).size;
-  const totalUsers = profiles.length;
+  const totalUsers = totalUsersCount;
 
   // ── Format Revenue ──
   const formatData = useMemo(() => {
@@ -123,7 +124,7 @@ export default function AdminInvestorReport() {
     paidOrders.forEach(o => {
       const m = o.created_at?.slice(0, 7); if (!m) return;
       if (!map[m]) map[m] = { month: m, revenue: 0, expense: 0, profit: 0, orders: 0, users: 0 };
-      map[m].revenue += o.total_amount || 0;
+      map[m].revenue += (o.total_amount || 0) - (o.shipping_cost || 0);
       map[m].orders += 1;
       map[m].profit += calculateOrderProfit(o as RevenueOrder, itemsByOrder[o.id] || []);
     });
@@ -148,7 +149,7 @@ export default function AdminInvestorReport() {
     paidOrders.forEach(o => {
       const d = o.created_at?.slice(0, 10); if (!d || d < last30.toISOString().slice(0, 10)) return;
       if (!map[d]) map[d] = { date: d, revenue: 0, orders: 0, newUsers: 0 };
-      map[d].revenue += o.total_amount || 0;
+      map[d].revenue += (o.total_amount || 0) - (o.shipping_cost || 0);
       map[d].orders += 1;
     });
     profiles.forEach((p: any) => {
@@ -173,7 +174,7 @@ export default function AdminInvestorReport() {
 
   // ── COD Cash Flow ──
   const codOrders = useMemo(() => orders.filter(o => o.payment_method === "cod" && filterByPeriod(o.created_at)), [orders, periodFilter]);
-  const codPending = codOrders.filter(o => ["cod_pending_collection", "unpaid"].includes(o.cod_payment_status || ""))
+  const codPending = codOrders.filter(o => !o.cod_payment_status || ["cod_pending_collection", "unpaid"].includes(o.cod_payment_status))
     .reduce((s, o) => s + (o.total_amount || 0), 0);
   const codCollected = codOrders.filter(o => o.cod_payment_status === "collected_by_courier")
     .reduce((s, o) => s + (o.total_amount || 0), 0);

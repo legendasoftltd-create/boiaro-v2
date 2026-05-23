@@ -168,7 +168,7 @@ export default function AdminAnalytics() {
     filteredOrders.forEach(o => {
       if (!map[o.user_id]) map[o.user_id] = { user_id: o.user_id, orders: 0, spent: 0 };
       map[o.user_id].orders++;
-      map[o.user_id].spent += o.total_amount || 0;
+      map[o.user_id].spent += (o.total_amount || 0) - (o.shipping_cost || 0);
     });
     return Object.values(map).sort((a, b) => b.spent - a.spent).slice(0, 10);
   }, [filteredOrders]);

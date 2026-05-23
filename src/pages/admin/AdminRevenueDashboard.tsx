@@ -20,7 +20,8 @@ export default function AdminRevenueDashboard() {
   const topUsers = data?.topUsers || [];
 
   const totalRevenue = dailyRevenue.reduce((s, d) => s + d.amount, 0);
-  const todayRev = dailyRevenue.length > 0 ? dailyRevenue[dailyRevenue.length - 1]?.amount ?? 0 : 0;
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayRev = dailyRevenue.find(d => d.date === todayKey)?.amount ?? 0;
 
   return (
     <div className="space-y-6">
