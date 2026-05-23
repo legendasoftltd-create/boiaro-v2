@@ -1088,16 +1088,18 @@ model PaymentGateway {
 }
 
 model Payment {
-  id             String   @id @default(uuid())
-  amount         Float
-  created_at     DateTime @default(now())
-  method         String?
-  order_id       String
-  status         String?  @default("pending")
-  transaction_id String?
-  user_id        String
+  id              String   @id @default(uuid())
+  amount          Float
+  created_at      DateTime @default(now())
+  method          String?
+  order_id        String?
+  subscription_id String?
+  status          String?  @default("pending")
+  transaction_id  String?
+  user_id         String
 
-  order Order @relation(fields: [order_id], references: [id])
+  order        Order?            @relation(fields: [order_id], references: [id])
+  subscription UserSubscription? @relation(fields: [subscription_id], references: [id])
 
   @@map("payments")
 }
@@ -1649,12 +1651,13 @@ model UserSubscription {
   end_date        DateTime?
   plan_id         String
   start_date      DateTime @default(now())
-  status          String   @default("active")
+  status          String   @default("pending")
   updated_at      DateTime @updatedAt
   user_id         String
 
-  plan         SubscriptionPlan @relation(fields: [plan_id], references: [id])
+  plan          SubscriptionPlan @relation(fields: [plan_id], references: [id])
   coupon_usages CouponUsage[]
+  payments      Payment[]
 
   @@map("user_subscriptions")
 }

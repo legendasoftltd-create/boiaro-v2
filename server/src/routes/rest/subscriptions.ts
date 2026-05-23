@@ -79,11 +79,14 @@ subscriptionsRestRouter.get("/active", requireAuth, async (req: AuthenticatedReq
   }
 });
 
-// POST /subscriptions/subscribe — subscribe to a plan
+// POST /subscriptions/subscribe — initiate subscription (requires payment for paid plans)
+// Body: { plan_id, coupon_code?, payment_method? }
+// Response (paid plan):   { requires_payment: true, gateway_url, subscription_id, transaction_id }
+// Response (free plan):   { requires_payment: false, subscription: { id, status, ... } }
 subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.auth.userId!;
-    const { plan_id, coupon_code, coupon_discount, payment_method = "demo" } = req.body;
+    const { plan_id, coupon_code, payment_method = "sslcommerz" } = req.body;
 
     if (!plan_id) {
       res.status(400).json({ error: "plan_id is required" });
@@ -96,11 +99,11 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
       return;
     }
 
-    // Validate coupon if provided
-    let resolvedDiscount = Number(coupon_discount ?? 0);
+    // Resolve coupon discount
+    let resolvedDiscount = 0;
     let resolvedCouponId: string | null = null;
 
-    if (coupon_code && !coupon_discount) {
+    if (coupon_code) {
       const coupon = await prisma.coupon.findFirst({
         where: { code: String(coupon_code).toUpperCase(), status: "active" },
       });
@@ -118,59 +121,151 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
           resolvedCouponId = coupon.id;
         }
       }
-    } else if (coupon_code) {
-      const coupon = await prisma.coupon.findFirst({
-        where: { code: String(coupon_code).toUpperCase(), status: "active" },
-      });
-      if (coupon) resolvedCouponId = coupon.id;
     }
 
-    const amountPaid = Math.max(0, plan.price - resolvedDiscount);
-    const now = new Date();
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + (plan.duration_days || 30));
+    const amountDue = Math.max(0, plan.price - resolvedDiscount);
 
+    // Free plan — activate immediately, no payment needed
+    if (amountDue === 0) {
+      const now = new Date();
+      const endDate = new Date(now);
+      endDate.setDate(endDate.getDate() + (plan.duration_days || 30));
+
+      const sub = await prisma.userSubscription.create({
+        data: {
+          user_id: userId,
+          plan_id: plan.id,
+          start_date: now,
+          end_date: endDate,
+          status: "active",
+          coupon_code: coupon_code || null,
+          discount_amount: resolvedDiscount || null,
+          amount_paid: 0,
+        },
+      });
+
+      if (resolvedCouponId) {
+        await prisma.couponUsage.create({
+          data: { coupon_id: resolvedCouponId, user_id: userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
+        });
+        await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { increment: 1 } } });
+      }
+
+      res.status(201).json({ requires_payment: false, subscription: { id: sub.id, status: sub.status, end_date: sub.end_date } });
+      return;
+    }
+
+    // Paid plan — create pending subscription + initiate SSLCommerz
+    const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
+    if (!gateway || !gateway.is_enabled) {
+      res.status(400).json({ error: "Payment gateway is not configured. Contact admin." });
+      return;
+    }
+
+    const gatewayConfig = gateway.config as Record<string, unknown>;
+    const getString = (key: string) => {
+      const v = gatewayConfig[key];
+      return typeof v === "string" && v.trim() ? v.trim() : undefined;
+    };
+    const storeId = getString("store_id") || process.env.SSLCOMMERZ_STORE_ID;
+    const storePassword = getString("store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+
+    if (!storeId || !storePassword) {
+      res.status(400).json({ error: "Payment gateway credentials are missing. Contact admin." });
+      return;
+    }
+
+    const frontendBase = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+    const backendBase = (process.env.BACKEND_URL || process.env.PUBLIC_API_URL || `http://localhost:${process.env.PORT || "3001"}`).replace(/\/$/, "");
+    const mode = gateway.mode === "live" ? "live" : "test";
+
+    // Create pending subscription
     const sub = await prisma.userSubscription.create({
       data: {
         user_id: userId,
         plan_id: plan.id,
-        start_date: now,
-        end_date: endDate,
-        status: "active",
+        status: "pending",
         coupon_code: coupon_code || null,
         discount_amount: resolvedDiscount || null,
-        amount_paid: amountPaid,
+        amount_paid: amountDue,
       },
     });
 
-    // Record coupon usage
-    if (resolvedCouponId && resolvedDiscount) {
+    if (resolvedCouponId) {
       await prisma.couponUsage.create({
-        data: {
-          coupon_id: resolvedCouponId,
-          user_id: userId,
-          subscription_id: sub.id,
-          discount_amount: resolvedDiscount,
-        },
+        data: { coupon_id: resolvedCouponId, user_id: userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
       });
-      await prisma.coupon.update({
-        where: { id: resolvedCouponId },
-        data: { used_count: { increment: 1 } },
-      });
+      await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { increment: 1 } } });
     }
 
-    void payment_method; // payment gateway integration handled separately
+    const transactionId = `SUB-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+    // Create payment record linked to subscription
+    await prisma.payment.create({
+      data: {
+        user_id: userId,
+        subscription_id: sub.id,
+        amount: amountDue,
+        method: payment_method,
+        status: "pending",
+        transaction_id: transactionId,
+      },
+    });
+
+    // Initiate SSLCommerz
+    const successUrl = `${backendBase}/api/v1/payments/sslcommerz/success?redirect=${encodeURIComponent(`${frontendBase}/subscription/callback?status=success`)}`;
+    const failUrl    = `${backendBase}/api/v1/payments/sslcommerz/fail?redirect=${encodeURIComponent(`${frontendBase}/subscription/callback?status=failed`)}`;
+    const cancelUrl  = `${backendBase}/api/v1/payments/sslcommerz/cancel?redirect=${encodeURIComponent(`${frontendBase}/subscription/callback?status=cancelled`)}`;
+    const ipnUrl     = `${backendBase}/api/v1/payments/sslcommerz/ipn`;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, profile: { select: { full_name: true, phone: true } } },
+    });
+
+    const sslPayload = new URLSearchParams({
+      store_id: storeId,
+      store_passwd: storePassword,
+      total_amount: String(amountDue),
+      currency: "BDT",
+      tran_id: transactionId,
+      success_url: successUrl,
+      fail_url: failUrl,
+      cancel_url: cancelUrl,
+      ipn_url: ipnUrl,
+      product_name: plan.name,
+      product_category: "Subscription",
+      product_profile: "general",
+      cus_name: user?.profile?.full_name || "Customer",
+      cus_email: user?.email || "customer@example.com",
+      cus_phone: user?.profile?.phone || "01700000000",
+      cus_add1: "Bangladesh",
+      cus_city: "Dhaka",
+      cus_country: "Bangladesh",
+      shipping_method: "NO",
+      num_of_item: "1",
+      emi_option: "0",
+    });
+
+    const sslBase = mode === "live"
+      ? "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
+      : "https://sandbox.sslcommerz.com/gwprocess/v4/api.php";
+
+    const sslRes = await fetch(sslBase, { method: "POST", body: sslPayload });
+    const sslData = await sslRes.json() as Record<string, unknown>;
+
+    if (sslData.status !== "SUCCESS" || !sslData.GatewayPageURL) {
+      // Clean up pending subscription if gateway fails
+      await prisma.userSubscription.update({ where: { id: sub.id }, data: { status: "failed" } });
+      res.status(502).json({ error: String(sslData.failedreason || sslData.message || "Failed to initiate payment") });
+      return;
+    }
 
     res.status(201).json({
-      id: sub.id,
-      plan_id: sub.plan_id,
-      status: sub.status,
-      start_date: sub.start_date,
-      end_date: sub.end_date,
-      amount_paid: sub.amount_paid,
-      coupon_code: sub.coupon_code,
-      discount_amount: sub.discount_amount,
-      plan: { name: plan.name, description: plan.description, features: plan.features },
+      requires_payment: true,
+      gateway_url: sslData.GatewayPageURL,
+      subscription_id: sub.id,
+      transaction_id: transactionId,
     });
   } catch (error) {
     sendHttpError(res, error);

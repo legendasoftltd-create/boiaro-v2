@@ -3,7 +3,6 @@ import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
-import { sendNotificationEmail } from "../lib/mailer.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
 
 export const walletRouter = router({
@@ -342,61 +341,81 @@ export const walletRouter = router({
     .input(z.object({
       planId: z.string(),
       couponCode: z.string().optional(),
-      couponDiscount: z.number().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const plan = await prisma.subscriptionPlan.findUnique({ where: { id: input.planId } });
       if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Plan not found" });
 
-      const now = new Date();
-      const endDate = new Date(now);
-      endDate.setDate(endDate.getDate() + (plan.duration_days || 30));
+      // Resolve coupon
+      let resolvedDiscount = 0;
+      let resolvedCouponId: string | null = null;
+      if (input.couponCode) {
+        const coupon = await prisma.coupon.findFirst({ where: { code: input.couponCode.toUpperCase(), status: "active" } });
+        if (coupon) {
+          const now = new Date();
+          const valid =
+            (!coupon.start_date || coupon.start_date <= now) &&
+            (!coupon.end_date || coupon.end_date >= now) &&
+            (!coupon.usage_limit || coupon.used_count < coupon.usage_limit);
+          if (valid) {
+            resolvedDiscount = coupon.discount_type === "percentage"
+              ? Math.min(plan.price, (plan.price * coupon.discount_value) / 100)
+              : Math.min(plan.price, coupon.discount_value);
+            resolvedCouponId = coupon.id;
+          }
+        }
+      }
 
-      const finalAmount = Math.max(0, plan.price - (input.couponDiscount || 0));
+      const amountDue = Math.max(0, plan.price - resolvedDiscount);
 
+      // Free plan — activate immediately
+      if (amountDue === 0) {
+        const now = new Date();
+        const endDate = new Date(now);
+        endDate.setDate(endDate.getDate() + (plan.duration_days || 30));
+
+        const sub = await prisma.userSubscription.create({
+          data: {
+            user_id: ctx.userId,
+            plan_id: input.planId,
+            start_date: now,
+            end_date: endDate,
+            status: "active",
+            coupon_code: input.couponCode || null,
+            discount_amount: resolvedDiscount || null,
+            amount_paid: 0,
+          },
+        });
+
+        if (resolvedCouponId) {
+          await prisma.couponUsage.create({
+            data: { coupon_id: resolvedCouponId, user_id: ctx.userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
+          });
+          await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { increment: 1 } } });
+        }
+
+        return { requires_payment: false, subscription: sub };
+      }
+
+      // Paid plan — create pending subscription, client must go to payment gateway
       const sub = await prisma.userSubscription.create({
         data: {
           user_id: ctx.userId,
           plan_id: input.planId,
-          start_date: now,
-          end_date: endDate,
-          status: "active",
+          status: "pending",
           coupon_code: input.couponCode || null,
-          discount_amount: input.couponDiscount || null,
-          amount_paid: finalAmount,
+          discount_amount: resolvedDiscount || null,
+          amount_paid: amountDue,
         },
       });
 
-      if (input.couponCode && input.couponDiscount) {
-        const coupon = await prisma.coupon.findFirst({ where: { code: input.couponCode.toUpperCase(), status: "active" } });
-        if (coupon) {
-          await prisma.couponUsage.create({
-            data: { coupon_id: coupon.id, user_id: ctx.userId, subscription_id: sub.id, discount_amount: input.couponDiscount },
-          });
-          await prisma.coupon.update({ where: { id: coupon.id }, data: { used_count: { increment: 1 } } });
-        }
+      if (resolvedCouponId) {
+        await prisma.couponUsage.create({
+          data: { coupon_id: resolvedCouponId, user_id: ctx.userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
+        });
+        await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { increment: 1 } } });
       }
 
-      const subUser = await prisma.user.findUnique({ where: { id: ctx.userId }, select: { email: true } });
-      if (subUser?.email) {
-        const fmt = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
-        sendNotificationEmail({
-          to: subUser.email,
-          subject: `Your ${plan.name} subscription is now active!`,
-          templateType: "subscription_activated",
-          bodyHtml: `<h2 style="color:#6d28d9">Subscription Activated ✓</h2>
-            <p>Your <strong>${plan.name}</strong> subscription has been activated successfully.</p>
-            <table style="width:100%;border-collapse:collapse;margin-top:12px">
-              <tr><td style="padding:8px 0;color:#6b7280">Plan</td><td style="padding:8px 0;font-weight:600">${plan.name}</td></tr>
-              <tr><td style="padding:8px 0;color:#6b7280">Valid From</td><td style="padding:8px 0">${fmt(now)}</td></tr>
-              <tr><td style="padding:8px 0;color:#6b7280">Valid Until</td><td style="padding:8px 0">${fmt(endDate)}</td></tr>
-              <tr><td style="padding:8px 0;color:#6b7280">Amount Paid</td><td style="padding:8px 0;font-weight:600">৳${finalAmount.toFixed(2)}</td></tr>
-            </table>
-            <a href="https://boiaro.com" style="display:inline-block;margin-top:16px;padding:10px 24px;background:#6d28d9;color:#fff;border-radius:8px;text-decoration:none">Start Reading</a>`,
-          text: `Your ${plan.name} subscription is active until ${fmt(endDate)}.`,
-        }).catch(() => {});
-      }
-
-      return sub;
+      return { requires_payment: true, subscription_id: sub.id, amount: amountDue };
     }),
 });

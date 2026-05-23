@@ -133,6 +133,49 @@ async function finalizePaidOrder(params: { orderId: string; paymentMethod: strin
   return true;
 }
 
+async function finalizeSubscriptionPayment(params: { subscriptionId: string; paymentMethod: string; transactionId?: string }) {
+  const sub = await prisma.userSubscription.findUnique({
+    where: { id: params.subscriptionId },
+    include: { plan: true },
+  });
+  if (!sub || sub.status === "active") return false;
+
+  const now = new Date();
+  const endDate = new Date(now);
+  endDate.setDate(endDate.getDate() + (sub.plan.duration_days || 30));
+
+  await prisma.userSubscription.update({
+    where: { id: params.subscriptionId },
+    data: { status: "active", start_date: now, end_date: endDate },
+  });
+
+  await prisma.payment.updateMany({
+    where: { subscription_id: params.subscriptionId },
+    data: { status: "paid", transaction_id: params.transactionId || undefined },
+  });
+
+  const subUser = await prisma.user.findUnique({ where: { id: sub.user_id }, select: { email: true } });
+  if (subUser?.email) {
+    const fmt = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+    sendNotificationEmail({
+      to: subUser.email,
+      subject: `Your ${sub.plan.name} subscription is now active!`,
+      templateType: "subscription_activated",
+      bodyHtml: `<h2 style="color:#6d28d9">Subscription Activated ✓</h2>
+        <p>Your <strong>${sub.plan.name}</strong> subscription has been activated successfully.</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:12px">
+          <tr><td style="padding:8px 0;color:#6b7280">Plan</td><td style="padding:8px 0;font-weight:600">${sub.plan.name}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280">Valid From</td><td style="padding:8px 0">${fmt(now)}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280">Valid Until</td><td style="padding:8px 0">${fmt(endDate)}</td></tr>
+          <tr><td style="padding:8px 0;color:#6b7280">Amount Paid</td><td style="padding:8px 0;font-weight:600">৳${Number(sub.amount_paid ?? 0).toFixed(2)}</td></tr>
+        </table>`,
+      text: `Your ${sub.plan.name} subscription is active until ${fmt(endDate)}.`,
+    }).catch(() => {});
+  }
+
+  return true;
+}
+
 paymentsRestRouter.post("/initiate", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { order_id } = req.body;
@@ -327,6 +370,7 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
       : null;
 
     const orderId = payment?.order_id;
+    const subscriptionId = payment?.subscription_id;
     const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
     const gatewayConfig = asObject(gateway?.config);
     const storeId = getString(gatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
@@ -361,25 +405,37 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
       },
     });
 
-    if (status === "success" && orderId) {
-      const validationStatus = String(validationResponse?.status || "").toUpperCase();
-      const isValidated = !validationResponse || validationStatus === "VALID" || validationStatus === "VALIDATED";
-      if (isValidated) {
-        await finalizePaidOrder({
-          orderId,
-          paymentMethod: "sslcommerz",
-          transactionId: tranId,
+    const validationStatus = String(validationResponse?.status || "").toUpperCase();
+    const isValidated = !validationResponse || validationStatus === "VALID" || validationStatus === "VALIDATED";
+
+    if (status === "success" && isValidated) {
+      if (orderId) {
+        await finalizePaidOrder({ orderId, paymentMethod: "sslcommerz", transactionId: tranId });
+      } else if (subscriptionId) {
+        await finalizeSubscriptionPayment({ subscriptionId, paymentMethod: "sslcommerz", transactionId: tranId });
+      }
+    } else if (status !== "success") {
+      if (orderId) {
+        await prisma.payment.updateMany({
+          where: { order_id: orderId },
+          data: { status: status === "cancelled" ? "cancelled" : "failed" },
+        });
+      } else if (subscriptionId) {
+        await prisma.payment.updateMany({
+          where: { subscription_id: subscriptionId },
+          data: { status: status === "cancelled" ? "cancelled" : "failed" },
+        });
+        await prisma.userSubscription.update({
+          where: { id: subscriptionId },
+          data: { status: status === "cancelled" ? "cancelled" : "failed" },
         });
       }
-    } else if (orderId) {
-      await prisma.payment.updateMany({
-        where: { order_id: orderId },
-        data: { status: status === "cancelled" ? "cancelled" : "failed" },
-      });
     }
 
     const separator = redirect.includes("?") ? "&" : "?";
-    const finalUrl = `${redirect}${separator}order_id=${encodeURIComponent(orderId || "")}`;
+    const finalUrl = subscriptionId
+      ? `${redirect}${separator}subscription_id=${encodeURIComponent(subscriptionId)}`
+      : `${redirect}${separator}order_id=${encodeURIComponent(orderId || "")}`;
     res.redirect(finalUrl);
   } catch (error) {
     console.error("SSLCommerz callback failed:", error);
