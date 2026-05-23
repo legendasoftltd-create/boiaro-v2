@@ -102,12 +102,31 @@ export const walletRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { bookId, format, coinCost } = input;
+      const { bookId, format } = input;
 
       const existing = await prisma.contentUnlock.findFirst({
         where: { user_id: ctx.userId, book_id: bookId, format },
       });
       if (existing?.status === "active") return { already_unlocked: true };
+
+      // For premium_voice, always fetch the real price from the DB — never trust the client value.
+      let coinCost = input.coinCost;
+      if (format === "premium_voice") {
+        const book = await prisma.book.findUnique({
+          where: { id: bookId },
+          select: { premium_voice_enabled: true, voice_access_type: true, voice_coin_price: true },
+        });
+        if (!book || !book.premium_voice_enabled) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Premium Voice not enabled for this book" });
+        }
+        if (book.voice_access_type === "subscription") {
+          throw new TRPCError({ code: "FORBIDDEN", message: "This book requires an active subscription" });
+        }
+        if (book.voice_access_type !== "free" && (book.voice_coin_price === null || book.voice_coin_price <= 0)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Coin price not configured for this book — contact admin" });
+        }
+        coinCost = book.voice_access_type === "free" ? 0 : (book.voice_coin_price ?? 0);
+      }
 
       // Free unlocks skip wallet check entirely
       if (coinCost > 0) {
