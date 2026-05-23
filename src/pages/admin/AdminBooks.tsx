@@ -370,7 +370,7 @@ export default function AdminBooks() {
       title: book.title || "", title_en: book.title_en || "", slug: book.slug || "",
       description: book.description || "", description_bn: book.description_bn || "",
       author_id: book.author_id || "", category_id: book.category_id || "",
-      publisher_id: book.publisher_id || "", narrator_id: "",
+      publisher_id: book.publisher_id || "", narrator_id: book.narrator_id || "",
       cover_url: book.cover_url || "",
       is_featured: book.is_featured || false, is_bestseller: book.is_bestseller || false,
       is_new: book.is_new || false, is_free: book.is_free || false,
@@ -380,12 +380,12 @@ export default function AdminBooks() {
   };
 
   const save = async () => {
-    const { narrator_id: _narratorId, ...formWithoutNarrator } = form;
     const payload: any = {
-      ...formWithoutNarrator,
+      ...form,
       author_id: form.author_id || null,
       category_id: form.category_id || null,
       publisher_id: form.publisher_id || null,
+      narrator_id: form.narrator_id || null,
       tags: form.tags ? form.tags.split(",").map((t: string) => t.trim()).filter(Boolean) : null,
     };
     if (!payload.slug) {
