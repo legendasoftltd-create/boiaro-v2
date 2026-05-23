@@ -157,7 +157,7 @@ export function BookDetailHero({ book, liveRating, liveReviewsCount, liveReads }
                     <img src={narrator.avatar || ""} alt="" className="w-8 h-8 rounded-full object-cover ring-2 ring-border group-hover/nar:ring-primary transition-colors" />
                     <div className="text-left">
                       <p className="text-xs text-muted-foreground">Narrator</p>
-                      <p className="text-sm font-medium text-foreground group-hover/nar:text-primary transition-colors">{narrator.name}</p>
+                      <p className="text-sm font-medium text-foreground group-hover/nar:text-primary transition-colors">{narrator.name || narrator.nameEn}</p>
                     </div>
                   </Link>
                   <FollowButton profileId={narrator.id} profileType="narrator" />

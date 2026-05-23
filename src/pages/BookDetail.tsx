@@ -71,18 +71,32 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
   const audiobookFmt = pickFormat("audiobook")
   const hardcopyFmt = pickFormat("hardcopy")
 
-  // Collect narrators
-  const seen = new Set<string>()
+  // Collect narrators — deduplicate by ID, and also by name within the same role
+  // (same narrator may appear from both BookFormat.narrator and contributors list with different IDs)
+  const seenNarratorIds = new Set<string>()
+  const seenNarratorNames = new Set<string>()
   const allNarrators: Narrator[] = []
 
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ")
+
   const addNarrator = (n: Narrator) => {
-    if (n.id && !seen.has(n.id)) { seen.add(n.id); allNarrators.push(n) }
+    if (!n.id) return
+    if (seenNarratorIds.has(n.id)) return
+    // Same role (narrator) + matching name on either Bangla or English = same person
+    const bn = n.name ? norm(n.name) : ""
+    const en = n.nameEn ? norm(n.nameEn) : ""
+    if (bn && seenNarratorNames.has(bn)) return
+    if (en && seenNarratorNames.has(en)) return
+    seenNarratorIds.add(n.id)
+    if (bn) seenNarratorNames.add(bn)
+    if (en) seenNarratorNames.add(en)
+    allNarrators.push(n)
   }
 
   if (audiobookFmt?.narrator) {
     const n = audiobookFmt.narrator
     addNarrator({
-      id: n.id, name: n.name, nameEn: n.name_en || "", avatar: toMediaUrl(n.avatar_url) || "",
+      id: n.id, name: n.name || n.name_en || "", nameEn: n.name_en || "", avatar: toMediaUrl(n.avatar_url) || "",
       bio: n.bio || "", specialty: n.specialty || "", audiobooksCount: 0,
       listeners: "0", rating: n.rating || 0, isFeatured: n.is_featured || false,
     })
