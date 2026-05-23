@@ -30,7 +30,6 @@ export default function AdminFinancialReports() {
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [ledger, setLedger] = useState<any[]>([]);
   const [earnings, setEarnings] = useState<any[]>([]);
-  const [_formats, setFormats] = useState<any[]>([]);
   const [bookFormatCosts, setBookFormatCosts] = useState<any[]>([]);
   const [periodFilter, setPeriodFilter] = useState<RevenuePeriod>("all");
 
@@ -46,7 +45,6 @@ export default function AdminFinancialReports() {
     setOrderItems(data.orderItems || []);
     setLedger((data.ledger as any[]) || []);
     setEarnings(data.earnings || []);
-    setFormats(data.bookFormats || []);
     setBookFormatCosts(data.bookFormats || []);
   }, [data]);
 
@@ -134,6 +132,15 @@ export default function AdminFinancialReports() {
   const bookProfitData = useMemo(() => {
     const bookMap: Record<string, { title: string; revenue: number; buyingCost: number; profit: number; sales: number }> = {};
 
+    // Build per-book creator payout totals (digital formats only)
+    const earningsByBook: Record<string, number> = {};
+    earnings
+      .filter((e: any) => e.role !== "platform" && e.status !== "reversed" && e.format !== "hardcopy" && filterByPeriod(e.created_at))
+      .forEach((e: any) => {
+        if (!e.book_id) return;
+        earningsByBook[e.book_id] = (earningsByBook[e.book_id] || 0) + Number(e.earned_amount);
+      });
+
     enrichedItems.forEach(item => {
       const key = item.book_id;
       if (!key) return;
@@ -144,9 +151,14 @@ export default function AdminFinancialReports() {
       bookMap[key].sales += item.quantity;
     });
 
+    // Add creator payouts to digital book costs
+    Object.keys(earningsByBook).forEach(bookId => {
+      if (bookMap[bookId]) bookMap[bookId].buyingCost += earningsByBook[bookId];
+    });
+
     Object.values(bookMap).forEach(b => { b.profit = b.revenue - b.buyingCost; });
     return Object.values(bookMap).sort((a, b) => b.profit - a.profit);
-  }, [enrichedItems, orderItems]);
+  }, [enrichedItems, orderItems, earnings, periodFilter]);
 
   // ── Format-wise Profit ──
   const formatProfitData = useMemo(() => {
@@ -174,7 +186,7 @@ export default function AdminFinancialReports() {
 
   // ── COD Tracking ──
   const codOrders = useMemo(() => orders.filter(o => o.payment_method === "cod" && filterByPeriod(o.created_at)), [orders, periodFilter]);
-  const codPending = codOrders.filter(o => o.cod_payment_status === "cod_pending_collection" || o.cod_payment_status === "unpaid")
+  const codPending = codOrders.filter(o => !o.cod_payment_status || o.cod_payment_status === "cod_pending_collection" || o.cod_payment_status === "unpaid")
     .reduce((s, o) => s + (o.total_amount || 0), 0);
   const codCollected = codOrders.filter(o => o.cod_payment_status === "collected_by_courier")
     .reduce((s, o) => s + (o.total_amount || 0), 0);
@@ -424,7 +436,7 @@ export default function AdminFinancialReports() {
                     <TableHead>Order</TableHead>
                     <TableHead>Date</TableHead>
                     <TableHead>Amount</TableHead>
-                    <TableHead>Delivery</TableHead>
+                    <TableHead>Order Status</TableHead>
                     <TableHead>COD Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -433,7 +445,7 @@ export default function AdminFinancialReports() {
                     <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-10">No COD orders</TableCell></TableRow>
                   ) : codOrders.slice(0, 50).map(o => (
                     <TableRow key={o.id}>
-                      <TableCell className="font-mono text-xs">#{o.id.slice(0, 8)}</TableCell>
+                      <TableCell className="font-mono text-xs">#{o.order_number || o.id.slice(0, 8)}</TableCell>
                       <TableCell className="text-sm">{new Date(o.created_at).toLocaleDateString()}</TableCell>
                       <TableCell className="font-medium">৳{o.total_amount}</TableCell>
                       <TableCell><Badge variant="outline" className="text-[10px] capitalize">{o.status}</Badge></TableCell>
