@@ -276,11 +276,33 @@ export const booksRouter = router({
 
   authorById: publicProcedure
     .input(z.object({ id: z.string() }))
-    .query(({ input }) => prisma.author.findUnique({ where: { id: input.id } })),
+    .query(async ({ input }) => {
+      const [author, books] = await Promise.all([
+        prisma.author.findUnique({ where: { id: input.id } }),
+        prisma.book.findMany({
+          where: { author_id: input.id, submission_status: "approved" },
+          select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
+          orderBy: { published_date: "desc" },
+        }),
+      ]);
+      if (!author) return null;
+      return { ...author, books };
+    }),
 
   publisherById: publicProcedure
     .input(z.object({ id: z.string() }))
-    .query(({ input }) => prisma.publisher.findUnique({ where: { id: input.id } })),
+    .query(async ({ input }) => {
+      const [publisher, books] = await Promise.all([
+        prisma.publisher.findUnique({ where: { id: input.id } }),
+        prisma.book.findMany({
+          where: { publisher_id: input.id, submission_status: "approved" },
+          select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
+          orderBy: { published_date: "desc" },
+        }),
+      ]);
+      if (!publisher) return null;
+      return { ...publisher, books };
+    }),
 
   authors: publicProcedure.query(async () => {
     const [authors, bookCounts] = await Promise.all([
