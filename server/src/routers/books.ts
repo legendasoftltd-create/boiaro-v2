@@ -1027,6 +1027,16 @@ export const booksRouter = router({
       return { success: true };
     }),
 
+  platformStats: publicProcedure.query(async () => {
+    const [ebooks, audiobooks, hardcopies, narrators] = await Promise.all([
+      prisma.bookFormat.count({ where: { format: "ebook", is_available: true, submission_status: "approved" } }),
+      prisma.bookFormat.count({ where: { format: "audiobook", is_available: true, submission_status: "approved" } }),
+      prisma.bookFormat.count({ where: { format: "hardcopy", is_available: true, submission_status: "approved" } }),
+      prisma.narrator.count({ where: { status: "active" } }),
+    ]);
+    return { ebooks, audiobooks, hardcopies, narrators };
+  }),
+
   searchBooksByTitle: publicProcedure
     .input(z.object({ query: z.string().min(1), excludeId: z.string().optional() }))
     .query(async ({ input }) => {
