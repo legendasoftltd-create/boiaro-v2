@@ -161,7 +161,7 @@ export function getS3PublicUrl(key: string): string {
 
 export interface UploadOptions {
   folder?: string;
-  hint?: "avatar" | "cover" | "ebook" | "audio" | "image";
+  hint?: "avatar" | "cover" | "ebook" | "audio" | "image" | "ambient";
   ext?: string;
 }
 
@@ -174,6 +174,7 @@ export function getS3Folder(
   if (hint === "cover") return "covers";
   if (hint === "ebook") return "ebooks";
   if (hint === "audio") return "audio";
+  if (hint === "ambient") return "ambient-tracks";
   if (hint === "image") return "images";
 
   const m = (mimeType || "").toLowerCase();
@@ -264,10 +265,11 @@ export async function uploadWithFallback(
   options: UploadOptions,
   fallback: FallbackConfig
 ): Promise<UploadResult> {
-  // S3 not configured → pure local mode
+  // S3 not configured → save locally and queue so files sync when S3 is added later
   if (!s3Configured) {
-    const { localUrl } = saveToLocalDisk(buffer, originalName, fallback.uploadsDir, fallback.baseUrl);
-    return { url: localUrl, via: "local" };
+    const { localPath, localUrl } = saveToLocalDisk(buffer, originalName, fallback.uploadsDir, fallback.baseUrl);
+    addToPendingQueue({ localPath, localUrl, originalName, mimeType, options });
+    return { url: localUrl, via: "local", queued: true };
   }
 
   // S3 configured → try upload (respecting circuit state)

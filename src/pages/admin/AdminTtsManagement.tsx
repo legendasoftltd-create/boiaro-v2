@@ -11,10 +11,12 @@ import {
   Sparkles, Trash2, RefreshCw, Mic, BarChart3, Database, Zap,
   AlertTriangle, CheckCircle, XCircle, Play, Pause, Square,
   ChevronLeft, ChevronRight, BookOpen, Search, Volume2, Music, Plus,
-  Save, Download, Settings,
+  Save, Download, Settings, Upload, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 const CACHE_PAGE = 20;
 
@@ -324,8 +326,49 @@ function AmbientManagement() {
   type Track = { id: string; name: string; label: string; emoji: string; url: string; enabled: boolean; prompt?: string };
   const [tracks, setTracks] = useState<Track[]>([]);
   const [newTrack, setNewTrack] = useState({ id: "", name: "", label: "", emoji: "🎵", url: "", prompt: "" });
-  const [generateFor, setGenerateFor] = useState<string | null>(null); // track id being generated
+  const [generateFor, setGenerateFor] = useState<string | null>(null);
   const [duration, setDuration] = useState(22);
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null); // track id or "new"
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadTargetRef = useRef<string | null>(null); // which track/field gets the url
+
+  const handleUploadClick = (targetId: string) => {
+    uploadTargetRef.current = targetId;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !uploadTargetRef.current) return;
+    const target = uploadTargetRef.current;
+    setUploadingFor(target);
+    try {
+      const token = localStorage.getItem("access_token");
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API_BASE}/api/v1/tts/ambient-upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Upload failed");
+      }
+      const data = await res.json() as { url: string; storage: string };
+      if (target === "new") {
+        setNewTrack(p => ({ ...p, url: data.url }));
+      } else {
+        setTracks(prev => prev.map(t => t.id === target ? { ...t, url: data.url } : t));
+      }
+      toast.success(`Uploaded to ${data.storage === "s3" ? "S3" : "local (will sync to S3)"}`);
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed");
+    } finally {
+      setUploadingFor(null);
+    }
+  };
 
   const { data: ambientConfig } = trpc.tts.adminGetAmbientTracks.useQuery();
   useEffect(() => {
@@ -373,11 +416,19 @@ function AmbientManagement() {
           </Button>
         </div>
         <p className="text-xs text-muted-foreground pt-1">
-          ElevenLabs Sound Effects API দিয়ে ambient generate করুন অথবা সরাসরি MP3 URL দিন।
+          লোকাল মেশিন থেকে আপলোড করুন, ElevenLabs দিয়ে generate করুন, অথবা সরাসরি MP3 URL দিন।
           URL খালি থাকলে built-in synthetic sound ব্যবহার হবে।
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Hidden file input shared across all tracks */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/mpeg,audio/mp3,audio/aac,audio/ogg,audio/wav,audio/flac,audio/x-m4a"
+          className="hidden"
+          onChange={handleFileChange}
+        />
 
         {/* Track list */}
         <div className="space-y-3">
@@ -406,14 +457,22 @@ function AmbientManagement() {
                 </div>
               </div>
 
-              {/* Row 2: URL + generate button */}
+              {/* Row 2: URL + upload + generate buttons */}
               <div className="flex gap-2">
                 <Input value={t.url} onChange={e => updateTrack(t.id, "url", e.target.value)}
                   className="h-7 text-xs flex-1" placeholder="MP3 URL (খালি = synthetic fallback)" />
                 <Button size="sm" variant="outline" className="h-7 text-xs shrink-0"
+                  disabled={uploadingFor === t.id}
+                  onClick={() => handleUploadClick(t.id)}>
+                  {uploadingFor === t.id
+                    ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    : <Upload className="h-3 w-3 mr-1" />}
+                  আপলোড
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs shrink-0"
                   onClick={() => setGenerateFor(generateFor === t.id ? null : t.id)}>
                   <Sparkles className="h-3 w-3 mr-1 text-amber-400" />
-                  ElevenLabs Generate
+                  ElevenLabs
                 </Button>
               </div>
 
@@ -470,9 +529,19 @@ function AmbientManagement() {
               onChange={e => setNewTrack(p => ({ ...p, label: e.target.value }))} className="h-7 text-xs" />
             <Input placeholder="Emoji 🎵" value={newTrack.emoji}
               onChange={e => setNewTrack(p => ({ ...p, emoji: e.target.value }))} className="h-7 text-xs" />
-            <Input placeholder="MP3 URL (ঐচ্ছিক)" value={newTrack.url}
-              onChange={e => setNewTrack(p => ({ ...p, url: e.target.value }))}
-              className="h-7 text-xs col-span-2 md:col-span-4" />
+            <div className="flex gap-2 col-span-2 md:col-span-4">
+              <Input placeholder="MP3 URL (ঐচ্ছিক)" value={newTrack.url}
+                onChange={e => setNewTrack(p => ({ ...p, url: e.target.value }))}
+                className="h-7 text-xs flex-1" />
+              <Button size="sm" variant="outline" className="h-7 text-xs shrink-0"
+                disabled={uploadingFor === "new"}
+                onClick={() => handleUploadClick("new")}>
+                {uploadingFor === "new"
+                  ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  : <Upload className="h-3 w-3 mr-1" />}
+                আপলোড
+              </Button>
+            </div>
           </div>
           <Button size="sm" variant="outline" className="text-xs h-7" onClick={addTrack}>
             <Plus className="h-3 w-3 mr-1" /> যোগ করুন

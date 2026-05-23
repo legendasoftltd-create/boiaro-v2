@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,10 +10,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { toMediaUrl } from "@/lib/mediaUrl";
 import {
-  User, Link as LinkIcon, Shield, Save, Loader2,
+  User, Link as LinkIcon, Shield, Save, Loader2, Camera,
   Facebook, Instagram, Youtube, Globe, ExternalLink, Calendar,
 } from "lucide-react";
+
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 interface ProfileData {
   display_name: string;
@@ -52,9 +55,11 @@ export default function CreatorProfilePage({
   specialtyLabel = "Specialty / Genre",
   specialtyPlaceholder = "Your area of expertise",
 }: Props) {
-  const { user } = useAuth();
+  const { user, setProfileAvatar } = useAuth();
   const utils = trpc.useUtils();
   const [form, setForm] = useState<ProfileData>(emptyProfile);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: profileData } = trpc.profiles.me.useQuery(undefined, { enabled: !!user });
 
@@ -94,9 +99,40 @@ export default function CreatorProfilePage({
     updateMutation.mutate(rest);
   };
 
+  const handleAvatarClick = () => fileInputRef.current?.click();
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setUploadingAvatar(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch(`${API_BASE}/api/v1/profile/upload-image`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Upload failed");
+      }
+      const data = await res.json() as { avatar_url: string };
+      setProfileAvatar(data.avatar_url);
+      setForm((prev) => ({ ...prev, avatar_url: data.avatar_url }));
+      toast.success("Photo updated!");
+    } catch (err: any) {
+      toast.error(err.message || "Upload failed");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const initials = (form.display_name || user?.email || roleLabel[0]).slice(0, 2).toUpperCase();
-  const joinedDate = user?.created_at
-    ? new Date(user.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+  const joinedDate = profileData?.created_at
+    ? new Date(profileData.created_at).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
     : "";
 
   const inputClass = "h-10 rounded-xl bg-secondary/40 border-border/40";
@@ -110,11 +146,23 @@ export default function CreatorProfilePage({
       <Card className="border-border/30 bg-card/60">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row items-center gap-5">
-            <div className="relative">
+            <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
               <Avatar className="w-24 h-24 border-2 border-primary/30">
-                <AvatarImage src={form.avatar_url || undefined} />
+                <AvatarImage src={toMediaUrl(form.avatar_url) || undefined} />
                 <AvatarFallback className="bg-primary/10 text-primary text-2xl font-serif">{initials}</AvatarFallback>
               </Avatar>
+              <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                {uploadingAvatar
+                  ? <Loader2 className="w-6 h-6 text-white animate-spin" />
+                  : <Camera className="w-6 h-6 text-white" />}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleAvatarFileChange}
+              />
             </div>
             <div className="text-center sm:text-left">
               <h2 className="text-lg font-bold font-serif">{form.display_name || roleLabel}</h2>
@@ -127,7 +175,7 @@ export default function CreatorProfilePage({
                   </span>
                 )}
               </div>
-              <p className="text-[10px] text-muted-foreground mt-2">Avatar upload available in Phase 5 (storage provider pending)</p>
+              <p className="text-[10px] text-muted-foreground mt-2">Click your photo to update it</p>
             </div>
           </div>
         </CardContent>

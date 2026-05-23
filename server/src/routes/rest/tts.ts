@@ -4,6 +4,7 @@
  *
  *  GET  /voices              — list enabled Bengali AI voices (dynamic from DB)
  *  GET  /ambient-tracks      — list enabled ambient tracks
+ *  POST /ambient-upload      — upload ambient audio file (admin; S3 + local fallback)
  *  GET  /access/:bookId      — check TTS access for authenticated user
  *  POST /unlock              — spend coins to unlock premium TTS
  *  POST /generate            — generate (or retrieve cached) AI audio for a paragraph
@@ -11,6 +12,10 @@
  *  GET  /cache/:bookId       — check cached audio state for a book
  */
 
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import multer from "multer";
 import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
 import { requireAuth, optionalAuth } from "../../middleware/auth.js";
@@ -23,6 +28,27 @@ import {
   getStoredAmbientTracks,
 } from "../../routers/tts.js";
 import { resolveFileUrl } from "../../lib/mediaUrl.js";
+import { uploadWithFallback } from "../../lib/s3.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const UPLOADS_DIR = path.resolve(__dirname, "../../../../uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const PORT = parseInt(process.env.PORT || "3001", 10);
+const BASE_URL = (process.env.FRONTEND_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
+const fallbackConfig = { uploadsDir: UPLOADS_DIR, baseUrl: BASE_URL };
+
+const uploadAmbient = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("audio/") || file.mimetype === "application/octet-stream") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only audio files are allowed (MP3, AAC, OGG, WAV, FLAC)"));
+    }
+  },
+});
 
 export const ttsRestRouter = Router();
 
@@ -65,6 +91,41 @@ ttsRestRouter.get("/ambient-tracks", async (_req, res) => {
     sendHttpError(res, error);
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/tts/ambient-upload
+// Upload an ambient audio file (admin). Stores to S3 with local fallback.
+// Form-data field: "file" — MP3 / AAC / OGG / WAV / FLAC, max 50 MB.
+// Response: { url, storage: "s3" | "local", queued }
+// ─────────────────────────────────────────────────────────────────────────────
+ttsRestRouter.post(
+  "/ambient-upload",
+  requireAuth,
+  uploadAmbient.single("file"),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      if (!req.file) {
+        res.status(400).json({ error: "No file provided. Use form-data field 'file'." });
+        return;
+      }
+      const result = await uploadWithFallback(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype,
+        { hint: "ambient" },
+        fallbackConfig
+      );
+      res.status(201).json({
+        success: true,
+        url: result.url,
+        storage: result.via,
+        queued: result.queued ?? false,
+      });
+    } catch (error) {
+      sendHttpError(res, error);
+    }
+  }
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/v1/tts/access/:bookId

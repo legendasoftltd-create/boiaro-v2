@@ -1658,7 +1658,7 @@ export const adminRouter = router({
 
   searchCreatorLinkCandidates: adminProcedure
     .input(z.object({ query: z.string().min(2) }))
-    .query(async ({ input }) => {
+    .mutation(async ({ input }) => {
       const q = input.query.trim();
       const users = await prisma.user.findMany({
         where: {

@@ -72,7 +72,7 @@ async function patchAllDbUrls(localUrl: string, s3Url: string): Promise<void> {
 let syncInProgress = false;
 
 export async function runStorageSync(): Promise<void> {
-  if (!s3Configured) return;           // nothing to sync: S3 never configured
+  if (!s3Configured) return;           // S3 not configured this run — queue accumulates until credentials are added
   if (syncInProgress) return;          // previous run still going
   if (pendingQueueSize() === 0) return; // nothing waiting
 
@@ -129,14 +129,16 @@ const SYNC_INTERVAL_MS = 30_000; // 30 seconds
 let _timer: ReturnType<typeof setInterval> | null = null;
 
 export function startStorageSyncService(): void {
-  if (!s3Configured) {
-    console.log("[storage-sync] S3 not configured — sync service disabled");
-    return;
-  }
   if (_timer) return; // already running
-  console.log("[storage-sync] service started (interval: 30s)");
+  // Always start — runStorageSync is a no-op until S3 is configured, but the
+  // service must be running so files queued in local-only mode are uploaded
+  // automatically on the first restart after S3 credentials are added.
+  if (s3Configured) {
+    console.log("[storage-sync] service started (interval: 30s)");
+  } else {
+    console.log("[storage-sync] service started — S3 not yet configured, will sync when credentials are added");
+  }
   _timer = setInterval(runStorageSync, SYNC_INTERVAL_MS);
-  // Also run immediately on startup to catch any files queued from previous session
   setImmediate(runStorageSync);
 }
 
