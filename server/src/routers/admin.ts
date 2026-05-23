@@ -213,7 +213,6 @@ export const adminRouter = router({
         author_id: z.string().optional().nullable(),
         category_id: z.string().optional().nullable(),
         publisher_id: z.string().optional().nullable(),
-        narrator_id: z.string().optional().nullable(),
         cover_url: z.string().optional().nullable(),
         is_featured: z.boolean().optional(),
         is_bestseller: z.boolean().optional(),
@@ -225,7 +224,7 @@ export const adminRouter = router({
       })
     )
     .mutation(({ ctx, input }) => {
-      const { id, author_id, category_id, publisher_id, narrator_id, ...data } = input;
+      const { id, author_id, category_id, publisher_id, ...data } = input;
       const normalizedTags =
         data.tags === undefined ? undefined : data.tags === null ? [] : data.tags;
 
@@ -240,7 +239,6 @@ export const adminRouter = router({
           where: { id },
           data: {
             ...data,
-            narrator_id: narrator_id ?? null,
             ...(data.submission_status === "pending" ? { submitted_by: ctx.userId } : {}),
             ...(normalizedTags !== undefined ? { tags: { set: normalizedTags } } : {}),
             ...relationData,
@@ -251,7 +249,6 @@ export const adminRouter = router({
       return prisma.book.create({
         data: {
           ...data,
-          narrator_id: narrator_id || null,
           submission_status: data.submission_status ?? "pending",
           submitted_by: ctx.userId,
           ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),

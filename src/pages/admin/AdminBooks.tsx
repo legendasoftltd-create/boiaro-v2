@@ -71,7 +71,7 @@ export default function AdminBooks() {
   const singleTrackInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     title: "", title_en: "", slug: "", description: "", description_bn: "",
-    author_id: "", category_id: "", publisher_id: "", narrator_id: "", cover_url: "",
+    author_id: "", category_id: "", publisher_id: "", cover_url: "",
     is_featured: false, is_bestseller: false, is_new: false, is_free: false,
     language: "bn", tags: "",
   });
@@ -357,7 +357,7 @@ export default function AdminBooks() {
     setEditBook(null);
     setForm({
       title: "", title_en: "", slug: "", description: "", description_bn: "",
-      author_id: "", category_id: "", publisher_id: "", narrator_id: "", cover_url: "",
+      author_id: "", category_id: "", publisher_id: "", cover_url: "",
       is_featured: false, is_bestseller: false, is_new: false, is_free: false,
       language: "bn", tags: "",
     });
@@ -370,7 +370,7 @@ export default function AdminBooks() {
       title: book.title || "", title_en: book.title_en || "", slug: book.slug || "",
       description: book.description || "", description_bn: book.description_bn || "",
       author_id: book.author_id || "", category_id: book.category_id || "",
-      publisher_id: book.publisher_id || "", narrator_id: book.narrator_id || "",
+      publisher_id: book.publisher_id || "",
       cover_url: book.cover_url || "",
       is_featured: book.is_featured || false, is_bestseller: book.is_bestseller || false,
       is_new: book.is_new || false, is_free: book.is_free || false,
@@ -385,7 +385,6 @@ export default function AdminBooks() {
       author_id: form.author_id || null,
       category_id: form.category_id || null,
       publisher_id: form.publisher_id || null,
-      narrator_id: form.narrator_id || null,
       tags: form.tags ? form.tags.split(",").map((t: string) => t.trim()).filter(Boolean) : null,
     };
     if (!payload.slug) {
@@ -866,19 +865,10 @@ export default function AdminBooks() {
               <p className="text-[10px] text-muted-foreground mt-1">Each format can have its own publisher. Set per-format publisher in the Formats dialog.</p>
             </div>
             <div>
-              <Label>Narrator <span className="text-muted-foreground text-xs">(optional)</span></Label>
-              <SearchableSelect
-                options={narrators.map((n) => ({
-                  id: n.id,
-                  label: n.name_en ? `${n.name} (${n.name_en})` : n.name,
-                  searchAlt: n.name_en || "",
-                }))}
-                value={form.narrator_id}
-                onChange={(v) => setForm({ ...form, narrator_id: v })}
-                placeholder="Select narrator"
-                searchPlaceholder="Search Bangla or English name..."
-                emptyText="No narrators found"
-              />
+              <Label>Narrator <span className="text-muted-foreground text-xs">(set per audiobook format)</span></Label>
+              <p className="text-[11px] text-muted-foreground mt-1 p-2 rounded bg-muted/30 border border-border/30">
+                Narrator is assigned in the <strong>Formats dialog → Audiobook tab</strong>. Open "Book Formats" from the book list to set it.
+              </p>
             </div>
             <div>
               <Label>Language</Label>
