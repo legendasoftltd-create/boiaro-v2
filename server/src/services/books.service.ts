@@ -111,7 +111,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
           weight: true,
           delivery_days: true,
           stock_count: true,
-          narrator: { select: { id: true, name: true, avatar_url: true } },
+          narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, user_id: true } },
         },
       },
     },
@@ -149,7 +149,7 @@ export async function getBookById(id: string) {
       formats: {
         where: { submission_status: "approved", is_available: true },
         include: {
-          narrator: { select: { id: true, name: true, avatar_url: true } },
+          narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, user_id: true } },
         },
       },
     },
@@ -247,7 +247,7 @@ export async function getBookBySlug(slug: string) {
       formats: {
         where: { submission_status: "approved", is_available: true },
         include: {
-          narrator: { select: { id: true, name: true, avatar_url: true } },
+          narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, user_id: true } },
         },
       },
     },

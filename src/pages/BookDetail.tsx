@@ -71,32 +71,29 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
   const audiobookFmt = pickFormat("audiobook")
   const hardcopyFmt = pickFormat("hardcopy")
 
-  // Collect narrators — deduplicate by ID, and also by name within the same role
-  // (same narrator may appear from both BookFormat.narrator and contributors list with different IDs)
+  // Collect narrators — deduplicate by narrator.id and by narrator.user_id === contributor.user_id.
+  // This correctly identifies the same person without false-positives from name matching.
   const seenNarratorIds = new Set<string>()
-  const seenNarratorNames = new Set<string>()
+  const seenNarratorUserIds = new Set<string>()
   const allNarrators: Narrator[] = []
 
-  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ")
-
-  const addNarrator = (n: Narrator) => {
+  const addNarrator = (n: Narrator & { userId?: string }) => {
     if (!n.id) return
     if (seenNarratorIds.has(n.id)) return
-    // Same role (narrator) + matching name on either Bangla or English = same person
-    const bn = n.name ? norm(n.name) : ""
-    const en = n.nameEn ? norm(n.nameEn) : ""
-    if (bn && seenNarratorNames.has(bn)) return
-    if (en && seenNarratorNames.has(en)) return
+    if (n.userId && seenNarratorUserIds.has(n.userId)) return
     seenNarratorIds.add(n.id)
-    if (bn) seenNarratorNames.add(bn)
-    if (en) seenNarratorNames.add(en)
+    if (n.userId) seenNarratorUserIds.add(n.userId)
     allNarrators.push(n)
   }
 
   if (audiobookFmt?.narrator) {
     const n = audiobookFmt.narrator
     addNarrator({
-      id: n.id, name: n.name || n.name_en || "", nameEn: n.name_en || "", avatar: toMediaUrl(n.avatar_url) || "",
+      id: n.id,
+      userId: n.user_id || undefined,
+      name: n.name || n.name_en || "",
+      nameEn: n.name_en || "",
+      avatar: toMediaUrl(n.avatar_url) || "",
       bio: n.bio || "", specialty: n.specialty || "", audiobooksCount: 0,
       listeners: "0", rating: n.rating || 0, isFeatured: n.is_featured || false,
     })
@@ -109,6 +106,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
   })) {
     addNarrator({
       id: contrib.user_id || "",
+      userId: contrib.user_id || undefined,
       name: contrib.display_name || "Narrator",
       nameEn: "",
       avatar: toMediaUrl(contrib.avatar_url) || "",

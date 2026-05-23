@@ -71,7 +71,7 @@ export const booksRouter = router({
             formats: {
               where: { submission_status: "approved", is_available: true },
               include: {
-                narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true } },
+                narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true, user_id: true } },
               },
             },
           },
