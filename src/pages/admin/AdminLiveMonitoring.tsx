@@ -79,7 +79,7 @@ export default function AdminLiveMonitoring() {
 
   const dateFrom = getDateFrom(range);
 
-  const { data: monitorData, isLoading: loadP } = useQuery({
+  const { data: monitorData } = useQuery({
     queryKey: ["admin-live-monitoring-data", dateFrom, formatFilter],
     queryFn: () => utils.admin.liveMonitoringData.fetch({ from: dateFrom, format: formatFilter }),
     refetchInterval: 30_000,
@@ -111,7 +111,7 @@ export default function AdminLiveMonitoring() {
 
   const coinStats = useMemo(() => {
     if (!coinTx) return { awarded: 0, spent: 0, adRewards: 0, bonusRewards: 0, recentEarn: [] as any[], recentSpend: [] as any[] };
-    const earns = coinTx.filter(t => t.type === "earn");
+    const earns = coinTx.filter(t => t.type === "earn" || t.type === "bonus");
     const spends = coinTx.filter(t => t.type === "spend");
     return {
       awarded: earns.reduce((s, t) => s + (t.amount || 0), 0),
@@ -186,7 +186,7 @@ export default function AdminLiveMonitoring() {
     const errors = (sysLogs || []).filter(l => l.level === "error" || l.level === "critical");
     const fpMap = new Map<string, number>();
     errors.forEach(e => {
-      if (e.fingerprint) fpMap.set(e.fingerprint, (fpMap.get(e.fingerprint) || 0) + (e.occurrence_count || 1));
+      if (e.fingerprint) fpMap.set(e.fingerprint, (fpMap.get(e.fingerprint) || 0) + 1);
     });
     const repeated = [...fpMap.entries()].filter(([, c]) => c > 2).sort((a, b) => b[1] - a[1]);
     return { total: errors.length, errors, repeated };
@@ -212,8 +212,6 @@ export default function AdminLiveMonitoring() {
     if (errorStats.repeated.length > 0) a.push({ type: "warning", msg: `${errorStats.repeated.length} repeated error fingerprints` });
     return a;
   }, [paymentStats, unlockStats, revenueStats, errorStats]);
-
-  const isLoading = loadP;
 
   return (
     <div className="space-y-6">

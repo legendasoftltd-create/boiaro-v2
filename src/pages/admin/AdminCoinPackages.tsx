@@ -166,7 +166,7 @@ export default function AdminCoinPackages() {
                   <TableCell className="text-emerald-400">+{pkg.bonus_coins}</TableCell>
                   <TableCell className="font-bold">{pkg.coins + pkg.bonus_coins}</TableCell>
                   <TableCell>৳{pkg.price}</TableCell>
-                  <TableCell className="text-muted-foreground">৳{(pkg.price / (pkg.coins + pkg.bonus_coins)).toFixed(2)}</TableCell>
+                  <TableCell className="text-muted-foreground">{(pkg.coins + pkg.bonus_coins) > 0 ? `৳${(pkg.price / (pkg.coins + pkg.bonus_coins)).toFixed(2)}` : "—"}</TableCell>
                   <TableCell>
                     <button onClick={() => toggleActive(pkg)} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${pkg.is_active ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
                       {pkg.is_active ? "Active" : "Inactive"}

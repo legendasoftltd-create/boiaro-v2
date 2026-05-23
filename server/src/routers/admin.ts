@@ -478,8 +478,9 @@ export const adminRouter = router({
           amount: input.amount,
           entry_date: input.entry_date ? new Date(input.entry_date) : new Date(),
           book_id: input.book_id ?? null,
-          reference_type: input.reference_type ?? null,
+          reference_type: input.reference_type ?? "manual_entry",
           reference_id: input.reference_id ?? null,
+          source: "manual",
           created_by: ctx.userId,
         },
       })

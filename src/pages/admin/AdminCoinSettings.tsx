@@ -105,12 +105,12 @@ export default function AdminCoinSettings() {
         <CardContent className="p-4">
           <p className="text-sm font-medium mb-2">Current Economy Summary</p>
           <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-            <span>1 coin = ৳{settings.coin_conversion_ratio || "0.01"}</span>
-            <span>Daily limit: {settings.coin_daily_limit || "50"} coins</span>
-            <span>Signup bonus: {settings.coin_signup_bonus || "10"} coins</span>
-            <span>Expiry: {settings.coin_expiry_days || "30"} days</span>
-            <span>Ad reward: {settings.coin_ad_reward || "5"} coins</span>
-            <span>Login reward: {settings.coin_daily_login_reward || "5"} coins</span>
+            <span>1 coin = ৳{settings.coin_conversion_ratio ?? "0.01"}</span>
+            <span>Daily limit: {settings.coin_daily_limit ?? "50"} coins</span>
+            <span>Signup bonus: {settings.coin_signup_bonus ?? "10"} coins</span>
+            <span>Expiry: {settings.coin_expiry_days ?? "30"} days</span>
+            <span>Ad reward: {settings.coin_ad_reward ?? "5"} coins</span>
+            <span>Login reward: {settings.coin_daily_login_reward ?? "5"} coins</span>
           </div>
         </CardContent>
       </Card>
