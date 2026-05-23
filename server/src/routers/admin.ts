@@ -2835,6 +2835,76 @@ export const adminRouter = router({
           create: { user_id: input.userId, role: input.role as any },
           update: {},
         });
+
+        // Auto-create the corresponding creator profile if none is linked yet
+        const [profile, user] = await Promise.all([
+          prisma.profile.findUnique({
+            where: { user_id: input.userId },
+            select: { display_name: true, full_name: true, avatar_url: true, bio: true, phone: true, specialty: true, genre: true },
+          }),
+          prisma.user.findUnique({ where: { id: input.userId }, select: { email: true } }),
+        ]);
+        const name = profile?.display_name || profile?.full_name || user?.email?.split("@")[0] || "Creator";
+
+        if (input.role === "writer") {
+          const existing = await prisma.author.findFirst({ where: { user_id: input.userId } });
+          if (!existing) {
+            await prisma.author.create({
+              data: {
+                name,
+                user_id: input.userId,
+                avatar_url: profile?.avatar_url ?? null,
+                bio: profile?.bio ?? null,
+                phone: profile?.phone ?? null,
+                genre: profile?.genre ?? null,
+                linked_at: new Date(),
+              },
+            });
+          }
+        } else if (input.role === "narrator") {
+          const existing = await prisma.narrator.findFirst({ where: { user_id: input.userId } });
+          if (!existing) {
+            await prisma.narrator.create({
+              data: {
+                name,
+                user_id: input.userId,
+                avatar_url: profile?.avatar_url ?? null,
+                bio: profile?.bio ?? null,
+                phone: profile?.phone ?? null,
+                specialty: profile?.specialty ?? null,
+                linked_at: new Date(),
+              },
+            });
+          }
+        } else if (input.role === "publisher") {
+          const existing = await prisma.publisher.findFirst({ where: { user_id: input.userId } });
+          if (!existing) {
+            await prisma.publisher.create({
+              data: {
+                name,
+                user_id: input.userId,
+                logo_url: profile?.avatar_url ?? null,
+                description: profile?.bio ?? null,
+                phone: profile?.phone ?? null,
+                linked_at: new Date(),
+              },
+            });
+          }
+        } else if (input.role === "rj") {
+          const existing = await prisma.rjProfile.findUnique({ where: { user_id: input.userId } });
+          if (!existing) {
+            await prisma.rjProfile.create({
+              data: {
+                stage_name: name,
+                user_id: input.userId,
+                avatar_url: profile?.avatar_url ?? null,
+                bio: profile?.bio ?? null,
+                phone: profile?.phone ?? null,
+                specialty: profile?.specialty ?? null,
+              },
+            });
+          }
+        }
       } else {
         await prisma.userRole.deleteMany({ where: { user_id: input.userId, role: input.role as any } });
       }
