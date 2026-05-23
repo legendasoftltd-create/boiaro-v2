@@ -963,6 +963,19 @@ model Notification {
   @@map("notifications")
 }
 
+model DevicePushToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token      String
+  platform   String   @default("android")
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([user_id, token])
+  @@index([user_id])
+  @@map("device_push_tokens")
+}
+
 model OrderItem {
   id                  String         @id @default(uuid())
   book_id             String?

@@ -1,0 +1,170 @@
+{
+  "info": {
+    "name": "BoiAro — Notifications API",
+    "description": "## Push Notification Status\n\n✅ **Native push (FCM / APNs) is now built.**\n\nThe server delivers notifications via two channels simultaneously:\n1. **In-app** — stored in `user_notifications` table, fetched by polling\n2. **FCM push** — sent to all registered device tokens for the target users\n\nFCM is **active when `FIREBASE_SERVICE_ACCOUNT_JSON` is set** in the server `.env`. Without it, in-app delivery still works and the push step is silently skipped.\n\n---\n\n## How it works\n\n```\nMobile App (on launch)\n  └─ Request push permission from OS\n  └─ Get FCM token from Firebase SDK\n  └─ POST /api/v1/notifications/register-token  ← register token\n\nAdmin Panel\n  └─ Creates Notification (title, message, audience, type, link)\n  └─ Clicks Send →\n       1. Writes UserNotification rows in DB\n       2. Fetches all device_push_tokens for target users\n       3. Sends FCM multicast push to all tokens\n\nMobile App\n  └─ Receives FCM push even when app is closed\n  └─ GET /api/v1/notifications  (on open / pull-to-refresh)\n  └─ POST /api/v1/notifications/read  (mark read)\n  └─ DELETE /api/v1/notifications/register-token  (on logout)\n```\n\n---\n\n**Base URL (production):** `https://boiaro.com.bd`\n**Auth:** `Authorization: Bearer {{access_token}}`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://boiaro.com.bd", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "1. Register Device Push Token",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/notifications/register-token",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "notifications", "register-token"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"your-fcm-device-token-from-firebase-sdk\",\n  \"platform\": \"android\"\n}"
+        },
+        "description": "Registers the device's FCM push token with the server so the user can receive native push notifications.\n\n**When to call:**\n- After the user grants push notification permission\n- After Firebase SDK delivers a token (`getToken()` / `onTokenRefresh()`)\n- On every app launch is safe — upsert avoids duplicates\n\n**Body fields:**\n```\ntoken      String   Required. FCM registration token from Firebase SDK\nplatform   String   Optional. \"android\" (default) or \"ios\"\n```\n\n**Response fields:**\n```\nsuccess            Boolean\npush_enabled       Boolean  — always true if token was saved\nfirebase_configured Boolean  — true if server has FIREBASE_SERVICE_ACCOUNT_JSON set\n```\n\nIf `firebase_configured` is false, the token is saved but no FCM pushes will be sent until the server is configured."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"success\": true,\n  \"push_enabled\": true,\n  \"firebase_configured\": true\n}"
+        },
+        {
+          "name": "Missing token",
+          "status": "Bad Request",
+          "code": 400,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": false, \"error\": \"token is required\" }"
+        },
+        {
+          "name": "Unauthorized",
+          "status": "Unauthorized",
+          "code": 401,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"error\": \"Unauthorized\" }"
+        }
+      ]
+    },
+
+    {
+      "name": "2. Unregister Device Push Token (on logout)",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/notifications/register-token",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "notifications", "register-token"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"your-fcm-device-token-to-remove\"\n}"
+        },
+        "description": "Removes the device's FCM token from the server. After this, the device will no longer receive push notifications.\n\n**When to call:**\n- User logs out\n- User disables push notifications in app settings"
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": true }"
+        }
+      ]
+    },
+
+    {
+      "name": "3. Get My Notifications",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/notifications",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "notifications"]
+        },
+        "description": "Returns the 50 most recent notifications for the authenticated user, ordered newest first.\n\n**When to call:**\n- On app open (after push tap or fresh open)\n- On pull-to-refresh in the notifications screen\n\n**Response fields:**\n```\nnotifications[]\n  id         String   — use to mark as read\n  title      String\n  message    String\n  type       String   — general | order | promo | system | reminder | support\n  link       String?  — deep link or URL to navigate to on tap\n  image_url  String?  — banner image for rich notification\n  is_read    Boolean\n  created_at ISO 8601\n```"
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{\n  \"notifications\": [\n    {\n      \"id\": \"un_abc123\",\n      \"title\": \"নতুন বই এসেছে!\",\n      \"message\": \"আপনার পছন্দের লেখক নতুন বই প্রকাশ করেছেন।\",\n      \"type\": \"general\",\n      \"link\": \"/books/xyz\",\n      \"image_url\": null,\n      \"is_read\": false,\n      \"created_at\": \"2026-05-23T09:00:00.000Z\"\n    },\n    {\n      \"id\": \"un_def456\",\n      \"title\": \"অর্ডার নিশ্চিত হয়েছে\",\n      \"message\": \"আপনার অর্ডার #ORD-001 সফলভাবে প্রক্রিয়া করা হয়েছে।\",\n      \"type\": \"order\",\n      \"link\": \"/orders/ORD-001\",\n      \"image_url\": null,\n      \"is_read\": true,\n      \"created_at\": \"2026-05-22T15:30:00.000Z\"\n    }\n  ]\n}"
+        },
+        {
+          "name": "Empty",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"notifications\": [] }"
+        }
+      ]
+    },
+
+    {
+      "name": "4. Mark Specific Notifications as Read",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/notifications/read",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "notifications", "read"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ids\": [\"un_abc123\", \"un_def456\"]\n}"
+        },
+        "description": "Marks one or more notifications as read.\n\n**When to call:**\n- User taps a specific notification\n- User opens the notification detail screen\n\n**Body:**\n```\nids   string[]   Array of UserNotification IDs from the list response\n```"
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": true, \"message\": \"Notifications marked as read\" }"
+        }
+      ]
+    },
+
+    {
+      "name": "5. Mark ALL Notifications as Read",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/notifications/read",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "v1", "notifications", "read"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{}"
+        },
+        "description": "Marks every unread notification for the current user as read.\n\n**When to call:**\n- User taps \"Mark all as read\"\n\nSend an empty body `{}` — when `ids` is absent, all unread notifications are cleared."
+      },
+      "response": [
+        {
+          "name": "Success",
+          "status": "OK",
+          "code": 200,
+          "header": [{ "key": "Content-Type", "value": "application/json" }],
+          "body": "{ \"success\": true, \"message\": \"Notifications marked as read\" }"
+        }
+      ]
+    }
+
+  ]
+}

@@ -10,6 +10,7 @@ import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
 import { sendMail, sendNotificationEmail, testSmtpConnection } from "../lib/mailer.js";
 import { sendSslWirelessSms } from "../lib/sms.js";
+import { sendPushToTokens } from "../lib/firebase.js";
 import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 
@@ -2056,7 +2057,22 @@ export const adminRouter = router({
         data: { status: "sent", sent_at: new Date() },
       });
 
-      return { sent: userIds.length };
+      // Fire FCM push to all registered device tokens for these users
+      const tokenRows = await (prisma as any).devicePushToken.findMany({
+        where: { user_id: { in: userIds } },
+        select: { token: true },
+      });
+      const tokens: string[] = tokenRows.map((r: any) => r.token);
+      const pushSent = await sendPushToTokens(tokens, {
+        title: notification.title,
+        message: notification.message,
+        type: notification.type,
+        link: notification.link,
+        imageUrl: notification.image_url,
+        notificationId: notification.id,
+      });
+
+      return { sent: userIds.length, push_sent: pushSent };
     }),
 
   // ── Notification Templates ───────────────────────────────────────────────────
