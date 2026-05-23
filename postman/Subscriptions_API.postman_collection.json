@@ -1,0 +1,216 @@
+{
+  "info": {
+    "name": "BoiAro — Subscriptions API",
+    "description": "Full subscription lifecycle for mobile apps.\n\n**Base URL (production):** `https://boiaro.com.bd`\n**Auth:** Pass `Authorization: Bearer {{access_token}}` on all protected endpoints.\n\n---\n\n## Subscription Flow\n\n```\n1. GET  /plans              → list available plans\n2. POST /subscribe          → create pending sub + get SSLCommerz gateway_url\n3. ── user completes payment in WebView / browser ──\n4. SSLCommerz callback activates subscription automatically\n5. GET  /active             → confirm status is \"active\"\n```\n\n**Free / fully-discounted plans** skip the payment step and activate immediately.\n\n## Subscription statuses\n| status     | meaning |\n|------------|---------|\n| `pending`  | Created, awaiting payment |\n| `active`   | Payment confirmed, access granted |\n| `failed`   | Payment failed |\n| `cancelled`| Payment cancelled by user |\n| `expired`  | end_date passed (checked at query time) |",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",       "value": "https://boiaro.com.bd", "type": "string" },
+    { "key": "access_token",  "value": "", "type": "string" },
+    { "key": "plan_id",       "value": "", "type": "string" },
+    { "key": "subscription_id", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "Plans",
+      "item": [
+        {
+          "name": "Get All Plans",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/subscriptions/plans",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "subscriptions", "plans"]
+            },
+            "description": "Returns all active subscription plans. Public — no auth required.\n\n**Response fields per plan:**\n```\nid             String\nname           String   — e.g. \"Monthly Premium\"\ndescription    String?\nprice          Float    — amount in BDT\nduration_days  Int      — validity period\nfeatures       Json?    — array of feature strings\nis_featured    Boolean\nsort_order     Int\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"plans\": [\n    {\n      \"id\": \"plan-abc\",\n      \"name\": \"Monthly Premium\",\n      \"description\": \"Unlimited AI Voice & audiobooks for 30 days\",\n      \"price\": 149,\n      \"duration_days\": 30,\n      \"features\": [\"Unlimited AI Voice\", \"All Audiobooks\", \"Offline Reading\"],\n      \"is_active\": true,\n      \"is_featured\": true,\n      \"sort_order\": 1\n    },\n    {\n      \"id\": \"plan-xyz\",\n      \"name\": \"Annual Premium\",\n      \"description\": \"Best value — 12 months access\",\n      \"price\": 999,\n      \"duration_days\": 365,\n      \"features\": [\"Everything in Monthly\", \"Priority Support\"],\n      \"is_active\": true,\n      \"is_featured\": false,\n      \"sort_order\": 2\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "Subscribe",
+      "item": [
+        {
+          "name": "Subscribe to Plan (Paid)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/subscriptions/subscribe",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "subscriptions", "subscribe"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan_id\": \"{{plan_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Initiates subscription purchase for a paid plan.\n\nCreates a `pending` subscription and returns an SSLCommerz `gateway_url`. Open this URL in a WebView or browser for the user to complete payment. SSLCommerz will redirect back automatically on success/fail/cancel.\n\n**Body fields:**\n```\nplan_id          String   required\ncoupon_code      String?  optional — apply discount coupon\npayment_method   String?  default: \"sslcommerz\"\n```\n\n**Response:**\n```\nrequires_payment  Boolean   — true for paid plans\ngateway_url       String    — open this URL for payment\nsubscription_id   String    — track status with GET /active\ntransaction_id    String    — SSLCommerz transaction reference\n```\n\n**After payment:** poll `GET /active` — status becomes `active` once SSLCommerz confirms payment."
+          },
+          "response": [
+            {
+              "name": "Paid Plan — Payment Required",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"requires_payment\": true,\n  \"gateway_url\": \"https://sandbox.sslcommerz.com/EasyCheckOut/testcdef...\",\n  \"subscription_id\": \"sub-uuid-here\",\n  \"transaction_id\": \"SUB-1716400000000-XYZ\"\n}"
+            },
+            {
+              "name": "Gateway Not Configured",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"error\": \"Payment gateway is not configured. Contact admin.\" }"
+            }
+          ]
+        },
+        {
+          "name": "Subscribe to Plan (Free / 100% Coupon)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/subscriptions/subscribe",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "subscriptions", "subscribe"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan_id\": \"{{plan_id}}\",\n  \"coupon_code\": \"FREE100\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "When the plan price is 0, or a coupon brings it to 0, the subscription is activated immediately — no payment step needed.\n\n**Response:**\n```\nrequires_payment  Boolean   — false\nsubscription      Object    — { id, status: \"active\", end_date }\n```"
+          },
+          "response": [
+            {
+              "name": "Free / Fully Discounted — Activated Immediately",
+              "status": "Created",
+              "code": 201,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"requires_payment\": false,\n  \"subscription\": {\n    \"id\": \"sub-uuid-here\",\n    \"status\": \"active\",\n    \"end_date\": \"2026-06-23T10:00:00.000Z\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "Status",
+      "item": [
+        {
+          "name": "Get Active Subscription",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/subscriptions/active",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "subscriptions", "active"]
+            },
+            "description": "Returns the current user's active subscription, or `null` if none.\n\nPoll this after payment redirect to confirm activation.\n\n**Response:**\n```\nsubscription  Object | null\n  id              String\n  plan_id         String\n  status          String   — \"active\"\n  start_date      DateTime\n  end_date        DateTime\n  amount_paid     Float\n  coupon_code     String?\n  discount_amount Float?\n  subscription_plans:\n    name          String\n    description   String?\n    features      Json?\n    duration_days Int\n```"
+          },
+          "response": [
+            {
+              "name": "Active Subscription Exists",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"subscription\": {\n    \"id\": \"sub-uuid-here\",\n    \"plan_id\": \"plan-abc\",\n    \"status\": \"active\",\n    \"start_date\": \"2026-05-23T10:00:00.000Z\",\n    \"end_date\": \"2026-06-23T10:00:00.000Z\",\n    \"amount_paid\": 149,\n    \"coupon_code\": null,\n    \"discount_amount\": null,\n    \"subscription_plans\": {\n      \"name\": \"Monthly Premium\",\n      \"description\": \"Unlimited AI Voice & audiobooks for 30 days\",\n      \"features\": [\"Unlimited AI Voice\", \"All Audiobooks\"],\n      \"duration_days\": 30\n    }\n  }\n}"
+            },
+            {
+              "name": "No Active Subscription",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"subscription\": null }"
+            }
+          ]
+        },
+        {
+          "name": "Get All My Subscriptions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/subscriptions/my",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "subscriptions", "my"]
+            },
+            "description": "Returns all subscriptions for the current user (all statuses — pending, active, failed, cancelled).\n\nUseful for showing subscription history."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"subscriptions\": [\n    {\n      \"id\": \"sub-uuid-here\",\n      \"plan_id\": \"plan-abc\",\n      \"status\": \"active\",\n      \"start_date\": \"2026-05-23T10:00:00.000Z\",\n      \"end_date\": \"2026-06-23T10:00:00.000Z\",\n      \"amount_paid\": 149,\n      \"coupon_code\": null,\n      \"discount_amount\": null,\n      \"subscription_plans\": {\n        \"name\": \"Monthly Premium\",\n        \"description\": \"Unlimited AI Voice & audiobooks for 30 days\",\n        \"features\": [\"Unlimited AI Voice\", \"All Audiobooks\"]\n      }\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "TTS Access Check",
+      "item": [
+        {
+          "name": "Check TTS Access for Book",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/tts/access/:bookId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "tts", "access", ":bookId"],
+              "variable": [{ "key": "bookId", "value": "{{book_id}}", "description": "Book ID to check TTS access for" }]
+            },
+            "description": "Check whether the current user has access to Premium AI Voice for a specific book.\n\nGrants access when any of these conditions are true:\n- `voice_access_type` is `free`\n- User has a `ContentUnlock` record (paid with coins)\n- User has a paid ebook order for this book\n- User has an **active subscription**\n\n**Response fields:**\n```\npremium_voice_enabled  Boolean  — false = feature not enabled for this book\nunlocked               Boolean  — true = user has access\naccess_type            String   — \"free\" | \"paid\" | \"subscription\"\ncoin_price             Int      — coins needed to unlock (0 if free)\nwallet_balance         Int      — user's current coin balance\nmessage                String?  — reason if unlocked is false\n```"
+          },
+          "response": [
+            {
+              "name": "Access Granted (Subscription)",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": true,\n  \"unlocked\": true,\n  \"access_type\": \"subscription\",\n  \"coin_price\": 20,\n  \"wallet_balance\": 150\n}"
+            },
+            {
+              "name": "Access Denied — Coin Unlock Required",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": true,\n  \"unlocked\": false,\n  \"access_type\": \"paid\",\n  \"coin_price\": 20,\n  \"wallet_balance\": 50,\n  \"message\": \"Purchase required — unlock with coins to use AI Voice\"\n}"
+            },
+            {
+              "name": "Premium Voice Not Enabled",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": false,\n  \"unlocked\": false,\n  \"access_type\": null,\n  \"coin_price\": null\n}"
+            }
+          ]
+        }
+      ]
+    }
+
+  ]
+}
