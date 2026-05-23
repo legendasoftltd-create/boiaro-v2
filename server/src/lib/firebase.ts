@@ -1,22 +1,55 @@
 import admin from "firebase-admin";
+import { prisma } from "./prisma.js";
 
-let app: admin.app.App | null = null;
+// ─── Cached app state ────────────────────────────────────────────────────────
+let cachedApp: admin.app.App | null = null;
+let cachedJson: string | null = null;
 
-function getApp(): admin.app.App | null {
-  if (app) return app;
+async function getServiceAccountJson(): Promise<string | null> {
+  // DB setting takes priority over env var
+  try {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: "firebase_service_account_json" },
+    });
+    if (row?.value) return row.value;
+  } catch {
+    // DB unavailable — fall through to env
+  }
+  return process.env.FIREBASE_SERVICE_ACCOUNT_JSON ?? null;
+}
 
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!serviceAccountJson) return null;
+async function getFirebaseApp(): Promise<admin.app.App | null> {
+  const json = await getServiceAccountJson();
+  if (!json) return null;
+
+  // Re-init only when credentials actually changed
+  if (cachedApp && cachedJson === json) return cachedApp;
 
   try {
-    const serviceAccount = JSON.parse(serviceAccountJson);
-    app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-    return app;
-  } catch {
-    console.error("[firebase] Failed to initialize — check FIREBASE_SERVICE_ACCOUNT_JSON");
+    // Tear down previous app before creating a new one
+    if (cachedApp) {
+      await cachedApp.delete();
+      cachedApp = null;
+      cachedJson = null;
+    }
+
+    const serviceAccount = JSON.parse(json);
+    const appName = `boiaro-${Date.now()}`;
+    cachedApp = admin.initializeApp(
+      { credential: admin.credential.cert(serviceAccount) },
+      appName
+    );
+    cachedJson = json;
+    return cachedApp;
+  } catch (err) {
+    console.error("[firebase] Failed to initialize:", (err as Error).message);
+    cachedApp = null;
+    cachedJson = null;
     return null;
   }
 }
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export interface PushPayload {
   title: string;
@@ -28,15 +61,14 @@ export interface PushPayload {
 }
 
 /**
- * Send FCM push notifications to a list of device tokens.
- * Silently no-ops if Firebase is not configured.
+ * Send FCM push to a list of device tokens.
+ * Silently no-ops when Firebase is not configured.
  * Returns count of successful deliveries.
  */
 export async function sendPushToTokens(tokens: string[], payload: PushPayload): Promise<number> {
-  const firebaseApp = getApp();
-  if (!firebaseApp || !tokens.length) return 0;
-
-  const messaging = admin.messaging(firebaseApp);
+  if (!tokens.length) return 0;
+  const app = await getFirebaseApp();
+  if (!app) return 0;
 
   const message: admin.messaging.MulticastMessage = {
     tokens,
@@ -55,14 +87,12 @@ export async function sendPushToTokens(tokens: string[], payload: PushPayload): 
       notification: { sound: "default" },
     },
     apns: {
-      payload: {
-        aps: { sound: "default" },
-      },
+      payload: { aps: { sound: "default" } },
     },
   };
 
   try {
-    const response = await messaging.sendEachForMulticast(message);
+    const response = await admin.messaging(app).sendEachForMulticast(message);
     return response.successCount;
   } catch (err) {
     console.error("[firebase] sendPushToTokens error:", err);
@@ -70,4 +100,45 @@ export async function sendPushToTokens(tokens: string[], payload: PushPayload): 
   }
 }
 
-export const isFirebaseConfigured = () => Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+/**
+ * Validate credentials by sending a dry-run message to a dummy token.
+ * Returns { ok: true } if credentials are valid (even if the token itself is invalid).
+ * Returns { ok: false, error: string } for auth/config failures.
+ */
+export async function testFirebaseCredentials(): Promise<{ ok: boolean; error?: string }> {
+  const app = await getFirebaseApp();
+  if (!app) return { ok: false, error: "Firebase is not configured" };
+
+  try {
+    await admin.messaging(app).send(
+      { token: "test-invalid-token-for-credential-check", notification: { title: "test" } },
+      true // dry_run
+    );
+    return { ok: true };
+  } catch (err: any) {
+    const code: string = err?.errorInfo?.code ?? err?.code ?? "";
+    // These codes mean credentials are valid — the failure is just about the token
+    if (
+      code.includes("registration-token-not-registered") ||
+      code.includes("invalid-registration-token") ||
+      code.includes("invalid-argument")
+    ) {
+      return { ok: true };
+    }
+    return { ok: false, error: err?.message ?? "Unknown error" };
+  }
+}
+
+/** Force the cached app to reinitialize on next use (call after saving new credentials). */
+export function invalidateFirebaseCache(): void {
+  if (cachedApp) {
+    cachedApp.delete().catch(() => {});
+    cachedApp = null;
+    cachedJson = null;
+  }
+}
+
+export async function isFirebaseConfigured(): Promise<boolean> {
+  const json = await getServiceAccountJson();
+  return Boolean(json);
+}

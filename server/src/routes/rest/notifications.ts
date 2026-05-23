@@ -83,7 +83,7 @@ notificationsRestRouter.post("/register-token", requireAuth, async (req: Authent
     res.json({
       success: true,
       push_enabled: true,
-      firebase_configured: isFirebaseConfigured(),
+      firebase_configured: await isFirebaseConfigured(),
     });
   } catch (error) {
     sendHttpError(res, error);

@@ -132,6 +132,7 @@ const navGroups: NavGroup[] = [
       { label: "Email Templates", path: "/admin/email-templates", icon: FileText },
       { label: "Email Logs", path: "/admin/email-logs", icon: Mail },
       { label: "Email Settings", path: "/admin/email-settings", icon: Settings },
+      { label: "Push Settings", path: "/admin/push-settings", icon: Bell },
       { label: "SMS Center", path: "/admin/sms", icon: MessageSquare },
     ],
   },

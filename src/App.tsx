@@ -81,6 +81,7 @@ const AdminUsers = lazy(() => import("./pages/admin/AdminUsers.tsx"));
 const AdminEmailTemplates = lazy(() => import("./pages/admin/AdminEmailTemplates.tsx"));
 const AdminEmailLogs = lazy(() => import("./pages/admin/AdminEmailLogs.tsx"));
 const AdminEmailSettings = lazy(() => import("./pages/admin/AdminEmailSettings.tsx"));
+const AdminPushSettings = lazy(() => import("./pages/admin/AdminPushSettings.tsx"));
 const AdminAnalytics = lazy(() => import("./pages/admin/AdminAnalytics.tsx"));
 const AdminAccounting = lazy(() => import("./pages/admin/AdminAccounting.tsx"));
 const AdminFinancialReports = lazy(() => import("./pages/admin/AdminFinancialReports.tsx"));
@@ -280,6 +281,7 @@ const App = () => {
                   <Route path="email-templates" element={<AdminEmailTemplates />} />
                   <Route path="email-logs" element={<AdminEmailLogs />} />
                   <Route path="email-settings" element={<AdminEmailSettings />} />
+                  <Route path="push-settings" element={<AdminPushSettings />} />
                   <Route path="analytics" element={<AdminAnalytics />} />
                   <Route path="pages" element={<AdminCmsPages />} />
                   <Route path="blog" element={<AdminBlog />} />

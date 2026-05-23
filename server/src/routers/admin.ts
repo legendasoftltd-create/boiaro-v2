@@ -10,7 +10,7 @@ import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
 import { sendMail, sendNotificationEmail, testSmtpConnection } from "../lib/mailer.js";
 import { sendSslWirelessSms } from "../lib/sms.js";
-import { sendPushToTokens } from "../lib/firebase.js";
+import { sendPushToTokens, testFirebaseCredentials, invalidateFirebaseCache } from "../lib/firebase.js";
 import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 
@@ -2057,11 +2057,17 @@ export const adminRouter = router({
         data: { status: "sent", sent_at: new Date() },
       });
 
-      // Fire FCM push to all registered device tokens for these users
-      const tokenRows = await (prisma as any).devicePushToken.findMany({
-        where: { user_id: { in: userIds } },
-        select: { token: true },
+      // Fire FCM push when enabled — reads config from DB dynamically
+      const pushEnabledRow = await prisma.platformSetting.findUnique({
+        where: { key: "firebase_push_enabled" },
       });
+      const pushEnabled = pushEnabledRow?.value !== "false";
+      const tokenRows = pushEnabled
+        ? await (prisma as any).devicePushToken.findMany({
+            where: { user_id: { in: userIds } },
+            select: { token: true },
+          })
+        : [];
       const tokens: string[] = tokenRows.map((r: any) => r.token);
       const pushSent = await sendPushToTokens(tokens, {
         title: notification.title,
@@ -2388,6 +2394,46 @@ export const adminRouter = router({
 
   testSmtpConnection: adminProcedure.mutation(async () => {
     return testSmtpConnection();
+  }),
+
+  // ── Firebase Push Settings ──────────────────────────────────────────────────
+  getFirebaseSettings: adminProcedure.query(async () => {
+    const rows = await prisma.platformSetting.findMany({
+      where: { key: { in: ["firebase_service_account_json", "firebase_push_enabled"] } },
+    });
+    const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    return {
+      service_account_json: map["firebase_service_account_json"] ?? "",
+      push_enabled: map["firebase_push_enabled"] !== "false",
+    };
+  }),
+
+  saveFirebaseSettings: adminProcedure
+    .input(
+      z.object({
+        service_account_json: z.string(),
+        push_enabled: z.boolean().default(true),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await Promise.all([
+        prisma.platformSetting.upsert({
+          where: { key: "firebase_service_account_json" },
+          create: { key: "firebase_service_account_json", value: input.service_account_json },
+          update: { value: input.service_account_json },
+        }),
+        prisma.platformSetting.upsert({
+          where: { key: "firebase_push_enabled" },
+          create: { key: "firebase_push_enabled", value: String(input.push_enabled) },
+          update: { value: String(input.push_enabled) },
+        }),
+      ]);
+      invalidateFirebaseCache();
+      return { success: true };
+    }),
+
+  testFirebasePush: adminProcedure.mutation(async () => {
+    return testFirebaseCredentials();
   }),
 
   listSystemAlerts: adminProcedure.query(async () => {
