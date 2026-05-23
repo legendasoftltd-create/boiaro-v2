@@ -3593,6 +3593,7 @@ export const adminRouter = router({
           activity_type: true,
           current_page: true,
           current_book_id: true,
+          platform: true,
         },
       });
 
@@ -3603,19 +3604,21 @@ export const adminRouter = router({
       const [profiles, books] = await Promise.all([
         prisma.profile.findMany({
           where: { user_id: { in: userIds } },
-          select: { user_id: true, display_name: true },
+          select: { user_id: true, display_name: true, avatar_url: true },
         }),
         bookIds.length
           ? prisma.book.findMany({ where: { id: { in: bookIds } }, select: { id: true, title: true } })
           : Promise.resolve([]),
       ]);
-      const profileMap = Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || p.user_id.slice(0, 8)]));
+      const profileMap = Object.fromEntries(profiles.map((p) => [p.user_id, { name: p.display_name || p.user_id.slice(0, 8), avatar: p.avatar_url }]));
       const bookMap = Object.fromEntries(books.map((b) => [b.id, b.title]));
 
       return rows.map((r) => ({
         ...r,
-        display_name: profileMap[r.user_id] || r.user_id.slice(0, 8),
+        display_name: profileMap[r.user_id]?.name || r.user_id.slice(0, 8),
+        avatar_url: profileMap[r.user_id]?.avatar || null,
         book_title: r.current_book_id ? bookMap[r.current_book_id] || null : null,
+        platform: (r as any).platform || "web",
       }));
     }),
 

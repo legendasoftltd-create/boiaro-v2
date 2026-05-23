@@ -1,0 +1,1 @@
+ALTER TABLE "user_presence" ADD COLUMN IF NOT EXISTS "platform" TEXT NOT NULL DEFAULT 'web';

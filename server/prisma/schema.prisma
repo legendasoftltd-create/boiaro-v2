@@ -1581,6 +1581,7 @@ model UserPresence {
   current_book_id String?
   current_page    String?
   last_seen       DateTime @default(now())
+  platform        String   @default("web")
   session_id      String?
   user_id         String   @unique
 

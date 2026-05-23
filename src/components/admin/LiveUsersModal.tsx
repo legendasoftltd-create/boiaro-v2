@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, Activity, BookOpen, Headphones, RefreshCw } from "lucide-react";
+import { Loader2, Activity, BookOpen, Headphones, RefreshCw, Smartphone, Monitor } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export type LiveUserFilter = "online" | "reading" | "listening" | null;
@@ -16,7 +16,9 @@ interface PresenceUser {
   current_page: string | null;
   current_book_id: string | null;
   display_name?: string;
-  book_title?: string;
+  avatar_url?: string | null;
+  book_title?: string | null;
+  platform?: string;
 }
 
 interface Props {
@@ -33,14 +35,8 @@ export function LiveUsersModal({ filter, onClose }: Props) {
 
   const fetchUsers = useCallback(async () => {
     const rows = await utils.admin.liveUsers.fetch({
-      filter: filter || "online",
+      filter: filter === "online" ? undefined : (filter as any),
     });
-
-    if (!rows.length) {
-      setUsers([]);
-      setLoading(false);
-      return;
-    }
     setUsers(rows as any);
     setLoading(false);
   }, [filter, utils.admin.liveUsers]);
@@ -53,14 +49,12 @@ export function LiveUsersModal({ filter, onClose }: Props) {
     return () => clearInterval(interval);
   }, [filter, fetchUsers]);
 
-  const title = filter === "reading"
-    ? "Reading Now"
-    : filter === "listening"
-      ? "Listening Now"
-      : "Online Now";
-
+  const title = filter === "reading" ? "Reading Now" : filter === "listening" ? "Listening Now" : "Online Now";
   const Icon = filter === "reading" ? BookOpen : filter === "listening" ? Headphones : Activity;
   const color = filter === "reading" ? "text-blue-400" : filter === "listening" ? "text-purple-400" : "text-green-400";
+
+  const mobile = users.filter((u) => u.platform === "mobile").length;
+  const web = users.filter((u) => u.platform !== "mobile").length;
 
   return (
     <Dialog open={!!filter} onOpenChange={() => onClose()}>
@@ -69,11 +63,23 @@ export function LiveUsersModal({ filter, onClose }: Props) {
           <DialogTitle className="flex items-center gap-2">
             <Icon className={`w-5 h-5 ${color}`} />
             {title}
-            <Badge variant="secondary" className="ml-auto text-xs">
-              <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Live
+            <Badge variant="secondary" className="ml-auto text-xs gap-1">
+              <RefreshCw className="w-3 h-3 animate-spin" /> Live
             </Badge>
           </DialogTitle>
         </DialogHeader>
+
+        {/* Platform summary */}
+        {!loading && users.length > 0 && (
+          <div className="flex gap-3 pb-1">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Monitor className="w-3.5 h-3.5" /> Web: <span className="font-semibold text-foreground">{web}</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Smartphone className="w-3.5 h-3.5" /> Mobile: <span className="font-semibold text-foreground">{mobile}</span>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex justify-center py-10">
@@ -93,22 +99,24 @@ export function LiveUsersModal({ filter, onClose }: Props) {
                   key={`${u.user_id}-${i}`}
                   className="flex items-center gap-3 p-3 rounded-lg bg-secondary/40 hover:bg-secondary/60 transition-colors"
                 >
-                  <Avatar className="h-9 w-9">
+                  <Avatar className="h-9 w-9 shrink-0">
+                    {u.avatar_url && <AvatarImage src={u.avatar_url} />}
                     <AvatarFallback className="text-xs bg-primary/20 text-primary">
                       {(u.display_name || "?").slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
 
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{u.display_name}</p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-sm font-medium truncate">{u.display_name}</p>
+                      <PlatformBadge platform={u.platform} />
+                    </div>
                     {u.book_title ? (
                       <p className="text-[11px] text-muted-foreground truncate">
-                        {filter === "listening" ? "🎧" : "📖"} {u.book_title}
+                        {u.activity_type === "listening" ? "🎧" : "📖"} {u.book_title}
                       </p>
                     ) : u.current_page ? (
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        📍 {u.current_page}
-                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate">📍 {u.current_page}</p>
                     ) : null}
                   </div>
 
@@ -125,7 +133,7 @@ export function LiveUsersModal({ filter, onClose }: Props) {
         )}
 
         <p className="text-[10px] text-muted-foreground text-center">
-          Auto-refreshes every {REFRESH_INTERVAL / 1000}s • Showing users active in last 5 minutes
+          Auto-refreshes every {REFRESH_INTERVAL / 1000}s · Active in last 5 min · Web + Mobile
         </p>
       </DialogContent>
     </Dialog>
@@ -136,4 +144,19 @@ function ActivityBadge({ type }: { type: string }) {
   if (type === "reading") return <Badge className="bg-blue-500/20 text-blue-400 text-[10px] px-1.5">Reading</Badge>;
   if (type === "listening") return <Badge className="bg-purple-500/20 text-purple-400 text-[10px] px-1.5">Listening</Badge>;
   return <Badge className="bg-green-500/20 text-green-400 text-[10px] px-1.5">Browsing</Badge>;
+}
+
+function PlatformBadge({ platform }: { platform?: string }) {
+  if (platform === "mobile") {
+    return (
+      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-orange-500/40 text-orange-400 gap-0.5">
+        <Smartphone className="w-2.5 h-2.5" /> App
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 border-sky-500/40 text-sky-400 gap-0.5">
+      <Monitor className="w-2.5 h-2.5" /> Web
+    </Badge>
+  );
 }

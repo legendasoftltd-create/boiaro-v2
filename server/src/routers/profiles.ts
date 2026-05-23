@@ -225,6 +225,7 @@ export const profilesRouter = router({
           current_book_id: input.currentBookId,
           current_page: input.currentPage,
           session_id: input.sessionId,
+          platform: "web",
           last_seen: new Date(),
         },
         update: {
@@ -232,9 +233,10 @@ export const profilesRouter = router({
           current_book_id: input.currentBookId,
           current_page: input.currentPage,
           session_id: input.sessionId,
+          platform: "web",
           last_seen: new Date(),
         },
-      })
+      } as any)
     ),
 
   applyForRole: protectedProcedure
