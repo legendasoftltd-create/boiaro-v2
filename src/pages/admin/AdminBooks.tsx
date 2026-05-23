@@ -1236,10 +1236,14 @@ export default function AdminBooks() {
                   <TabsContent value="audiobook" className="col-span-2 mt-0 grid grid-cols-2 gap-3">
                     <div>
                       <Label>Narrator</Label>
-                      <Select value={formatForm.narrator_id || ""} onValueChange={(v) => setFormatForm({ ...formatForm, narrator_id: v })}>
-                        <SelectTrigger><SelectValue placeholder="Select narrator" /></SelectTrigger>
-                        <SelectContent>{narrators.map((n) => <SelectItem key={n.id} value={n.id}>{n.name}</SelectItem>)}</SelectContent>
-                      </Select>
+                      <SearchableSelect
+                        options={narrators.map((n) => ({ id: n.id, label: n.name }))}
+                        value={formatForm.narrator_id || ""}
+                        onChange={(v) => setFormatForm({ ...formatForm, narrator_id: v })}
+                        placeholder="Select narrator"
+                        searchPlaceholder="Search narrators..."
+                        emptyText="No narrators found"
+                      />
                     </div>
                     <div>
                       <Label>Total Duration</Label>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/admin/SearchableSelect";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Users, Plus, Trash2 } from "lucide-react";
@@ -118,39 +118,48 @@ export function BookContributors({ bookId }: BookContributorsProps) {
         <div className="grid grid-cols-4 gap-2 items-end">
           <div>
             <Label className="text-xs">Role</Label>
-            <Select value={addRole} onValueChange={(v) => { setAddRole(v); setAddUserId(""); }}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="writer">Writer</SelectItem>
-                <SelectItem value="publisher">Publisher</SelectItem>
-                <SelectItem value="narrator">Narrator</SelectItem>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={[
+                { id: "writer", label: "Writer" },
+                { id: "publisher", label: "Publisher" },
+                { id: "narrator", label: "Narrator" },
+              ]}
+              value={addRole}
+              onChange={(v) => { setAddRole(v); setAddUserId(""); }}
+              placeholder="Select role"
+              searchPlaceholder="Search role..."
+            />
           </div>
           <div>
             <Label className="text-xs">User</Label>
-            <Select value={addUserId} onValueChange={setAddUserId}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-              <SelectContent>
-                {(roleUsers[addRole] || []).map(u => (
-                  <SelectItem key={u.user_id} value={u.user_id}>{getDisplayName(u.user_id)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={(roleUsers[addRole] || []).map((u) => ({
+                id: u.user_id,
+                label: getDisplayName(u.user_id),
+              }))}
+              value={addUserId}
+              onChange={setAddUserId}
+              placeholder="Select user"
+              searchPlaceholder="Search user..."
+              emptyText="No users with this role"
+            />
           </div>
           <div>
             <Label className="text-xs">Format</Label>
-            <Select value={addFormat} onValueChange={setAddFormat}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="All" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Formats</SelectItem>
-                <SelectItem value="ebook">eBook</SelectItem>
-                <SelectItem value="audiobook">Audiobook</SelectItem>
-                <SelectItem value="hardcopy">Hard Copy</SelectItem>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={[
+                { id: "all", label: "All Formats" },
+                { id: "ebook", label: "eBook" },
+                { id: "audiobook", label: "Audiobook" },
+                { id: "hardcopy", label: "Hard Copy" },
+              ]}
+              value={addFormat || "all"}
+              onChange={setAddFormat}
+              placeholder="All Formats"
+              searchPlaceholder="Search format..."
+            />
           </div>
-          <Button size="sm" className="h-8" onClick={addContributor}>
+          <Button size="sm" className="h-10" onClick={addContributor}>
             <Plus className="h-3 w-3 mr-1" /> Add
           </Button>
         </div>
