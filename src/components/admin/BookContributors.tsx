@@ -35,9 +35,10 @@ export function BookContributors({ bookId }: BookContributorsProps) {
     (usersData?.users || []).forEach((u: any) => {
       const uid = u.id;
       const display_name = u.profile?.display_name || uid.slice(0, 8) + "...";
+      const email = u.email || "";
       (u.roles || []).forEach((r: any) => {
         const role = r.role;
-        if (grouped[role]) grouped[role].push({ user_id: uid, display_name });
+        if (grouped[role]) grouped[role].push({ user_id: uid, display_name, email });
       });
     });
     setRoleUsers(grouped);
@@ -135,12 +136,13 @@ export function BookContributors({ bookId }: BookContributorsProps) {
             <SearchableSelect
               options={(roleUsers[addRole] || []).map((u) => ({
                 id: u.user_id,
-                label: getDisplayName(u.user_id),
+                label: u.email ? `${u.display_name} (${u.email})` : u.display_name,
+                searchAlt: u.email || "",
               }))}
               value={addUserId}
               onChange={setAddUserId}
               placeholder="Select user"
-              searchPlaceholder="Search user..."
+              searchPlaceholder="Search name or email..."
               emptyText="No users with this role"
             />
           </div>

@@ -829,11 +829,15 @@ export default function AdminBooks() {
             <div>
               <Label>Author</Label>
               <SearchableSelect
-                options={authors.map((a) => ({ id: a.id, label: a.name }))}
+                options={authors.map((a) => ({
+                  id: a.id,
+                  label: a.name_en ? `${a.name} (${a.name_en})` : a.name,
+                  searchAlt: a.name_en || "",
+                }))}
                 value={form.author_id}
                 onChange={(v) => setForm({ ...form, author_id: v })}
                 placeholder="Select author"
-                searchPlaceholder="Search authors..."
+                searchPlaceholder="Search Bangla or English name..."
                 emptyText="No authors found"
               />
             </div>
@@ -848,11 +852,15 @@ export default function AdminBooks() {
             <div>
               <Label>Publisher <span className="text-muted-foreground text-xs">(legacy / default)</span></Label>
               <SearchableSelect
-                options={publishers.map((p) => ({ id: p.id, label: p.name }))}
+                options={publishers.map((p) => ({
+                  id: p.id,
+                  label: p.name_en ? `${p.name} (${p.name_en})` : p.name,
+                  searchAlt: p.name_en || "",
+                }))}
                 value={form.publisher_id}
                 onChange={(v) => setForm({ ...form, publisher_id: v })}
                 placeholder="Select publisher (optional)"
-                searchPlaceholder="Search publishers..."
+                searchPlaceholder="Search Bangla or English name..."
                 emptyText="No publishers found"
               />
               <p className="text-[10px] text-muted-foreground mt-1">Each format can have its own publisher. Set per-format publisher in the Formats dialog.</p>
@@ -860,11 +868,15 @@ export default function AdminBooks() {
             <div>
               <Label>Narrator <span className="text-muted-foreground text-xs">(optional)</span></Label>
               <SearchableSelect
-                options={narrators.map((n) => ({ id: n.id, label: n.name }))}
+                options={narrators.map((n) => ({
+                  id: n.id,
+                  label: n.name_en ? `${n.name} (${n.name_en})` : n.name,
+                  searchAlt: n.name_en || "",
+                }))}
                 value={form.narrator_id}
                 onChange={(v) => setForm({ ...form, narrator_id: v })}
                 placeholder="Select narrator"
-                searchPlaceholder="Search narrators..."
+                searchPlaceholder="Search Bangla or English name..."
                 emptyText="No narrators found"
               />
             </div>
@@ -1080,11 +1092,15 @@ export default function AdminBooks() {
                   <div className="col-span-2">
                     <Label>{formatForm.format === 'hardcopy' ? 'Source / Supplier Publisher' : 'Format Publisher'}</Label>
                     <SearchableSelect
-                      options={publishers.map((p) => ({ id: p.id, label: p.name }))}
+                      options={publishers.map((p) => ({
+                        id: p.id,
+                        label: p.name_en ? `${p.name} (${p.name_en})` : p.name,
+                        searchAlt: p.name_en || "",
+                      }))}
                       value={formatForm.publisher_id || ""}
                       onChange={(v) => setFormatForm({ ...formatForm, publisher_id: v })}
                       placeholder={formatForm.format === 'hardcopy' ? 'Select supplier/source' : 'Select publisher for this format'}
-                      searchPlaceholder="Search publishers..."
+                      searchPlaceholder="Search Bangla or English name..."
                       emptyText="No publishers found"
                     />
                     <div className="flex items-center gap-2 mt-1">
@@ -1237,11 +1253,15 @@ export default function AdminBooks() {
                     <div>
                       <Label>Narrator</Label>
                       <SearchableSelect
-                        options={narrators.map((n) => ({ id: n.id, label: n.name }))}
+                        options={narrators.map((n) => ({
+                          id: n.id,
+                          label: n.name_en ? `${n.name} (${n.name_en})` : n.name,
+                          searchAlt: n.name_en || "",
+                        }))}
                         value={formatForm.narrator_id || ""}
                         onChange={(v) => setFormatForm({ ...formatForm, narrator_id: v })}
                         placeholder="Select narrator"
-                        searchPlaceholder="Search narrators..."
+                        searchPlaceholder="Search Bangla or English name..."
                         emptyText="No narrators found"
                       />
                     </div>
