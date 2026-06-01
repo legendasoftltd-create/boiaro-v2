@@ -119,7 +119,10 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     })
   }
 
-  // Build audio tracks from embedded format tracks
+  // Build audio tracks from embedded format tracks.
+  // If the book is free (is_free flag or zero-price format), every chapter is free
+  // regardless of individual is_preview / chapter_price settings.
+  const isBookFree = Boolean(dbBook.is_free) || Number(audiobookFmt?.price ?? 0) <= 0
   let audioTracks: AudioTrack[] = []
   if (audiobookFmt?.audiobook_tracks?.length > 0) {
     audioTracks = audiobookFmt.audiobook_tracks
@@ -130,6 +133,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
         if (!storagePath) return null
         const supportedMimes = ["audio/mpeg", "audio/mp4", "video/mp4"]
         if (mimeType && !supportedMimes.includes(mimeType)) return null
+        const isPreview = isBookFree || t.is_preview || false
         return {
           id: t.id,
           trackNumber: t.track_number,
@@ -140,8 +144,8 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
           mimeType,
           mediaType: (t.media_type as "audio" | "video") || (mimeType === "video/mp4" ? "video" : "audio"),
           isActive: t.status === "active",
-          isPreview: t.is_preview || false,
-          chapterPrice: t.chapter_price != null ? Number(t.chapter_price) : undefined,
+          isPreview,
+          chapterPrice: isPreview ? undefined : (t.chapter_price != null ? Number(t.chapter_price) : undefined),
         } as AudioTrack
       })
       .filter((t: AudioTrack | null): t is AudioTrack => Boolean((t?.audioUrl || "").trim()))

@@ -108,8 +108,27 @@ export const walletRouter = router({
       });
       if (existing?.status === "active") return { already_unlocked: true };
 
-      // For premium_voice, always fetch the real price from the DB — never trust the client value.
+      // For audiobook chapters, always fetch the real price from the DB — never trust the client value.
       let coinCost = input.coinCost;
+      const chapterTrackId = format.match(/^audiobook_chapter_(.+)$/)?.[1];
+      if (chapterTrackId) {
+        const track = await prisma.audiobookTrack.findUnique({
+          where: { id: chapterTrackId },
+          select: { is_preview: true, chapter_price: true, book_format: { select: { book_id: true, price: true } } },
+        });
+        if (!track) throw new TRPCError({ code: "NOT_FOUND", message: "Chapter not found" });
+        if (track.book_format.book_id !== bookId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Chapter does not belong to this book" });
+        }
+        const isFormatFree = Number(track.book_format.price ?? 0) <= 0;
+        const book = await prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } });
+        if (Boolean(book?.is_free) || isFormatFree || track.is_preview) {
+          coinCost = 0; // book is free or chapter is a preview — always free
+        } else {
+          coinCost = track.chapter_price ?? 100; // use DB price, ignore client value
+        }
+      }
+
       if (format === "premium_voice") {
         const book = await prisma.book.findUnique({
           where: { id: bookId },
@@ -229,6 +248,18 @@ export const walletRouter = router({
     .input(z.object({ bookId: z.string(), format: z.enum(["ebook", "audiobook"]) }))
     .query(async ({ ctx, input }) => {
       const { bookId, format } = input;
+
+      // Free content: book flagged as free, or the format has no price
+      const [book, bookFormat] = await Promise.all([
+        prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } }),
+        prisma.bookFormat.findFirst({
+          where: { book_id: bookId, format, submission_status: "approved" },
+          select: { price: true },
+        }),
+      ]);
+      if (Boolean(book?.is_free) || Number(bookFormat?.price ?? 0) <= 0) {
+        return { hasFullAccess: true, method: "free" };
+      }
 
       const coinUnlock = await prisma.contentUnlock.findFirst({
         where: { user_id: ctx.userId, book_id: bookId, format, status: "active" },

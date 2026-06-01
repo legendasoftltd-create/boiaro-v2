@@ -28,7 +28,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
 
   const isThisBookActive = activeBook?.id === book.id
   const totalDurSec = durationToSeconds(audiobook.duration)
-  const isFree = audiobook.price === 0
+  const isFree = audiobook.price === 0 || book.isFree
 
   // Pass live audio element duration so preview recalculates with actual metadata
   const liveDuration = isThisBookActive && duration > 0 ? duration : undefined

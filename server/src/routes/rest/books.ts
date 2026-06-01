@@ -169,14 +169,21 @@ booksRestRouter.delete(
 
 booksRestRouter.get("/:book_id/tracks", async (req, res) => {
   try {
-    const bookFormat = await prisma.bookFormat.findFirst({
-      where: { book_id: req.params.book_id, format: "audiobook" },
-      select: { id: true },
-    });
+    const bookId = req.params.book_id;
+    const [book, bookFormat] = await Promise.all([
+      prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } }),
+      prisma.bookFormat.findFirst({
+        where: { book_id: bookId, format: "audiobook" },
+        select: { id: true, price: true },
+      }),
+    ]);
     if (!bookFormat) {
       res.json({ tracks: [] });
       return;
     }
+    // Book is free if flagged or if the audiobook format has no price
+    const isBookFree = Boolean(book?.is_free) || Number(bookFormat.price ?? 0) <= 0;
+
     const tracks = await prisma.audiobookTrack.findMany({
       where: { book_format_id: bookFormat.id, status: "active" },
       orderBy: { track_number: "asc" },
@@ -191,7 +198,14 @@ booksRestRouter.get("/:book_id/tracks", async (req, res) => {
         status: true,
       },
     });
-    res.json({ tracks });
+
+    // When the book is free, all chapters are free — override is_preview and chapter_price
+    // so the already-published mobile app (which relies on is_preview) needs no update.
+    const result = isBookFree
+      ? tracks.map(t => ({ ...t, is_preview: true, chapter_price: null }))
+      : tracks;
+
+    res.json({ tracks: result });
   } catch (error) {
     sendHttpError(res, error);
   }
