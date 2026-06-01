@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Play, Pause, Clock, Mic, Headphones, AlertCircle, Loader2, Lock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useAudiobookAccess } from "@/hooks/useAudiobookAccess"
 import { AudiobookChapterUnlock } from "@/components/book-detail/AudiobookChapterUnlock"
 import { AudiobookPaywallModal } from "@/components/audio-player/AudiobookPaywallModal"
+import { MobileAppPromptModal } from "@/components/MobileAppPromptModal"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { durationToSeconds, formatDuration } from "@/lib/duration"
 
@@ -55,6 +56,32 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     setAccessLoading(access.loading)
   }, [access.hasFullAccess, access.previewLimitSeconds, access.loading, setHasFullAccess, setPreviewLimitSeconds, setAccessLoading])
 
+
+  // ── Mobile app prompt: show after FREE_PLAY_THRESHOLD_SECONDS of free playback ──
+  const FREE_PLAY_THRESHOLD_SECONDS = 300 // 5 minutes
+  const [showAppPrompt, setShowAppPrompt] = useState(false)
+  const playedSecondsRef = useRef(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    const sessionKey = `app_prompt_audio_${book.id}`
+    // Only for free books; stop once shown or threshold already reached this session
+    if (!isFree || showAppPrompt || sessionStorage.getItem(sessionKey)) return
+
+    if (isThisBookActive && isPlaying) {
+      timerRef.current = setInterval(() => {
+        playedSecondsRef.current += 1
+        if (playedSecondsRef.current >= FREE_PLAY_THRESHOLD_SECONDS) {
+          sessionStorage.setItem(sessionKey, "1")
+          setShowAppPrompt(true)
+          clearInterval(timerRef.current!)
+        }
+      }, 1000)
+    } else {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    }
+    return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } }
+  }, [isFree, isThisBookActive, isPlaying, showAppPrompt, book.id])
 
   const displayTracks = isThisBookActive ? tracks : audioTracks
   const realTrackCount = displayTracks.length
@@ -305,6 +332,14 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
           </Badge>
         </div>
       )}
+
+      {/* Mobile app download prompt (free audiobooks only) */}
+      <MobileAppPromptModal
+        open={showAppPrompt}
+        type="audiobook"
+        bookTitle={book.title}
+        onClose={() => setShowAppPrompt(false)}
+      />
 
       {/* Paywall modal */}
       <AudiobookPaywallModal

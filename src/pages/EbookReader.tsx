@@ -11,6 +11,7 @@ import { useDrmProtection } from "@/hooks/useDrmProtection";
 import { useEbookAccess } from "@/hooks/useEbookAccess";
 import { toast } from "sonner";
 import { PaywallModal } from "@/components/ebook-reader/PaywallModal";
+import { MobileAppPromptModal } from "@/components/MobileAppPromptModal";
 
 import { PdfRenderer } from "@/components/ebook-reader/PdfRenderer";
 import { EpubRenderer, type EpubRendererHandle } from "@/components/ebook-reader/EpubRenderer";
@@ -73,6 +74,7 @@ export default function EbookReader() {
   const [showToc, setShowToc] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showAppPrompt, setShowAppPrompt] = useState(false);
   const [chapterTitle, setChapterTitle] = useState("");
   const [tocItems, setTocItems] = useState<any[]>([]);
   const [currentHref, setCurrentHref] = useState("");
@@ -634,6 +636,16 @@ export default function EbookReader() {
     }
   }, [percentage, currentPage, access, fileType, previewWarningShown, shouldEnforcePreviewLimit]);
 
+  // ──────── Mobile app prompt: show at 30% for free ebooks ────────
+  useEffect(() => {
+    const FREE_READ_THRESHOLD = 30
+    if (!isFreeBook || percentage < FREE_READ_THRESHOLD || !bookId) return
+    const key = `app_prompt_ebook_${bookId}`
+    if (sessionStorage.getItem(key)) return
+    sessionStorage.setItem(key, "1")
+    setShowAppPrompt(true)
+  }, [isFreeBook, percentage, bookId])
+
   // ──────── EPUB location change handler with paywall check ────────
   const handleEpubLocationChange = useCallback(
     ({ percentage: pct, cfi, chapter, page, pageTotal }: {
@@ -1081,6 +1093,14 @@ export default function EbookReader() {
           </Badge>
         </div>
       )}
+
+      {/* Mobile app download prompt (free ebooks only) */}
+      <MobileAppPromptModal
+        open={showAppPrompt}
+        type="ebook"
+        bookTitle={bookTitle}
+        onClose={() => setShowAppPrompt(false)}
+      />
 
       {/* Paywall Modal */}
       <PaywallModal
