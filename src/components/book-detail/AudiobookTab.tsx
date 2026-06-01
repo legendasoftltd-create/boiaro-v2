@@ -62,14 +62,35 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const { get: getSetting } = useSiteSettings()
   const promptEnabled = getSetting("app_prompt_enabled", "true") !== "false"
   const FREE_PLAY_THRESHOLD_SECONDS = Math.max(10, Number(getSetting("app_prompt_audio_seconds", "300")) || 300)
+  const appStoreUrl  = getSetting("app_ios_url")     || getSetting("app_store_url")
+  const playStoreUrl = getSetting("app_android_url") || getSetting("google_play_url")
+  const brandName    = getSetting("brand_name", "BoiAro")
+
   const [showAppPrompt, setShowAppPrompt] = useState(false)
+  // Once locked, content cannot be played until the user downloads the app
+  const [contentLocked, setContentLocked] = useState(() =>
+    Boolean(isFree && sessionStorage.getItem(`app_prompt_locked_audio_${book.id}`))
+  )
   const playedSecondsRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Re-check lock from storage when bookId changes (component reuse)
+  useEffect(() => {
+    if (isFree && sessionStorage.getItem(`app_prompt_locked_audio_${book.id}`)) {
+      setContentLocked(true)
+    }
+  }, [book.id, isFree])
+
+  // Pause audio whenever the prompt is showing or content is locked
+  useEffect(() => {
+    if ((showAppPrompt || contentLocked) && isThisBookActive && isPlaying) {
+      togglePlay()
+    }
+  }, [showAppPrompt, contentLocked]) // intentionally minimal — only fire on prompt/lock state change
+
   useEffect(() => {
     const sessionKey = `app_prompt_audio_${book.id}`
-    // Only for free books; stop once shown or threshold already reached this session
-    if (!promptEnabled || !isFree || showAppPrompt || sessionStorage.getItem(sessionKey)) return
+    if (!promptEnabled || !isFree || showAppPrompt || contentLocked || sessionStorage.getItem(sessionKey)) return
 
     if (isThisBookActive && isPlaying) {
       timerRef.current = setInterval(() => {
@@ -84,7 +105,13 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
     return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } }
-  }, [promptEnabled, isFree, isThisBookActive, isPlaying, showAppPrompt, book.id])
+  }, [promptEnabled, isFree, isThisBookActive, isPlaying, showAppPrompt, contentLocked, book.id])
+
+  const handleDownloadClick = () => {
+    sessionStorage.setItem(`app_prompt_locked_audio_${book.id}`, "1")
+    setContentLocked(true)
+    setShowAppPrompt(false)
+  }
 
   const displayTracks = isThisBookActive ? tracks : audioTracks
   const realTrackCount = displayTracks.length
@@ -97,11 +124,10 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const narratorAvatar = allNarrators[0]?.avatar || ""
 
   const handleListen = () => {
-    if (!hasPlayableSource) return
+    if (!hasPlayableSource || contentLocked) return
     if (!isThisBookActive) {
-      // loadBook is async-state — pass autoPlay so context plays once tracks are ready
       loadBook(book, audiobook, audioTracks.length > 0 ? audioTracks : undefined, true)
-      return // don't call togglePlay — loadBook will auto-play
+      return
     }
     togglePlay()
   }
@@ -114,7 +140,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="relative max-w-4xl mx-auto space-y-8">
       {/* Hero CTA card */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[hsl(220,60%,12%)] to-[hsl(240,30%,8%)] border border-[hsl(220,40%,20%)]">
         <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, hsl(220 60% 50%), transparent 70%)' }} />
@@ -336,12 +362,47 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
         </div>
       )}
 
+      {/* Locked overlay — shown after user clicks download (persists for session) */}
+      {contentLocked && (
+        <div className="absolute inset-0 z-20 bg-background/95 backdrop-blur-md rounded-2xl flex flex-col items-center justify-center p-8 text-center gap-4 min-h-[300px]">
+          <div className="w-16 h-16 rounded-2xl bg-primary/15 flex items-center justify-center">
+            <Headphones className="w-8 h-8 text-primary" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-foreground mb-1">{brandName} অ্যাপে শুনুন</h3>
+            <p className="text-sm text-muted-foreground max-w-xs">
+              সম্পূর্ণ অডিওবুকটি বিনামূল্যে শুনতে অ্যাপ ডাউনলোড করুন।
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 w-full max-w-[240px]">
+            {playStoreUrl && (
+              <a href={playStoreUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 bg-foreground text-background rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-foreground/90 transition-colors">
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.53,12.9 20.18,13.18L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z"/>
+                </svg>
+                Google Play
+              </a>
+            )}
+            {appStoreUrl && (
+              <a href={appStoreUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 border border-border rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-secondary transition-colors">
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                </svg>
+                App Store
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Mobile app download prompt (free audiobooks only) */}
       <MobileAppPromptModal
         open={showAppPrompt}
         type="audiobook"
         bookTitle={book.title}
-        onClose={() => setShowAppPrompt(false)}
+        onDownloadClick={handleDownloadClick}
       />
 
       {/* Paywall modal */}
