@@ -29,7 +29,7 @@ export const s3Client = new S3Client({
     secretAccessKey: AWS_SECRET_ACCESS_KEY || "",
   },
   ...(AWS_S3_ENDPOINT ? { endpoint: AWS_S3_ENDPOINT, forcePathStyle: true } : {}),
-  requestHandler: { requestTimeout: 15_000 }, // 15s timeout per request
+  requestHandler: { requestTimeout: 300_000 }, // 5-minute timeout for large audio/video uploads
 });
 
 // ─── Circuit Breaker ─────────────────────────────────────────────────────────

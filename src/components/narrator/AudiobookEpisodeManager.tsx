@@ -23,21 +23,32 @@ interface AudiobookEpisodeManagerProps {
 const DEFAULT_CHAPTER_PRICE = 100;
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
-async function uploadViaApi(file: File): Promise<string> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const token = localStorage.getItem("access_token");
-  const res = await fetch(`${API_BASE}/upload/media`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body: formData,
+function uploadViaApi(file: File, onProgress?: (pct: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem("access_token");
+    const xhr = new XMLHttpRequest();
+    if (onProgress) {
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      });
+    }
+    xhr.addEventListener("load", () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve((JSON.parse(xhr.responseText) as { url: string }).url); }
+        catch { reject(new Error("Upload failed: invalid server response")); }
+      } else {
+        try { reject(new Error((JSON.parse(xhr.responseText) as any).error || "Upload failed")); }
+        catch { reject(new Error(`Upload failed (HTTP ${xhr.status})`)); }
+      }
+    });
+    xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
+    xhr.open("POST", `${API_BASE}/upload/media`);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.send(formData);
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({})) as any;
-    throw new Error(err.error || "Upload failed");
-  }
-  const data = await res.json() as { url: string };
-  return data.url;
 }
 
 export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenChange }: AudiobookEpisodeManagerProps) {
@@ -49,7 +60,9 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
   const [reordering, setReordering] = useState(false);
   const [form, setForm] = useState({ title: "", duration: "", chapter_price: "", audioUrl: "", mediaType: "audio" });
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [uploadingForTrack, setUploadingForTrack] = useState<string | null>(null);
+  const [trackUploadProgress, setTrackUploadProgress] = useState<Record<string, number>>({});
   const touchState = useRef<{ idx: number; startY: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const trackFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -105,11 +118,14 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
 
   /* ── File upload helpers ── */
 
-  const processAndUpload = async (file: File): Promise<{ url: string; mediaType: string; duration: string; title: string }> => {
+  const processAndUpload = async (
+    file: File,
+    onProgress?: (pct: number) => void
+  ): Promise<{ url: string; mediaType: string; duration: string; title: string }> => {
     const validation = await validateMediaFile(file);
     if (validation.valid === false) throw new Error(validation.error);
     const { file: validatedFile, durationLabel, mediaType } = validation.data;
-    const url = await uploadViaApi(validatedFile);
+    const url = await uploadViaApi(validatedFile, onProgress);
     return { url, mediaType, duration: durationLabel, title: sanitizeTrackTitle(file.name) };
   };
 
@@ -118,8 +134,9 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     if (!file) return;
     e.target.value = "";
     setUploading(true);
+    setUploadProgress(0);
     try {
-      const { url, mediaType, duration, title } = await processAndUpload(file);
+      const { url, mediaType, duration, title } = await processAndUpload(file, setUploadProgress);
       setForm(f => ({
         ...f,
         audioUrl: url,
@@ -132,6 +149,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
       toast.error(err.message);
     } finally {
       setUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -140,13 +158,18 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
     if (!file) return;
     e.target.value = "";
     setUploadingForTrack(trackId);
+    setTrackUploadProgress(p => ({ ...p, [trackId]: 0 }));
     try {
-      const { url, mediaType, duration } = await processAndUpload(file);
+      const { url, mediaType, duration } = await processAndUpload(
+        file,
+        (pct) => setTrackUploadProgress(p => ({ ...p, [trackId]: pct }))
+      );
       uploadTrackMutation.mutate({ trackId, audioUrl: url, mediaType, duration });
     } catch (err: any) {
       toast.error(err.message);
     } finally {
       setUploadingForTrack(null);
+      setTrackUploadProgress(p => { const n = { ...p }; delete n[trackId]; return n; });
     }
   };
 
@@ -369,14 +392,28 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                             <Button
                               size="icon"
                               variant="outline"
-                              className="h-7 w-7"
-                              title={ep.audio_url ? "Replace audio" : "Upload audio"}
+                              className="h-7 w-7 relative overflow-hidden"
+                              title={uploadingForTrack === ep.id
+                                ? trackUploadProgress[ep.id] != null ? `Uploading ${trackUploadProgress[ep.id]}%` : "Uploading…"
+                                : ep.audio_url ? "Replace audio" : "Upload audio"}
                               disabled={uploadingForTrack === ep.id}
                               onClick={() => trackFileRefs.current[ep.id]?.click()}
                             >
-                              {uploadingForTrack === ep.id
-                                ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : ep.audio_url ? <CheckCircle className="h-3 w-3 text-emerald-400" /> : <Upload className="h-3 w-3" />}
+                              {uploadingForTrack === ep.id ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  {trackUploadProgress[ep.id] != null && (
+                                    <span
+                                      className="absolute bottom-0 left-0 h-0.5 bg-primary transition-all duration-150"
+                                      style={{ width: `${trackUploadProgress[ep.id]}%` }}
+                                    />
+                                  )}
+                                </>
+                              ) : ep.audio_url ? (
+                                <CheckCircle className="h-3 w-3 text-emerald-400" />
+                              ) : (
+                                <Upload className="h-3 w-3" />
+                              )}
                             </Button>
                             <input
                               type="file"
@@ -427,9 +464,16 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                       onClick={() => !uploading && fileInputRef.current?.click()}
                     >
                       {uploading ? (
-                        <div className="flex flex-col items-center gap-2">
+                        <div className="flex flex-col items-center gap-2 w-full">
                           <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                          <p className="text-sm text-muted-foreground">Uploading and reading metadata…</p>
+                          <p className="text-sm text-muted-foreground">
+                            {uploadProgress !== null ? `Uploading… ${uploadProgress}%` : "Reading metadata…"}
+                          </p>
+                          {uploadProgress !== null && (
+                            <div className="w-full bg-secondary rounded-full h-1.5">
+                              <div className="bg-primary h-1.5 rounded-full transition-all duration-150" style={{ width: `${uploadProgress}%` }} />
+                            </div>
+                          )}
                         </div>
                       ) : form.audioUrl ? (
                         <div className="flex flex-col items-center gap-1">
@@ -445,7 +489,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                       ) : (
                         <div className="flex flex-col items-center gap-2">
                           <Upload className="h-6 w-6 text-muted-foreground" />
-                          <p className="text-sm text-muted-foreground">Click to upload MP3, M4A, or MP4</p>
+                          <p className="text-sm text-muted-foreground">Click to upload MP3, M4A, WAV, or MP4</p>
                           <p className="text-[11px] text-muted-foreground">Duration auto-detected · S3 storage with local fallback</p>
                         </div>
                       )}
@@ -510,7 +554,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                 <Button variant="outline" onClick={() => setAdding(true)}>
                   <Plus className="h-4 w-4 mr-2" />Add Episode
                 </Button>
-                <p className="text-[10px] text-muted-foreground mt-2">MP3 · M4A · MP4 video · drag to reorder</p>
+                <p className="text-[10px] text-muted-foreground mt-2">MP3 · M4A · WAV · MP4 video · drag to reorder</p>
               </div>
             )}
           </>
