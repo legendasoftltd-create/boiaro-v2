@@ -5,11 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Settings, Save, Eye, AlertCircle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Settings, Save, Eye, AlertCircle, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { FooterPreview } from "@/components/admin/FooterPreview";
 import { SiteImageUpload } from "@/components/admin/SiteImageUpload";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+
 
 const IMAGE_KEYS = new Set([
   "favicon_url",
@@ -128,6 +130,107 @@ export default function AdminSiteSettings() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Mobile App Prompt Settings ─────────────────────────────────────── */}
+      <Card className="border-primary/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Smartphone className="w-4 h-4 text-primary" /> Mobile App Prompt
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Show a "Download App" popup to users engaging with free audiobooks or ebooks on the web.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {/* Enable / disable */}
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/30">
+            <div>
+              <p className="text-sm font-medium">Enable prompt</p>
+              <p className="text-xs text-muted-foreground">Show popup for free audiobooks &amp; ebooks</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={values.app_prompt_enabled !== "false"}
+                onChange={e => handleChange("app_prompt_enabled", e.target.checked ? "true" : "false")}
+              />
+              <div className="w-10 h-5 bg-muted rounded-full peer peer-checked:bg-primary transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
+            </label>
+          </div>
+
+          {/* Audiobook timing */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Audiobook — show prompt after</Label>
+            <p className="text-xs text-muted-foreground">How long a user plays a free audiobook before seeing the prompt.</p>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  className="w-20 h-9 text-center"
+                  value={Math.floor(Number(values.app_prompt_audio_seconds ?? "300") / 60)}
+                  onChange={e => {
+                    const mins = Math.max(0, Number(e.target.value) || 0);
+                    const secs = Number(values.app_prompt_audio_seconds ?? "300") % 60;
+                    handleChange("app_prompt_audio_seconds", String(mins * 60 + secs));
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">min</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="number"
+                  min="0"
+                  max="59"
+                  className="w-20 h-9 text-center"
+                  value={Number(values.app_prompt_audio_seconds ?? "300") % 60}
+                  onChange={e => {
+                    const secs = Math.min(59, Math.max(0, Number(e.target.value) || 0));
+                    const mins = Math.floor(Number(values.app_prompt_audio_seconds ?? "300") / 60);
+                    handleChange("app_prompt_audio_seconds", String(mins * 60 + secs));
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">sec</span>
+              </div>
+              <span className="text-xs text-muted-foreground ml-1">
+                (= {values.app_prompt_audio_seconds ?? "300"}s total)
+              </span>
+            </div>
+          </div>
+
+          {/* Ebook threshold */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">eBook — show prompt after</Label>
+            <p className="text-xs text-muted-foreground">How much of a free ebook a user reads before seeing the prompt.</p>
+            <div className="flex items-center gap-2">
+              <Select
+                value={values.app_prompt_ebook_threshold_type ?? "percent"}
+                onValueChange={v => handleChange("app_prompt_ebook_threshold_type", v)}
+              >
+                <SelectTrigger className="w-32 h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="percent">% read</SelectItem>
+                  <SelectItem value="page">Page number</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type="number"
+                min="1"
+                max={(values.app_prompt_ebook_threshold_type ?? "percent") === "percent" ? "99" : undefined}
+                className="w-24 h-9 text-center"
+                value={values.app_prompt_ebook_value ?? "30"}
+                onChange={e => handleChange("app_prompt_ebook_value", e.target.value)}
+              />
+              <span className="text-sm text-muted-foreground">
+                {(values.app_prompt_ebook_threshold_type ?? "percent") === "percent" ? "%" : "page(s)"}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-border/30">
         <CardHeader className="pb-3">

@@ -12,6 +12,7 @@ import { useEbookAccess } from "@/hooks/useEbookAccess";
 import { toast } from "sonner";
 import { PaywallModal } from "@/components/ebook-reader/PaywallModal";
 import { MobileAppPromptModal } from "@/components/MobileAppPromptModal";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
 
 import { PdfRenderer } from "@/components/ebook-reader/PdfRenderer";
 import { EpubRenderer, type EpubRendererHandle } from "@/components/ebook-reader/EpubRenderer";
@@ -115,6 +116,10 @@ export default function EbookReader() {
   const autoReadRef = useRef(autoReadEnabled);
   autoReadRef.current = autoReadEnabled;
   const access = useEbookAccess(bookId, isFreeBook, totalPages, previewPct);
+  const { get: getSetting } = useSiteSettings();
+  const promptEnabled = getSetting("app_prompt_enabled", "true") !== "false";
+  const promptThresholdType = getSetting("app_prompt_ebook_threshold_type", "percent") as "percent" | "page";
+  const promptThresholdValue = Math.max(1, Number(getSetting("app_prompt_ebook_value", "30")) || 30);
 
   // ── CRITICAL GATE: Preview/paywall enforcement ──
   // This flag MUST require !access.loading to prevent race conditions where
@@ -636,15 +641,18 @@ export default function EbookReader() {
     }
   }, [percentage, currentPage, access, fileType, previewWarningShown, shouldEnforcePreviewLimit]);
 
-  // ──────── Mobile app prompt: show at 30% for free ebooks ────────
+  // ──────── Mobile app prompt: threshold from admin settings ────────
   useEffect(() => {
-    const FREE_READ_THRESHOLD = 30
-    if (!isFreeBook || percentage < FREE_READ_THRESHOLD || !bookId) return
+    if (!promptEnabled || !isFreeBook || !bookId) return
+    const reached = promptThresholdType === "page"
+      ? currentPage >= promptThresholdValue
+      : percentage >= promptThresholdValue
+    if (!reached) return
     const key = `app_prompt_ebook_${bookId}`
     if (sessionStorage.getItem(key)) return
     sessionStorage.setItem(key, "1")
     setShowAppPrompt(true)
-  }, [isFreeBook, percentage, bookId])
+  }, [promptEnabled, isFreeBook, percentage, currentPage, promptThresholdType, promptThresholdValue, bookId])
 
   // ──────── EPUB location change handler with paywall check ────────
   const handleEpubLocationChange = useCallback(

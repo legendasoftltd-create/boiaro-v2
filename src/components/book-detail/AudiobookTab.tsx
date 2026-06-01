@@ -9,6 +9,7 @@ import { useAudiobookAccess } from "@/hooks/useAudiobookAccess"
 import { AudiobookChapterUnlock } from "@/components/book-detail/AudiobookChapterUnlock"
 import { AudiobookPaywallModal } from "@/components/audio-player/AudiobookPaywallModal"
 import { MobileAppPromptModal } from "@/components/MobileAppPromptModal"
+import { useSiteSettings } from "@/hooks/useSiteSettings"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { durationToSeconds, formatDuration } from "@/lib/duration"
 
@@ -57,8 +58,10 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   }, [access.hasFullAccess, access.previewLimitSeconds, access.loading, setHasFullAccess, setPreviewLimitSeconds, setAccessLoading])
 
 
-  // ── Mobile app prompt: show after FREE_PLAY_THRESHOLD_SECONDS of free playback ──
-  const FREE_PLAY_THRESHOLD_SECONDS = 300 // 5 minutes
+  // ── Mobile app prompt: threshold from admin settings ──
+  const { get: getSetting } = useSiteSettings()
+  const promptEnabled = getSetting("app_prompt_enabled", "true") !== "false"
+  const FREE_PLAY_THRESHOLD_SECONDS = Math.max(10, Number(getSetting("app_prompt_audio_seconds", "300")) || 300)
   const [showAppPrompt, setShowAppPrompt] = useState(false)
   const playedSecondsRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -66,7 +69,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   useEffect(() => {
     const sessionKey = `app_prompt_audio_${book.id}`
     // Only for free books; stop once shown or threshold already reached this session
-    if (!isFree || showAppPrompt || sessionStorage.getItem(sessionKey)) return
+    if (!promptEnabled || !isFree || showAppPrompt || sessionStorage.getItem(sessionKey)) return
 
     if (isThisBookActive && isPlaying) {
       timerRef.current = setInterval(() => {
@@ -81,7 +84,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
       if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     }
     return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } }
-  }, [isFree, isThisBookActive, isPlaying, showAppPrompt, book.id])
+  }, [promptEnabled, isFree, isThisBookActive, isPlaying, showAppPrompt, book.id])
 
   const displayTracks = isThisBookActive ? tracks : audioTracks
   const realTrackCount = displayTracks.length
