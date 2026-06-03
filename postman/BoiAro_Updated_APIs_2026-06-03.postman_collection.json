@@ -1,0 +1,179 @@
+{
+  "info": {
+    "name": "BoiAro — Updated & New APIs (2026-06-03)",
+    "description": "Only the APIs that were CHANGED or ADDED in the current development session.\n\nSummary:\n— 4 New endpoints added\n— 11 Existing endpoints changed (behavior, response shape, or validation)\n\nBase URL: {{base_url}}/api/v1\nAuth: Authorization: Bearer {{access_token}}",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",     "value": "http://localhost:3001" },
+    { "key": "access_token", "value": "" },
+    { "key": "book_id",      "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "🆕 NEW — Books: Register Read/View",
+      "request": {
+        "method": "POST",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}/read" },
+        "description": "ADDED: POST /api/v1/books/:id/read\n\nCall this when the user opens or views a book. Increments the total_reads counter.\n\nAuth: Optional\n— Without token: just increments total_reads on the Book row\n— With token: also creates a BookRead record for the user (used for 'Continue Reading' / personalization)\n\nResponse:\n{\n  \"success\": true,\n  \"total_reads\": 342\n}\n\nUse case: call once per book open session, not on every page turn."
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Books: Get Book by ID",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}" },
+        "description": "CHANGED: GET /api/v1/books/:id\n\nWhat changed:\nrating, reviews_count, total_reads are now LIVE-COMPUTED from the database on every request instead of using stale cached column values.\n\nBefore (broken):\n  rating: 0.0        ← cached column, never updated\n  reviews_count: 0   ← cached column, never updated\n  total_reads: 0     ← counter only incremented via web\n\nAfter (fixed):\n  rating: 4.5        ← avg of all APPROVED reviews\n  reviews_count: 12  ← count of APPROVED reviews\n  total_reads: 340   ← count from BookRead table\n\nKey response fields:\n{\n  \"id\": \"uuid\",\n  \"title\": \"ভূত বউ\",\n  \"title_en\": \"Ghost Wife\",\n  \"slug\": \"bhoot-bou\",\n  \"description\": \"...\",\n  \"cover_url\": \"https://...\",\n  \"rating\": 4.5,           ← LIVE avg\n  \"reviews_count\": 12,     ← LIVE count\n  \"total_reads\": 340,      ← LIVE count\n  \"is_free\": false,\n  \"language\": \"bn\",\n  \"tags\": [\"horror\", \"romance\"],\n  \"published_date\": \"2024-01-01\",\n  \"author\": { \"id\", \"name\", \"avatar_url\", \"bio\", \"followed\": true },\n  \"publisher\": { \"id\", \"name\", \"logo_url\", \"followed\": false },\n  \"category\": { \"id\", \"name\", \"name_bn\", \"icon\", \"color\" },\n  \"formats\": [\n    {\n      \"format\": \"ebook\",\n      \"price\": 99,\n      \"is_available\": true,\n      \"preview_percentage\": 20,\n      \"pages\": 240,\n      \"file_size\": \"2.5 MB\"\n    },\n    {\n      \"format\": \"audiobook\",\n      \"price\": 149,\n      \"is_available\": true,\n      \"duration\": \"5:30:00\",\n      \"chapters_count\": 12\n    }\n  ]\n}"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Books: Get Book by Slug",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{base_url}}/api/v1/books/slug/bhoot-bou",
+          "variable": [{ "key": "slug", "value": "bhoot-bou" }] },
+        "description": "CHANGED: GET /api/v1/books/slug/:slug\n\nSame fix as Get Book by ID.\nrating, reviews_count, total_reads are now live-computed.\nResponse shape identical to GET /books/:id."
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Books: Get Audiobook Tracks",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}/tracks" },
+        "description": "CHANGED: GET /api/v1/books/:book_id/tracks\n\nWhat changed:\nWhen book.is_free = true OR audiobook format price = 0, ALL tracks now return:\n  is_preview: true\n  chapter_price: null\n\nThis means the app does NOT need to show any paywall for free books. The server handles it — no app update needed.\n\nResponse:\n{\n  \"tracks\": [\n    {\n      \"id\": \"uuid\",\n      \"track_number\": 1,\n      \"title\": \"Episode 1 — শুরু\",\n      \"duration\": \"12:34\",\n      \"is_preview\": true,     ← FREE: always true for free books\n      \"chapter_price\": null,  ← FREE: always null for free books\n      \"media_type\": \"audio\",\n      \"status\": \"active\"\n    }\n  ]\n}\n\nFor PAID books with mixed chapters:\n{\n  \"tracks\": [\n    { \"track_number\": 1, \"is_preview\": true,  \"chapter_price\": null },\n    { \"track_number\": 2, \"is_preview\": false, \"chapter_price\": 100 },\n    { \"track_number\": 3, \"is_preview\": false, \"chapter_price\": 100 }\n  ]\n}\n\nLogic:\n  is_preview: true  → play freely, no coin deduction\n  is_preview: false → require coin unlock before playback"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Wallet: Unlock Content with Coins",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "{{base_url}}/api/v1/wallet/unlock" },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\",\n  \"format\": \"audiobook_chapter_<track_uuid>\",\n  \"coin_cost\": 100\n}" },
+        "description": "CHANGED: POST /api/v1/wallet/unlock\n\nWhat changed:\nFor audiobook chapter unlocks (format = 'audiobook_chapter_<track_id>'), the server now:\n1. Fetches the REAL chapter_price from the DB\n2. Ignores the client-supplied coin_cost for chapters\n3. Validates the book_id matches the track\n4. Forces coin_cost = 0 if book is free or track is preview\n\nBefore (broken): client could send coin_cost: 0 to unlock any chapter for free\nAfter (fixed): server always uses the actual DB price\n\nFormat values:\n  'ebook'                       → unlock full ebook\n  'audiobook'                   → unlock full audiobook\n  'audiobook_chapter_<id>'      → unlock single chapter (price from DB)\n  'premium_voice'               → unlock AI TTS voice\n\nRequest:\n{\n  \"book_id\": \"<book_uuid>\",\n  \"format\": \"audiobook_chapter_<track_uuid>\",\n  \"coin_cost\": 100    ← only used for ebook/audiobook format; ignored for chapters\n}\n\nResponse (success):\n{ \"success\": true, \"message\": \"Content unlocked\", \"new_balance\": 150 }\n\nResponse (already unlocked):\n{ \"already_unlocked\": true }\n\nErrors:\n  400  Insufficient coins\n  400  Chapter not found\n  400  Chapter does not belong to this book\n  403  This book requires an active subscription\n  400  Coin price not configured — contact admin"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Subscriptions: Subscribe",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "{{base_url}}/api/v1/subscriptions/subscribe" },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"plan_id\": \"<plan_uuid>\",\n  \"payment_method\": \"sslcommerz\"\n}" },
+        "description": "CHANGED: POST /api/v1/subscriptions/subscribe\n\nWhat changed:\nPaid plans now require actual payment before the subscription is activated.\nPreviously, subscriptions were activated immediately regardless of payment.\n\n=== FLOW A: Free plan or 100% coupon ===\nRequest:\n{\n  \"plan_id\": \"<uuid>\",\n  \"coupon_code\": \"FREE100\"\n}\n\nResponse (immediate activation):\n{\n  \"requires_payment\": false,\n  \"subscription\": {\n    \"id\": \"uuid\",\n    \"status\": \"active\",\n    \"start_date\": \"2026-06-03T...\",\n    \"end_date\": \"2026-07-03T...\"\n  }\n}\n\n=== FLOW B: Paid plan ===\nRequest:\n{\n  \"plan_id\": \"<uuid>\",\n  \"payment_method\": \"sslcommerz\"\n}\n\nResponse (requires payment):\n{\n  \"requires_payment\": true,\n  \"gateway_url\": \"https://sandbox.sslcommerz.com/...\",\n  \"subscription_id\": \"uuid\",\n  \"transaction_id\": \"SUB-1717382400-abc123\"\n}\n\nMobile flow for paid:\n1. Call subscribe → get gateway_url\n2. Open gateway_url in WebView\n3. User pays on SSLCommerz\n4. Server receives callback → activates subscription automatically\n5. App polls GET /subscriptions/active to confirm activation\n\nSubscription status values:\n  pending    → created, payment not yet received\n  active     → payment confirmed, access granted\n  failed     → payment failed\n  cancelled  → user cancelled"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — TTS: Check Access",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{base_url}}/api/v1/tts/access/{{book_id}}" },
+        "description": "CHANGED: GET /api/v1/tts/access/:bookId\n\nWhat changed:\nPreviously always returned unlocked: true (security bug).\nNow performs a real DB check — validates whether user has an active ContentUnlock for premium_voice.\n\nResponse:\n{\n  \"success\": true,\n  \"premium_voice_enabled\": true,\n  \"unlocked\": false,        ← true only if user has valid unlock record OR book is free\n  \"access_type\": \"paid\",   ← 'free' | 'paid' | 'subscription'\n  \"coin_price\": 200,        ← null if access_type is 'free'\n  \"wallet_balance\": 45,     ← user's current coin balance\n  \"message\": \"Unlock with 200 coins to use AI voice\"\n}\n\naccess_type values:\n  free          → no coins needed, all users can use TTS\n  paid          → one-time coin unlock required\n  subscription  → active subscription required\n\nIf unlocked: true → user can immediately call /tts/generate\nIf unlocked: false → show coin price and unlock button"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — TTS: Unlock with Coins",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "{{base_url}}/api/v1/tts/unlock" },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\"\n}" },
+        "description": "CHANGED: POST /api/v1/tts/unlock\n\nWhat changed:\nPreviously trusted client-supplied coin_cost, allowing free unlocks when voice_coin_price was null.\nNow fetches the REAL price from the DB. Client sends only book_id.\n\nRequest:\n{\n  \"book_id\": \"<uuid>\"\n  // No coin_cost needed — server fetches real price\n}\n\nResponse (success):\n{\n  \"success\": true,\n  \"coins_spent\": 200,\n  \"message\": \"Premium voice unlocked\"\n}\n\nResponse (already unlocked):\n{\n  \"success\": true,\n  \"already_unlocked\": true\n}\n\nErrors:\n  400  Premium Voice not enabled for this book\n  400  Coin price not configured — contact admin\n  400  Insufficient coins\n  403  This book requires an active subscription"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Authors: Get by ID (new fields)",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{base_url}}/api/v1/authors/:id",
+          "variable": [{ "key": "id", "value": "<author_uuid>" }] },
+        "description": "CHANGED: GET /api/v1/authors/:id\n\nWhat changed:\n3 new fields added to the response:\n  followers_count  — total follower count\n  books_count      — total approved books\n  is_following     — whether the current user follows this author (null if not authenticated)\n\nAlso: books list now has NO limit — returns ALL books by this author.\n\nFull response:\n{\n  \"id\": \"uuid\",\n  \"name\": \"রবীন্দ্রনাথ ঠাকুর\",\n  \"name_en\": \"Rabindranath Tagore\",\n  \"avatar_url\": \"https://...\",\n  \"bio\": \"...\",\n  \"genre\": \"Poetry, Fiction\",\n  \"is_featured\": true,\n  \"followers_count\": 1250,  ← NEW\n  \"books_count\": 15,        ← NEW\n  \"is_following\": false,    ← NEW (null if not logged in)\n  \"books\": [\n    { \"id\", \"title\", \"title_en\", \"slug\", \"cover_url\", \"rating\", \"is_free\" }\n  ]  // All books, no limit\n}"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Narrators: Get by ID (new fields)",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{base_url}}/api/v1/narrators/:id",
+          "variable": [{ "key": "id", "value": "<narrator_uuid>" }] },
+        "description": "CHANGED: GET /api/v1/narrators/:id\n\nSame new fields as Authors:\n  followers_count  — total follower count\n  books_count      — total audiobooks narrated\n  is_following     — whether current user follows (null if not auth)\n\nFull response:\n{\n  \"id\": \"uuid\",\n  \"name\": \"নারেটর নাম\",\n  \"name_en\": \"Narrator Name\",\n  \"avatar_url\": \"https://...\",\n  \"bio\": \"...\",\n  \"specialty\": \"Thriller, Romance\",\n  \"rating\": 4.8,\n  \"is_featured\": false,\n  \"followers_count\": 340,   ← NEW\n  \"books_count\": 6,         ← NEW\n  \"is_following\": true,     ← NEW\n  \"books\": [...]\n}"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Publishers: Get by ID (new fields)",
+      "request": {
+        "method": "GET",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{base_url}}/api/v1/publishers/:id",
+          "variable": [{ "key": "id", "value": "<publisher_uuid>" }] },
+        "description": "CHANGED: GET /api/v1/publishers/:id\n\nSame new fields as Authors:\n  followers_count  — total follower count\n  books_count      — total published books\n  is_following     — whether current user follows (null if not auth)\n\nFull response:\n{\n  \"id\": \"uuid\",\n  \"name\": \"বই আরও প্রকাশনী\",\n  \"name_en\": \"BoiAro Publishing\",\n  \"logo_url\": \"https://...\",\n  \"description\": \"...\",\n  \"is_verified\": true,\n  \"is_featured\": false,\n  \"followers_count\": 85,    ← NEW\n  \"books_count\": 23,        ← NEW\n  \"is_following\": false,    ← NEW\n  \"books\": [...]\n}"
+      }
+    },
+
+    {
+      "name": "🔁 CHANGED — Upload Media (WAV now supported)",
+      "request": {
+        "method": "POST",
+        "auth": { "type": "noauth" },
+        "url": { "raw": "{{base_url}}/upload/media" },
+        "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": "" }] },
+        "description": "CHANGED: POST /upload/media\n\nWhat changed:\n1. WAV audio files are now accepted (previously rejected)\n2. S3 upload timeout increased from 15s to 300s (fixes large file failures)\n3. Returns upload progress events (when called from mobile with XHR)\n\nAccepted file types:\n  Audio:  MP3, M4A, WAV, MP4   (max 500 MB)\n  Ebook:  EPUB, PDF            (max 500 MB)\n  Image:  JPG, PNG, WebP, GIF  (max 500 MB)\n\nRequest:\n  Content-Type: multipart/form-data\n  Field name:   file\n\nResponse:\n{\n  \"url\": \"https://r2.boiaro.com/media/audio/track-001.wav\",\n  \"storage\": \"s3\",\n  \"queued\": false\n}\n\nError responses:\n  413  File too large (exceeds 500 MB)\n  415  Unsupported file type: <mime>"
+      }
+    },
+
+    {
+      "name": "🆕 NEW — Notifications: Register FCM Push Token",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "{{base_url}}/api/v1/notifications/register-token" },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"token\": \"<firebase_device_token>\",\n  \"platform\": \"android\"\n}" },
+        "description": "ADDED: POST /api/v1/notifications/register-token\n\nRegister the device's Firebase Cloud Messaging (FCM) token to receive push notifications.\n\nCall this:\n— On every app launch after a successful login\n— After the user grants notification permission\n\nRequest:\n{\n  \"token\": \"<fcm_token_from_firebase>\",\n  \"platform\": \"android\"   ← 'android' | 'ios'\n}\n\nResponse:\n{\n  \"success\": true,\n  \"push_enabled\": true,\n  \"firebase_configured\": true\n}\n\nIf push_enabled: false → push notifications are disabled platform-wide by admin\nIf firebase_configured: false → Firebase not set up on the server yet\n\nThe same token can be re-registered safely (idempotent).\nMultiple devices per user are supported."
+      }
+    },
+
+    {
+      "name": "🆕 NEW — Notifications: Unregister FCM Token",
+      "request": {
+        "method": "DELETE",
+        "url": { "raw": "{{base_url}}/api/v1/notifications/register-token" },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"token\": \"<firebase_device_token>\"\n}" },
+        "description": "ADDED: DELETE /api/v1/notifications/register-token\n\nRemove the device token so the user no longer receives push notifications on this device.\n\nCall this on logout to prevent push notifications being sent to a logged-out device.\n\nResponse:\n{\n  \"success\": true\n}"
+      }
+    },
+
+    {
+      "name": "🆕 NEW — Presence: Activity Heartbeat",
+      "request": {
+        "method": "POST",
+        "url": { "raw": "{{base_url}}/api/v1/presence/heartbeat" },
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"activity_type\": \"reading\",\n  \"book_id\": \"{{book_id}}\",\n  \"current_page\": 42,\n  \"session_id\": \"<uuid-generated-on-app-launch>\"\n}" },
+        "description": "ADDED: POST /api/v1/presence/heartbeat\n\nRecord the user's current activity for live presence tracking in the admin panel.\n\nCall every 45 seconds while the app is in the foreground.\n\nRequest fields:\n  activity_type  string   Required. 'reading' | 'listening' | 'browsing'\n  book_id        string   Required when reading/listening. UUID of current book.\n  current_page   integer  Optional. Current page (for reading activity).\n  session_id     string   Optional but recommended. UUID generated once per app launch.\n\nExamples:\n\n// User is reading:\n{\n  \"activity_type\": \"reading\",\n  \"book_id\": \"uuid\",\n  \"current_page\": 42,\n  \"session_id\": \"sess-uuid\"\n}\n\n// User is listening:\n{\n  \"activity_type\": \"listening\",\n  \"book_id\": \"uuid\",\n  \"session_id\": \"sess-uuid\"\n}\n\n// User is browsing (no book open):\n{\n  \"activity_type\": \"browsing\",\n  \"session_id\": \"sess-uuid\"\n}\n\nResponse:\n{ \"success\": true }\n\nData is used by the admin Live Monitoring panel only. No effect on user experience.\nStop sending when app goes to background."
+      }
+    }
+
+  ]
+}
