@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Play, Pause, Clock, Mic, Headphones, AlertCircle, Loader2, Lock } from "lucide-react"
+import { Play, Pause, Clock, Mic, Headphones, AlertCircle, Loader2, Lock, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -9,6 +9,7 @@ import { useAudiobookAccess } from "@/hooks/useAudiobookAccess"
 import { AudiobookChapterUnlock } from "@/components/book-detail/AudiobookChapterUnlock"
 import { AudiobookPaywallModal } from "@/components/audio-player/AudiobookPaywallModal"
 import { MobileAppPromptModal } from "@/components/MobileAppPromptModal"
+import { VideoPlayer } from "@/components/audio-player/VideoPlayer"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { durationToSeconds, formatDuration } from "@/lib/duration"
@@ -24,11 +25,14 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     loadBook, book: activeBook, isPlaying, togglePlay, tracks, currentTrackIndex,
     goToTrack, openFullPlayer, progressPercentage, isLoading, error, currentTime, duration, formatTime,
     setPreviewLimitSeconds, setHasFullAccess, isPreviewMode, showPaywall, setShowPaywall,
-    setAccessLoading,
+    setAccessLoading, seekTo,
   } = useAudioPlayer()
+
   const { user } = useAuth()
 
   const isThisBookActive = activeBook?.id === book.id
+  // Is the currently-playing track a video?
+  const isCurrentTrackVideo = isThisBookActive && tracks[currentTrackIndex]?.mediaType === "video"
   const totalDurSec = durationToSeconds(audiobook.duration)
   const isFree = audiobook.price === 0 || book.isFree
 
@@ -144,44 +148,71 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
       {/* Hero CTA card */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[hsl(220,60%,12%)] to-[hsl(240,30%,8%)] border border-[hsl(220,40%,20%)]">
         <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, hsl(220 60% 50%), transparent 70%)' }} />
-        <div className="relative p-6 lg:p-8">
-          <div className="flex flex-col sm:flex-row items-start gap-6">
-            {/* Narrator(s) + meta */}
-            <div className="flex items-center gap-4 flex-1">
-              {allNarrators.length > 1 ? (
-                <div className="flex -space-x-3">
-                  {allNarrators.map((n: any, i: number) => (
-                    n.avatar ? (
-                      <img key={n.id || i} src={n.avatar} alt={n.name} className="w-12 h-12 rounded-full object-cover ring-2 ring-[hsl(220,50%,30%)] shadow-lg" />
-                    ) : (
-                      <div key={n.id || i} className="w-12 h-12 rounded-full bg-[hsl(220,40%,18%)] flex items-center justify-center ring-2 ring-[hsl(220,50%,30%)] shadow-lg">
-                        <Mic className="w-5 h-5 text-[hsl(220,60%,60%)]" />
-                      </div>
-                    )
-                  ))}
-                </div>
-              ) : narratorAvatar ? (
-                <img src={narratorAvatar} alt={narratorName} className="w-16 h-16 rounded-full object-cover ring-2 ring-[hsl(220,50%,30%)] shadow-lg" />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-[hsl(220,40%,18%)] flex items-center justify-center ring-2 ring-[hsl(220,50%,30%)] shadow-lg">
-                  <Mic className="w-7 h-7 text-[hsl(220,60%,60%)]" />
-                </div>
-              )}
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
-                  {allNarrators.length > 1 ? "Narrated by" : "Narrated by"}
-                </p>
-                <p className="text-lg font-semibold text-foreground">{narratorName}</p>
-                <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDuration(audiobook.duration)}</span>
-                  <span className="flex items-center gap-1"><Headphones className="w-3 h-3" /> {realTrackCount} episodes</span>
-                  <span className="uppercase">{(audiobook.quality || "standard")}</span>
+        <div className="relative p-5 lg:p-7">
+
+          {/* ── Inline video player (video tracks only) ── */}
+          {isCurrentTrackVideo && (
+            <div className="mb-5">
+              <div className="flex items-center gap-2 mb-2.5">
+                <Video className="w-4 h-4 text-blue-400" />
+                <span className="text-xs font-medium text-blue-400 uppercase tracking-wider">
+                  {tracks[currentTrackIndex]?.title || `Track ${currentTrackIndex + 1}`}
+                </span>
+              </div>
+              <VideoPlayer />
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row items-start gap-5">
+            {/* Narrator info — hidden while video is playing to save space */}
+            {!isCurrentTrackVideo && (
+              <div className="flex items-center gap-4 flex-1">
+                {allNarrators.length > 1 ? (
+                  <div className="flex -space-x-3">
+                    {allNarrators.map((n: any, i: number) => (
+                      n.avatar ? (
+                        <img key={n.id || i} src={n.avatar} alt={n.name} className="w-12 h-12 rounded-full object-cover ring-2 ring-[hsl(220,50%,30%)] shadow-lg" />
+                      ) : (
+                        <div key={n.id || i} className="w-12 h-12 rounded-full bg-[hsl(220,40%,18%)] flex items-center justify-center ring-2 ring-[hsl(220,50%,30%)] shadow-lg">
+                          <Mic className="w-5 h-5 text-[hsl(220,60%,60%)]" />
+                        </div>
+                      )
+                    ))}
+                  </div>
+                ) : narratorAvatar ? (
+                  <img src={narratorAvatar} alt={narratorName} className="w-16 h-16 rounded-full object-cover ring-2 ring-[hsl(220,50%,30%)] shadow-lg" />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-[hsl(220,40%,18%)] flex items-center justify-center ring-2 ring-[hsl(220,50%,30%)] shadow-lg">
+                    <Mic className="w-7 h-7 text-[hsl(220,60%,60%)]" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Narrated by</p>
+                  <p className="text-lg font-semibold text-foreground">{narratorName}</p>
+                  <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDuration(audiobook.duration)}</span>
+                    <span className="flex items-center gap-1"><Headphones className="w-3 h-3" /> {realTrackCount} episodes</span>
+                    <span className="uppercase">{audiobook.quality || "standard"}</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* Price + CTA */}
-            <div className="flex flex-col items-end gap-3 w-full sm:w-auto">
+            {/* When video is playing, show compact narrator + episode info instead */}
+            {isCurrentTrackVideo && (
+              <div className="flex items-center gap-3 flex-1 text-xs text-muted-foreground">
+                {narratorAvatar
+                  ? <img src={narratorAvatar} alt={narratorName} className="w-8 h-8 rounded-full object-cover ring-1 ring-[hsl(220,50%,30%)]" />
+                  : <div className="w-8 h-8 rounded-full bg-[hsl(220,40%,18%)] flex items-center justify-center"><Mic className="w-4 h-4 text-[hsl(220,60%,60%)]" /></div>
+                }
+                <span>{narratorName}</span>
+                <span>•</span>
+                <span className="flex items-center gap-1"><Headphones className="w-3 h-3" /> {realTrackCount} episodes</span>
+              </div>
+            )}
+
+            {/* Price + CTA — same for audio and video */}
+            <div className="flex flex-col items-end gap-3 w-full sm:w-auto flex-shrink-0">
               <span className="text-3xl font-bold text-foreground font-serif">
                 {isFree ? "Free" : `৳${audiobook.price}`}
               </span>
@@ -201,7 +232,8 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
                   )}
                   {isThisBookActive && isPlaying ? "Pause" : isThisBookActive ? "Resume" : isFree ? "Play Free" : "Play Now"}
                 </Button>
-                {isThisBookActive && (
+                {/* Full Player only shown for audio tracks — video plays inline */}
+                {isThisBookActive && !isCurrentTrackVideo && (
                   <Button size="lg" variant="outline" onClick={openFullPlayer} className="gap-2 rounded-xl border-[hsl(220,40%,25%)]">
                     Full Player
                   </Button>
@@ -210,14 +242,22 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
             </div>
           </div>
 
-          {/* Active playback progress */}
+          {/* Progress bar — shared for audio and video */}
           {isThisBookActive && tracks.length > 0 && (
-            <div className="mt-6 pt-5 border-t border-[hsl(220,30%,18%)]">
+            <div className="mt-5 pt-4 border-t border-[hsl(220,30%,18%)]">
               <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
                 <span>Track {currentTrackIndex + 1} of {tracks.length} — {tracks[currentTrackIndex]?.title}</span>
                 <span>{formatTime(currentTime)} / {formatTime(duration)}</span>
               </div>
-              <div className="h-1.5 bg-[hsl(220,30%,15%)] rounded-full overflow-hidden">
+              {/* Clickable seek bar */}
+              <div
+                className="h-1.5 bg-[hsl(220,30%,15%)] rounded-full overflow-hidden cursor-pointer"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const pct = (e.clientX - rect.left) / rect.width
+                  seekTo(Math.max(0, pct * (duration || 0)))
+                }}
+              >
                 <div
                   className="h-full bg-[hsl(220,70%,50%)] rounded-full transition-all duration-300"
                   style={{ width: `${progressPercentage}%` }}
