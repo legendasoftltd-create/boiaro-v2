@@ -490,7 +490,7 @@ export function AudiobookEpisodeManager({ bookFormatId, bookTitle, open, onOpenC
                         <div className="flex flex-col items-center gap-2">
                           <Upload className="h-6 w-6 text-muted-foreground" />
                           <p className="text-sm text-muted-foreground">Click to upload MP3, M4A, WAV, or MP4</p>
-                          <p className="text-[11px] text-muted-foreground">Duration auto-detected · S3 storage with local fallback</p>
+                          <p className="text-[11px] text-muted-foreground">Duration auto-detected · Max 1 GB · S3 storage</p>
                         </div>
                       )}
                     </div>

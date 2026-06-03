@@ -40,7 +40,7 @@ const fallbackConfig = { uploadsDir: UPLOADS_DIR, baseUrl: BASE_URL };
 
 const uploadAmbient = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+  limits: { fileSize: 1024 * 1024 * 1024 }, // 1 GB
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("audio/") || file.mimetype === "application/octet-stream") {
       cb(null, true);

@@ -1,5 +1,5 @@
-export const DEFAULT_MAX_AUDIO_FILE_SIZE = 500 * 1024 * 1024  // 500 MB — WAV is uncompressed, can be large
-export const DEFAULT_MAX_VIDEO_FILE_SIZE = 500 * 1024 * 1024
+export const DEFAULT_MAX_AUDIO_FILE_SIZE = 1024 * 1024 * 1024  // 1 GB — WAV is uncompressed
+export const DEFAULT_MAX_VIDEO_FILE_SIZE = 1024 * 1024 * 1024  // 1 GB
 
 export type MediaType = "audio" | "video"
 

@@ -1689,7 +1689,7 @@ export default function AdminBooks() {
                       </Badge>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">Audio: max 100MB • Video: max 500MB</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">MP3 · M4A · WAV · MP4 · max 1 GB</p>
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={saveNewTrack} disabled={savingTrack} className="flex-1">
