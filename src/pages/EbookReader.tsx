@@ -283,6 +283,32 @@ export default function EbookReader() {
     }
   }, [premiumVoiceEnabled, voiceAccessType, voiceUnlockData, voiceUnlockLoading, tts.mode, tts.setMode]);
 
+  // ── TTS Pre-warm: silently generate first paragraphs before user presses play ──
+  // Triggered when page text changes (PDF page turn) or when premium mode activates.
+  // Only runs when TTS is in premium mode and the user has unlocked access.
+  useEffect(() => {
+    const ttsUnlocked =
+      voiceAccessType === "free" ||
+      (premiumVoiceEnabled && voiceUnlockData?.unlocked === true);
+
+    if (tts.mode !== "premium" || !ttsUnlocked || tts.isPlaying || tts.isPaused) return;
+
+    const preWarmFn = (tts as any).preWarm as ((text: string) => void) | undefined;
+    if (!preWarmFn) return;
+
+    let text = "";
+    if (fileType === "pdf") {
+      text = pdfPageText;
+    } else if (fileType === "epub" && (tts as any).rawText) {
+      // Use already-known page text if available
+      text = (tts as any).rawText;
+    }
+
+    if (text && text.trim().length > 20) {
+      preWarmFn(text);
+    }
+  }, [pdfPageText, tts.mode, tts.isPlaying, tts.isPaused, voiceAccessType, premiumVoiceEnabled, voiceUnlockData, fileType]);
+
   // Wrap mode change — gate "premium" mode behind voice unlock when required
   const handleTtsModeChange = useCallback((newMode: TtsMode) => {
     if (newMode === "premium") {
@@ -360,8 +386,9 @@ export default function EbookReader() {
       return;
     }
 
-    if (tts.mode === "premium") {
-      toast.info("Generating AI voice audio… this may take a moment.");
+    // Only show loading toast if content isn't pre-warmed (not already in cache)
+    if (tts.mode === "premium" && !(tts as any).isPreWarmed) {
+      toast.info("AI ভয়েস প্রস্তুত হচ্ছে…");
     }
 
     
@@ -695,9 +722,16 @@ export default function EbookReader() {
 
       if (tts.isPlaying && ttsAutoPlayRef.current) {
         handleManualPageTtsRestart(cfi);
+      } else if (tts.mode === "premium" && !tts.isPlaying && !tts.isPaused) {
+        // Pre-warm when user turns to a new EPUB page (not currently playing)
+        const preWarmFn = (tts as any).preWarm as ((text: string) => void) | undefined;
+        if (preWarmFn && epubRef.current) {
+          const visText = epubRef.current.getVisibleText();
+          if (visText && visText.trim().length > 20) preWarmFn(visText);
+        }
       }
     },
-    [tocItems, access, showPaywall, shouldEnforcePreviewLimit, tts.isPlaying, handleManualPageTtsRestart]
+    [tocItems, access, showPaywall, shouldEnforcePreviewLimit, tts.isPlaying, tts.isPaused, tts.mode, handleManualPageTtsRestart]
   );
 
   // ──────── Navigation handlers ────────

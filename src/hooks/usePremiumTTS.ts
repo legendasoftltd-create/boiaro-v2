@@ -16,7 +16,19 @@ export const BENGALI_VOICES = [
 export type BengaliVoiceId = typeof BENGALI_VOICES[number]["id"];
 const DEFAULT_VOICE_ID: BengaliVoiceId = "EXAVITQu4vr4xnSDxMaL"; // Sarah
 
-const LOOKAHEAD = 3; // pre-generate this many paragraphs ahead
+/**
+ * How many paragraphs ahead to generate and cache in urlCacheRef.
+ * These are real generate calls whose URLs land in memory so the next
+ * paragraph plays with zero network wait.
+ */
+const LOOKAHEAD = 3;
+
+/**
+ * How many paragraphs to pre-warm silently before the user presses play.
+ * Pre-warm generates the first N paragraphs so pressing play is instant.
+ */
+const PREWARM_COUNT = 2;
+
 const MAX_PARA_CHARS = 2500;
 
 interface PremiumTTSState {
@@ -24,6 +36,8 @@ interface PremiumTTSState {
   isPaused: boolean;
   isLoading: boolean;
   isGenerating: boolean;
+  isPreWarming: boolean;   // silently generating before user presses play
+  isPreWarmed: boolean;    // first paragraphs are ready in cache
   currentTime: number;
   duration: number;
   playbackRate: PremiumTTSSpeed;
@@ -35,15 +49,12 @@ interface PremiumTTSState {
 const log = (...a: unknown[]) => console.log("[PremiumTTS]", ...a);
 
 function splitParagraphs(text: string): string[] {
-  // First normalize: collapse sequences of blank lines, and treat single newlines
-  // (common in PDF-extracted text where each visual line is a \n) as spaces so
-  // words across line-breaks are not separated.
   const normalized = text
     .replace(/\r\n?/g, "\n")
-    .replace(/\n{2,}/g, "") // mark real paragraph breaks with a sentinel
-    .replace(/\n/g, " ")          // single newlines → space (PDF line joins)
-    .replace(//g, "\n\n")   // restore real paragraph breaks
-    .replace(/[^\S\n]{2,}/g, " ") // collapse multiple spaces
+    .replace(/\n{2,}/g, "")
+    .replace(/\n/g, " ")
+    .replace(//g, "\n\n")
+    .replace(/[^\S\n]{2,}/g, " ")
     .trim();
 
   const raw = normalized.split(/\n{2,}|।\s*\n/).map(p => p.trim()).filter(Boolean);
@@ -52,7 +63,6 @@ function splitParagraphs(text: string): string[] {
     if (para.length <= MAX_PARA_CHARS) {
       chunks.push(para);
     } else {
-      // Split long paragraphs on Bangla sentence endings
       const sentences = para.split(/(?<=[।.!?])\s+/);
       let cur = "";
       for (const s of sentences) {
@@ -65,38 +75,43 @@ function splitParagraphs(text: string): string[] {
   return chunks.length ? chunks : [normalized.substring(0, MAX_PARA_CHARS)];
 }
 
-export function usePremiumTTS(bookId: string | null, onComplete?: () => void, onQuotaExceeded?: () => void, onAccessDenied?: () => void) {
-  const generateMutation   = trpc.tts.generateParagraph.useMutation();
-  const prefetchMutation   = trpc.tts.prefetchParagraphs.useMutation();
+export function usePremiumTTS(
+  bookId: string | null,
+  onComplete?: () => void,
+  onQuotaExceeded?: () => void,
+  onAccessDenied?: () => void,
+) {
+  const generateMutation = trpc.tts.generateParagraph.useMutation();
 
   const [state, setState] = useState<PremiumTTSState>({
     isPlaying: false, isPaused: false, isLoading: false, isGenerating: false,
+    isPreWarming: false, isPreWarmed: false,
     currentTime: 0, duration: 0, playbackRate: 1, paragraphIndex: 0,
     totalParagraphs: 0, error: null,
   });
 
-  const audioRef           = useRef<HTMLAudioElement | null>(null);
-  const onCompleteRef      = useRef(onComplete);
-  onCompleteRef.current    = onComplete;
-  const onQuotaExceededRef = useRef(onQuotaExceeded);
+  const audioRef            = useRef<HTMLAudioElement | null>(null);
+  const onCompleteRef       = useRef(onComplete);
+  onCompleteRef.current     = onComplete;
+  const onQuotaExceededRef  = useRef(onQuotaExceeded);
   onQuotaExceededRef.current = onQuotaExceeded;
-  const onAccessDeniedRef = useRef(onAccessDenied);
+  const onAccessDeniedRef   = useRef(onAccessDenied);
   onAccessDeniedRef.current = onAccessDenied;
 
-  const paragraphsRef  = useRef<string[]>([]);
-  const urlCacheRef    = useRef<Map<number, string>>(new Map()); // session cache: index → URL
-  // Tracks URLs fetched this session that haven't been confirmed played yet
-  const pendingPersistRef = useRef<Map<number, string>>(new Map());
-  const currentIdxRef  = useRef(0);
-  const voiceIdRef     = useRef<BengaliVoiceId>(DEFAULT_VOICE_ID);
-  const bookIdRef      = useRef<string | null>(bookId);
-  bookIdRef.current    = bookId;
-  const rateRef        = useRef<PremiumTTSSpeed>(1);
-  const activeRef      = useRef(false);
-  // Always-current ref so audio event handlers never hold stale closures
-  const playParagraphRef = useRef<(idx: number) => void>(() => {});
+  const paragraphsRef       = useRef<string[]>([]);
+  const urlCacheRef         = useRef<Map<number, string>>(new Map()); // idx → audio URL
+  const pendingPersistRef   = useRef<Map<number, string>>(new Map());
+  const currentIdxRef       = useRef(0);
+  const voiceIdRef          = useRef<BengaliVoiceId>(DEFAULT_VOICE_ID);
+  const bookIdRef           = useRef<string | null>(bookId);
+  bookIdRef.current         = bookId;
+  const rateRef             = useRef<PremiumTTSSpeed>(1);
+  const activeRef           = useRef(false);
+  const preWarmTimerRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const preWarmTextRef      = useRef<string>(""); // text that was pre-warmed
+  const playParagraphRef    = useRef<(idx: number) => void>(() => {});
 
-  // ── Audio element setup ────────────────────────────────────────────────────
+  // ── Audio element ──────────────────────────────────────────────────────────
   const cleanupAudio = useCallback(() => {
     if (!audioRef.current) return;
     audioRef.current.pause();
@@ -118,7 +133,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       setState(s => ({ ...s, currentTime: audio.currentTime }));
 
     audio.onended = () => {
-      // Paragraph played to completion — persist URL to localStorage cache
+      // Persist URL to localStorage after confirmed playback
       const bid = bookIdRef.current;
       const text = paragraphsRef.current[idx];
       const pendingUrl = pendingPersistRef.current.get(idx);
@@ -131,7 +146,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       const next = idx + 1;
       if (!activeRef.current) return;
       if (next < total) {
-        playParagraphRef.current(next); // always-current ref, never stale
+        playParagraphRef.current(next);
       } else {
         activeRef.current = false;
         setState(s => ({ ...s, isPlaying: false, isPaused: false, currentTime: 0 }));
@@ -140,7 +155,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     };
 
     audio.onerror = () => {
-      log(`Audio error on paragraph ${idx} — skipping to next`);
+      log(`Audio error on paragraph ${idx} — skipping`);
       const next = idx + 1;
       if (!activeRef.current) return;
       if (next < total) {
@@ -161,29 +176,28 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       log("Play error:", err);
       toast.error("অডিও প্লে করতে সমস্যা হয়েছে");
     });
-  }, [cleanupAudio]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cleanupAudio]);
 
-  // ── Generate a paragraph and cache URL ────────────────────────────────────
+  // ── Fetch URL for one paragraph (memory → localStorage → server) ──────────
   const ensureParagraph = useCallback(async (idx: number): Promise<string | null> => {
-    // Use the ref so this always reads the current bookId even from stale closures
     const bid = bookIdRef.current;
     if (!bid) return null;
 
-    // 1. Session in-memory cache
+    // 1. Memory cache (fastest — already generated this session)
     if (urlCacheRef.current.has(idx)) return urlCacheRef.current.get(idx)!;
 
     const text = paragraphsRef.current[idx];
     if (!text) return null;
 
-    // 2. Persistent localStorage cache (no tRPC call needed)
+    // 2. localStorage cache (no network call)
     const persisted = getTtsCachedUrl(bid, voiceIdRef.current, text);
     if (persisted) {
       urlCacheRef.current.set(idx, persisted);
-      log(`localStorage cache hit for paragraph ${idx}`);
+      log(`localStorage hit paragraph ${idx}`);
       return persisted;
     }
 
-    // 3. Generate via tRPC (ElevenLabs → S3 → DB cache)
+    // 3. Generate via server (ElevenLabs → S3 → DB)
     const result = await generateMutation.mutateAsync({
       bookId: bid,
       text,
@@ -193,7 +207,6 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
 
     if (result.success && result.audioUrl) {
       urlCacheRef.current.set(idx, result.audioUrl);
-      // Queue for localStorage persistence after playback completes
       pendingPersistRef.current.set(idx, result.audioUrl);
       return result.audioUrl;
     }
@@ -203,25 +216,45 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
       throw new Error("QUOTA_EXCEEDED");
     }
     throw new Error((result as any).error ?? "Generation failed");
-  }, [generateMutation]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [generateMutation]);
 
-  // ── Lookahead prefetch ─────────────────────────────────────────────────────
+  // ── Pre-fetch next LOOKAHEAD paragraphs in parallel into urlCacheRef ──────
+  // Uses generateMutation (returns URLs to client) so the next paragraph
+  // is already in urlCacheRef when needed — zero network wait between paragraphs.
   const prefetchAhead = useCallback((fromIdx: number) => {
     const bid = bookIdRef.current;
     if (!bid) return;
     const total = paragraphsRef.current.length;
-    const toFetch = [];
+
     for (let i = fromIdx + 1; i < Math.min(fromIdx + 1 + LOOKAHEAD, total); i++) {
-      // Skip if already in session cache or localStorage cache
       if (urlCacheRef.current.has(i)) continue;
       const text = paragraphsRef.current[i];
-      if (text && getTtsCachedUrl(bid, voiceIdRef.current, text)) continue;
-      toFetch.push({ text: paragraphsRef.current[i], index: i });
+      if (!text) continue;
+
+      // Check localStorage first (no network needed)
+      const local = getTtsCachedUrl(bid, voiceIdRef.current, text);
+      if (local) {
+        urlCacheRef.current.set(i, local);
+        log(`prefetch: localStorage hit paragraph ${i}`);
+        continue;
+      }
+
+      // Generate and store in memory cache (fire-and-forget, non-blocking)
+      const idx = i;
+      generateMutation.mutateAsync({
+        bookId: bid,
+        text,
+        voiceId: voiceIdRef.current,
+        paragraphIndex: idx,
+      }).then(result => {
+        if (result.success && result.audioUrl) {
+          urlCacheRef.current.set(idx, result.audioUrl);
+          pendingPersistRef.current.set(idx, result.audioUrl);
+          log(`prefetch: stored paragraph ${idx} in urlCache`);
+        }
+      }).catch(() => {}); // non-fatal background operation
     }
-    if (toFetch.length > 0) {
-      prefetchMutation.mutate({ bookId: bid, paragraphs: toFetch, voiceId: voiceIdRef.current });
-    }
-  }, [prefetchMutation]);
+  }, [generateMutation]);
 
   // ── Play a specific paragraph ──────────────────────────────────────────────
   const playParagraph = useCallback(async (idx: number) => {
@@ -232,14 +265,16 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     currentIdxRef.current = idx;
     setState(s => ({ ...s, isGenerating: true, error: null }));
 
+    // Kick off prefetch for next paragraphs IN PARALLEL with this one generating.
+    // If the paragraph is already cached, prefetchAhead is a pure localStorage lookup.
+    prefetchAhead(idx);
+
     try {
       const url = await ensureParagraph(idx);
       if (!url || !activeRef.current) return;
       setState(s => ({ ...s, isGenerating: false }));
       playAudioUrl(url, idx, total);
-      prefetchAhead(idx);
     } catch (err) {
-      // FORBIDDEN: server access-check rejected the request — show the unlock gate, no error toast
       if (err instanceof TRPCClientError && err.data?.code === "FORBIDDEN") {
         activeRef.current = false;
         onAccessDeniedRef.current?.();
@@ -255,23 +290,109 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     }
   }, [ensureParagraph, playAudioUrl, prefetchAhead]);
 
-  // Keep the ref current so audio event handlers always call the latest version
   playParagraphRef.current = playParagraph;
 
-  // ── Public API ─────────────────────────────────────────────────────────────
+  // ── Pre-warm: silently generate first PREWARM_COUNT paragraphs ────────────
+  // Call this with the page text before the user presses play so the first
+  // paragraph is already in urlCacheRef and playback starts immediately.
+  const preWarm = useCallback((fullText: string) => {
+    const bid = bookIdRef.current;
+    if (!bid || !fullText.trim()) return;
+
+    // Debounce: cancel previous pre-warm when text changes (page turn)
+    if (preWarmTimerRef.current) clearTimeout(preWarmTimerRef.current);
+    setState(s => ({ ...s, isPreWarmed: false }));
+
+    preWarmTimerRef.current = setTimeout(async () => {
+      const paras = splitParagraphs(fullText);
+      if (paras.length === 0) return;
+
+      // Only pre-warm if text actually changed (avoid redundant generation)
+      const textKey = paras.slice(0, PREWARM_COUNT).join("|");
+      if (preWarmTextRef.current === textKey) {
+        // Text unchanged — check if paragraphs 0..N-1 are still in cache
+        const allCached = Array.from({ length: Math.min(PREWARM_COUNT, paras.length) })
+          .every((_, i) => urlCacheRef.current.has(i) || !!getTtsCachedUrl(bid, voiceIdRef.current, paras[i]));
+        if (allCached) {
+          setState(s => ({ ...s, isPreWarmed: true }));
+          return;
+        }
+      }
+
+      log(`Pre-warming ${Math.min(PREWARM_COUNT, paras.length)} paragraphs…`);
+      setState(s => ({ ...s, isPreWarming: true, isPreWarmed: false }));
+
+      // Store paragraphs so ensureParagraph can find them during pre-warm
+      paragraphsRef.current = paras;
+
+      await Promise.all(
+        Array.from({ length: Math.min(PREWARM_COUNT, paras.length) }, (_, i) => i)
+          .map(async (idx) => {
+            if (urlCacheRef.current.has(idx)) return;
+            const text = paras[idx];
+            if (!text) return;
+
+            const local = getTtsCachedUrl(bid, voiceIdRef.current, text);
+            if (local) { urlCacheRef.current.set(idx, local); return; }
+
+            try {
+              const result = await generateMutation.mutateAsync({
+                bookId: bid,
+                text,
+                voiceId: voiceIdRef.current,
+                paragraphIndex: idx,
+              });
+              if (result.success && result.audioUrl) {
+                urlCacheRef.current.set(idx, result.audioUrl);
+                pendingPersistRef.current.set(idx, result.audioUrl);
+                log(`Pre-warm: paragraph ${idx} ready`);
+              }
+            } catch {
+              // non-fatal — play will generate on-demand if pre-warm fails
+            }
+          })
+      );
+
+      preWarmTextRef.current = textKey;
+      setState(s => ({ ...s, isPreWarming: false, isPreWarmed: true }));
+      log("Pre-warm complete — ready to play instantly");
+    }, 1200); // 1.2s debounce so rapid page turns don't spam the server
+  }, [generateMutation]);
+
+  // ── Play ───────────────────────────────────────────────────────────────────
   const play = useCallback(async (fullText: string) => {
     if (!fullText.trim()) { toast.error("পাঠ্য বিষয় নেই"); return; }
+
     activeRef.current = true;
-    urlCacheRef.current.clear();
     pendingPersistRef.current.clear();
 
-    paragraphsRef.current = splitParagraphs(fullText);
+    const newParas = splitParagraphs(fullText);
+
+    // Preserve urlCache if same text (user pressed play on same page again)
+    const newTextKey = newParas.slice(0, PREWARM_COUNT).join("|");
+    if (preWarmTextRef.current !== newTextKey) {
+      // Text changed — clear cache for old text
+      urlCacheRef.current.clear();
+    }
+
+    paragraphsRef.current = newParas;
     currentIdxRef.current = 0;
 
-    toast.info("AI ভয়েস তৈরি হচ্ছে…");
+    // Check if paragraph 0 is already pre-warmed (play will be instant)
+    const bid = bookIdRef.current;
+    const para0 = newParas[0];
+    const isReady = urlCacheRef.current.has(0) ||
+      (bid && para0 && !!getTtsCachedUrl(bid, voiceIdRef.current, para0));
+
+    if (!isReady) {
+      toast.info("AI ভয়েস প্রস্তুত হচ্ছে…");
+    }
+
+    setState(s => ({ ...s, isPreWarmed: isReady }));
     await playParagraph(0);
   }, [playParagraph]);
 
+  // ── Pause / Resume / Stop ─────────────────────────────────────────────────
   const pause = useCallback(() => {
     audioRef.current?.pause();
     setState(s => ({ ...s, isPaused: true, isPlaying: false }));
@@ -285,11 +406,14 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
   const stop = useCallback(() => {
     activeRef.current = false;
     cleanupAudio();
+    if (preWarmTimerRef.current) clearTimeout(preWarmTimerRef.current);
     urlCacheRef.current.clear();
     pendingPersistRef.current.clear();
     paragraphsRef.current = [];
+    preWarmTextRef.current = "";
     setState({
       isPlaying: false, isPaused: false, isLoading: false, isGenerating: false,
+      isPreWarming: false, isPreWarmed: false,
       currentTime: 0, duration: 0, playbackRate: rateRef.current,
       paragraphIndex: 0, totalParagraphs: 0, error: null,
     });
@@ -297,9 +421,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
 
   const skipForward = useCallback((seconds = 10) => {
     if (audioRef.current) {
-      audioRef.current.currentTime = Math.min(
-        audioRef.current.currentTime + seconds, audioRef.current.duration
-      );
+      audioRef.current.currentTime = Math.min(audioRef.current.currentTime + seconds, audioRef.current.duration);
     }
   }, []);
 
@@ -322,15 +444,19 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
   }, []);
 
   const setVoice = useCallback((voiceId: BengaliVoiceId) => {
-    // Clear session cache for the old voice (localStorage cache is kept per-voice)
     urlCacheRef.current.clear();
     pendingPersistRef.current.clear();
+    preWarmTextRef.current = "";
     voiceIdRef.current = voiceId;
+    setState(s => ({ ...s, isPreWarmed: false }));
   }, []);
 
-  useEffect(() => () => { activeRef.current = false; cleanupAudio(); }, [cleanupAudio]);
+  useEffect(() => () => {
+    activeRef.current = false;
+    if (preWarmTimerRef.current) clearTimeout(preWarmTimerRef.current);
+    cleanupAudio();
+  }, [cleanupAudio]);
 
-  // Compat surface for useTtsEngine
   return {
     ...state,
     currentSentenceIndex: state.paragraphIndex,
@@ -343,6 +469,7 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     rawText: paragraphsRef.current.join("\n\n"),
     voiceId: voiceIdRef.current,
     play,
+    preWarm,             // call with page text to pre-generate before user presses play
     playFromIndex: play,
     pause,
     resume,
@@ -352,7 +479,6 @@ export function usePremiumTTS(bookId: string | null, onComplete?: () => void, on
     seekToIndex,
     setSpeed,
     setVoice,
-    /** Expose for admin tools — clears localStorage cache for this book+voice */
     clearBookCache: useCallback(() => {
       if (bookId) clearTtsBookCache(bookId, voiceIdRef.current);
     }, [bookId]),
