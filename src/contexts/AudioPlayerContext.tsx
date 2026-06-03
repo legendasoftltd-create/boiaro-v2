@@ -206,6 +206,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     audio.src = url
     audio.playbackRate = currentState.playbackRate
     audio.volume = currentState.volume
+    // For video tracks the <video> element in VideoPlayer handles audio+video.
+    // Mute the background Audio element so there is no double audio.
+    audio.muted = track.mediaType === "video"
 
     // If we have a saved position, seek after metadata loads
     if (currentState.currentTime > 0 && !shouldPlay) {
@@ -456,6 +459,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       userGesturePlayRef.current = true
     }
 
+    // Auto-open FullPlayer for video tracks so the user sees the video immediately
+    const firstVideoTrack = finalTracks[0]?.mediaType === "video"
+
     setState((prev) => ({
       ...prev,
       book,
@@ -467,6 +473,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       progressPercentage: 0,
       error: null,
       isLoading: autoPlay ? true : false,
+      isFullPlayerOpen: prev.isFullPlayerOpen || firstVideoTrack,
     }))
 
     if (user) {
@@ -751,11 +758,6 @@ export function useAudioPlayer() {
   return ctx
 }
 
-function parseDurationToSeconds(dur: string): number {
-  const hMatch = dur.match(/(\d+)h/)
-  const mMatch = dur.match(/(\d+)m/)
-  return (parseInt(hMatch?.[1] || "0") * 3600) + (parseInt(mMatch?.[1] || "0") * 60)
-}
 
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value)

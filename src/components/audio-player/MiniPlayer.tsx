@@ -1,6 +1,7 @@
-import { Play, Pause, SkipForward, SkipBack, ChevronUp, Rewind, FastForward } from "lucide-react"
+import { Play, Pause, SkipForward, SkipBack, ChevronUp, Rewind, FastForward, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
+import { Badge } from "@/components/ui/badge"
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
 
 export function MiniPlayer() {
@@ -13,6 +14,7 @@ export function MiniPlayer() {
   if (!book || !audiobook || tracks.length === 0) return null
 
   const currentTrack = tracks[currentTrackIndex]
+  const isVideoTrack = currentTrack?.mediaType === "video"
   const trackDurationSec = duration || 300
   const controlsLocked = showPaywall || (isPreviewMode && currentTime >= previewLimitSeconds - 1)
   const narratorName = audiobook.narrator?.name && audiobook.narrator.name !== ""
@@ -40,9 +42,16 @@ export function MiniPlayer() {
               <img src={book.cover} alt="" className="w-full h-full object-cover" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground truncate">{book.title}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-medium text-foreground truncate">{book.title}</p>
+                {isVideoTrack && (
+                  <Badge variant="outline" className="text-[9px] px-1 py-0 border-blue-500/40 text-blue-400 gap-0.5 flex-shrink-0">
+                    <Video className="w-2.5 h-2.5" /> Video
+                  </Badge>
+                )}
+              </div>
               <p className="text-[11px] text-muted-foreground truncate">
-                {currentTrack?.title || `Ep. ${currentTrackIndex + 1}`} • {narratorName}
+                {currentTrack?.title || `Ep. ${currentTrackIndex + 1}`} • {isVideoTrack ? "Tap to watch" : narratorName}
               </p>
             </div>
             <ChevronUp className="w-4 h-4 text-muted-foreground/50 group-hover:text-foreground transition-colors hidden md:block" />

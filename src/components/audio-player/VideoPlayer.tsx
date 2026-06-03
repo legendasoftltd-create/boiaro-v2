@@ -1,43 +1,50 @@
-import { useRef, useEffect, useCallback, useState } from "react"
+import { useRef, useEffect, useState } from "react"
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
 
 /**
  * Inline video element for video-type audiobook tracks.
- * Renders inside the FullPlayer in place of the cover art.
+ * Renders inside FullPlayer in place of cover art.
+ *
+ * The background Audio element is MUTED for video tracks (AudioPlayerContext
+ * loadTrackSource). The muted audio element drives all context state
+ * (currentTime, duration, progress, isPlaying). This <video> element
+ * stays in sync by following those state values and plays the actual
+ * audio+video to the user.
  */
 export function VideoPlayer() {
   const {
-    book, tracks, currentTrackIndex, isPlaying, currentTime, playbackRate, volume,
+    book, tracks, currentTrackIndex,
+    isPlaying, currentTime, playbackRate, volume,
     seekTo, resolveTrackUrl,
   } = useAudioPlayer()
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const [src, setSrc] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [src, setSrc]         = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const seekingRef            = useRef(false) // prevent seek feedback loop
 
   const track = tracks[currentTrackIndex]
 
-  // Resolve signed URL for the video track
+  // ── Load URL when track changes ─────────────────────────────────────────
   useEffect(() => {
     if (!track || !book) return
     let cancelled = false
     setLoading(true)
+    setSrc(null)
 
     resolveTrackUrl(track, book.id).then((url) => {
-      if (!cancelled) {
-        setSrc(url)
-        setLoading(false)
-      }
+      if (cancelled || !url) return
+      setSrc(url)
+      setLoading(false)
     })
 
     return () => { cancelled = true }
-  }, [track?.id, book?.id, resolveTrackUrl])
+  }, [track?.id, book?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync playback state
+  // ── Sync play / pause from context state ────────────────────────────────
   useEffect(() => {
     const v = videoRef.current
     if (!v || !src) return
-
     if (isPlaying) {
       v.play().catch(() => {})
     } else {
@@ -45,7 +52,7 @@ export function VideoPlayer() {
     }
   }, [isPlaying, src])
 
-  // Sync playback rate + volume
+  // ── Sync playback rate and volume ───────────────────────────────────────
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
@@ -53,16 +60,29 @@ export function VideoPlayer() {
     v.volume = volume
   }, [playbackRate, volume])
 
-  // Sync seek from external controls
-  const handleTimeUpdate = useCallback(() => {
+  // ── Sync seek: context currentTime → video element ──────────────────────
+  // Triggered when user uses the seek bar or skip buttons.
+  // Guard seekingRef so the video's own onTimeUpdate doesn't loop back.
+  useEffect(() => {
     const v = videoRef.current
-    if (!v) return
-    // Only push time updates back to context if delta is large (avoid loops)
+    if (!v || !src || seekingRef.current) return
     const delta = Math.abs(v.currentTime - currentTime)
     if (delta > 1.5) {
+      seekingRef.current = true
+      v.currentTime = currentTime
+      setTimeout(() => { seekingRef.current = false }, 200)
+    }
+  }, [currentTime, src])
+
+  // ── Sync seek: video element → context (rare — e.g. native video controls) ─
+  const handleTimeUpdate = () => {
+    const v = videoRef.current
+    if (!v || seekingRef.current) return
+    // Only push back to context if video drifted significantly from audio element
+    if (Math.abs(v.currentTime - currentTime) > 2) {
       seekTo(v.currentTime)
     }
-  }, [currentTime, seekTo])
+  }
 
   if (loading || !src) {
     return (
