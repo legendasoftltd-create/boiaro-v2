@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "rm -f tsconfig.tsbuildinfo && rm -rf dist && tsc && mkdir -p dist/generated && cp -r src/generated/prisma dist/generated/prisma",
+    "build": "rm -f tsconfig.tsbuildinfo && rm -rf dist && tsc && mkdir -p dist/generated && cp -r src/generated/prisma dist/generated/prisma && mkdir -p dist/assets && cp src/assets/*.png dist/assets/ 2>/dev/null || true",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -49,6 +49,7 @@
     "nodemailer": "^8.0.7",
     "pg": "^8.20.0",
     "prisma": "^6.19.3",
+    "sharp": "^0.34.5",
     "uuid": "^14.0.0",
     "zod": "^3.25.76"
   },

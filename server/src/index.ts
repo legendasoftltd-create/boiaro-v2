@@ -20,6 +20,7 @@ import {
 } from "./lib/s3.js";
 
 import { startStorageSyncService } from "./services/storageSync.service.js";
+import { applyWatermark } from "./lib/watermark.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -110,10 +111,22 @@ app.post("/upload", uploadImage.single("file"), async (req, res) => {
   if (!req.file) { res.status(400).json({ error: "No file provided" }); return; }
   try {
     const hint = (req.query.type as string | undefined) as "avatar" | "cover" | "image" | undefined;
+
+    // Apply BoiAro logo watermark to book cover images only
+    let fileBuffer = req.file.buffer;
+    if (hint === "cover") {
+      try {
+        fileBuffer = await applyWatermark(fileBuffer);
+      } catch (wmErr: any) {
+        console.error("[upload] watermark failed, uploading original:", wmErr?.message);
+        // Non-fatal — fall back to original image without watermark
+      }
+    }
+
     const result = await uploadWithFallback(
-      req.file.buffer,
+      fileBuffer,
       req.file.originalname,
-      req.file.mimetype,
+      hint === "cover" ? "image/jpeg" : req.file.mimetype,
       { hint: hint ?? "image" },
       fallbackConfig
     );
