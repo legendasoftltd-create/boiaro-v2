@@ -51,9 +51,9 @@ const log = (...a: unknown[]) => console.log("[PremiumTTS]", ...a);
 function splitParagraphs(text: string): string[] {
   const normalized = text
     .replace(/\r\n?/g, "\n")
-    .replace(/\n{2,}/g, "")
-    .replace(/\n/g, " ")
-    .replace(//g, "\n\n")
+    .replace(/\n{2,}/g, "\x00")  // mark real paragraph breaks
+    .replace(/\n/g, " ")          // join PDF line-breaks into words
+    .replace(/\x00/g, "\n\n")    // restore paragraph breaks
     .replace(/[^\S\n]{2,}/g, " ")
     .trim();
 
