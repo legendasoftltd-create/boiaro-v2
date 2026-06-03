@@ -4,7 +4,7 @@ import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { bookByIdSchema, bookListSchema } from "../schemas/books.js";
 import { getBookById, listBooks } from "../services/books.service.js";
-import { resolveBookUrls, resolveUrls } from "../lib/mediaUrl.js";
+import { resolveBookUrls } from "../lib/mediaUrl.js";
 
 export const booksRouter = router({
   list: publicProcedure
@@ -237,6 +237,8 @@ export const booksRouter = router({
     .mutation(async ({ ctx, input }) => {
       await prisma.bookRead.create({ data: { user_id: ctx.userId, book_id: input.bookId } });
       await prisma.book.update({ where: { id: input.bookId }, data: { total_reads: { increment: 1 } } });
+      const reads_count = await prisma.bookRead.count({ where: { book_id: input.bookId } });
+      return { reads_count };
     }),
 
   narrators: publicProcedure.query(async () => {
@@ -617,7 +619,6 @@ export const booksRouter = router({
   searchApprovedBooks: publicProcedure
     .input(z.object({ query: z.string().min(1), format: z.enum(["ebook", "audiobook", "hardcopy"]) }))
     .query(async ({ input }) => {
-      const pattern = `%${input.query}%`;
       const books = await prisma.book.findMany({
         where: {
           submission_status: "approved",

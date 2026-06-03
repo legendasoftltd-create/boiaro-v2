@@ -167,6 +167,22 @@ booksRestRouter.delete(
   }
 );
 
+// Mobile app calls this to register a book view/read (mirrors tRPC books.incrementRead)
+booksRestRouter.post("/:id/read", async (req: AuthenticatedRequest, res) => {
+  try {
+    const bookId = String(req.params.id);
+    const userId = req.auth?.userId ?? null;
+    await Promise.all([
+      prisma.book.update({ where: { id: bookId }, data: { total_reads: { increment: 1 } } }),
+      userId ? prisma.bookRead.create({ data: { user_id: userId, book_id: bookId } }).catch(() => {}) : Promise.resolve(),
+    ]);
+    const count = await prisma.bookRead.count({ where: { book_id: bookId } });
+    res.json({ success: true, total_reads: count });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
 booksRestRouter.get("/:book_id/tracks", async (req, res) => {
   try {
     const bookId = req.params.book_id;

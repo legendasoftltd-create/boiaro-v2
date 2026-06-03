@@ -1,8 +1,6 @@
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
-import { initTRPC } from "@trpc/server";
-import type { Context } from "../context.js";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateOrderEarnings } from "../lib/earnings.js";
@@ -16,6 +14,24 @@ import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 
 function orderSellableAmount(order: { total_amount?: number | null; shipping_cost?: number | null }) {
   return Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
+}
+
+/** Recompute and persist rating + reviews_count on the Book after a review status change. */
+async function syncBookRatingStats(bookId: string) {
+  const [{ _avg }, reviewsCount] = await Promise.all([
+    prisma.review.aggregate({
+      where: { book_id: bookId, status: "approved" },
+      _avg: { rating: true },
+    }),
+    prisma.review.count({ where: { book_id: bookId, status: "approved" } }),
+  ]);
+  await prisma.book.update({
+    where: { id: bookId },
+    data: {
+      rating: Number((_avg.rating ?? 0).toFixed(1)),
+      reviews_count: reviewsCount,
+    },
+  });
 }
 
 function orderItemSaleAmount(item: { price?: number | null; quantity?: number | null }) {
@@ -1907,11 +1923,21 @@ export const adminRouter = router({
 
   approveReview: adminProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ input }) => prisma.review.update({ where: { id: input.id }, data: { status: "approved" } })),
+    .mutation(async ({ input }) => {
+      const review = await prisma.review.findUnique({ where: { id: input.id }, select: { book_id: true } });
+      const updated = await prisma.review.update({ where: { id: input.id }, data: { status: "approved" } });
+      if (review?.book_id) await syncBookRatingStats(review.book_id);
+      return updated;
+    }),
 
   rejectReview: adminProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ input }) => prisma.review.update({ where: { id: input.id }, data: { status: "rejected" } })),
+    .mutation(async ({ input }) => {
+      const review = await prisma.review.findUnique({ where: { id: input.id }, select: { book_id: true } });
+      const updated = await prisma.review.update({ where: { id: input.id }, data: { status: "rejected" } });
+      if (review?.book_id) await syncBookRatingStats(review.book_id);
+      return updated;
+    }),
 
   // ── Ad Config ────────────────────────────────────────────────────────────────
   adConfig: adminProcedure.query(() =>

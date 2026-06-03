@@ -136,30 +136,47 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
   return { books: resolved, nextCursor };
 }
 
+/** Compute live rating, reviews_count, and total_reads directly from DB rows. */
+async function computeLiveBookStats(bookId: string) {
+  const [reviewStats, readsCount] = await Promise.all([
+    prisma.review.aggregate({
+      where: { book_id: bookId, status: "approved" },
+      _avg: { rating: true },
+      _count: true,
+    }),
+    prisma.bookRead.count({ where: { book_id: bookId } }),
+  ]);
+  return {
+    rating: Number((reviewStats._avg.rating ?? 0).toFixed(1)),
+    reviews_count: reviewStats._count,
+    total_reads: readsCount,
+  };
+}
+
 export async function getBookById(id: string) {
-  const book = await prisma.book.findFirst({
-    where: {
-      id,
-      submission_status: "approved",
-    },
-    include: {
-      author: true,
-      publisher: true,
-      category: true,
-      formats: {
-        where: { submission_status: "approved", is_available: true },
-        include: {
-          narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, user_id: true } },
+  const [book, liveStats] = await Promise.all([
+    prisma.book.findFirst({
+      where: { id, submission_status: "approved" },
+      include: {
+        author: true,
+        publisher: true,
+        category: true,
+        formats: {
+          where: { submission_status: "approved", is_available: true },
+          include: {
+            narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, user_id: true } },
+          },
         },
       },
-    },
-  });
+    }),
+    computeLiveBookStats(id),
+  ]);
 
   if (!book) {
     throw new TRPCError({ code: "NOT_FOUND" });
   }
 
-  return resolveBookUrls(book);
+  return resolveBookUrls({ ...book, ...liveStats });
 }
 
 async function appendFollowedStatusToBookDetails(
@@ -236,10 +253,7 @@ export async function getBookByIdForRest(
 
 export async function getBookBySlug(slug: string) {
   const book = await prisma.book.findFirst({
-    where: {
-      slug,
-      submission_status: "approved",
-    },
+    where: { slug, submission_status: "approved" },
     include: {
       author: true,
       publisher: true,
@@ -257,7 +271,8 @@ export async function getBookBySlug(slug: string) {
     throw new TRPCError({ code: "NOT_FOUND" });
   }
 
-  return resolveBookUrls(book);
+  const liveStats = await computeLiveBookStats(book.id);
+  return resolveBookUrls({ ...book, ...liveStats });
 }
 
 export async function getBookBySlugForRest(
