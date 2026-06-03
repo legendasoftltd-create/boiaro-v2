@@ -131,7 +131,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
         const storagePath = normalizeAudioSource(rawPath)
         const mimeType = normalizeAudioMimeType(t.mime_type || guessAudioMimeType(storagePath))
         if (!storagePath) return null
-        const supportedMimes = ["audio/mpeg", "audio/mp4", "video/mp4"]
+        const supportedMimes = ["audio/mpeg", "audio/mp4", "audio/wav", "video/mp4"]
         if (mimeType && !supportedMimes.includes(mimeType)) return null
         const isPreview = isBookFree || t.is_preview || false
         return {
@@ -318,6 +318,7 @@ function guessAudioMimeType(path: string | null): string | null {
   if (normalized.endsWith(".mp3")) return "audio/mpeg"
   if (normalized.endsWith(".m4a")) return "audio/mp4"
   if (normalized.endsWith(".aac")) return "audio/aac"
+  if (normalized.endsWith(".wav")) return "audio/wav"
   if (normalized.endsWith(".mp4")) return "video/mp4"
   return null
 }
@@ -326,6 +327,7 @@ function normalizeAudioMimeType(mimeType: string | null): string | null {
   if (!mimeType) return null
   const normalized = mimeType.toLowerCase().trim()
   if (normalized === "audio/mpeg" || normalized === "audio/mp3") return "audio/mpeg"
+  if (normalized === "audio/x-wav" || normalized === "audio/wave" || normalized === "audio/vnd.wave") return "audio/wav"
   return normalized
 }
 

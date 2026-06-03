@@ -1,4 +1,4 @@
-export const DEFAULT_MAX_AUDIO_FILE_SIZE = 100 * 1024 * 1024
+export const DEFAULT_MAX_AUDIO_FILE_SIZE = 500 * 1024 * 1024  // 500 MB — WAV is uncompressed, can be large
 export const DEFAULT_MAX_VIDEO_FILE_SIZE = 500 * 1024 * 1024
 
 export type MediaType = "audio" | "video"
@@ -38,9 +38,7 @@ export async function validateMediaFile(
     return { valid: false, error: `${originalFile.name}: Unsupported format. Accepted: ${ACCEPTED_EXTENSIONS.join(", ").toUpperCase()}` }
   }
 
-  const defaultMax = formatInfo.mediaType === "video" ? DEFAULT_MAX_VIDEO_FILE_SIZE : DEFAULT_MAX_AUDIO_FILE_SIZE
-  const maxSizeBytes = options.maxSizeBytes ?? defaultMax
-
+  const maxSizeBytes = options.maxSizeBytes ?? DEFAULT_MAX_VIDEO_FILE_SIZE // use 500 MB for all
   if (originalFile.size > maxSizeBytes) {
     const maxMB = Math.round(maxSizeBytes / (1024 * 1024))
     return { valid: false, error: `${originalFile.name}: File too large (max ${maxMB}MB).` }
@@ -48,18 +46,18 @@ export async function validateMediaFile(
 
   const headerValid = await validateFileHeader(originalFile, extension)
   if (!headerValid) {
-    return { valid: false, error: `${originalFile.name}: Invalid file signature for .${extension}` }
+    return { valid: false, error: `${originalFile.name}: Invalid file — not a recognised ${extension.toUpperCase()} file.` }
   }
 
-  let durationSeconds: number
+  // Duration is best-effort: if we cannot read it (e.g. moov at end of large MP4,
+  // non-standard WAV layout) we still allow the upload. The server stores whatever
+  // duration we provide; the player resolves the real value from the audio element.
+  let durationSeconds = 0
   try {
-    durationSeconds = await readMediaDurationSeconds(originalFile, formatInfo.mediaType, extension)
+    const d = await readMediaDurationSeconds(originalFile, formatInfo.mediaType, extension)
+    if (Number.isFinite(d) && d > 0) durationSeconds = d
   } catch {
-    return { valid: false, error: `${originalFile.name}: Could not read media duration — file may be corrupt.` }
-  }
-
-  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-    return { valid: false, error: `${originalFile.name}: Media metadata is invalid (duration must be > 0).` }
+    // non-fatal — upload proceeds with duration "0:00"
   }
 
   const normalizedFile =
@@ -75,7 +73,7 @@ export async function validateMediaFile(
     data: {
       file: normalizedFile,
       durationSeconds,
-      durationLabel: formatDuration(durationSeconds),
+      durationLabel: durationSeconds > 0 ? formatDuration(durationSeconds) : "0:00",
       mediaType: formatInfo.mediaType,
       mimeType: formatInfo.mimeType,
     },
@@ -100,7 +98,8 @@ function getExtension(fileName: string): string {
 
 async function validateFileHeader(file: File, extension: string): Promise<boolean> {
   try {
-    const buffer = await file.slice(0, 12).arrayBuffer()
+    // Read enough bytes to cover all check strategies
+    const buffer = await file.slice(0, 64).arrayBuffer()
     const bytes = new Uint8Array(buffer)
 
     switch (extension) {
@@ -111,14 +110,32 @@ async function validateFileHeader(file: File, extension: string): Promise<boolea
       }
       case "m4a":
       case "mp4": {
-        // ftyp box at offset 4
-        return bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70
+        // MP4/M4A files should contain an "ftyp" box somewhere in the first 64 bytes.
+        // Standard: ftyp at bytes 4-7. Non-standard: may be offset if preceded by a
+        // free/skip/wide box. Scan for the 4-byte sequence instead of a fixed position.
+        for (let i = 0; i <= bytes.length - 4; i++) {
+          if (bytes[i] === 0x66 && bytes[i+1] === 0x74 && bytes[i+2] === 0x79 && bytes[i+3] === 0x70) {
+            return true // found "ftyp"
+          }
+        }
+        // Some MP4 files produced by streaming tools start with "mdat" before "moov".
+        // Check if the first box type is a known-valid ISO BMFF box.
+        if (bytes.length >= 8) {
+          const firstBoxType = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7])
+          if (["mdat", "moov", "free", "skip", "wide", "uuid", "moof"].includes(firstBoxType)) {
+            return true
+          }
+        }
+        return false
       }
       case "wav": {
-        // RIFF at 0-3, WAVE at 8-11
+        // Standard RIFF/WAVE — bytes 0-3 "RIFF", bytes 8-11 "WAVE"
         const isRiff = bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
         const isWave = bytes[8] === 0x57 && bytes[9] === 0x41 && bytes[10] === 0x56 && bytes[11] === 0x45
-        return isRiff && isWave
+        if (isRiff && isWave) return true
+        // RF64 variant for files > 4 GB: starts with "RF64" + "WAVE"
+        const isRf64 = bytes[0] === 0x52 && bytes[1] === 0x46 && bytes[2] === 0x36 && bytes[3] === 0x34
+        return isRf64 && isWave
       }
       default:
         return false
@@ -129,76 +146,89 @@ async function validateFileHeader(file: File, extension: string): Promise<boolea
 }
 
 /**
- * Read duration for WAV by scanning the RIFF chunk headers.
- * Browser <audio> preload="metadata" returns Infinity for large WAV files
- * because WAV has no seekable index — this reads byteRate + data size from
- * the binary header instead, which works reliably regardless of file size.
+ * Read WAV duration from binary header.
+ * Browser <audio> returns Infinity for large WAV because WAV has no seekable index.
+ * Falls back to the browser element if header parsing fails, then to 0.
  */
 async function readWavDurationSeconds(file: File): Promise<number> {
-  const headerBytes = Math.min(file.size, 512)
-  const buf = await file.slice(0, headerBytes).arrayBuffer()
-  const v = new DataView(buf)
+  // Try header-based calculation first (most reliable for large files)
+  try {
+    const headerBytes = Math.min(file.size, 1024) // scan up to 1 KB for chunks
+    const buf = await file.slice(0, headerBytes).arrayBuffer()
+    const v = new DataView(buf)
 
-  if (v.getUint32(0, false) !== 0x52494646 || v.getUint32(8, false) !== 0x57415645) {
-    throw new Error("Not a valid WAV file")
-  }
+    // Accept both RIFF and RF64
+    const sig = v.getUint32(0, false)
+    if (sig !== 0x52494646 && sig !== 0x52463634) throw new Error("Not RIFF/RF64")
+    if (v.getUint32(8, false) !== 0x57415645) throw new Error("Not WAVE")
 
-  let byteRate = 0
-  let offset = 12
+    let byteRate = 0
+    let offset = 12
 
-  while (offset + 8 <= headerBytes) {
-    const id   = v.getUint32(offset, false)
-    const size = v.getUint32(offset + 4, true)
+    while (offset + 8 <= headerBytes) {
+      const id   = v.getUint32(offset, false)
+      const size = v.getUint32(offset + 4, true)
 
-    if (id === 0x666D7420 /* "fmt " */ && offset + 20 <= headerBytes) {
-      // ByteRate is 16 bytes into the chunk (8 header + 2 AudioFmt + 2 Channels + 4 SampleRate)
-      byteRate = v.getUint32(offset + 16, true)
-    } else if (id === 0x64617461 /* "data" */) {
-      if (byteRate === 0) throw new Error("WAV fmt chunk missing or corrupt")
-      const dataSize = size > 0 && size < 0xFFFFFFFF
-        ? size
-        : Math.max(0, file.size - (offset + 8))
-      if (dataSize <= 0) throw new Error("WAV has no audio data")
-      return dataSize / byteRate
+      if (id === 0x666D7420 /* "fmt " */) {
+        if (offset + 20 <= headerBytes) {
+          byteRate = v.getUint32(offset + 16, true)
+        }
+      } else if (id === 0x64617461 /* "data" */) {
+        if (byteRate > 0) {
+          const dataSize = size > 0 && size < 0xFFFFFFFF
+            ? size
+            : Math.max(0, file.size - (offset + 8))
+          if (dataSize > 0) return dataSize / byteRate
+        }
+        break
+      }
+
+      // Guard against corrupt/zero chunk sizes to avoid infinite loop
+      if (size === 0) break
+      offset += 8 + size + (size & 1)
     }
-
-    offset += 8 + size + (size & 1) // RIFF chunks are word-aligned
+  } catch {
+    // fall through to browser element
   }
 
-  throw new Error("WAV data chunk not found in header scan")
+  // Fallback: try browser audio element (works for small WAV files)
+  return new Promise<number>((resolve) => {
+    const objectUrl = URL.createObjectURL(file)
+    const el = document.createElement("audio")
+    el.preload = "metadata"
+    const cleanup = () => { el.removeAttribute("src"); el.load(); URL.revokeObjectURL(objectUrl) }
+    const done = (d: number) => { cleanup(); resolve(d) }
+    el.onloadedmetadata = () => {
+      const d = Number(el.duration)
+      done(Number.isFinite(d) && d > 0 ? d : 0)
+    }
+    el.onerror = () => done(0)
+    // Timeout: if browser hangs on large WAV, resolve with 0 after 5s
+    setTimeout(() => { cleanup(); resolve(0) }, 5000)
+    el.src = objectUrl
+  })
 }
 
 function readMediaDurationSeconds(file: File, mediaType: MediaType, extension: string): Promise<number> {
-  // WAV: parse header bytes directly — browser element returns Infinity for large files
   if (extension === "wav") return readWavDurationSeconds(file)
 
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const objectUrl = URL.createObjectURL(file)
     const el = mediaType === "video"
       ? document.createElement("video")
       : document.createElement("audio")
     el.preload = "metadata"
 
-    const cleanup = () => {
-      el.removeAttribute("src")
-      el.load()
-      URL.revokeObjectURL(objectUrl)
-    }
+    const cleanup = () => { el.removeAttribute("src"); el.load(); URL.revokeObjectURL(objectUrl) }
+    const done = (d: number) => { cleanup(); resolve(d) }
 
     el.onloadedmetadata = () => {
-      const duration = Number(el.duration)
-      cleanup()
-      if (!Number.isFinite(duration) || duration <= 0) {
-        reject(new Error("Invalid duration"))
-        return
-      }
-      resolve(duration)
+      const d = Number(el.duration)
+      done(Number.isFinite(d) && d > 0 ? d : 0)
     }
-
-    el.onerror = () => {
-      cleanup()
-      reject(new Error("Media metadata read failed"))
-    }
+    el.onerror = () => done(0)
+    // Timeout for large MP4 where moov atom is at end (browser may stall)
+    setTimeout(() => { cleanup(); resolve(0) }, 10000)
 
     el.src = objectUrl
   })
