@@ -157,14 +157,18 @@ export default function AdminBooks() {
     setPublishers(p || []);
     setNarrators(n || []);
 
-    const fmtMap: Record<string, any[]> = {};
+    // Build format map deduped by format type per book.
+    // If a book has duplicate rows for the same format, prefer the one where is_available !== false.
+    const fmtMapRaw: Record<string, Map<string, any>> = {};
     (b.books || []).flatMap((book: any) => book.formats || []).forEach((f: any) => {
-      if (!fmtMap[f.book_id]) fmtMap[f.book_id] = [];
-      fmtMap[f.book_id].push({
-        ...f,
-        narrators: f.narrator ?? null,
-      });
+      if (!fmtMapRaw[f.book_id]) fmtMapRaw[f.book_id] = new Map();
+      const existing = fmtMapRaw[f.book_id].get(f.format);
+      if (!existing || (f.is_available !== false && existing.is_available === false)) {
+        fmtMapRaw[f.book_id].set(f.format, { ...f, narrators: f.narrator ?? null });
+      }
     });
+    const fmtMap: Record<string, any[]> = {};
+    for (const [bookId, map] of Object.entries(fmtMapRaw)) fmtMap[bookId] = Array.from(map.values());
     setBookFormats(fmtMap);
 
     const contribMap: Record<string, number> = {};
@@ -239,10 +243,8 @@ export default function AdminBooks() {
     }
 
     setUploadingTrack(true);
-    const { file: validatedFile, durationLabel, mediaType, mimeType } = validation.data;
+    const { file: validatedFile, durationLabel, mediaType } = validation.data;
     const name = sanitizeTrackTitle(file.name);
-    const ext = file.name.split(".").pop()?.toLowerCase() || "mp3";
-    const path = `${selectedFormatId}/${Date.now()}-${tracks.length + 1}.${ext}`;
 
     try {
       const uploadedUrl = await uploadViaApi(validatedFile, true);
