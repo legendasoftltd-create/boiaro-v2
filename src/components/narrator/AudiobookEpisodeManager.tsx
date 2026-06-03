@@ -43,8 +43,10 @@ function uploadViaApi(file: File, onProgress?: (pct: number) => void): Promise<s
         catch { reject(new Error(`Upload failed (HTTP ${xhr.status})`)); }
       }
     });
-    xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
-    xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
+    xhr.addEventListener("error",   () => reject(new Error("Network error during upload")));
+    xhr.addEventListener("abort",   () => reject(new Error("Upload cancelled")));
+    xhr.addEventListener("timeout", () => reject(new Error("Upload timed out — check your connection and try again")));
+    xhr.timeout = 30 * 60 * 1000; // 30-minute hard limit prevents infinite hang
     xhr.open("POST", `${API_BASE}/upload/media`);
     if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.send(formData);

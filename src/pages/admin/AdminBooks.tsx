@@ -180,22 +180,40 @@ export default function AdminBooks() {
 
   useEffect(() => { load(); }, []);
 
-  const uploadViaApi = async (file: File, media = false) => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const token = localStorage.getItem("access_token");
-    const endpoint = media ? "/upload/media" : "/upload";
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      method: "POST",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body: formData,
+  const [trackUploadPct, setTrackUploadPct] = useState<number | null>(null);
+
+  // XHR-based upload with progress events and timeout safety net.
+  // fetch() has no built-in timeout — large files (WAV/MP4) appeared stuck forever.
+  const uploadViaApi = (file: File, media = false, onProgress?: (pct: number) => void): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const token = localStorage.getItem("access_token");
+      const endpoint = media ? "/upload/media" : "/upload";
+      const xhr = new XMLHttpRequest();
+
+      if (onProgress) {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        });
+      }
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try { resolve((JSON.parse(xhr.responseText) as { url: string }).url); }
+          catch { reject(new Error("Upload failed: invalid server response")); }
+        } else {
+          try { reject(new Error((JSON.parse(xhr.responseText) as any).error || "Upload failed")); }
+          catch { reject(new Error(`Upload failed (HTTP ${xhr.status})`)); }
+        }
+      });
+      xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+      xhr.addEventListener("abort", () => reject(new Error("Upload cancelled")));
+      xhr.addEventListener("timeout", () => reject(new Error("Upload timed out — try a smaller file or check your connection")));
+      xhr.timeout = 30 * 60 * 1000; // 30-minute hard limit
+      xhr.open("POST", `${API_BASE}${endpoint}`);
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.send(formData);
     });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({} as any));
-      throw new Error(err.error || response.statusText || "Upload failed");
-    }
-    const data = await response.json();
-    return data.url as string;
   };
 
   // Cover image upload
@@ -243,11 +261,12 @@ export default function AdminBooks() {
     }
 
     setUploadingTrack(true);
+    setTrackUploadPct(0);
     const { file: validatedFile, durationLabel, mediaType } = validation.data;
     const name = sanitizeTrackTitle(file.name);
 
     try {
-      const uploadedUrl = await uploadViaApi(validatedFile, true);
+      const uploadedUrl = await uploadViaApi(validatedFile, true, setTrackUploadPct);
       setUploadedMediaType(mediaType);
       setTrackForm(f => ({
         ...f,
@@ -260,6 +279,7 @@ export default function AdminBooks() {
       toast.error(error.message || "Upload failed");
     } finally {
       setUploadingTrack(false);
+      setTrackUploadPct(null);
     }
   };
 
@@ -1678,18 +1698,30 @@ export default function AdminBooks() {
                 <div>
                   <Label>Media File (MP3 / M4A / MP4) *</Label>
                   <input ref={singleTrackInputRef} type="file" accept={ACCEPTED_FILE_INPUT} className="hidden" onChange={handleSingleTrackUpload} />
-                  <div className="flex items-center gap-3 mt-1.5">
+                  <div className="mt-1.5 space-y-2">
+                  <div className="flex items-center gap-3">
                     <Button type="button" variant="outline" size="sm" onClick={() => singleTrackInputRef.current?.click()} disabled={uploadingTrack}>
-                      {uploadingTrack ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />Uploading...</> : <><Upload className="h-3 w-3 mr-1.5" />Upload File</>}
+                      {uploadingTrack
+                        ? <><Loader2 className="h-3 w-3 mr-1.5 animate-spin" />{trackUploadPct !== null ? `Uploading ${trackUploadPct}%` : "Preparing…"}</>
+                        : <><Upload className="h-3 w-3 mr-1.5" />Upload File</>}
                     </Button>
-                    {trackForm.audio_url && (
+                    {trackForm.audio_url && !uploadingTrack && (
                       <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 text-xs">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         {uploadedMediaType === "video" ? "Video" : "Audio"} uploaded {trackForm.duration && `• ${trackForm.duration}`}
                       </Badge>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-1">MP3 · M4A · WAV · MP4 · max 1 GB</p>
+                  {uploadingTrack && trackUploadPct !== null && (
+                    <div className="space-y-1">
+                      <div className="w-full bg-secondary rounded-full h-1.5">
+                        <div className="bg-primary h-1.5 rounded-full transition-all duration-150" style={{ width: `${trackUploadPct}%` }} />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{trackUploadPct < 100 ? `Sending to server… ${trackUploadPct}%` : "Processing on server…"}</p>
+                    </div>
+                  )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">MP3 · M4A · WAV · MP4 · max 1 GB</p>
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={saveNewTrack} disabled={savingTrack} className="flex-1">
