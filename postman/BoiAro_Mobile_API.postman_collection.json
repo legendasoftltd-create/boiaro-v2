@@ -1,0 +1,716 @@
+{
+  "info": {
+    "name": "BoiAro Mobile API",
+    "description": "Complete REST API reference for BoiAro mobile app integration.\n\n## Base URL\n`{{base_url}}/api/v1`\n\n## Authentication\nMost endpoints require a Bearer token obtained from `/auth/login` or `/auth/refresh`.\nSet `{{access_token}}` variable from the login response.\n\n## Variables\n- `base_url` — e.g. `https://api.boiaro.com` (no trailing slash)\n- `access_token` — Bearer token from login/refresh\n- `book_id` — a valid book UUID\n- `order_id` — a valid order UUID",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",     "value": "http://localhost:3001", "type": "string" },
+    { "key": "access_token", "value": "",                      "type": "string" },
+    { "key": "book_id",      "value": "",                      "type": "string" },
+    { "key": "order_id",     "value": "",                      "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Sign Up",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/signup" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Secret123!\",\n  \"display_name\": \"Rahim\"\n}" },
+            "description": "Register a new user. Returns a confirmation message. No token issued — call /auth/login next."
+          }
+        },
+        {
+          "name": "Login",
+          "event": [{ "listen": "test", "script": { "exec": ["var j = pm.response.json(); if(j.access_token){ pm.collectionVariables.set('access_token', j.access_token); }"] } }],
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/login" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Secret123!\"\n}" },
+            "description": "Returns `access_token`, `refresh_token`, `expires_in` (seconds), `user_id`, and the full `user` object. The test script automatically sets `{{access_token}}`."
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [{ "listen": "test", "script": { "exec": ["var j = pm.response.json(); if(j.access_token){ pm.collectionVariables.set('access_token', j.access_token); }"] } }],
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/refresh" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"refresh_token\": \"<your_refresh_token>\"\n}" },
+            "description": "Returns new `access_token` and `refresh_token`. Call this before the access token expires."
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/auth/logout" },
+            "description": "Invalidates the current session. Requires `Authorization: Bearer <token>`."
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/auth/me" },
+            "description": "Returns the authenticated user's object including profile and roles."
+          }
+        },
+        {
+          "name": "Request Password Reset",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/reset-password" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\"\n}" },
+            "description": "Sends a password-reset OTP/link to the provided email."
+          }
+        },
+        {
+          "name": "Confirm Password Reset",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/reset-password-confirm" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\",\n  \"password\": \"NewSecret123!\"\n}" },
+            "description": "Accepts `otp` or `token` + new `password`. Resets the user's password."
+          }
+        },
+        {
+          "name": "Update Password (Logged In)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/auth/update-password" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"NewSecret123!\"\n}" },
+            "description": "Changes password for the currently authenticated user."
+          }
+        },
+        {
+          "name": "Google Login",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/social/google" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"id_token\": \"<google_id_token>\"\n}" },
+            "description": "Pass the Google `id_token` (from Google Sign-In SDK). Returns same shape as /auth/login."
+          }
+        },
+        {
+          "name": "Facebook Login",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/social/facebook" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"access_token\": \"<facebook_access_token>\"\n}" },
+            "description": "Pass the Facebook `access_token`. Returns same shape as /auth/login."
+          }
+        },
+        {
+          "name": "Phone — Send OTP",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/phone/send-otp" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"+8801XXXXXXXXX\"\n}" }
+          }
+        },
+        {
+          "name": "Phone — Verify OTP",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/auth/phone/verify-otp" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"+8801XXXXXXXXX\",\n  \"otp\": \"123456\"\n}" },
+            "description": "Returns tokens on success — same shape as /auth/login."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👤 Profile",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/profile/" },
+            "description": "Returns the full profile object: display_name, avatar_url, phone, bio, address, etc."
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{base_url}}/api/v1/profile/" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"display_name\": \"Rahim Uddin\",\n  \"phone\": \"+8801XXXXXXXXX\",\n  \"bio\": \"Book lover\",\n  \"address\": \"Dhaka, Bangladesh\"\n}" }
+          }
+        },
+        {
+          "name": "Upload Profile Photo",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/profile/upload-image" },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": "" }]
+            },
+            "description": "Multipart upload. Max 5 MB. Returns `{ success, avatar_url }`."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📚 Books",
+      "item": [
+        {
+          "name": "List Books",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": {
+              "raw": "{{base_url}}/api/v1/books/?limit=20",
+              "query": [
+                { "key": "limit",       "value": "20",  "description": "Max items per page (default 20)" },
+                { "key": "cursor",      "value": "",    "description": "Pagination cursor (last book id)" },
+                { "key": "category_id", "value": "",    "description": "Filter by category UUID" },
+                { "key": "search",      "value": "",    "description": "Full-text search" },
+                { "key": "isFeatured",  "value": "",    "description": "true/false" },
+                { "key": "isBestseller","value": "",    "description": "true/false" },
+                { "key": "isFree",      "value": "",    "description": "true/false" },
+                { "key": "language",    "value": "",    "description": "e.g. bn" },
+                { "key": "authorId",    "value": "",    "description": "Filter by author UUID" },
+                { "key": "publisherId", "value": "",    "description": "Filter by publisher UUID" }
+              ]
+            },
+            "description": "Returns `{ books: [...], nextCursor }`. Each book includes author, publisher, category, and formats."
+          }
+        },
+        {
+          "name": "Get Book by ID",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}" },
+            "description": "Returns full book details.\n\nKey response fields:\n- `id`, `title`, `title_en`, `slug`, `description`, `cover_url`\n- `rating` — live average from approved reviews\n- `reviews_count` — live count of approved reviews\n- `total_reads` — live count from BookRead table\n- `is_free`, `language`, `tags`, `published_date`\n- `author` — `{ id, name, avatar_url, bio }`\n- `publisher` — `{ id, name, logo_url }`\n- `category` — `{ id, name, name_bn, icon, color }`\n- `formats` — array of `{ format, price, is_available, ... }`"
+          }
+        },
+        {
+          "name": "Get Book by Slug",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/books/slug/:slug",
+              "variable": [{ "key": "slug", "value": "bhoot-bou" }]
+            },
+            "description": "Same response shape as Get Book by ID."
+          }
+        },
+        {
+          "name": "Get Book Categories",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/books/categories/list" },
+            "description": "Returns all active categories ordered by priority."
+          }
+        },
+        {
+          "name": "Get Audiobook Tracks",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}/tracks" },
+            "description": "Returns track list for an audiobook.\n\n```json\n{\n  \"tracks\": [\n    {\n      \"id\": \"uuid\",\n      \"track_number\": 1,\n      \"title\": \"Chapter 1\",\n      \"duration\": \"12:34\",\n      \"is_preview\": true,\n      \"chapter_price\": null,\n      \"media_type\": \"audio\"\n    }\n  ]\n}\n```\n\n⚠️ When `book.is_free = true`, ALL tracks are returned with `is_preview: true` and `chapter_price: null` regardless of individual settings. App should check `is_preview` to determine if a chapter requires payment."
+          }
+        },
+        {
+          "name": "Register Book Read / View",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}/read" },
+            "description": "Call this when a user opens/reads a book. Increments `total_reads` counter.\nOptional auth — if `Authorization` header is present, also creates a `BookRead` record for the user.\n\nResponse: `{ success: true, total_reads: 42 }`"
+          }
+        },
+        {
+          "name": "Get Book Reviews",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": {
+              "raw": "{{base_url}}/api/v1/books/{{book_id}}/reviews?limit=20",
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "Post / Update Book Review",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}/reviews" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Excellent book!\"\n}" },
+            "description": "Creates or updates the user's review for this book. Review starts in `pending` status until admin approves. Rating must be 1–5."
+          }
+        },
+        {
+          "name": "Bookmark Book",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}/bookmarks" },
+            "description": "Adds the book to user's wishlist. Returns `{ bookmarked: true }`."
+          }
+        },
+        {
+          "name": "Remove Bookmark",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}/bookmarks" },
+            "description": "Returns `{ bookmarked: false }`."
+          }
+        },
+        {
+          "name": "Check Bookmark Status",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/books/{{book_id}}/bookmark" },
+            "description": "Returns `{ bookmarked: true/false }`."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🎧 Content Access (Audio & Ebook URLs)",
+      "item": [
+        {
+          "name": "Get Audio Track URL",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/content/audio-url" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\",\n  \"track_number\": 1\n}" },
+            "description": "Returns a signed playback URL for a single audio track. No auth required.\n\n```json\n{ \"signed_url\": \"https://...\", \"expires_in\": 300 }\n```\n\n⚠️ No access control — the app should check `is_preview` / chapter unlock status from the tracks endpoint before calling this."
+          }
+        },
+        {
+          "name": "Get All Audio URLs (Batch)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/content/batch-audio-urls" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\"\n}" },
+            "description": "Returns signed URLs for ALL active tracks in one call.\n\n```json\n{\n  \"tracks\": [\n    { \"track_number\": 1, \"signed_url\": \"https://...\", \"expires_in\": 300 },\n    { \"track_number\": 2, \"signed_url\": \"https://...\", \"expires_in\": 300 }\n  ]\n}\n```"
+          }
+        },
+        {
+          "name": "Get Ebook File URL",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/content/ebook-url" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\"\n}" },
+            "description": "Returns a presigned S3 URL for the ebook file (PDF/EPUB). Validates purchase/unlock/subscription access before returning.\n\n```json\n{ \"signed_url\": \"https://...\", \"expires_in\": 3600 }\n```"
+          }
+        },
+        {
+          "name": "Download Ebook File",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/content/download/ebook/{{book_id}}" },
+            "description": "Streams the ebook file directly. Use for in-app download."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🔓 Access Control (Coins & Chapter Unlock)",
+      "item": [
+        {
+          "name": "Check Book Access",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/access/check" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\",\n  \"format\": \"audiobook\"\n}" },
+            "description": "Check whether the current user has full access to a book+format.\n\nResponse:\n```json\n{\n  \"has_access\": true,\n  \"access_type\": \"free\" | \"purchase\" | \"subscription\" | \"coin_unlock\",\n  \"expires_at\": null\n}\n```\n\n`format` values: `ebook`, `audiobook`, `hardcopy`\n\nFor free books (`is_free = true`), always returns `has_access: true, access_type: \"free\"`."
+          }
+        },
+        {
+          "name": "Unlock Content with Coins",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/wallet/unlock" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\",\n  \"format\": \"audiobook_chapter_<track_uuid>\",\n  \"coin_cost\": 100\n}" },
+            "description": "Unlock content by spending coins.\n\n**format values:**\n- `ebook` — unlock the full ebook\n- `audiobook` — unlock the full audiobook\n- `audiobook_chapter_<track_id>` — unlock a single chapter (server validates and uses the actual DB price, ignoring `coin_cost`)\n- `premium_voice` — unlock AI TTS voice for this book\n\n⚠️ For chapter unlocks, the server always uses the DB-configured price. Send `coin_cost` as a hint only.\n\nResponse: `{ success: true }` or `{ already_unlocked: true }`\n\nThrows 400 if insufficient coins. Throws 403 if book is subscription-only."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "💰 Wallet & Coins",
+      "item": [
+        {
+          "name": "Get Wallet Balance",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/wallet/" },
+            "description": "Returns `{ balance, total_earned, total_spent }`."
+          }
+        },
+        {
+          "name": "Get Transaction History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/wallet/transactions?limit=50",
+              "query": [{ "key": "limit", "value": "50" }]
+            },
+            "description": "Returns `{ transactions: [...] }`. Each entry: `id`, `amount`, `type` (earn/spend/bonus), `description`, `source`, `created_at`, `expires_at`."
+          }
+        },
+        {
+          "name": "Claim Daily Login Reward",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/wallet/claim-daily" },
+            "description": "Awards daily login coins. Can only be claimed once per day.\nResponse: `{ reward: 5, message: \"...\", new_balance: 42 }`."
+          }
+        },
+        {
+          "name": "Claim Ad Reward",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/wallet/claim-ad" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"placement\": \"audiobook_<book_id>\"\n}" },
+            "description": "Awards coins after user watches an ad. `placement` is optional context (e.g. `audiobook_<bookId>`).\nResponse: `{ reward: 5, message: \"...\", new_balance: 42 }`."
+          }
+        },
+        {
+          "name": "Get Coin Settings",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/wallet/coin-settings" },
+            "description": "Returns platform-wide coin configuration:\n```json\n{\n  \"system_enabled\": true,\n  \"unlock_enabled\": true,\n  \"conversion_ratio\": 0.10,\n  \"coin_ad_reward\": 5,\n  \"daily_limit\": 50,\n  \"ads_per_quick_unlock\": 5,\n  \"bonus_per_session\": 5,\n  \"ad_cooldown_minutes\": 5\n}\n```"
+          }
+        },
+        {
+          "name": "Get Coin Packages",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/coin-packages/" },
+            "description": "Returns purchasable coin packages:\n```json\n{\n  \"packages\": [\n    {\n      \"id\": \"uuid\",\n      \"name\": \"Starter Pack\",\n      \"coins\": 100,\n      \"bonus_coins\": 10,\n      \"price\": 50,\n      \"is_active\": true,\n      \"is_featured\": false\n    }\n  ]\n}\n```"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🛒 Orders",
+      "item": [
+        {
+          "name": "Get Payment Gateways",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/orders/payment-gateways" },
+            "description": "Returns enabled payment gateways. Use `gateway_key` when creating an order."
+          }
+        },
+        {
+          "name": "List My Orders",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/orders/?limit=20",
+              "query": [
+                { "key": "limit",  "value": "20" },
+                { "key": "cursor", "value": "", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Order",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/orders/" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"book_id\": \"{{book_id}}\", \"format\": \"hardcopy\", \"quantity\": 1 }\n  ],\n  \"payment_method\": \"sslcommerz\",\n  \"coupon_code\": null,\n  \"shipping_name\": \"Rahim Uddin\",\n  \"shipping_phone\": \"+8801XXXXXXXXX\",\n  \"shipping_address\": \"123 Main St\",\n  \"shipping_city\": \"Dhaka\",\n  \"shipping_district\": \"Dhaka\",\n  \"coin_amount\": 0\n}"
+            },
+            "description": "Create a new order.\n\n`format` values: `ebook`, `audiobook`, `hardcopy`\n\n`payment_method` values: `sslcommerz`, `cod`, `demo` (dev only)\n\nResponse:\n```json\n{\n  \"order_id\": \"uuid\",\n  \"order_number\": \"BO-20241201-0001\",\n  \"status\": \"pending\",\n  \"gateway_url\": \"https://sandbox.sslcommerz.com/...\"\n}\n```\nRedirect the user to `gateway_url` for payment."
+          }
+        },
+        {
+          "name": "Get Order Details",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/orders/{{order_id}}" },
+            "description": "Returns full order with items, payment history, and status."
+          }
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "PATCH",
+            "url": { "raw": "{{base_url}}/api/v1/orders/{{order_id}}" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"cancelled\",\n  \"note\": \"Changed my mind\"\n}" },
+            "description": "Cancel a pending order."
+          }
+        },
+        {
+          "name": "Track Order (RedX)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/orders/{{order_id}}/tracking" },
+            "description": "Returns RedX courier tracking events for a shipped order."
+          }
+        },
+        {
+          "name": "Initiate Payment (Existing Order)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/payments/initiate" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"order_id\": \"{{order_id}}\"\n}" },
+            "description": "Re-initiate payment for an existing unpaid order. Returns `gateway_url`."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "👑 Subscriptions",
+      "item": [
+        {
+          "name": "Get Subscription Plans",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/subscriptions/plans" },
+            "description": "Returns all active subscription plans:\n```json\n{\n  \"plans\": [\n    {\n      \"id\": \"uuid\",\n      \"name\": \"Monthly\",\n      \"description\": \"Full access for 30 days\",\n      \"price\": 99,\n      \"duration_days\": 30,\n      \"features\": [\"Unlimited ebooks\", \"All audiobooks\"],\n      \"is_active\": true,\n      \"is_featured\": false\n    }\n  ]\n}\n```"
+          }
+        },
+        {
+          "name": "Get Active Subscription",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/subscriptions/active" },
+            "description": "Returns current active subscription or `{ subscription: null }` if none."
+          }
+        },
+        {
+          "name": "Get All My Subscriptions",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/subscriptions/my" },
+            "description": "Returns full subscription history for the user."
+          }
+        },
+        {
+          "name": "Subscribe — Free / Coupon",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/subscriptions/subscribe" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"plan_id\": \"<plan_uuid>\",\n  \"coupon_code\": \"FREE100\"\n}" },
+            "description": "Subscribe with a coupon that makes it free.\nResponse (activated immediately):\n```json\n{ \"subscription\": { \"id\": \"uuid\", \"status\": \"active\", ... } }\n```"
+          }
+        },
+        {
+          "name": "Subscribe — Paid (SSLCommerz)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/api/v1/subscriptions/subscribe" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"plan_id\": \"<plan_uuid>\",\n  \"payment_method\": \"sslcommerz\"\n}" },
+            "description": "Subscribe to a paid plan.\nResponse:\n```json\n{\n  \"requires_payment\": true,\n  \"gateway_url\": \"https://sandbox.sslcommerz.com/...\",\n  \"subscription_id\": \"uuid\",\n  \"transaction_id\": \"SUB-...\"\n}\n```\nRedirect user to `gateway_url`. Subscription activates automatically after payment callback."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📖 Reading & Listening Progress",
+      "item": [
+        {
+          "name": "Get Reading Progress",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/progress/reading?book_id={{book_id}}",
+              "query": [{ "key": "book_id", "value": "{{book_id}}" }]
+            },
+            "description": "Returns `{ current_page, total_pages, percentage, last_read_at }`."
+          }
+        },
+        {
+          "name": "Save Reading Progress",
+          "request": {
+            "method": "PUT",
+            "url": { "raw": "{{base_url}}/api/v1/progress/reading" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\",\n  \"current_page\": 42,\n  \"total_pages\": 200,\n  \"percentage\": 21\n}" },
+            "description": "Save or update reading progress. Call periodically while the user reads."
+          }
+        },
+        {
+          "name": "Get Listening Progress",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/progress/listening?book_id={{book_id}}",
+              "query": [{ "key": "book_id", "value": "{{book_id}}" }]
+            },
+            "description": "Returns `{ current_track, position_seconds, total_seconds, last_listened_at }`."
+          }
+        },
+        {
+          "name": "Save Listening Progress",
+          "request": {
+            "method": "PUT",
+            "url": { "raw": "{{base_url}}/api/v1/progress/listening" },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{book_id}}\",\n  \"track_number\": 2,\n  \"position_seconds\": 345,\n  \"total_seconds\": 1800\n}" },
+            "description": "Save or update audiobook listening position."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "🏠 Homepage & Discovery",
+      "item": [
+        {
+          "name": "Get Homepage Sections",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": {
+              "raw": "{{base_url}}/api/v1/homepage/",
+              "query": [
+                { "key": "limit", "value": "10", "disabled": true },
+                { "key": "type",  "value": "ebook", "disabled": true, "description": "ebook | audiobook | hardcopy" }
+              ]
+            },
+            "description": "Returns all active homepage sections in order: hero slider, trending, featured, free books, categories, popular audiobooks, editors pick, etc.\n\nEach section: `{ id, section_key, title, subtitle, is_enabled, sort_order, books: [...] }`"
+          }
+        },
+        {
+          "name": "Get Single Homepage Section",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": {
+              "raw": "{{base_url}}/api/v1/homepage/trending_books?limit=20",
+              "variable": [{ "key": "section", "value": "trending_books" }],
+              "query": [{ "key": "limit", "value": "20" }]
+            },
+            "description": "Section keys: `hero`, `trending_books`, `featured_books`, `top_10_most_read`, `popular_audiobooks`, `audiobooks`, `free_books`, `hard_copies`, `categories`, `authors`, `narrators`, `editors_pick`, `recently_viewed`, `continue_reading`, `recommended_for_you`, `blog`"
+          }
+        },
+        {
+          "name": "Get Category Sections",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/api/v1/category-sections/" },
+            "description": "Returns books grouped by category for the discovery screen.\n```json\n{ \"sections\": [ { \"id\": \"uuid\", \"title\": \"Science Fiction\", \"books\": [...] } ] }\n```"
+          }
+        },
+        {
+          "name": "Search Books",
+          "request": {
+            "method": "GET", "auth": { "type": "noauth" },
+            "url": {
+              "raw": "{{base_url}}/api/v1/search/?q=রবীন্দ্রনাথ",
+              "query": [{ "key": "q", "value": "রবীন্দ্রনাথ", "description": "Min 2 characters" }]
+            },
+            "description": "Full-text search across books, authors, narrators."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📂 My Library",
+      "item": [
+        {
+          "name": "My Wishlist / Bookmarks",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/me/wishlist" },
+            "description": "Returns all bookmarked books."
+          }
+        },
+        {
+          "name": "My Purchases",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/library/purchases" },
+            "description": "Returns books purchased via order. Each item: `{ book_id, format, purchased_at, books: {...} }`."
+          }
+        },
+        {
+          "name": "My Coin Unlocks",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/library/unlocks" },
+            "description": "Returns books/chapters unlocked using coins."
+          }
+        },
+        {
+          "name": "Continue Reading",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/library/continue-reading" },
+            "description": "Returns up to 10 in-progress ebooks sorted by last_read_at.\nEach item: `{ book_id, current_page, total_pages, percentage, last_read_at, books: {...} }`."
+          }
+        },
+        {
+          "name": "Continue Listening",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/api/v1/library/continue-listening" },
+            "description": "Returns up to 10 in-progress audiobooks sorted by last_listened_at.\nEach item: `{ book_id, current_track, position_seconds, percentage, last_listened_at, books: {...} }`."
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "📤 Upload",
+      "item": [
+        {
+          "name": "Upload Image",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/upload?type=avatar", "query": [{ "key": "type", "value": "avatar", "description": "avatar | cover | image" }] },
+            "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": "" }] },
+            "description": "Upload an image file (JPG, PNG, WebP, GIF, SVG). Max 5 MB.\n\n`type` query param: `avatar`, `cover`, `image`\n\nResponse: `{ url: \"https://...\", storage: \"s3\" | \"local\" }`"
+          }
+        },
+        {
+          "name": "Upload Media (Audio / Ebook)",
+          "request": {
+            "method": "POST", "auth": { "type": "noauth" },
+            "url": { "raw": "{{base_url}}/upload/media" },
+            "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": "" }] },
+            "description": "Upload an audio file (MP3, M4A, WAV, MP4) or ebook (EPUB, PDF). Max 500 MB.\n\nResponse: `{ url: \"https://...\", storage: \"s3\" | \"local\", queued: false }`\n\nUse the returned `url` when creating audiobook tracks or ebook format records."
+          }
+        }
+      ]
+    }
+
+  ]
+}
