@@ -184,12 +184,13 @@ export default function AdminBooks() {
 
   // XHR-based upload with progress events and timeout safety net.
   // fetch() has no built-in timeout — large files (WAV/MP4) appeared stuck forever.
-  const uploadViaApi = (file: File, media = false, onProgress?: (pct: number) => void): Promise<string> => {
+  const uploadViaApi = (file: File, media = false, onProgress?: (pct: number) => void, type?: string): Promise<string> => {
     return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append("file", file);
       const token = localStorage.getItem("access_token");
-      const endpoint = media ? "/upload/media" : "/upload";
+      const base = media ? "/upload/media" : "/upload";
+      const endpoint = type ? `${base}?type=${type}` : base;
       const xhr = new XMLHttpRequest();
 
       if (onProgress) {
@@ -222,7 +223,7 @@ export default function AdminBooks() {
     if (!file) return;
     setUploadingCover(true);
     try {
-      const publicUrl = await uploadViaApi(file, false);
+      const publicUrl = await uploadViaApi(file, false, undefined, "cover");
       setForm({ ...form, cover_url: publicUrl });
       toast.success("Cover uploaded");
     } catch (error: any) {

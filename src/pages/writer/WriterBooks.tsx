@@ -129,7 +129,7 @@ export default function WriterBooks() {
       const formData = new FormData();
       formData.append("file", file);
       const token = localStorage.getItem("access_token");
-      const response = await fetch(`${API_BASE}/upload`, {
+      const response = await fetch(`${API_BASE}/upload?type=cover`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
