@@ -3924,11 +3924,15 @@ export const adminRouter = router({
           });
 
           const formatWhere: any = { book_id: input.bookId };
-          if (input.status === "rejected" || input.status === "draft") {
-            // When rejecting/returning a whole book, only affect formats that
-            // are not already approved so approved formats stay live.
+          if (input.status === "draft") {
+            // "Send Back" should only affect formats still in the review cycle
+            // (pending/draft). Leave already-approved formats live so creators
+            // only need to fix the specific formats being returned.
             formatWhere.submission_status = { not: "approved" };
           }
+          // For "rejected" and "approved": update ALL formats without exception.
+          // A full book rejection must mark every format as rejected so the
+          // reinstate flow can surface them in the Rejected tab.
 
           await tx.bookFormat.updateMany({
             where: formatWhere,
