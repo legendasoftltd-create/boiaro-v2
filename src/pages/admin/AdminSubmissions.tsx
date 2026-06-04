@@ -67,6 +67,17 @@ export default function AdminSubmissions() {
     onError: (e) => { toast.error(e.message); setActionLoading(null); },
   });
 
+  const setTrackStatusMutation = trpc.admin.setAudiobookTrackStatus.useMutation({
+    onSuccess: (_data, vars) => {
+      const status = (vars as any)?.status as string;
+      const msgs: Record<string, string> = { active: "Track approved — now live!", rejected: "Track rejected.", draft: "Track sent back to draft." };
+      toast.success(msgs[status] || "Track updated");
+      utils.admin.listSubmissions.invalidate();
+      setActionLoading(null);
+    },
+    onError: (e) => { toast.error(e.message); setActionLoading(null); },
+  });
+
   const approveEditMutation = trpc.admin.approveEditRequest.useMutation({
     onSuccess: () => {
       toast.success("Edit request approved — changes applied to live content");
@@ -89,9 +100,9 @@ export default function AdminSubmissions() {
     onError: (e) => { toast.error(e.message); setActionLoading(null); },
   });
 
-  const handleAction = (bookId: string, action: "approved" | "rejected" | "draft", formatId?: string) => {
+  const handleAction = (bookId: string, action: "approved" | "rejected" | "draft" | "pending", formatId?: string) => {
     setActionLoading(formatId || bookId);
-    updateStatusMutation.mutate({ bookId, status: action, formatId });
+    updateStatusMutation.mutate({ bookId, status: action as any, formatId });
   };
 
   const stopAudio = () => {
@@ -345,6 +356,52 @@ export default function AdminSubmissions() {
                   ))}
                 </div>
               </div>
+
+              {/* ── Pending audiobook track reviews ── */}
+              {(() => {
+                const pendingTracks = (previewBook.book_formats || [])
+                  .flatMap((f: any) => (f.audiobookTracks || []).map((t: any) => ({ ...t, formatLabel: f.format })));
+                if (pendingTracks.length === 0) return null;
+                return (
+                  <div>
+                    <h3 className="text-sm font-semibold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <FileAudio className="w-3.5 h-3.5" /> Pending Track Review ({pendingTracks.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {pendingTracks.map((t: any) => (
+                        <div key={t.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              #{t.track_number} — {t.title}
+                              {t.duration && <span className="ml-2 text-xs text-muted-foreground">{t.duration}</span>}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground capitalize">{t.formatLabel}</p>
+                          </div>
+                          {t.audio_url && (
+                            <button
+                              className="text-[10px] text-blue-400 hover:underline px-1.5"
+                              onClick={() => {
+                                const url = toMediaUrl(t.audio_url);
+                                if (url) { stopAudio(); const a = new Audio(url); audioRef.current = a; a.play(); setPlayingTrackId(t.id); setIsPlaying(true); }
+                              }}
+                            >▶</button>
+                          )}
+                          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs gap-1 flex-shrink-0"
+                            disabled={!!actionLoading}
+                            onClick={() => { setActionLoading(t.id); setTrackStatusMutation.mutate({ trackId: t.id, status: "active" }); }}>
+                            {actionLoading === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <><CheckCircle className="h-3 w-3" />Approve</>}
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive border-destructive/30 flex-shrink-0"
+                            disabled={!!actionLoading}
+                            onClick={() => { setActionLoading(t.id); setTrackStatusMutation.mutate({ trackId: t.id, status: "rejected" }); }}>
+                            <XCircle className="h-3 w-3" />Reject
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Inline ebook viewer */}
               {previewingFileUrl && (

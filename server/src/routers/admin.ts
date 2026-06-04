@@ -3790,27 +3790,67 @@ export const adminRouter = router({
           OR: [
             { submission_status: input.status },
             { formats: { some: { submission_status: input.status } } },
+            // Also surface books whose audiobook tracks are pending review,
+            // even when the parent format is already "approved".
+            // Prisma relation field is audiobook_tracks (snake_case)
+            ...(input.status === "pending" ? [{
+              formats: {
+                some: {
+                  format: "audiobook",
+                  audiobook_tracks: { some: { status: "pending" } },
+                } as any,
+              },
+            }] : []),
           ],
         },
         orderBy: { created_at: "desc" },
         include: {
           category: { select: { name: true, name_bn: true } },
-          formats: { select: { id: true, format: true, price: true, stock_count: true, duration: true, audio_quality: true, file_url: true, submission_status: true } },
+          formats: {
+            select: {
+              id: true, format: true, price: true, stock_count: true,
+              duration: true, audio_quality: true, file_url: true,
+              submission_status: true,
+              // Include pending tracks so the admin dialog can display them
+              audiobook_tracks: {
+                where: { status: "pending" },
+                select: { id: true, title: true, track_number: true, duration: true, audio_url: true },
+                orderBy: { track_number: "asc" },
+              },
+            },
+          },
           contributors: { select: { user_id: true, role: true, format: true } },
         },
       });
-      const userIds = [...new Set(books.map(b => b.submitted_by).filter(Boolean) as string[])];
+      const userIds = [...new Set(books.map((b: any) => b.submitted_by).filter(Boolean) as string[])];
       const profiles = userIds.length > 0
         ? await prisma.profile.findMany({ where: { user_id: { in: userIds } }, select: { user_id: true, display_name: true } })
         : [];
       const profileMap = Object.fromEntries(profiles.map(p => [p.user_id, p.display_name || "Unknown"]));
-      return books.map(b => ({
+      return books.map((b: any) => ({
         ...b,
         _submitter: b.submitted_by ? (profileMap[b.submitted_by] || "Unknown") : "Admin",
-        book_formats: b.formats,
+        book_formats: b.formats?.map((f: any) => ({
+          ...f,
+          // Rename to camelCase for frontend consistency
+          audiobookTracks: f.audiobook_tracks,
+        })),
         book_contributors: b.contributors,
         categories: b.category,
       }));
+    }),
+
+  /** Approve or reject a single audiobook track. */
+  setAudiobookTrackStatus: adminProcedure
+    .input(z.object({
+      trackId: z.string(),
+      status: z.enum(["active", "rejected", "draft"]),
+    }))
+    .mutation(async ({ input }) => {
+      return prisma.audiobookTrack.update({
+        where: { id: input.trackId },
+        data: { status: input.status },
+      });
     }),
 
   updateSubmissionStatus: adminProcedure

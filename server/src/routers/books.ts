@@ -969,6 +969,9 @@ export const booksRouter = router({
   submitAudiobookTrack: protectedProcedure
     .input(z.object({ trackId: z.string() }))
     .mutation(({ input }) =>
+      // Sets track status to "pending" for admin review.
+      // Track only becomes visible on frontend when admin sets it to "active".
+      // The parent format/book stay "approved" so existing active tracks remain live.
       prisma.audiobookTrack.update({ where: { id: input.trackId }, data: { status: "pending" } })
     ),
 
