@@ -3795,7 +3795,7 @@ export const adminRouter = router({
         orderBy: { created_at: "desc" },
         include: {
           category: { select: { name: true, name_bn: true } },
-          formats: { select: { id: true, format: true, price: true, stock_count: true, duration: true, audio_quality: true, file_url: true } },
+          formats: { select: { id: true, format: true, price: true, stock_count: true, duration: true, audio_quality: true, file_url: true, submission_status: true } },
           contributors: { select: { user_id: true, role: true, format: true } },
         },
       });
@@ -3814,42 +3814,103 @@ export const adminRouter = router({
     }),
 
   updateSubmissionStatus: adminProcedure
-    .input(z.object({ bookId: z.string(), status: z.enum(["approved", "rejected", "draft", "pending"]) }))
+    .input(z.object({
+      bookId:   z.string(),
+      status:   z.enum(["approved", "rejected", "draft", "pending"]),
+      /** When provided, only update this specific format — not all formats. */
+      formatId: z.string().optional(),
+    }))
     .mutation(async ({ ctx, input }) => {
       return prisma.$transaction(async (tx: any) => {
-        const updatedBook = await tx.book.update({
-          where: { id: input.bookId },
-          data: {
-            submission_status: input.status,
-            ...(input.status === "pending" ? { submitted_by: ctx.userId } : {}),
-          },
-        });
 
-        // Keep book + format review states aligned so a book does not appear
-        // in both pending and approved tabs at the same time.
-        await tx.bookFormat.updateMany({
-          where: { book_id: input.bookId },
-          data: { submission_status: input.status },
-        });
+        if (input.formatId) {
+          // ── Per-format update ────────────────────────────────────────────
+          // Only change the specified format. Does NOT touch sibling formats.
 
-        if (input.status === "approved") {
-          const audiobookFormats = await tx.bookFormat.findMany({
-            where: { book_id: input.bookId, format: "audiobook" },
-            select: { id: true },
+          const fmt = await tx.bookFormat.findUnique({
+            where: { id: input.formatId },
+            select: { id: true, format: true, book_id: true },
           });
-          const audiobookFormatIds = audiobookFormats.map((f) => f.id);
-          if (audiobookFormatIds.length > 0) {
+          if (!fmt || fmt.book_id !== input.bookId) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Format not found on this book" });
+          }
+
+          await tx.bookFormat.update({
+            where: { id: input.formatId },
+            data: { submission_status: input.status },
+          });
+
+          // Activate audiobook tracks when approving an audiobook format
+          if (input.status === "approved" && fmt.format === "audiobook") {
             await tx.audiobookTrack.updateMany({
-              where: {
-                book_format_id: { in: audiobookFormatIds },
-                status: { in: ["draft", "pending"] },
-              },
+              where: { book_format_id: input.formatId, status: { in: ["draft", "pending"] } },
               data: { status: "active" },
             });
           }
-        }
 
-        return updatedBook;
+          // Recalculate the book's top-level status from all its formats:
+          //   approved  → at least one format is approved (book is live)
+          //   rejected  → every format is rejected
+          //   pending   → no formats approved, at least one pending
+          //   draft     → everything else
+          const allFmts = await tx.bookFormat.findMany({
+            where: { book_id: input.bookId },
+            select: { submission_status: true },
+          });
+          const ss = allFmts.map((f: any) => f.submission_status as string);
+          let bookStatus: string;
+          if (ss.some((s: string) => s === "approved"))       bookStatus = "approved";
+          else if (ss.every((s: string) => s === "rejected")) bookStatus = "rejected";
+          else if (ss.some((s: string) => s === "pending"))   bookStatus = "pending";
+          else                                                 bookStatus = "draft";
+
+          return tx.book.update({
+            where: { id: input.bookId },
+            data: { submission_status: bookStatus },
+          });
+
+        } else {
+          // ── Book-level update (all formats submitted together) ───────────
+          // Only clobber formats that are still in the same review cycle
+          // (i.e., NOT already approved) to avoid accidentally revoking
+          // a format that was already live.
+
+          const updatedBook = await tx.book.update({
+            where: { id: input.bookId },
+            data: {
+              submission_status: input.status,
+              ...(input.status === "pending" ? { submitted_by: ctx.userId } : {}),
+            },
+          });
+
+          const formatWhere: any = { book_id: input.bookId };
+          if (input.status === "rejected" || input.status === "draft") {
+            // When rejecting/returning a whole book, only affect formats that
+            // are not already approved so approved formats stay live.
+            formatWhere.submission_status = { not: "approved" };
+          }
+
+          await tx.bookFormat.updateMany({
+            where: formatWhere,
+            data: { submission_status: input.status },
+          });
+
+          if (input.status === "approved") {
+            const audiobookFormats = await tx.bookFormat.findMany({
+              where: { book_id: input.bookId, format: "audiobook" },
+              select: { id: true },
+            });
+            const ids = audiobookFormats.map((f: any) => f.id);
+            if (ids.length > 0) {
+              await tx.audiobookTrack.updateMany({
+                where: { book_format_id: { in: ids }, status: { in: ["draft", "pending"] } },
+                data: { status: "active" },
+              });
+            }
+          }
+
+          return updatedBook;
+        }
       });
     }),
 

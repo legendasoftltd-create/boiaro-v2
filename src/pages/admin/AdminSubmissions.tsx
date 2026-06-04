@@ -89,9 +89,9 @@ export default function AdminSubmissions() {
     onError: (e) => { toast.error(e.message); setActionLoading(null); },
   });
 
-  const handleAction = (bookId: string, action: "approved" | "rejected" | "draft") => {
-    setActionLoading(bookId);
-    updateStatusMutation.mutate({ bookId, status: action });
+  const handleAction = (bookId: string, action: "approved" | "rejected" | "draft", formatId?: string) => {
+    setActionLoading(formatId || bookId);
+    updateStatusMutation.mutate({ bookId, status: action, formatId });
   };
 
   const stopAudio = () => {
@@ -421,22 +421,85 @@ export default function AdminSubmissions() {
                 </div>
               )}
 
-              {filter === "pending" && (
-                <div className="flex gap-2 pt-2 border-t border-border/30">
-                  <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                    onClick={() => handleAction(previewBook.id, "approved")}
-                    disabled={!!actionLoading}>
-                    {actionLoading === previewBook.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-4 w-4 mr-2" />Approve</>}
-                  </Button>
-                  <Button variant="outline" onClick={() => handleAction(previewBook.id, "draft")} disabled={!!actionLoading} className="flex-1">
-                    <RotateCcw className="h-4 w-4 mr-2" />Send Back
-                  </Button>
-                  <Button variant="outline" className="flex-1 text-destructive border-destructive/30"
-                    onClick={() => handleAction(previewBook.id, "rejected")} disabled={!!actionLoading}>
-                    <XCircle className="h-4 w-4 mr-2" />Reject
-                  </Button>
-                </div>
-              )}
+              {/* ── Approval actions (only on the Pending tab) ── */}
+              {filter === "pending" && (() => {
+                const formats = (previewBook as any).book_formats || [];
+                // Formats that need review (pending or draft)
+                const pendingFormats = formats.filter((f: any) =>
+                  f.submission_status === "pending" || f.submission_status === "draft"
+                );
+                // If the book has multiple formats with DIFFERENT statuses, show
+                // per-format controls so the admin can act on each independently.
+                const hasApprovedSiblings = formats.some((f: any) => f.submission_status === "approved");
+                const showPerFormat = pendingFormats.length > 0 && (hasApprovedSiblings || pendingFormats.length < formats.length);
+                const formatLabel: Record<string, string> = { ebook: "eBook", audiobook: "Audiobook", hardcopy: "Hard Copy" };
+
+                return (
+                  <div className="pt-2 border-t border-border/30 space-y-3">
+                    {showPerFormat ? (
+                      <>
+                        <p className="text-xs text-muted-foreground font-medium">
+                          Act on individual formats — approved formats will remain live:
+                        </p>
+                        {pendingFormats.map((fmt: any) => (
+                          <div key={fmt.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-secondary/30 border border-border/30">
+                            <span className="text-sm font-medium flex-1">
+                              {formatLabel[fmt.format] || fmt.format}
+                              <span className="ml-2 text-xs text-amber-400 font-normal">{fmt.submission_status}</span>
+                            </span>
+                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs gap-1"
+                              onClick={() => handleAction(previewBook.id, "approved", fmt.id)}
+                              disabled={!!actionLoading}>
+                              {actionLoading === fmt.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <><CheckCircle className="h-3 w-3" />Approve</>}
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                              onClick={() => handleAction(previewBook.id, "draft", fmt.id)}
+                              disabled={!!actionLoading}>
+                              <RotateCcw className="h-3 w-3" />Send Back
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive border-destructive/30"
+                              onClick={() => handleAction(previewBook.id, "rejected", fmt.id)}
+                              disabled={!!actionLoading}>
+                              <XCircle className="h-3 w-3" />Reject
+                            </Button>
+                          </div>
+                        ))}
+                        {/* Also allow approving/rejecting the whole book */}
+                        {formats.every((f: any) => f.submission_status !== "approved") && (
+                          <div className="flex gap-2">
+                            <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                              onClick={() => handleAction(previewBook.id, "approved")}
+                              disabled={!!actionLoading}>
+                              <CheckCircle className="h-4 w-4 mr-2" />Approve All
+                            </Button>
+                            <Button variant="outline" className="flex-1 text-destructive border-destructive/30"
+                              onClick={() => handleAction(previewBook.id, "rejected")}
+                              disabled={!!actionLoading}>
+                              <XCircle className="h-4 w-4 mr-2" />Reject All
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                          onClick={() => handleAction(previewBook.id, "approved")}
+                          disabled={!!actionLoading}>
+                          {actionLoading === previewBook.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-4 w-4 mr-2" />Approve</>}
+                        </Button>
+                        <Button variant="outline" onClick={() => handleAction(previewBook.id, "draft")} disabled={!!actionLoading} className="flex-1">
+                          <RotateCcw className="h-4 w-4 mr-2" />Send Back
+                        </Button>
+                        <Button variant="outline" className="flex-1 text-destructive border-destructive/30"
+                          onClick={() => handleAction(previewBook.id, "rejected")} disabled={!!actionLoading}>
+                          <XCircle className="h-4 w-4 mr-2" />Reject
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
             </div>
           )}
         </DialogContent>
