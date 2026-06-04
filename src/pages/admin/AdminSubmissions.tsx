@@ -421,18 +421,61 @@ export default function AdminSubmissions() {
                 </div>
               )}
 
-              {/* ── Approval actions (only on the Pending tab) ── */}
-              {filter === "pending" && (() => {
+              {/* ── Approval / reinstate actions ── */}
+              {(filter === "pending" || filter === "rejected") && (() => {
                 const formats = (previewBook as any).book_formats || [];
-                // Formats that need review (pending or draft)
+                const formatLabel: Record<string, string> = { ebook: "eBook", audiobook: "Audiobook", hardcopy: "Hard Copy" };
+                const isRejectedTab = filter === "rejected";
+
+                // ── REJECTED TAB: show per-format "Reinstate → Pending" ──────
+                if (isRejectedTab) {
+                  const rejectedFormats = formats.filter((f: any) => f.submission_status === "rejected");
+                  if (rejectedFormats.length === 0) return null;
+                  const multiFormat = rejectedFormats.length < formats.length; // some siblings not rejected
+
+                  return (
+                    <div className="pt-2 border-t border-border/30 space-y-3">
+                      <p className="text-xs text-muted-foreground font-medium">
+                        Move rejected format(s) back to <span className="text-amber-400">Pending</span> so they can be reviewed again:
+                      </p>
+                      {multiFormat ? (
+                        // Per-format controls when some formats are not rejected
+                        rejectedFormats.map((fmt: any) => (
+                          <div key={fmt.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-secondary/30 border border-border/30">
+                            <span className="text-sm font-medium flex-1">
+                              {formatLabel[fmt.format] || fmt.format}
+                              <span className="ml-2 text-xs text-red-400 font-normal">rejected</span>
+                            </span>
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-amber-400 border-amber-500/30"
+                              onClick={() => handleAction(previewBook.id, "pending", fmt.id)}
+                              disabled={!!actionLoading}>
+                              {actionLoading === fmt.id
+                                ? <Loader2 className="h-3 w-3 animate-spin" />
+                                : <><RotateCcw className="h-3 w-3" />Move to Pending</>}
+                            </Button>
+                          </div>
+                        ))
+                      ) : (
+                        // All formats rejected — single button for the whole book
+                        <Button className="w-full gap-2 border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+                          variant="outline"
+                          onClick={() => handleAction(previewBook.id, "pending")}
+                          disabled={!!actionLoading}>
+                          {actionLoading === previewBook.id
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <><RotateCcw className="h-4 w-4" />Move to Pending</>}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                }
+
+                // ── PENDING TAB: approve / send back / reject ─────────────────
                 const pendingFormats = formats.filter((f: any) =>
                   f.submission_status === "pending" || f.submission_status === "draft"
                 );
-                // If the book has multiple formats with DIFFERENT statuses, show
-                // per-format controls so the admin can act on each independently.
                 const hasApprovedSiblings = formats.some((f: any) => f.submission_status === "approved");
                 const showPerFormat = pendingFormats.length > 0 && (hasApprovedSiblings || pendingFormats.length < formats.length);
-                const formatLabel: Record<string, string> = { ebook: "eBook", audiobook: "Audiobook", hardcopy: "Hard Copy" };
 
                 return (
                   <div className="pt-2 border-t border-border/30 space-y-3">
@@ -464,7 +507,6 @@ export default function AdminSubmissions() {
                             </Button>
                           </div>
                         ))}
-                        {/* Also allow approving/rejecting the whole book */}
                         {formats.every((f: any) => f.submission_status !== "approved") && (
                           <div className="flex gap-2">
                             <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700"
