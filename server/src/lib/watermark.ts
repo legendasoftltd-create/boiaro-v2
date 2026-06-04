@@ -11,7 +11,8 @@ const LOGO_OPACITY  = 0.65;   // 65% opacity — visible but not distracting
 const LOGO_WIDTH_RATIO = 0.22; // logo = 22% of image width
 const LOGO_MIN_PX  = 60;
 const LOGO_MAX_PX  = 220;
-const PADDING_PX   = 14;       // gap from edge
+const PADDING_RIGHT_PX  = 50;
+const PADDING_BOTTOM_PX = 100;
 
 /**
  * Composite the BoiAro logo watermark onto the bottom-right corner of a
@@ -53,9 +54,9 @@ export async function applyWatermark(imageBuffer: Buffer): Promise<Buffer> {
   const finalW = logoMeta.width  || logoW;
   const finalH = logoMeta.height || logoH;
 
-  // Place at bottom-right with padding
-  const left = Math.max(0, imgW - finalW - PADDING_PX);
-  const top  = Math.max(0, imgH - finalH - PADDING_PX);
+  // Place at bottom-right with specified offsets from each edge
+  const left = Math.max(0, imgW - finalW - PADDING_RIGHT_PX);
+  const top  = Math.max(0, imgH - finalH - PADDING_BOTTOM_PX);
 
   return sharp(imageBuffer)
     .composite([{ input: logoWithOpacity, left, top, blend: "over" }])
