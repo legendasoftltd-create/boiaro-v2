@@ -165,10 +165,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear()
   }
 
-  const updateProfile = async (updates: Partial<Profile>) => {
+  const updateProfile = async (updates: Partial<Profile> & { email?: string }) => {
     if (!user) return
     await updateProfileMutation.mutateAsync(updates as any)
-    setProfile(prev => prev ? { ...prev, ...updates } : null)
+    const { email, ...profileUpdates } = updates
+    setProfile(prev => prev ? { ...prev, ...profileUpdates } : null)
+    if (email) {
+      setUser(prev => prev ? { ...prev, email } : null)
+    }
   }
 
   const setProfileAvatar = (url: string) => {

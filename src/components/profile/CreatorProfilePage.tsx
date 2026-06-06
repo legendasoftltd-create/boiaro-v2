@@ -58,8 +58,11 @@ export default function CreatorProfilePage({
   const { user, setProfileAvatar } = useAuth();
   const utils = trpc.useUtils();
   const [form, setForm] = useState<ProfileData>(emptyProfile);
+  const [emailInput, setEmailInput] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isOtpUser = user?.email?.endsWith("@boiaro.local") ?? false;
 
   const { data: profileData } = trpc.profiles.me.useQuery(undefined, { enabled: !!user });
 
@@ -96,7 +99,10 @@ export default function CreatorProfilePage({
 
   const handleSave = () => {
     const { avatar_url: _av, ...rest } = form;
-    updateMutation.mutate(rest);
+    updateMutation.mutate({
+      ...rest,
+      ...(isOtpUser && emailInput.trim() ? { email: emailInput.trim() } : {}),
+    });
   };
 
   const handleAvatarClick = () => fileInputRef.current?.click();
@@ -166,7 +172,9 @@ export default function CreatorProfilePage({
             </div>
             <div className="text-center sm:text-left">
               <h2 className="text-lg font-bold font-serif">{form.display_name || roleLabel}</h2>
-              <p className="text-sm text-muted-foreground">{user?.email}</p>
+              <p className="text-sm text-muted-foreground">
+                {isOtpUser ? "ইমেইল সেট করা হয়নি" : user?.email}
+              </p>
               <div className="flex items-center gap-2 mt-1.5 justify-center sm:justify-start">
                 <Badge variant="outline" className="text-[11px] border-primary/30 text-primary">{roleLabel}</Badge>
                 {joinedDate && (
@@ -205,7 +213,20 @@ export default function CreatorProfilePage({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-[13px]">Email</Label>
-                  <Input value={user?.email || ""} disabled className={`${inputClass} opacity-60`} />
+                  {isOtpUser ? (
+                    <>
+                      <Input
+                        type="email"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        placeholder="your@email.com"
+                        className={inputClass}
+                      />
+                      <p className="text-[11px] text-muted-foreground">আপনি ফোন দিয়ে লগইন করেছেন — একটি বাস্তব ইমেইল যুক্ত করুন।</p>
+                    </>
+                  ) : (
+                    <Input value={user?.email || ""} disabled className={`${inputClass} opacity-60`} />
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-[13px]">Phone</Label>
@@ -283,7 +304,9 @@ export default function CreatorProfilePage({
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-[13px] text-muted-foreground">Email</Label>
-                  <p className="text-sm">{user?.email}</p>
+                  <p className="text-sm">
+                    {isOtpUser ? "সেট করা হয়নি — Profile Info থেকে যুক্ত করুন" : user?.email}
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-[13px] text-muted-foreground">User ID</Label>

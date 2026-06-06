@@ -28,6 +28,7 @@ export default function Profile() {
   const [displayName, setDisplayName] = useState("")
   const [bio, setBio] = useState("")
   const [phone, setPhone] = useState("")
+  const [email, setEmail] = useState("")
   const [saving, setSaving] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -55,12 +56,15 @@ export default function Profile() {
     return null
   }
 
+  const isOtpUser = user.email.endsWith("@boiaro.local")
+
   const handleSave = async () => {
     setSaving(true)
     await updateProfile({
       display_name: displayName,
       bio,
       phone: phone.trim() || undefined,
+      ...(isOtpUser && email.trim() ? { email: email.trim() } : {}),
     })
     setSaving(false)
     toast({ title: "Profile updated!" })
@@ -225,7 +229,9 @@ export default function Profile() {
 
             <div>
               <h1 className="text-xl font-serif font-bold text-foreground">{profile?.display_name || "User"}</h1>
-              <p className="text-[13px] text-muted-foreground">{user.email}</p>
+              <p className="text-[13px] text-muted-foreground">
+                {isOtpUser ? "ইমেইল সেট করা হয়নি" : user.email}
+              </p>
               {profile?.phone && (
                 <p className="text-[12px] text-muted-foreground flex items-center gap-1 mt-0.5">
                   <Phone className="w-3 h-3" />{profile.phone}
@@ -387,6 +393,19 @@ export default function Profile() {
                     <Label className="text-[13px]">Display Name</Label>
                     <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" className="h-10 rounded-xl bg-secondary/40 border-border/40" />
                   </div>
+                  {isOtpUser && (
+                    <div className="space-y-1.5">
+                      <Label className="text-[13px]">Email Address</Label>
+                      <Input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        className="h-10 rounded-xl bg-secondary/40 border-border/40"
+                      />
+                      <p className="text-[11px] text-muted-foreground">আপনি ফোন দিয়ে লগইন করেছেন — একটি বাস্তব ইমেইল যুক্ত করুন।</p>
+                    </div>
+                  )}
                   <div className="space-y-1.5">
                     <Label className="text-[13px]">Phone Number</Label>
                     <Input
