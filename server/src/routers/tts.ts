@@ -13,7 +13,21 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
-const getElevenLabsKey = () => process.env.ELEVENLABS_API_KEY;
+// ─── ElevenLabs API key — DB-first, env fallback, 5-min cache ──────────────
+const API_KEY_SETTING_KEY = "elevenlabs_api_key";
+let _apiKeyCache: { value: string | null; expiresAt: number } | null = null;
+
+async function getElevenLabsKey(): Promise<string | undefined> {
+  if (_apiKeyCache && Date.now() < _apiKeyCache.expiresAt) {
+    return _apiKeyCache.value ?? process.env.ELEVENLABS_API_KEY;
+  }
+  const row = await prisma.platformSetting.findUnique({ where: { key: API_KEY_SETTING_KEY } });
+  const dbKey = row?.value?.trim() || null;
+  _apiKeyCache = { value: dbKey, expiresAt: Date.now() + 5 * 60_000 };
+  return dbKey ?? process.env.ELEVENLABS_API_KEY;
+}
+
+function invalidateApiKeyCache() { _apiKeyCache = null; }
 const UPLOADS_DIR = process.env.UPLOADS_DIR || "./uploads";
 const BASE_URL = (process.env.BASE_URL || process.env.FRONTEND_URL || `http://localhost:${process.env.PORT || 3001}`).replace(/\/$/, "");
 
@@ -204,7 +218,7 @@ function makeCacheHash(text: string, voiceId: string, model: string): string {
 
 // ─── Core ElevenLabs TTS call ───────────────────────────────────────────────
 async function callElevenLabs(text: string, voiceId: string, model?: string): Promise<Buffer> {
-  const key = getElevenLabsKey();
+  const key = await getElevenLabsKey();
   if (!key) throw new Error("ELEVENLABS_API_KEY not configured");
 
   const modelId = model ?? await getStoredTtsModel();
@@ -425,7 +439,7 @@ export const ttsRouter = router({
 
   // Admin: check ElevenLabs API status + quota
   checkApiStatus: adminProcedure.query(async () => {
-    const key = getElevenLabsKey();
+    const key = await getElevenLabsKey();
     if (!key) return { configured: false, quota: null, error: "API key not set" };
     try {
       const res = await fetch("https://api.elevenlabs.io/v1/user/subscription", {
@@ -558,7 +572,7 @@ export const ttsRouter = router({
 
   // Admin: fetch all voices from ElevenLabs API
   adminFetchElevenLabsVoices: adminProcedure.query(async () => {
-    const key = getElevenLabsKey();
+    const key = await getElevenLabsKey();
     if (!key) throw new TRPCError({ code: "BAD_REQUEST", message: "API key not set" });
     const res = await fetch("https://api.elevenlabs.io/v1/voices", {
       headers: { "xi-api-key": key },
@@ -623,7 +637,7 @@ export const ttsRouter = router({
       durationSeconds: z.number().min(5).max(22).default(22),
     }))
     .mutation(async ({ input }) => {
-      const key = getElevenLabsKey();
+      const key = await getElevenLabsKey();
       if (!key) throw new TRPCError({ code: "BAD_REQUEST", message: "ELEVENLABS_API_KEY not configured" });
 
       const response = await fetch("https://api.elevenlabs.io/v1/sound-generation", {
@@ -657,7 +671,7 @@ export const ttsRouter = router({
 
   // Admin: fetch available models from ElevenLabs
   adminFetchElevenLabsModels: adminProcedure.query(async () => {
-    const key = getElevenLabsKey();
+    const key = await getElevenLabsKey();
     if (!key) throw new TRPCError({ code: "BAD_REQUEST", message: "API key not set" });
     const res = await fetch("https://api.elevenlabs.io/v1/models", {
       headers: { "xi-api-key": key },
@@ -684,4 +698,35 @@ export const ttsRouter = router({
       invalidateModelCache();
       return { success: true };
     }),
+
+  // ── ElevenLabs API Key Management ──────────────────────────────────────────
+
+  // Admin: get API key status (never returns the actual key)
+  adminGetApiKeyStatus: adminProcedure.query(async () => {
+    const row = await prisma.platformSetting.findUnique({ where: { key: API_KEY_SETTING_KEY } });
+    const hasDbKey = !!(row?.value?.trim());
+    const hasEnvKey = !!process.env.ELEVENLABS_API_KEY?.trim();
+    const source: "db" | "env" | "none" = hasDbKey ? "db" : hasEnvKey ? "env" : "none";
+    return { configured: source !== "none", source };
+  }),
+
+  // Admin: save API key to DB
+  adminSaveApiKey: adminProcedure
+    .input(z.object({ apiKey: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      await prisma.platformSetting.upsert({
+        where:  { key: API_KEY_SETTING_KEY },
+        update: { value: input.apiKey.trim() },
+        create: { key: API_KEY_SETTING_KEY, value: input.apiKey.trim() },
+      });
+      invalidateApiKeyCache();
+      return { success: true };
+    }),
+
+  // Admin: clear DB-stored API key (falls back to env var)
+  adminClearApiKey: adminProcedure.mutation(async () => {
+    await prisma.platformSetting.deleteMany({ where: { key: API_KEY_SETTING_KEY } });
+    invalidateApiKeyCache();
+    return { success: true };
+  }),
 });

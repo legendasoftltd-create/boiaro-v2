@@ -11,7 +11,7 @@ import {
   Sparkles, Trash2, RefreshCw, Mic, BarChart3, Database, Zap,
   AlertTriangle, CheckCircle, XCircle, Play, Pause, Square,
   ChevronLeft, ChevronRight, BookOpen, Search, Volume2, Music, Plus,
-  Save, Download, Settings, Upload, Loader2,
+  Save, Download, Settings, Upload, Loader2, Key, Eye, EyeOff, ShieldCheck, ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
@@ -70,6 +70,106 @@ const KNOWN_MODELS = [
   { id: "eleven_turbo_v2_5",     name: "Turbo v2.5 (দ্রুত)" },
   { id: "eleven_flash_v2_5",     name: "Flash v2.5 (সবচেয়ে দ্রুত)" },
 ];
+
+// ── API Key Setup Section ─────────────────────────────────────────────────────
+function ApiKeySetup() {
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+
+  const { data: keyStatus, refetch: refetchStatus } = trpc.tts.adminGetApiKeyStatus.useQuery();
+
+  const saveMutation = trpc.tts.adminSaveApiKey.useMutation({
+    onSuccess: () => {
+      toast.success("API Key সংরক্ষিত হয়েছে");
+      setApiKey("");
+      refetchStatus();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const clearMutation = trpc.tts.adminClearApiKey.useMutation({
+    onSuccess: () => {
+      toast.success("DB-stored API Key মুছে ফেলা হয়েছে");
+      refetchStatus();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const sourceLabel = keyStatus?.source === "db"
+    ? "Database (Admin Panel)"
+    : keyStatus?.source === "env"
+    ? "Environment Variable"
+    : null;
+
+  return (
+    <Card className={`border ${keyStatus?.configured ? "border-green-500/30 bg-green-500/5" : "border-amber-500/30 bg-amber-500/5"}`}>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Key className="h-4 w-4 text-amber-400" /> ElevenLabs API Key Setup
+        </CardTitle>
+        <p className="text-xs text-muted-foreground pt-0.5">
+          API Key এখানে সেট করলে environment variable-এর চেয়ে অগ্রাধিকার পাবে।
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* Current status */}
+        <div className="flex items-center gap-2 text-sm">
+          {keyStatus?.configured
+            ? <ShieldCheck className="h-4 w-4 text-green-400 shrink-0" />
+            : <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0" />}
+          <span className={keyStatus?.configured ? "text-green-400 font-medium" : "text-amber-400 font-medium"}>
+            {keyStatus?.configured ? `API Key কনফিগার আছে` : "API Key কনফিগার করা হয়নি"}
+          </span>
+          {sourceLabel && (
+            <Badge variant="outline" className="text-[10px] ml-1">{sourceLabel}</Badge>
+          )}
+          {keyStatus?.source === "db" && (
+            <Button variant="ghost" size="sm" className="ml-auto text-xs h-7 text-destructive hover:text-destructive"
+              onClick={() => clearMutation.mutate()} disabled={clearMutation.isPending}>
+              {clearMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3 mr-1" />}
+              DB Key মুছুন
+            </Button>
+          )}
+        </div>
+
+        {/* Key input */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Input
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={keyStatus?.configured ? "নতুন key দিলে replace হবে…" : "sk_… API key লিখুন"}
+              className="h-9 text-sm font-mono pr-10"
+            />
+            <Button
+              variant="ghost" size="icon"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+              onClick={() => setShowKey(v => !v)}
+              type="button"
+            >
+              {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+          <Button
+            size="sm" className="h-9 text-xs bg-amber-500 hover:bg-amber-600 text-black shrink-0"
+            onClick={() => saveMutation.mutate({ apiKey })}
+            disabled={!apiKey.trim() || saveMutation.isPending}
+          >
+            {saveMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+            সংরক্ষণ করুন
+          </Button>
+        </div>
+
+        <p className="text-[11px] text-muted-foreground">
+          Key শুধুমাত্র server-side ব্যবহার হয় — frontend-এ কখনো পাঠানো হয় না।
+          {keyStatus?.source === "env" && " Environment variable দিয়ে key সেট আছে; DB-তে save করলে সেটি override হবে।"}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 // ── Voice Management Section ─────────────────────────────────────────────────
 function VoiceManagement() {
@@ -632,6 +732,9 @@ export default function AdminTtsManagement() {
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${apiLoading ? "animate-spin" : ""}`} /> রিফ্রেশ
         </Button>
       </div>
+
+      {/* ── API Key Setup ── */}
+      <ApiKeySetup />
 
       {/* ── API Status Card ── */}
       <Card className={`border ${apiStatus?.configured && !apiStatus?.error ? "border-green-500/30 bg-green-500/5" : "border-red-500/30 bg-red-500/5"}`}>
