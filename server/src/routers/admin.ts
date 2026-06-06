@@ -238,12 +238,14 @@ export const adminRouter = router({
         language: z.string().optional().nullable(),
         tags: z.array(z.string()).nullable().optional(),
         submission_status: z.string().optional().nullable(),
+        published_date: z.string().optional().nullable(),
       })
     )
     .mutation(({ ctx, input }) => {
-      const { id, author_id, category_id, publisher_id, ...data } = input;
+      const { id, author_id, category_id, publisher_id, published_date, ...data } = input;
       const normalizedTags =
         data.tags === undefined ? undefined : data.tags === null ? [] : data.tags;
+      const parsedPublishedDate = published_date ? new Date(published_date) : null;
 
       const relationData = {
         author: author_id ? { connect: { id: author_id } } : { disconnect: true },
@@ -256,6 +258,7 @@ export const adminRouter = router({
           where: { id },
           data: {
             ...data,
+            published_date: parsedPublishedDate,
             ...(data.submission_status === "pending" ? { submitted_by: ctx.userId } : {}),
             ...(normalizedTags !== undefined ? { tags: { set: normalizedTags } } : {}),
             ...relationData,
@@ -266,6 +269,7 @@ export const adminRouter = router({
       return prisma.book.create({
         data: {
           ...data,
+          published_date: parsedPublishedDate,
           submission_status: data.submission_status ?? "pending",
           submitted_by: ctx.userId,
           ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),

@@ -73,7 +73,7 @@ export default function AdminBooks() {
     title: "", title_en: "", slug: "", description: "", description_bn: "",
     author_id: "", category_id: "", publisher_id: "", cover_url: "",
     is_featured: false, is_bestseller: false, is_new: false, is_free: false,
-    language: "bn", tags: "",
+    language: "bn", tags: "", published_date: "",
   });
 
   const [premiumVoice, setPremiumVoice] = useState({
@@ -382,7 +382,7 @@ export default function AdminBooks() {
       title: "", title_en: "", slug: "", description: "", description_bn: "",
       author_id: "", category_id: "", publisher_id: "", cover_url: "",
       is_featured: false, is_bestseller: false, is_new: false, is_free: false,
-      language: "bn", tags: "",
+      language: "bn", tags: "", published_date: "",
     });
     setOpen(true);
   };
@@ -398,6 +398,7 @@ export default function AdminBooks() {
       is_featured: book.is_featured || false, is_bestseller: book.is_bestseller || false,
       is_new: book.is_new || false, is_free: book.is_free || false,
       language: book.language || "bn", tags: (book.tags || []).join(", "),
+      published_date: book.published_date ? new Date(book.published_date).toISOString().split("T")[0] : "",
     });
     setOpen(true);
   };
@@ -409,6 +410,7 @@ export default function AdminBooks() {
       category_id: form.category_id || null,
       publisher_id: form.publisher_id || null,
       tags: form.tags ? form.tags.split(",").map((t: string) => t.trim()).filter(Boolean) : null,
+      published_date: form.published_date || null,
     };
     if (!payload.slug) {
       payload.slug = payload.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0980-\u09FF-]/g, "");
@@ -904,6 +906,14 @@ export default function AdminBooks() {
             <div>
               <Label>Tags (comma separated)</Label>
               <Input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
+            </div>
+            <div>
+              <Label>First Publish Date</Label>
+              <Input
+                type="date"
+                value={form.published_date}
+                onChange={(e) => setForm({ ...form, published_date: e.target.value })}
+              />
             </div>
             <div className="col-span-2 flex gap-4 flex-wrap">
               {(["is_featured", "is_bestseller", "is_new", "is_free"] as const).map((key) => (
