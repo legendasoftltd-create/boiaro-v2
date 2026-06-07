@@ -402,7 +402,7 @@ export const adminRouter = router({
         isbn: z.string().nullable().optional(),
       })
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       if (id) {
         return prisma.bookFormat.update({
@@ -412,6 +412,12 @@ export const adminRouter = router({
             ...(data.submission_status === "pending" ? { submitted_by: data.submitted_by ?? ctx.userId } : {}),
           } as any,
         });
+      }
+      const existing = await prisma.bookFormat.findFirst({
+        where: { book_id: data.book_id, format: data.format },
+      });
+      if (existing) {
+        throw new TRPCError({ code: "CONFLICT", message: `This book already has a ${data.format} format. Edit the existing one instead.` });
       }
       return prisma.bookFormat.create({
         data: {

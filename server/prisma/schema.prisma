@@ -349,6 +349,7 @@ model BookFormat {
   ebook_chapters  EbookChapter[]
   order_items     OrderItem[]
 
+  @@unique([book_id, format])
   @@map("book_formats")
 }
 
