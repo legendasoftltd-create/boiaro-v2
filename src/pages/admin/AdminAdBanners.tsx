@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ImageIcon, Plus, Search, Trash2, Eye, MousePointerClick } from "lucide-react";
+import { SiteImageUpload } from "@/components/admin/SiteImageUpload";
 import { toast } from "sonner";
 
 interface AdBanner {
@@ -169,7 +170,7 @@ export default function AdminAdBanners() {
           <DialogHeader><DialogTitle>{editId ? "Edit" : "New"} Banner</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5"><Label>Title</Label><Input value={form.title || ""} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} /></div>
-            <div className="space-y-1.5"><Label>Image URL</Label><Input value={form.image_url || ""} onChange={e => setForm(p => ({ ...p, image_url: e.target.value }))} /></div>
+            <div className="space-y-1.5"><Label>Image</Label><SiteImageUpload value={form.image_url || ""} onChange={url => setForm(p => ({ ...p, image_url: url }))} fieldKey="ad-banner" /></div>
             <div className="space-y-1.5"><Label>Destination URL</Label><Input value={form.destination_url || ""} onChange={e => setForm(p => ({ ...p, destination_url: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
