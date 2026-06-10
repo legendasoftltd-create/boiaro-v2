@@ -35,7 +35,7 @@ export default function AdminAdSettings() {
   const utils = trpc.useUtils();
   const [settings, setSettings] = useState<Record<string, string>>({});
   const allKeys = useMemo(() => [...BEHAVIOR_CONFIG, ...PROVIDER_CONFIG].map(c => c.key), []);
-  const { data: loadedSettings = {}, isLoading: loading } = trpc.admin.getPlatformSettings.useQuery({ keys: allKeys });
+  const { data: loadedSettings, isLoading: loading } = trpc.admin.getPlatformSettings.useQuery({ keys: allKeys });
   const saveMutation = trpc.admin.bulkSetPlatformSettings.useMutation({
     onSuccess: async () => {
       await utils.admin.getPlatformSettings.invalidate({ keys: allKeys });
@@ -45,7 +45,7 @@ export default function AdminAdSettings() {
   });
 
   useEffect(() => {
-    setSettings(loadedSettings as Record<string, string>);
+    if (loadedSettings) setSettings(loadedSettings as Record<string, string>);
   }, [loadedSettings]);
 
   const handleSave = async () => {

@@ -16,6 +16,7 @@ export const profileUpdateSchema = z
     instagram_url: z.string().optional(),
     youtube_url: z.string().optional(),
     portfolio_url: z.string().optional(),
+    email: z.string().email().optional(),
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field is required",

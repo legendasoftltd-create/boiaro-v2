@@ -238,12 +238,14 @@ export const adminRouter = router({
         language: z.string().optional().nullable(),
         tags: z.array(z.string()).nullable().optional(),
         submission_status: z.string().optional().nullable(),
+        published_date: z.string().optional().nullable(),
       })
     )
     .mutation(({ ctx, input }) => {
-      const { id, author_id, category_id, publisher_id, ...data } = input;
+      const { id, author_id, category_id, publisher_id, published_date, ...data } = input;
       const normalizedTags =
         data.tags === undefined ? undefined : data.tags === null ? [] : data.tags;
+      const parsedPublishedDate = published_date ? new Date(published_date) : null;
 
       const relationData = {
         author: author_id ? { connect: { id: author_id } } : { disconnect: true },
@@ -256,6 +258,7 @@ export const adminRouter = router({
           where: { id },
           data: {
             ...data,
+            published_date: parsedPublishedDate,
             ...(data.submission_status === "pending" ? { submitted_by: ctx.userId } : {}),
             ...(normalizedTags !== undefined ? { tags: { set: normalizedTags } } : {}),
             ...relationData,
@@ -266,6 +269,7 @@ export const adminRouter = router({
       return prisma.book.create({
         data: {
           ...data,
+          published_date: parsedPublishedDate,
           submission_status: data.submission_status ?? "pending",
           submitted_by: ctx.userId,
           ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
@@ -398,7 +402,7 @@ export const adminRouter = router({
         isbn: z.string().nullable().optional(),
       })
     )
-    .mutation(({ ctx, input }) => {
+    .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       if (id) {
         return prisma.bookFormat.update({
@@ -408,6 +412,12 @@ export const adminRouter = router({
             ...(data.submission_status === "pending" ? { submitted_by: data.submitted_by ?? ctx.userId } : {}),
           } as any,
         });
+      }
+      const existing = await prisma.bookFormat.findFirst({
+        where: { book_id: data.book_id, format: data.format },
+      });
+      if (existing) {
+        throw new TRPCError({ code: "CONFLICT", message: `This book already has a ${data.format} format. Edit the existing one instead.` });
       }
       return prisma.bookFormat.create({
         data: {

@@ -28,12 +28,29 @@ export const profilesRouter = router({
         instagram_url: z.string().optional(),
         youtube_url: z.string().optional(),
         portfolio_url: z.string().optional(),
+        email: z.string().email().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { email, ...profileData } = input;
+
+      if (email) {
+        const trimmed = email.toLowerCase().trim();
+        if (trimmed.endsWith("@boiaro.local")) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid email address" });
+        }
+        const conflict = await prisma.user.findUnique({ where: { email: trimmed } });
+        if (conflict && conflict.id !== ctx.userId) {
+          throw new TRPCError({ code: "CONFLICT", message: "Email already in use by another account" });
+        }
+        if (!conflict || conflict.id !== ctx.userId) {
+          await prisma.user.update({ where: { id: ctx.userId! }, data: { email: trimmed } });
+        }
+      }
+
       return prisma.profile.update({
         where: { user_id: ctx.userId },
-        data: input,
+        data: profileData,
       });
     }),
 
