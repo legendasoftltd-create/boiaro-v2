@@ -414,7 +414,7 @@ export const adminRouter = router({
         });
       }
       const existing = await prisma.bookFormat.findFirst({
-        where: { book_id: data.book_id, format: data.format },
+        where: { book_id: data.book_id, format: data.format as any },
       });
       if (existing) {
         throw new TRPCError({ code: "CONFLICT", message: `This book already has a ${data.format} format. Edit the existing one instead.` });
