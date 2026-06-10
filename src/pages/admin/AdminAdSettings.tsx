@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,7 @@ const PROVIDER_CONFIG = [
 export default function AdminAdSettings() {
   const utils = trpc.useUtils();
   const [settings, setSettings] = useState<Record<string, string>>({});
-  const allKeys = [...BEHAVIOR_CONFIG, ...PROVIDER_CONFIG].map(c => c.key);
+  const allKeys = useMemo(() => [...BEHAVIOR_CONFIG, ...PROVIDER_CONFIG].map(c => c.key), []);
   const { data: loadedSettings = {}, isLoading: loading } = trpc.admin.getPlatformSettings.useQuery({ keys: allKeys });
   const saveMutation = trpc.admin.bulkSetPlatformSettings.useMutation({
     onSuccess: async () => {

@@ -34,3 +34,5 @@ server/src/generated/
 *.sln
 *.sw?
 tsconfig.tsbuildinfo
+uploads/
+.env

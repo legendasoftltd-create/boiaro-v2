@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Image } from "lucide-react";
+import { SiteImageUpload } from "@/components/admin/SiteImageUpload";
 
 const emptyForm = { title: "", subtitle: "", cta_text: "", cta_link: "", image_url: "", is_active: true, sort_order: 0 };
 
@@ -88,7 +89,7 @@ export default function AdminBanners() {
               <div><label className="text-sm font-medium">CTA Text</label><Input value={form.cta_text} onChange={e => setForm(f => ({ ...f, cta_text: e.target.value }))} /></div>
               <div><label className="text-sm font-medium">CTA Link</label><Input value={form.cta_link} onChange={e => setForm(f => ({ ...f, cta_link: e.target.value }))} /></div>
             </div>
-            <div><label className="text-sm font-medium">Image URL</label><Input value={form.image_url} onChange={e => setForm(f => ({ ...f, image_url: e.target.value }))} /></div>
+            <div><label className="text-sm font-medium">Image</label><SiteImageUpload value={form.image_url} onChange={url => setForm(f => ({ ...f, image_url: url }))} fieldKey="hero-banner" /></div>
             <div className="flex items-center gap-6">
               <div><label className="text-sm font-medium">Order</label><Input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))} className="w-20" /></div>
               <div className="flex items-center gap-2 pt-5"><Switch checked={form.is_active} onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))} /><span className="text-sm">Active</span></div>
