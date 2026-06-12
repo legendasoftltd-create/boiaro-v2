@@ -685,7 +685,7 @@ export const booksRouter = router({
           },
         });
       }
-      return [...ownBooks, ...extraBooks];
+      return [...ownBooks, ...extraBooks].map(resolveBookUrls);
     }),
 
   submitBook: protectedProcedure

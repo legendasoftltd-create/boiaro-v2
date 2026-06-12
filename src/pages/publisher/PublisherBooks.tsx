@@ -33,7 +33,10 @@ export default function PublisherBooks() {
   const [form, setForm] = useState(emptyForm());
   const [uploadingCover, setUploadingCover] = useState(false);
 
-  const { data: books = [], isLoading } = trpc.books.myCreatorBooks.useQuery({ role: "publisher" });
+  const { data: booksRaw = [], isLoading, isError } = trpc.books.myCreatorBooks.useQuery({ role: "publisher" });
+  const books = (booksRaw as any[]).filter((b: any) =>
+    !b.formats || b.formats.length === 0 || b.formats.some((f: any) => f.format === "hardcopy")
+  );
   const { data: categories = [] } = trpc.books.categories.useQuery();
 
   const submitMutation = trpc.books.submitBook.useMutation({
@@ -279,6 +282,12 @@ export default function PublisherBooks() {
 
       {isLoading ? (
         <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : isError ? (
+        <Card className="border-destructive/30 bg-card/60">
+          <CardContent className="text-center py-10 text-destructive">
+            <p className="text-sm">Failed to load your books. Please refresh the page.</p>
+          </CardContent>
+        </Card>
       ) : (books as any[]).length > 0 ? (
         <div className="grid gap-4">
           {(books as any[]).map((book: any) => {
