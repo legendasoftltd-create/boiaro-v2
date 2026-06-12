@@ -667,31 +667,72 @@ export const booksRouter = router({
         publisher: "hardcopy",
       };
       const relevantFormat = formatByRole[input.role];
+      const bookInclude = {
+        category: { select: { name: true, name_bn: true } },
+        formats: { select: { id: true, format: true, price: true, duration: true, audio_quality: true, stock_count: true, binding: true, in_stock: true, chapters_count: true, file_url: true, file_size: true, submitted_by: true, submission_status: true } },
+      };
+
+      // Path 1: books submitted by this user with the relevant format
       const ownBooks = await prisma.book.findMany({
         where: {
           submitted_by: ctx.userId,
           formats: { some: { format: relevantFormat as any } },
         },
-        include: {
-          category: { select: { name: true, name_bn: true } },
-          formats: { select: { id: true, format: true, price: true, duration: true, audio_quality: true, stock_count: true, binding: true, in_stock: true, chapters_count: true, file_url: true, file_size: true, submitted_by: true, submission_status: true } },
-        },
+        include: bookInclude,
         orderBy: { created_at: "desc" },
       });
+
+      const ownIds = new Set(ownBooks.map(b => b.id));
+      const extraIds = new Set<string>();
+
+      // Path 2: books via BookContributor (admin-assigned role links)
       const contribs = await prisma.bookContributor.findMany({
         where: { user_id: ctx.userId, role: input.role },
         select: { book_id: true },
       });
-      const ownIds = new Set(ownBooks.map(b => b.id));
-      const extraIds = contribs.map(c => c.book_id).filter(id => !ownIds.has(id));
+      contribs.forEach(c => { if (!ownIds.has(c.book_id)) extraIds.add(c.book_id); });
+
+      // Path 3: books via Narrator/Author/Publisher entity linked to this user_id
+      if (input.role === "narrator") {
+        const narrator = await prisma.narrator.findFirst({ where: { user_id: ctx.userId } });
+        if (narrator) {
+          const fmts = await prisma.bookFormat.findMany({
+            where: { narrator_id: narrator.id, format: "audiobook" as any },
+            select: { book_id: true },
+          });
+          fmts.forEach(f => { if (!ownIds.has(f.book_id)) extraIds.add(f.book_id); });
+        }
+      } else if (input.role === "writer") {
+        const author = await prisma.author.findFirst({ where: { user_id: ctx.userId } });
+        if (author) {
+          const bks = await prisma.book.findMany({
+            where: { author_id: author.id },
+            select: { id: true },
+          });
+          bks.forEach(b => { if (!ownIds.has(b.id)) extraIds.add(b.id); });
+        }
+      } else if (input.role === "publisher") {
+        const publisher = await prisma.publisher.findFirst({ where: { user_id: ctx.userId } });
+        if (publisher) {
+          const bksByPub = await prisma.book.findMany({
+            where: { publisher_id: publisher.id },
+            select: { id: true },
+          });
+          bksByPub.forEach(b => { if (!ownIds.has(b.id)) extraIds.add(b.id); });
+          const fmtsByPub = await prisma.bookFormat.findMany({
+            where: { publisher_id: publisher.id },
+            select: { book_id: true },
+          });
+          fmtsByPub.forEach(f => { if (!ownIds.has(f.book_id)) extraIds.add(f.book_id); });
+        }
+      }
+
       let extraBooks: typeof ownBooks = [];
-      if (extraIds.length > 0) {
+      const extraIdsArr = [...extraIds];
+      if (extraIdsArr.length > 0) {
         extraBooks = await prisma.book.findMany({
-          where: { id: { in: extraIds } },
-          include: {
-            category: { select: { name: true, name_bn: true } },
-            formats: { select: { id: true, format: true, price: true, duration: true, audio_quality: true, stock_count: true, binding: true, in_stock: true, chapters_count: true, file_url: true, file_size: true, submitted_by: true, submission_status: true } },
-          },
+          where: { id: { in: extraIdsArr } },
+          include: bookInclude,
         });
       }
       return [...ownBooks, ...extraBooks].map(resolveBookUrls);
