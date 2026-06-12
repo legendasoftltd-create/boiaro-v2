@@ -114,12 +114,13 @@ export const booksRouter = router({
     .input(z.object({ slug: z.string() }))
     .query(async ({ input }) => {
       const book = await prisma.book.findUnique({
-        where: { slug: input.slug },
+        where: { slug: input.slug, submission_status: "approved" },
         include: {
           author: true,
           publisher: true,
           category: true,
           formats: {
+            where: { submission_status: "approved", is_available: true },
             include: {
               narrator: { select: { id: true, name: true, avatar_url: true } },
             },
