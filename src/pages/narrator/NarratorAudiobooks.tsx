@@ -38,10 +38,7 @@ export default function NarratorAudiobooks() {
   const [form, setForm] = useState(emptyForm());
   const [uploadingCover, setUploadingCover] = useState(false);
 
-  const { data: booksRaw = [], isLoading, isError } = trpc.books.myCreatorBooks.useQuery({ role: "narrator" });
-  const books = (booksRaw as any[]).filter((b: any) =>
-    !b.formats || b.formats.length === 0 || b.formats.some((f: any) => f.format === "audiobook")
-  );
+  const { data: books = [], isLoading, isError } = trpc.books.myCreatorBooks.useQuery({ role: "narrator" });
   const { data: categories = [] } = trpc.books.categories.useQuery();
 
   const submitMutation = trpc.books.submitBook.useMutation({

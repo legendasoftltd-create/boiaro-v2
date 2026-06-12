@@ -661,8 +661,17 @@ export const booksRouter = router({
   myCreatorBooks: protectedProcedure
     .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
     .query(async ({ ctx, input }) => {
+      const formatByRole: Record<string, string> = {
+        writer: "ebook",
+        narrator: "audiobook",
+        publisher: "hardcopy",
+      };
+      const relevantFormat = formatByRole[input.role];
       const ownBooks = await prisma.book.findMany({
-        where: { submitted_by: ctx.userId },
+        where: {
+          submitted_by: ctx.userId,
+          formats: { some: { format: relevantFormat as any } },
+        },
         include: {
           category: { select: { name: true, name_bn: true } },
           formats: { select: { id: true, format: true, price: true, duration: true, audio_quality: true, stock_count: true, binding: true, in_stock: true, chapters_count: true, file_url: true, file_size: true, submitted_by: true, submission_status: true } },

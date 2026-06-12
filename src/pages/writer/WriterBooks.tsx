@@ -80,10 +80,7 @@ export default function WriterBooks() {
     }
   };
 
-  const { data: booksRaw = [], isLoading, isError } = trpc.books.myCreatorBooks.useQuery({ role: "writer" });
-  const books = (booksRaw as any[]).filter((b: any) =>
-    !b.formats || b.formats.length === 0 || b.formats.some((f: any) => f.format === "ebook")
-  );
+  const { data: books = [], isLoading, isError } = trpc.books.myCreatorBooks.useQuery({ role: "writer" });
   const { data: categories = [] } = trpc.books.categories.useQuery();
 
   const submitMutation = trpc.books.submitBook.useMutation({

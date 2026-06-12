@@ -33,10 +33,7 @@ export default function PublisherBooks() {
   const [form, setForm] = useState(emptyForm());
   const [uploadingCover, setUploadingCover] = useState(false);
 
-  const { data: booksRaw = [], isLoading, isError } = trpc.books.myCreatorBooks.useQuery({ role: "publisher" });
-  const books = (booksRaw as any[]).filter((b: any) =>
-    !b.formats || b.formats.length === 0 || b.formats.some((f: any) => f.format === "hardcopy")
-  );
+  const { data: books = [], isLoading, isError } = trpc.books.myCreatorBooks.useQuery({ role: "publisher" });
   const { data: categories = [] } = trpc.books.categories.useQuery();
 
   const submitMutation = trpc.books.submitBook.useMutation({
