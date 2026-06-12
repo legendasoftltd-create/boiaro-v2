@@ -5,72 +5,9 @@ import { Badge } from "@/components/ui/badge"
 import { BookOpen, Headphones, Package, ChevronLeft, ChevronRight } from "lucide-react"
 import { useBooks } from "@/hooks/useBooks"
 import { usePlatformStats } from "@/hooks/usePlatformStats"
-import { trpc } from "@/lib/trpc"
 import type { MasterBook } from "@/lib/types"
 
 const SLIDE_INTERVAL = 6000
-
-interface HeroBannerRecord {
-  id: string
-  title: string
-  subtitle: string | null
-  image_url: string | null
-  cta_text: string | null
-  cta_link: string | null
-  sort_order: number
-}
-
-function BannerSlide({ banner, isActive }: { banner: HeroBannerRecord; isActive: boolean }) {
-  const navigate = useNavigate()
-  return (
-    <div
-      className={`absolute inset-0 transition-[opacity,transform] duration-600 ease-out will-change-[opacity,transform] ${
-        isActive ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-8 z-0 pointer-events-none"
-      }`}
-    >
-      {banner.image_url && (
-        <div className="absolute inset-0">
-          <img
-            src={banner.image_url}
-            alt=""
-            loading={isActive ? "eager" : "lazy"}
-            decoding={isActive ? "sync" : "async"}
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/60 to-transparent" />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/40" />
-        </div>
-      )}
-      <div className="relative z-10 container mx-auto px-4 lg:px-8 h-full flex items-center">
-        <div className={`max-w-2xl transition-all duration-700 delay-150 ${isActive ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"}`}>
-          <h1 className="text-2xl md:text-4xl lg:text-5xl font-serif font-bold text-foreground leading-tight mb-3">
-            {banner.title}
-          </h1>
-          {banner.subtitle && (
-            <p className="text-sm md:text-lg text-muted-foreground leading-relaxed mb-6 max-w-xl">
-              {banner.subtitle}
-            </p>
-          )}
-          {banner.cta_text && banner.cta_link && (
-            <Button
-              size="lg"
-              className="btn-gold px-6 h-10 md:h-12 text-sm md:text-base gap-2 rounded-xl"
-              onClick={() => {
-                if (banner.cta_link!.startsWith("http")) {
-                  window.open(banner.cta_link!, "_blank")
-                } else {
-                  navigate(banner.cta_link!)
-                }
-              }}
-            >
-              {banner.cta_text}
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function HeroSlide({ book, isActive }: { book: MasterBook; isActive: boolean }) {
   const navigate = useNavigate()
@@ -205,16 +142,12 @@ function HeroSlide({ book, isActive }: { book: MasterBook; isActive: boolean }) 
 export function Hero() {
   const { featured, books } = useBooks()
   const { stats, formatCount } = usePlatformStats()
-  const { data: heroBanners = [] } = trpc.books.heroBanners.useQuery()
   const [current, setCurrent] = useState(0)
   const [paused, setPaused] = useState(false)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const useBanners = heroBanners.length > 0
-  // Use DB banners if any exist; otherwise fall back to featured/recent books
-  const slides = useBanners
-    ? heroBanners as HeroBannerRecord[]
-    : (featured.length > 0 ? featured : books).slice(0, 5)
+  // Use featured books, or first 5 books as fallback
+  const slides = (featured.length > 0 ? featured : books).slice(0, 5)
 
   const goTo = useCallback((idx: number) => {
     setCurrent((idx + slides.length) % slides.length)
@@ -269,13 +202,11 @@ export function Hero() {
       onTouchEnd={handleTouchEnd}
     >
       {/* Only render active + adjacent slides to reduce DOM nodes */}
-      {slides.map((slide, i) => {
+      {slides.map((book, i) => {
         const distance = Math.abs(i - current);
         const wrappedDistance = Math.min(distance, slides.length - distance);
         if (wrappedDistance > 1) return null;
-        return useBanners
-          ? <BannerSlide key={slide.id} banner={slide as HeroBannerRecord} isActive={i === current} />
-          : <HeroSlide key={slide.id} book={slide as MasterBook} isActive={i === current} />;
+        return <HeroSlide key={book.id} book={book} isActive={i === current} />;
       })}
 
       {/* Navigation arrows */}
