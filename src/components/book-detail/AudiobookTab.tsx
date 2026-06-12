@@ -10,7 +10,9 @@ import { AudiobookChapterUnlock } from "@/components/book-detail/AudiobookChapte
 import { AudiobookPaywallModal } from "@/components/audio-player/AudiobookPaywallModal"
 import { MobileAppPromptModal } from "@/components/MobileAppPromptModal"
 import { VideoPlayer } from "@/components/audio-player/VideoPlayer"
+import { QuickUnlockModal } from "@/components/book-detail/QuickUnlockModal"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
+import { trpc } from "@/lib/trpc"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { durationToSeconds, formatDuration } from "@/lib/duration"
 
@@ -35,6 +37,17 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const isCurrentTrackVideo = isThisBookActive && tracks[currentTrackIndex]?.mediaType === "video"
   const totalDurSec = durationToSeconds(audiobook.duration)
   const isFree = audiobook.price === 0 || book.isFree
+
+  // ── Chapter-level unlock state (shared with AudiobookChapterUnlock via tRPC cache) ──
+  const { data: coinSettings } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user })
+  const { data: userUnlocks = [] } = trpc.wallet.userUnlocks.useQuery(undefined, { enabled: !!user })
+  const coinEnabled = coinSettings ? coinSettings.systemEnabled && coinSettings.unlockEnabled : false
+  const bookUnlocks = (userUnlocks as any[]).filter((u: any) => u.book_id === book.id && u.status === "active")
+  const hasFullUnlock = bookUnlocks.some((u: any) => u.format === "audiobook")
+  const unlockedChapterIds = new Set<string>(
+    bookUnlocks.map((u: any) => u.format?.match(/^audiobook_chapter_(.+)$/)?.[1]).filter(Boolean)
+  )
+  const [lockedTrack, setLockedTrack] = useState<(AudioTrack & { chapterPrice: number }) | null>(null)
 
   // Pass live audio element duration so preview recalculates with actual metadata
   const liveDuration = isThisBookActive && duration > 0 ? duration : undefined
@@ -137,6 +150,13 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   }
 
   const handleChapterClick = (index: number) => {
+    const track = (audioTracks.length > 0 ? audioTracks : displayTracks)[index] as AudioTrack & { chapterPrice?: number }
+    if (track && !track.isPreview && Number(track.chapterPrice) > 0 && coinEnabled) {
+      if (!hasFullUnlock && !unlockedChapterIds.has(track.id)) {
+        setLockedTrack(track as AudioTrack & { chapterPrice: number })
+        return
+      }
+    }
     if (!isThisBookActive) {
       loadBook(book, audiobook, audioTracks.length > 0 ? audioTracks : undefined)
     }
@@ -458,6 +478,24 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
           setShowPaywall(false)
         }}
         onClose={() => setShowPaywall(false)}
+      />
+
+      {/* Chapter unlock modal — shown when user clicks a paid locked chapter */}
+      <QuickUnlockModal
+        open={!!lockedTrack}
+        onOpenChange={(open) => { if (!open) setLockedTrack(null) }}
+        track={lockedTrack}
+        bookId={book.id}
+        audiobookPrice={audiobook.price}
+        fullUnlockCost={0}
+        fullUnlockSavingsPercent={0}
+        remainingIndividualCost={0}
+        lockedCount={audioTracks.filter(t => !t.isPreview && !unlockedChapterIds.has(t.id)).length}
+        onChapterUnlocked={(trackId) => {
+          setLockedTrack(null)
+          unlockedChapterIds.add(trackId)
+        }}
+        onFullUnlock={() => setLockedTrack(null)}
       />
     </div>
   )
