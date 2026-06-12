@@ -122,6 +122,26 @@ export function QuickUnlockModal({
     coinPopTimeout.current = setTimeout(() => setCoinPop(false), 600);
   };
 
+  const performCoinUnlock = useCallback(async (t: { id: string; title: string; chapterPrice: number }) => {
+    if (!user) return;
+    setUnlocking(true);
+    const chapterFormat = `audiobook_chapter_${t.id}`;
+    try {
+      await unlockContentMutation.mutateAsync({ bookId, format: chapterFormat, coinCost: t.chapterPrice });
+      setUnlocked(true);
+      refetch();
+      onChapterUnlocked(t.id);
+    } catch (e: any) {
+      const msg = e?.message || "";
+      if (msg.includes("Insufficient")) {
+        toast.error(`আরো ${t.chapterPrice - wallet.balance} কয়েন প্রয়োজন`);
+      } else {
+        toast.error("আনলক ব্যর্থ হয়েছে");
+      }
+    }
+    setUnlocking(false);
+  }, [user, bookId, wallet.balance, unlockContentMutation, refetch, onChapterUnlocked]);
+
   const handleWatchAd = useCallback(async () => {
     if (!user || watching) return;
     // Debounce: prevent rapid double-taps
@@ -192,26 +212,6 @@ export function QuickUnlockModal({
     adInFlightRef.current = false;
     setWatching(false);
   }, [user, watching, adsWatched, adsRequired, bonusPerSession, bookId, track, refetch, adCoinReward, claimAdRewardMutation, adjustCoinsMutation, utils, performCoinUnlock]);
-
-  const performCoinUnlock = useCallback(async (t: { id: string; title: string; chapterPrice: number }) => {
-    if (!user) return;
-    setUnlocking(true);
-    const chapterFormat = `audiobook_chapter_${t.id}`;
-    try {
-      await unlockContentMutation.mutateAsync({ bookId, format: chapterFormat, coinCost: t.chapterPrice });
-      setUnlocked(true);
-      refetch();
-      onChapterUnlocked(t.id);
-    } catch (e: any) {
-      const msg = e?.message || "";
-      if (msg.includes("Insufficient")) {
-        toast.error(`আরো ${t.chapterPrice - wallet.balance} কয়েন প্রয়োজন`);
-      } else {
-        toast.error("আনলক ব্যর্থ হয়েছে");
-      }
-    }
-    setUnlocking(false);
-  }, [user, bookId, wallet.balance, unlockContentMutation, refetch, onChapterUnlocked]);
 
   const handleDirectCoinUnlock = useCallback(async () => {
     if (!track) return;
