@@ -149,6 +149,22 @@ export const booksRouter = router({
     })
   ),
 
+  activeAdBanners: publicProcedure.query(() =>
+    prisma.adBanner.findMany({
+      where: { status: "active" },
+      orderBy: [{ display_order: "asc" }, { created_at: "desc" }],
+      select: {
+        id: true,
+        title: true,
+        image_url: true,
+        destination_url: true,
+        placement_key: true,
+        display_order: true,
+        device: true,
+      },
+    })
+  ),
+
   reviews: publicProcedure
     .input(z.object({ bookId: z.string(), limit: z.number().default(50) }))
     .query(async ({ input }) => {

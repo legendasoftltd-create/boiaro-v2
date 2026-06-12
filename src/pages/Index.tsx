@@ -8,6 +8,7 @@ import { useHomepageSections } from "@/hooks/useHomepageSections"
 import { Footer } from "@/components/Footer"
 import { SectionSkeleton } from "@/components/SectionSkeleton"
 import { HeroBannerStrip } from "@/components/HeroBannerStrip"
+import { AdBannerBlock } from "@/components/AdBannerBlock"
 
 const ContinueReading = lazy(() => import("@/components/ContinueReading").then(m => ({ default: m.ContinueReading })))
 const ContinueListening = lazy(() => import("@/components/ContinueListening").then(m => ({ default: m.ContinueListening })))
@@ -65,14 +66,26 @@ const FALLBACK_KEYS = [
 ]
 const REGISTRY_KEYS = new Set(Object.keys(SECTION_REGISTRY))
 
+// Which ad placement key to show before each section
+const SECTION_AD_PLACEMENT: Record<string, string> = {
+  audiobooks:        "before_audiobook",
+  popular_audiobooks:"before_audiobook",
+  featured_books:    "before_reading",
+  hard_copies:       "before_hardcopy",
+}
+
 /** Each section gets its own Suspense boundary so one slow import doesn't block others */
 const LazySection = memo(({ sectionKey, books, popularAudiobooks }: { sectionKey: string; books: any[]; popularAudiobooks: any[] }) => {
   const render = SECTION_REGISTRY[sectionKey]
   if (!render) return null
+  const adPlacement = SECTION_AD_PLACEMENT[sectionKey]
   return (
-    <Suspense fallback={<SectionSkeleton />}>
-      {render({ books, popularAudiobooks })}
-    </Suspense>
+    <>
+      {adPlacement && <AdBannerBlock placementKey={adPlacement} />}
+      <Suspense fallback={<SectionSkeleton />}>
+        {render({ books, popularAudiobooks })}
+      </Suspense>
+    </>
   )
 })
 LazySection.displayName = "LazySection"

@@ -29,7 +29,7 @@ interface AdBanner {
 
 const PLACEMENTS = [
   "homepage_banner", "book_details", "before_reading", "before_audiobook",
-  "dashboard", "wallet_page", "reward_center",
+  "before_hardcopy", "dashboard", "wallet_page", "reward_center",
 ];
 
 export default function AdminAdBanners() {
