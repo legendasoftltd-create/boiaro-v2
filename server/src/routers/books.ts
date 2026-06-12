@@ -612,8 +612,15 @@ export const booksRouter = router({
       });
       if (!book || book.submission_status !== "approved") throw new TRPCError({ code: "NOT_FOUND" });
 
+      // Only show contributors whose role-format has an approved BookFormat
+      const approvedFormatTypes = new Set(book.formats.map((f: any) => f.format as string));
+      const visibleContributors = book.contributors.filter((c: any) => {
+        if (!c.format) return true;
+        return approvedFormatTypes.has(c.format as string);
+      });
+
       // Enrich contributors with display_name from profiles
-      const contribUserIds = book.contributors.map((c) => c.user_id).filter(Boolean);
+      const contribUserIds = visibleContributors.map((c) => c.user_id).filter(Boolean);
       const profiles = contribUserIds.length > 0
         ? await prisma.profile.findMany({
             where: { user_id: { in: contribUserIds } },
@@ -625,7 +632,7 @@ export const booksRouter = router({
 
       return resolveBookUrls({
         ...book,
-        contributors: book.contributors.map((c) => ({
+        contributors: visibleContributors.map((c) => ({
           ...c,
           display_name: profileMap[c.user_id]?.display_name ?? null,
           avatar_url: profileMap[c.user_id]?.avatar_url ?? null,
