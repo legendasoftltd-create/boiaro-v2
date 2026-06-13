@@ -27,7 +27,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     loadBook, book: activeBook, isPlaying, togglePlay, tracks, currentTrackIndex,
     goToTrack, openFullPlayer, progressPercentage, isLoading, error, currentTime, duration, formatTime,
     setPreviewLimitSeconds, setHasFullAccess, isPreviewMode, showPaywall, setShowPaywall,
-    setAccessLoading, seekTo,
+    setAccessLoading, seekTo, pause,
   } = useAudioPlayer()
 
   const { user } = useAuth()
@@ -99,6 +99,26 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     setAccessLoading(access.loading)
   }, [access.hasFullAccess, access.previewLimitSeconds, access.loading, setHasFullAccess, setPreviewLimitSeconds, setAccessLoading])
 
+
+  // ── Guard: intercept auto-advance into paid locked chapters ──────────────
+  // The audio player's auto-advance (track ended) and nextTrack() both
+  // bypass handleChapterClick. This effect fires whenever the active track
+  // index changes and pauses + shows the lock modal if the new track is paid
+  // and not yet unlocked by the user.
+  useEffect(() => {
+    if (!isThisBookActive || isFree || hasFullUnlock) return
+    const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
+    const track = sourceTracks[currentTrackIndex] as AudioTrack & { chapterPrice?: number }
+    if (!track) return
+    const isLocked =
+      !track.isPreview &&
+      Number((track as any).chapterPrice) > 0 &&
+      !unlockedChapterIds.has(track.id)
+    if (isLocked) {
+      pause()
+      setLockedTrack(track as AudioTrack & { chapterPrice: number })
+    }
+  }, [currentTrackIndex, isThisBookActive])
 
   // ── Mobile app prompt: threshold from admin settings ──
   const { get: getSetting } = useSiteSettings()
@@ -176,7 +196,10 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
 
   const handleChapterClick = (index: number) => {
     const track = (audioTracks.length > 0 ? audioTracks : displayTracks)[index] as AudioTrack & { chapterPrice?: number }
-    if (track && !track.isPreview && Number(track.chapterPrice) > 0 && coinEnabled) {
+    // Gate on chapterPrice alone — don't require coinEnabled so the lock
+    // works even while coin settings are still loading or the coin-earn
+    // system is disabled by admin.
+    if (track && !track.isPreview && Number(track.chapterPrice) > 0) {
       if (!hasFullUnlock && !unlockedChapterIds.has(track.id)) {
         setLockedTrack(track as AudioTrack & { chapterPrice: number })
         return
