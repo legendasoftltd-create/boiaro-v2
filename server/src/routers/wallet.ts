@@ -18,8 +18,8 @@ export const walletRouter = router({
     .mutation(async ({ ctx, input }) => {
       const pkg = await prisma.coinPackage.findUnique({ where: { id: input.packageId } });
       if (!pkg) throw new TRPCError({ code: "NOT_FOUND", message: "Package not found" });
-      // Payment gateway integration placeholder — returns a pending purchase record
-      // The actual gateway_url will be generated once SSLCommerz/bKash is integrated
+
+      // Create pending purchase record
       const purchase = await prisma.coinPurchase.create({
         data: {
           user_id: ctx.userId,
@@ -29,7 +29,84 @@ export const walletRouter = router({
           payment_status: "pending",
         },
       });
-      return { success: true, purchase_id: purchase.id, gateway_url: null };
+
+      // Initiate SSLCommerz payment
+      const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
+      if (!gateway || !gateway.is_enabled) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Payment gateway is not configured. Contact admin." });
+      }
+
+      const gatewayConfig = gateway.config as Record<string, unknown>;
+      const cfgStr = (key: string) => { const v = gatewayConfig[key]; return typeof v === "string" && v.trim() ? v.trim() : undefined; };
+      const storeId = cfgStr("store_id") || process.env.SSLCOMMERZ_STORE_ID;
+      const storePassword = cfgStr("store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+      if (!storeId || !storePassword) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Payment gateway credentials are missing. Contact admin." });
+      }
+
+      const frontendBase = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+      const backendBase = (process.env.BACKEND_URL || process.env.PUBLIC_API_URL || `http://localhost:${process.env.PORT || "3001"}`).replace(/\/$/, "");
+      const mode = gateway.mode === "live" ? "live" : "test";
+      const transactionId = `COIN-${purchase.id}-${Date.now()}`;
+
+      const user = await prisma.user.findUnique({ where: { id: ctx.userId }, select: { email: true } });
+
+      const payload = new URLSearchParams({
+        store_id: storeId,
+        store_passwd: storePassword,
+        total_amount: String(pkg.price),
+        currency: "BDT",
+        tran_id: transactionId,
+        success_url: `${backendBase}/api/v1/payments/sslcommerz/success?redirect=${encodeURIComponent(`${frontendBase}/coin-store?status=success`)}`,
+        fail_url: `${backendBase}/api/v1/payments/sslcommerz/fail?redirect=${encodeURIComponent(`${frontendBase}/coin-store?status=failed`)}`,
+        cancel_url: `${backendBase}/api/v1/payments/sslcommerz/cancel?redirect=${encodeURIComponent(`${frontendBase}/coin-store?status=cancelled`)}`,
+        ipn_url: `${backendBase}/api/v1/payments/sslcommerz/ipn`,
+        product_name: pkg.name,
+        product_category: "Coins",
+        product_profile: "general",
+        cus_name: "Customer",
+        cus_email: user?.email || `${ctx.userId}@boiaro.local`,
+        cus_add1: "N/A",
+        cus_city: "Dhaka",
+        cus_postcode: "1000",
+        cus_country: "Bangladesh",
+        cus_phone: "01700000000",
+        ship_name: "Customer",
+        ship_add1: "N/A",
+        ship_city: "Dhaka",
+        ship_state: "Dhaka",
+        ship_postcode: "1000",
+        ship_country: "Bangladesh",
+        shipping_method: "NO",
+        num_of_item: "1",
+      });
+
+      const initUrl = mode === "live"
+        ? "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
+        : "https://sandbox.sslcommerz.com/gwprocess/v4/api.php";
+
+      const sslResponse = await fetch(initUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: payload.toString(),
+      });
+      const raw = await sslResponse.text();
+      let sslData: Record<string, unknown>;
+      try { sslData = JSON.parse(raw) as Record<string, unknown>; }
+      catch { sslData = { status: "FAILED", message: raw }; }
+
+      const gatewayUrl = typeof sslData.GatewayPageURL === "string" ? sslData.GatewayPageURL : undefined;
+      if (!gatewayUrl) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: String(sslData.failedreason || sslData.message || "Failed to initiate payment. Please try again."),
+        });
+      }
+
+      // Save transaction_id so callback can look it up
+      await prisma.coinPurchase.update({ where: { id: purchase.id }, data: { transaction_id: transactionId } });
+
+      return { success: true, purchase_id: purchase.id, gateway_url: gatewayUrl };
     }),
 
   balance: protectedProcedure.query(async ({ ctx }) => {

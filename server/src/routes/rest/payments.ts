@@ -133,6 +133,34 @@ async function finalizePaidOrder(params: { orderId: string; paymentMethod: strin
   return true;
 }
 
+async function finalizeCoinPurchase(params: { purchaseId: string; transactionId?: string }) {
+  const purchase = await prisma.coinPurchase.findUnique({ where: { id: params.purchaseId } });
+  if (!purchase || purchase.payment_status === "paid") return false;
+
+  await prisma.$transaction(async (tx: any) => {
+    await tx.coinTransaction.create({
+      data: {
+        user_id: purchase.user_id,
+        amount: purchase.coins_amount,
+        type: "earn",
+        description: `Coin package purchase`,
+        source: "purchase",
+        reference_id: purchase.id,
+      },
+    });
+    await tx.userCoin.upsert({
+      where: { user_id: purchase.user_id },
+      create: { user_id: purchase.user_id, balance: purchase.coins_amount, total_earned: purchase.coins_amount, total_spent: 0 },
+      update: { balance: { increment: purchase.coins_amount }, total_earned: { increment: purchase.coins_amount } },
+    });
+    await tx.coinPurchase.update({
+      where: { id: purchase.id },
+      data: { payment_status: "paid", payment_method: "sslcommerz", transaction_id: params.transactionId || purchase.transaction_id },
+    });
+  });
+  return true;
+}
+
 async function finalizeSubscriptionPayment(params: { subscriptionId: string; paymentMethod: string; transactionId?: string }) {
   const sub = await prisma.userSubscription.findUnique({
     where: { id: params.subscriptionId },
@@ -371,6 +399,14 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
 
     const orderId = payment?.order_id;
     const subscriptionId = payment?.subscription_id;
+
+    // Detect coin purchase: tran_id format is COIN-{purchaseId}-{timestamp}
+    let coinPurchaseId: string | undefined;
+    if (tranId?.startsWith("COIN-")) {
+      const parts = tranId.split("-");
+      // parts: ["COIN", uuid-p1, uuid-p2, uuid-p3, uuid-p4, uuid-p5, timestamp]
+      coinPurchaseId = parts.slice(1, 6).join("-");
+    }
     const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
     const gatewayConfig = asObject(gateway?.config);
     const storeId = getString(gatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
@@ -413,6 +449,8 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
         await finalizePaidOrder({ orderId, paymentMethod: "sslcommerz", transactionId: tranId });
       } else if (subscriptionId) {
         await finalizeSubscriptionPayment({ subscriptionId, paymentMethod: "sslcommerz", transactionId: tranId });
+      } else if (coinPurchaseId) {
+        await finalizeCoinPurchase({ purchaseId: coinPurchaseId, transactionId: tranId });
       }
     } else if (status !== "success") {
       if (orderId) {
@@ -429,13 +467,20 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
           where: { id: subscriptionId },
           data: { status: status === "cancelled" ? "cancelled" : "failed" },
         });
+      } else if (coinPurchaseId) {
+        await prisma.coinPurchase.update({
+          where: { id: coinPurchaseId },
+          data: { payment_status: status === "cancelled" ? "cancelled" : "failed" },
+        }).catch(() => {});
       }
     }
 
     const separator = redirect.includes("?") ? "&" : "?";
-    const finalUrl = subscriptionId
-      ? `${redirect}${separator}subscription_id=${encodeURIComponent(subscriptionId)}`
-      : `${redirect}${separator}order_id=${encodeURIComponent(orderId || "")}`;
+    const finalUrl = coinPurchaseId
+      ? redirect
+      : subscriptionId
+        ? `${redirect}${separator}subscription_id=${encodeURIComponent(subscriptionId)}`
+        : `${redirect}${separator}order_id=${encodeURIComponent(orderId || "")}`;
     res.redirect(finalUrl);
   } catch (error) {
     console.error("SSLCommerz callback failed:", error);
@@ -476,12 +521,16 @@ paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
     },
   });
 
-  if (payment?.order_id && (status === "VALID" || status === "VALIDATED")) {
-    await finalizePaidOrder({
-      orderId: payment.order_id,
-      paymentMethod: "sslcommerz",
-      transactionId: tranId,
-    });
+  if (status === "VALID" || status === "VALIDATED") {
+    if (payment?.order_id) {
+      await finalizePaidOrder({ orderId: payment.order_id, paymentMethod: "sslcommerz", transactionId: tranId });
+    } else if (payment?.subscription_id) {
+      await finalizeSubscriptionPayment({ subscriptionId: payment.subscription_id, paymentMethod: "sslcommerz", transactionId: tranId });
+    } else if (tranId?.startsWith("COIN-")) {
+      const parts = tranId.split("-");
+      const purchaseId = parts.slice(1, 6).join("-");
+      await finalizeCoinPurchase({ purchaseId, transactionId: tranId });
+    }
   }
 
   res.json({ success: true });
