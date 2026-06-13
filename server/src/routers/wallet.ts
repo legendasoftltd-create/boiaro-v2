@@ -26,6 +26,7 @@ export const walletRouter = router({
           package_id: pkg.id,
           coins_amount: pkg.coins + pkg.bonus_coins,
           amount_paid: pkg.price,
+          price: pkg.price,
           status: "pending",
           gateway: "pending",
         } as any,
