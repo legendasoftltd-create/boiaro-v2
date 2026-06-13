@@ -25,11 +25,9 @@ export const walletRouter = router({
           user_id: ctx.userId,
           package: { connect: { id: pkg.id } },
           coins_amount: pkg.coins + pkg.bonus_coins,
-          amount_paid: pkg.price,
           price: pkg.price,
-          status: "pending",
-          gateway: "pending",
-        } as any,
+          payment_status: "pending",
+        },
       });
       return { success: true, purchase_id: purchase.id, gateway_url: null };
     }),
