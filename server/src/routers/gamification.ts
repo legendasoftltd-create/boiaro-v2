@@ -167,11 +167,26 @@ export const gamificationRouter = router({
   adRewardStatus: protectedProcedure.query(async ({ ctx }) => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const MAX_PER_DAY = 10;
-    const todayCount = await prisma.coinTransaction.count({
-      where: { user_id: ctx.userId, source: "ad_reward", created_at: { gte: todayStart } },
-    });
-    return { todayCount, dailyLimit: MAX_PER_DAY, coinPerAd: 1 };
+
+    const [settings, todayCount, lastAd] = await Promise.all([
+      prisma.platformSetting.findMany({ where: { key: { in: ["ad_max_per_day", "ad_rewarded_coins", "ad_cooldown_minutes"] } } }),
+      prisma.coinTransaction.count({ where: { user_id: ctx.userId, source: "ad_reward", created_at: { gte: todayStart } } }),
+      prisma.coinTransaction.findFirst({ where: { user_id: ctx.userId, source: "ad_reward" }, orderBy: { created_at: "desc" } }),
+    ]);
+
+    const sMap: Record<string, string> = {};
+    settings.forEach(s => { sMap[s.key] = s.value; });
+    const dailyLimit = parseInt(sMap["ad_max_per_day"] || "10", 10);
+    const coinPerAd = parseInt(sMap["ad_rewarded_coins"] || "1", 10);
+    const cooldownMinutes = parseInt(sMap["ad_cooldown_minutes"] || "5", 10);
+    const cooldownMs = cooldownMinutes * 60 * 1000;
+    const lastAdAt = lastAd?.created_at ?? null;
+    const cooldownEndsAt = lastAdAt ? new Date(lastAdAt.getTime() + cooldownMs) : null;
+    const cooldownSecondsLeft = cooldownEndsAt && cooldownEndsAt > new Date()
+      ? Math.ceil((cooldownEndsAt.getTime() - Date.now()) / 1000)
+      : 0;
+
+    return { todayCount, dailyLimit, coinPerAd, cooldownSecondsLeft };
   }),
 
   claimAdReward: protectedProcedure
@@ -180,13 +195,27 @@ export const gamificationRouter = router({
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      const MAX_PER_DAY = 10;
-      const AD_REWARD = 1;
+      const [settings, todayCount, lastAd] = await Promise.all([
+        prisma.platformSetting.findMany({ where: { key: { in: ["ad_max_per_day", "ad_rewarded_coins", "ad_cooldown_minutes"] } } }),
+        prisma.coinTransaction.count({ where: { user_id: ctx.userId, source: "ad_reward", created_at: { gte: todayStart } } }),
+        prisma.coinTransaction.findFirst({ where: { user_id: ctx.userId, source: "ad_reward" }, orderBy: { created_at: "desc" } }),
+      ]);
 
-      const todayCount = await prisma.coinTransaction.count({
-        where: { user_id: ctx.userId, source: "ad_reward", created_at: { gte: todayStart } },
-      });
-      if (todayCount >= MAX_PER_DAY) return { success: false, reason: "daily_limit_reached", new_balance: 0 };
+      const sMap: Record<string, string> = {};
+      settings.forEach(s => { sMap[s.key] = s.value; });
+      const MAX_PER_DAY = parseInt(sMap["ad_max_per_day"] || "10", 10);
+      const AD_REWARD = parseInt(sMap["ad_rewarded_coins"] || "1", 10);
+      const cooldownMinutes = parseInt(sMap["ad_cooldown_minutes"] || "5", 10);
+
+      if (todayCount >= MAX_PER_DAY) return { success: false, reason: "daily_limit_reached", new_balance: 0, reward: 0 };
+
+      // Server-side cooldown check — skipped for quick_unlock placement to avoid blocking rapid session
+      if (!input.placement.startsWith("quick_unlock") && cooldownMinutes > 0 && lastAd) {
+        const cooldownMs = cooldownMinutes * 60 * 1000;
+        if (Date.now() - lastAd.created_at.getTime() < cooldownMs) {
+          return { success: false, reason: "cooldown", new_balance: 0, reward: 0 };
+        }
+      }
 
       const [, wallet] = await prisma.$transaction([
         prisma.coinTransaction.create({
@@ -205,6 +234,12 @@ export const gamificationRouter = router({
           update: { balance: { increment: AD_REWARD }, total_earned: { increment: AD_REWARD } },
         }),
       ]);
+
+      // Log to RewardedAdLog for analytics
+      await prisma.rewardedAdLog.create({
+        data: { user_id: ctx.userId, ad_event_id: `${input.placement}_${Date.now()}`, placement_key: input.placement, coins_rewarded: AD_REWARD, status: "completed" },
+      }).catch(() => null);
+
       return { success: true, reward: AD_REWARD, new_balance: wallet.balance };
     }),
 });

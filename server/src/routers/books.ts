@@ -166,6 +166,47 @@ export const booksRouter = router({
     })
   ),
 
+  // Public ad settings — safe subset of platform_settings for frontend consumers
+  adSettings: publicProcedure.query(async () => {
+    const keys = [
+      "ad_system_enabled", "ad_provider_type",
+      "ad_adsense_publisher_id", "ad_web_banner_unit_id", "ad_rewarded_unit_id",
+      "ad_premium_hide_ads", "ad_free_show_ads",
+      "ad_rewarded_coins", "ad_max_per_day", "ad_cooldown_minutes",
+      "ad_country_targeting",
+    ];
+    const rows = await prisma.platformSetting.findMany({ where: { key: { in: keys } } });
+    const map: Record<string, string> = {};
+    rows.forEach(r => { map[r.key] = r.value; });
+    return map;
+  }),
+
+  // Active placement definitions — used to gate ad display by placement
+  activePlacements: publicProcedure.query(() =>
+    prisma.adPlacement.findMany({
+      where: { is_enabled: true },
+      select: { placement_key: true, ad_type: true, device_visibility: true, frequency: true, display_priority: true },
+    })
+  ),
+
+  recordAdImpression: protectedProcedure
+    .input(z.object({ bannerId: z.string() }))
+    .mutation(({ input }) =>
+      prisma.adBanner.update({
+        where: { id: input.bannerId },
+        data: { impressions: { increment: 1 } },
+      }).catch(() => null)
+    ),
+
+  recordAdClick: protectedProcedure
+    .input(z.object({ bannerId: z.string() }))
+    .mutation(({ input }) =>
+      prisma.adBanner.update({
+        where: { id: input.bannerId },
+        data: { clicks: { increment: 1 } },
+      }).catch(() => null)
+    ),
+
   reviews: publicProcedure
     .input(z.object({ bookId: z.string(), limit: z.number().default(50) }))
     .query(async ({ input }) => {

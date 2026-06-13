@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tv, Coins, Sparkles, ShoppingCart, Lock, Play, Gift, Info, Headphones, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { RewardedAdOverlay } from "@/components/RewardedAdOverlay";
 
 // No-op logging shim — replace with server logging when needed
 function logEvent(_module: string, _event: string, _metadata: Record<string, unknown>, _userId?: string, _level?: string) {}
@@ -40,6 +41,7 @@ export function QuickUnlockModal({
   const { wallet, refetch } = useWallet();
   const [adsWatched, setAdsWatched] = useState(0);
   const [watching, setWatching] = useState(false);
+  const [adOverlayOpen, setAdOverlayOpen] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [coinPop, setCoinPop] = useState(false);
@@ -142,37 +144,31 @@ export function QuickUnlockModal({
     setUnlocking(false);
   }, [user, bookId, wallet.balance, unlockContentMutation, refetch, onChapterUnlocked]);
 
-  const handleWatchAd = useCallback(async () => {
-    if (!user || watching) return;
-    // Debounce: prevent rapid double-taps
+  const handleWatchAd = useCallback(() => {
+    if (!user || watching || adInFlightRef.current) return;
+    const adIndex = adsWatched + 1;
+    if (grantedAdsRef.current.has(adIndex)) return;
+    setAdOverlayOpen(true);
+  }, [user, watching, adsWatched]);
+
+  const handleAdCompleted = useCallback(async () => {
+    setAdOverlayOpen(false);
     if (adInFlightRef.current) return;
     adInFlightRef.current = true;
     setWatching(true);
 
     const adIndex = adsWatched + 1;
 
-    // Duplicate guard: if this ad index was already granted, skip
-    if (grantedAdsRef.current.has(adIndex)) {
-      adInFlightRef.current = false;
-      setWatching(false);
-      return;
-    }
-
-    await new Promise(r => setTimeout(r, 2000));
-
-    let result: { success: boolean; reason?: string; new_balance?: number; reward?: number };
+    let result: { success: boolean; reason?: string; new_balance: number; reward: number };
     try {
       result = await claimAdRewardMutation.mutateAsync({ placement: `quick_unlock_${bookId}` });
     } catch {
-      result = { success: false, reason: "error" };
+      result = { success: false, reason: "error", new_balance: 0, reward: 0 };
     }
 
     if (!result.success) {
-      if (result.reason === "daily_limit_reached") {
-        toast.error("আজকের অ্যাড সীমা শেষ");
-      } else {
-        toast.error("অ্যাড রিওয়ার্ড ব্যর্থ");
-      }
+      if (result.reason === "daily_limit_reached") toast.error("আজকের অ্যাড সীমা শেষ");
+      else toast.error("অ্যাড রিওয়ার্ড ব্যর্থ");
       adInFlightRef.current = false;
       setWatching(false);
       return;
@@ -211,7 +207,12 @@ export function QuickUnlockModal({
 
     adInFlightRef.current = false;
     setWatching(false);
-  }, [user, watching, adsWatched, adsRequired, bonusPerSession, bookId, track, refetch, adCoinReward, claimAdRewardMutation, adjustCoinsMutation, utils, performCoinUnlock]);
+  }, [adsWatched, adsRequired, bonusPerSession, bookId, track, refetch, adCoinReward, claimAdRewardMutation, adjustCoinsMutation, utils, performCoinUnlock]);
+
+  const handleAdSkipped = useCallback(() => {
+    setAdOverlayOpen(false);
+    toast.info("অ্যাড বাতিল — কোন রিওয়ার্ড নেই");
+  }, []);
 
   const handleDirectCoinUnlock = useCallback(async () => {
     if (!track) return;
@@ -223,6 +224,13 @@ export function QuickUnlockModal({
   const microcopy = getMicrocopy();
 
   return (
+    <>
+    <RewardedAdOverlay
+      open={adOverlayOpen}
+      onCompleted={handleAdCompleted}
+      onSkipped={handleAdSkipped}
+      adLabel="অ্যাড"
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[420px] p-0 gap-0 overflow-hidden">
         {/* Unlocked success state */}
@@ -492,5 +500,6 @@ export function QuickUnlockModal({
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }
