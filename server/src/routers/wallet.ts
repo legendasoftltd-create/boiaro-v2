@@ -23,7 +23,7 @@ export const walletRouter = router({
       const purchase = await prisma.coinPurchase.create({
         data: {
           user_id: ctx.userId,
-          package_id: pkg.id,
+          package: { connect: { id: pkg.id } },
           coins_amount: pkg.coins + pkg.bonus_coins,
           amount_paid: pkg.price,
           price: pkg.price,
