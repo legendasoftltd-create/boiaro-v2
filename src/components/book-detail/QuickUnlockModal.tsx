@@ -145,11 +145,12 @@ export function QuickUnlockModal({
   }, [user, bookId, wallet.balance, unlockContentMutation, refetch, onChapterUnlocked]);
 
   const handleWatchAd = useCallback(() => {
-    if (!user || watching || adInFlightRef.current) return;
+    if (!user || watching || adInFlightRef.current || adOverlayOpen) return;
     const adIndex = adsWatched + 1;
     if (grantedAdsRef.current.has(adIndex)) return;
+    adInFlightRef.current = true; // lock until overlay completes or is skipped
     setAdOverlayOpen(true);
-  }, [user, watching, adsWatched]);
+  }, [user, watching, adOverlayOpen, adsWatched]);
 
   const handleAdCompleted = useCallback(async () => {
     setAdOverlayOpen(false);
@@ -211,6 +212,7 @@ export function QuickUnlockModal({
 
   const handleAdSkipped = useCallback(() => {
     setAdOverlayOpen(false);
+    adInFlightRef.current = false;
     toast.info("অ্যাড বাতিল — কোন রিওয়ার্ড নেই");
   }, []);
 
@@ -225,12 +227,6 @@ export function QuickUnlockModal({
 
   return (
     <>
-    <RewardedAdOverlay
-      open={adOverlayOpen}
-      onCompleted={handleAdCompleted}
-      onSkipped={handleAdSkipped}
-      adLabel="অ্যাড"
-    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[420px] p-0 gap-0 overflow-hidden">
         {/* Unlocked success state */}
@@ -365,7 +361,7 @@ export function QuickUnlockModal({
 
                 <Button
                   className="w-full gap-2 h-10"
-                  disabled={watching || unlocking || adsWatched >= adsRequired}
+                  disabled={watching || unlocking || adOverlayOpen || adsWatched >= adsRequired}
                   onClick={handleWatchAd}
                 >
                   {watching ? (
@@ -500,6 +496,12 @@ export function QuickUnlockModal({
         )}
       </DialogContent>
     </Dialog>
+    <RewardedAdOverlay
+      open={adOverlayOpen}
+      onCompleted={handleAdCompleted}
+      onSkipped={handleAdSkipped}
+      adLabel="অ্যাড"
+    />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 import { Play, Pause, Clock, Mic, Headphones, AlertCircle, Loader2, Lock, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +48,28 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     bookUnlocks.map((u: any) => u.format?.match(/^audiobook_chapter_(.+)$/)?.[1]).filter(Boolean)
   )
   const [lockedTrack, setLockedTrack] = useState<(AudioTrack & { chapterPrice: number }) | null>(null)
+  const unlockContentMutation = trpc.wallet.unlockContent.useMutation()
+
+  // ── Full-book unlock cost ─────────────────────────────────────────────────
+  const lockedTracks = audioTracks.filter(t =>
+    !t.isPreview && !unlockedChapterIds.has(t.id) && Number((t as any).chapterPrice) > 0
+  )
+  const remainingIndividualCost = lockedTracks.reduce((sum, t) => sum + (Number((t as any).chapterPrice) || 0), 0)
+  const BUNDLE_DISCOUNT = 0.2
+  const fullUnlockCost = remainingIndividualCost > 1 ? Math.round(remainingIndividualCost * (1 - BUNDLE_DISCOUNT)) : 0
+  const fullUnlockSavingsPercent = fullUnlockCost > 0 ? BUNDLE_DISCOUNT * 100 : 0
+
+  const handleFullUnlock = useCallback(async () => {
+    if (!user || !fullUnlockCost) return
+    try {
+      await unlockContentMutation.mutateAsync({ bookId: book.id, format: "audiobook", coinCost: fullUnlockCost })
+      setLockedTrack(null)
+      access.checkAccess()
+    } catch (e: any) {
+      const { toast } = await import("sonner")
+      toast.error(e.message || "আনলক ব্যর্থ হয়েছে")
+    }
+  }, [user, fullUnlockCost, book.id, unlockContentMutation, access])
 
   // Pass live audio element duration so preview recalculates with actual metadata
   const liveDuration = isThisBookActive && duration > 0 ? duration : undefined
@@ -487,15 +509,15 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
         track={lockedTrack}
         bookId={book.id}
         audiobookPrice={audiobook.price}
-        fullUnlockCost={0}
-        fullUnlockSavingsPercent={0}
-        remainingIndividualCost={0}
-        lockedCount={audioTracks.filter(t => !t.isPreview && !unlockedChapterIds.has(t.id)).length}
+        fullUnlockCost={fullUnlockCost}
+        fullUnlockSavingsPercent={fullUnlockSavingsPercent}
+        remainingIndividualCost={remainingIndividualCost}
+        lockedCount={lockedTracks.length}
         onChapterUnlocked={(trackId) => {
           setLockedTrack(null)
           unlockedChapterIds.add(trackId)
         }}
-        onFullUnlock={() => setLockedTrack(null)}
+        onFullUnlock={handleFullUnlock}
       />
     </div>
   )
