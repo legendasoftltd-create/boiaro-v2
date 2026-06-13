@@ -554,17 +554,17 @@ paymentsRestRouter.get("/bkash/callback", async (req, res) => {
     const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: purchase.payment_method } });
     const cfg = asObject(gateway?.config);
     const cfgStr = (k: string) => getString(cfg, k);
-    const appKey = cfgStr("app_key");
-    const appSecret = cfgStr("app_secret");
-    const username = cfgStr("username");
-    const password = cfgStr("password");
+    const appKey = cfgStr("app_key") || process.env.BKASH_APP_KEY;
+    const appSecret = cfgStr("app_secret") || process.env.BKASH_APP_SECRET;
+    const username = cfgStr("username") || process.env.BKASH_USERNAME;
+    const password = cfgStr("password") || process.env.BKASH_PASSWORD;
 
     if (!appKey || !appSecret || !username || !password) {
       res.redirect(`${frontendBase}/coin-store?status=failed`);
       return;
     }
 
-    const mode = gateway?.mode === "live" ? "live" : "test";
+    const mode = (gateway?.mode === "live" || (!gateway?.mode && process.env.BKASH_APP_KEY)) ? "live" : "test";
     const baseUrl = mode === "live" ? "https://tokenized.pay.bka.sh/v1.2.0-beta" : "https://tokenized.sandbox.bka.sh/v1.2.0-beta";
 
     // Refresh token

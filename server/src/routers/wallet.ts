@@ -78,18 +78,17 @@ export const walletRouter = router({
       // ── bKash / Nagad Tokenized Checkout ────────────────────────────────────
       if (input.paymentMethod === "bkash" || input.paymentMethod === "nagad") {
         const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: input.paymentMethod } });
-        if (!gateway || !gateway.is_enabled) throw new TRPCError({ code: "BAD_REQUEST", message: `${input.paymentMethod} is not configured. Contact admin.` });
-
-        const cfg = gateway.config as Record<string, unknown>;
+        const cfg = (gateway?.config ?? {}) as Record<string, unknown>;
         const cfgStr = (k: string) => { const v = cfg[k]; return typeof v === "string" && v.trim() ? v.trim() : undefined; };
-        const appKey = cfgStr("app_key");
-        const appSecret = cfgStr("app_secret");
-        const username = cfgStr("username");
-        const password = cfgStr("password");
+
+        const appKey = cfgStr("app_key") || process.env.BKASH_APP_KEY;
+        const appSecret = cfgStr("app_secret") || process.env.BKASH_APP_SECRET;
+        const username = cfgStr("username") || process.env.BKASH_USERNAME;
+        const password = cfgStr("password") || process.env.BKASH_PASSWORD;
 
         if (!appKey || !appSecret || !username || !password) throw new TRPCError({ code: "BAD_REQUEST", message: `${input.paymentMethod} credentials missing. Contact admin.` });
 
-        const mode = gateway.mode === "live" ? "live" : "test";
+        const mode = (gateway?.mode === "live" || (!gateway?.mode && process.env.BKASH_APP_KEY)) ? "live" : "test";
         const baseUrl = mode === "live" ? "https://tokenized.pay.bka.sh/v1.2.0-beta" : "https://tokenized.sandbox.bka.sh/v1.2.0-beta";
 
         // Step 1: Get token
