@@ -50,7 +50,12 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const [lockedTrack, setLockedTrack] = useState<(AudioTrack & { chapterPrice: number }) | null>(null)
   const unlockContentMutation = trpc.wallet.unlockContent.useMutation()
 
-  // ── Full-book unlock cost ─────────────────────────────────────────────────
+  // Pass live audio element duration so preview recalculates with actual metadata
+  const liveDuration = isThisBookActive && duration > 0 ? duration : undefined
+  // access MUST be declared before any useCallback that references it
+  const access = useAudiobookAccess(book.id, isFree, totalDurSec, audiobook.previewPercentage, liveDuration)
+
+  // ── Full-book unlock cost (computed after access is defined) ──────────────
   const lockedTracks = audioTracks.filter(t =>
     !t.isPreview && !unlockedChapterIds.has(t.id) && Number((t as any).chapterPrice) > 0
   )
@@ -62,18 +67,16 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const handleFullUnlock = useCallback(async () => {
     if (!user || !fullUnlockCost) return
     try {
+      const { toast } = await import("sonner")
       await unlockContentMutation.mutateAsync({ bookId: book.id, format: "audiobook", coinCost: fullUnlockCost })
       setLockedTrack(null)
       access.checkAccess()
+      toast.success("সম্পূর্ণ অডিওবুক আনলক হয়েছে!")
     } catch (e: any) {
       const { toast } = await import("sonner")
       toast.error(e.message || "আনলক ব্যর্থ হয়েছে")
     }
   }, [user, fullUnlockCost, book.id, unlockContentMutation, access])
-
-  // Pass live audio element duration so preview recalculates with actual metadata
-  const liveDuration = isThisBookActive && duration > 0 ? duration : undefined
-  const access = useAudiobookAccess(book.id, isFree, totalDurSec, audiobook.previewPercentage, liveDuration)
 
   /**
    * CRITICAL: Sync access state into audio player context.
