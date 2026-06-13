@@ -536,6 +536,70 @@ paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
   res.json({ success: true });
 });
 
+// ── bKash Tokenized Checkout callback ───────────────────────────────────────
+paymentsRestRouter.get("/bkash/callback", async (req, res) => {
+  const frontendBase = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+  const { purchase_id, paymentID, status } = req.query as Record<string, string>;
+
+  try {
+    if (!purchase_id || !paymentID || status !== "success") {
+      res.redirect(`${frontendBase}/coin-store?status=${status === "cancel" ? "cancelled" : "failed"}`);
+      return;
+    }
+
+    const purchase = await prisma.coinPurchase.findUnique({ where: { id: purchase_id } });
+    if (!purchase) { res.redirect(`${frontendBase}/coin-store?status=failed`); return; }
+
+    // Look up bKash/nagad gateway credentials to execute payment
+    const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: purchase.payment_method } });
+    const cfg = asObject(gateway?.config);
+    const cfgStr = (k: string) => getString(cfg, k);
+    const appKey = cfgStr("app_key");
+    const appSecret = cfgStr("app_secret");
+    const username = cfgStr("username");
+    const password = cfgStr("password");
+
+    if (!appKey || !appSecret || !username || !password) {
+      res.redirect(`${frontendBase}/coin-store?status=failed`);
+      return;
+    }
+
+    const mode = gateway?.mode === "live" ? "live" : "test";
+    const baseUrl = mode === "live" ? "https://tokenized.pay.bka.sh/v1.2.0-beta" : "https://tokenized.sandbox.bka.sh/v1.2.0-beta";
+
+    // Refresh token
+    const tokenRes = await fetch(`${baseUrl}/tokenized/checkout/token/grant`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", username, password },
+      body: JSON.stringify({ app_key: appKey, app_secret: appSecret }),
+    });
+    const tokenData = await tokenRes.json() as Record<string, unknown>;
+    const idToken = typeof tokenData.id_token === "string" ? tokenData.id_token : undefined;
+    if (!idToken) { res.redirect(`${frontendBase}/coin-store?status=failed`); return; }
+
+    // Execute payment
+    const execRes = await fetch(`${baseUrl}/tokenized/checkout/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", authorization: idToken, "x-app-key": appKey },
+      body: JSON.stringify({ paymentID }),
+    });
+    const execData = await execRes.json() as Record<string, unknown>;
+    const txnId = typeof execData.trxID === "string" ? execData.trxID : paymentID;
+    const execStatus = String(execData.statusCode || "").toLowerCase();
+
+    if (execStatus === "0000") {
+      await finalizeCoinPurchase({ purchaseId: purchase_id, transactionId: txnId });
+      res.redirect(`${frontendBase}/coin-store?status=success`);
+    } else {
+      await prisma.coinPurchase.update({ where: { id: purchase_id }, data: { payment_status: "failed" } }).catch(() => {});
+      res.redirect(`${frontendBase}/coin-store?status=failed`);
+    }
+  } catch (err) {
+    console.error("bKash callback error:", err);
+    res.redirect(`${frontendBase}/coin-store?status=failed`);
+  }
+});
+
 paymentsRestRouter.post("/demo", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { order_id } = req.body;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import { useWallet } from "@/hooks/useWallet";
@@ -7,27 +7,47 @@ import { Footer } from "@/components/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Coins, Sparkles, ShieldCheck, Zap, Loader2, Crown, Gift, TrendingUp } from "lucide-react";
+import { Coins, Sparkles, ShieldCheck, Zap, Loader2, Crown, Gift, TrendingUp, CreditCard, Wallet, Globe, Banknote, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+
+const gatewayIcons: Record<string, any> = {
+  sslcommerz: Globe, bkash: Wallet, nagad: Wallet, stripe: CreditCard, paypal: Globe, cod: Banknote, demo: Zap,
+};
 
 export default function CoinStore() {
   const { user } = useAuth();
   const { wallet } = useWallet();
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<string>("");
+  const [searchParams] = useSearchParams();
 
   const { data: packages = [], isLoading } = trpc.wallet.coinPackages.useQuery();
+  const { data: gatewaysData = [] } = trpc.orders.paymentGateways.useQuery();
+  const gateways = (gatewaysData as any[]).filter((g: any) => !["cod", "demo"].includes(g.gateway_key));
   const initiatePurchaseMutation = trpc.wallet.initiateCoinPurchase.useMutation();
+
+  // Set default payment method once gateways load
+  useEffect(() => {
+    if (gateways.length > 0 && !paymentMethod) setPaymentMethod(gateways[0].gateway_key);
+  }, [gateways]);
+
+  // Show status toast after redirect back from gateway
+  useEffect(() => {
+    const status = searchParams.get("status");
+    if (status === "success") toast.success("Payment successful! Coins added to your wallet.");
+    else if (status === "failed") toast.error("Payment failed. Please try again.");
+    else if (status === "cancelled") toast.info("Payment cancelled.");
+  }, []);
 
   const handlePurchase = async (pkg: any) => {
     if (!user) { toast.error("Please sign in first"); return; }
+    if (!paymentMethod) { toast.error("Please select a payment method"); return; }
     setPurchasing(pkg.id);
     try {
-      const result = await initiatePurchaseMutation.mutateAsync({ packageId: pkg.id });
+      const result = await initiatePurchaseMutation.mutateAsync({ packageId: pkg.id, paymentMethod });
       if (result.gateway_url) {
         window.location.href = result.gateway_url;
-      } else {
-        toast.info("Payment gateway integration coming soon. Purchase recorded.");
       }
     } catch (err: any) {
       toast.error(err.message || "Could not initiate payment");
@@ -63,6 +83,32 @@ export default function CoinStore() {
             </div>
           )}
         </div>
+
+        {/* Payment method selector */}
+        {gateways.length > 0 && (
+          <div className="mb-6">
+            <p className="text-sm font-medium text-center text-muted-foreground mb-3">Select Payment Method</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {gateways.map((gw: any) => {
+                const Icon = gatewayIcons[gw.gateway_key] || CreditCard;
+                const active = paymentMethod === gw.gateway_key;
+                return (
+                  <button
+                    key={gw.gateway_key}
+                    onClick={() => setPaymentMethod(gw.gateway_key)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                      active ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary hover:border-primary/40 text-muted-foreground"
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    {gw.label}
+                    {active && <CheckCircle2 className="w-3.5 h-3.5 ml-1" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Packages */}
         {isLoading ? (
@@ -156,7 +202,7 @@ export default function CoinStore() {
         {/* Trust badges */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10">
           {[
-            { icon: ShieldCheck, title: "Secure Payment", desc: "Protected by SSLCommerz" },
+            { icon: ShieldCheck, title: "Secure Payment", desc: "Protected by trusted payment gateways" },
             { icon: Zap, title: "Instant Credit", desc: "Coins added immediately after payment" },
             { icon: Sparkles, title: "Bonus Coins", desc: "Get extra coins on larger packages" },
           ].map(({ icon: Icon, title, desc }) => (
