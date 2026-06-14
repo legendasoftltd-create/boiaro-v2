@@ -19,6 +19,7 @@ export interface AudioTrack {
   mediaType?: MediaType
   isActive?: boolean
   isPreview: boolean
+  chapterPrice?: number
 }
 
 interface PlayerState {

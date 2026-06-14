@@ -36,7 +36,10 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   // Is the currently-playing track a video?
   const isCurrentTrackVideo = isThisBookActive && tracks[currentTrackIndex]?.mediaType === "video"
   const totalDurSec = durationToSeconds(audiobook.duration)
-  const isFree = audiobook.price === 0 || book.isFree
+  // Per-chapter pricing: some chapters have individual coin costs even when format price = 0
+  const hasChapterPricing = audioTracks.some(t => Number(t.chapterPrice) > 0)
+  // A book is truly free only when it's marked free AND no chapter has a coin price
+  const isFree = (book.isFree || audiobook.price === 0) && !hasChapterPricing
 
   // ── Chapter-level unlock state (shared with AudiobookChapterUnlock via tRPC cache) ──
   const { data: coinSettings } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user })
@@ -103,16 +106,16 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   // ── Guard: intercept auto-advance into paid locked chapters ──────────────
   // The audio player's auto-advance (track ended) and nextTrack() both
   // bypass handleChapterClick. This effect fires whenever the active track
-  // index changes and pauses + shows the lock modal if the new track is paid
-  // and not yet unlocked by the user.
+  // index changes and pauses + shows the lock modal if the new track is paid.
   useEffect(() => {
-    if (!isThisBookActive || isFree || hasFullUnlock) return
+    if (!isThisBookActive || hasFullUnlock || !hasChapterPricing) return
+    // Prefer audioTracks (has chapterPrice) over context tracks
     const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
-    const track = sourceTracks[currentTrackIndex] as AudioTrack & { chapterPrice?: number }
+    const track = sourceTracks[currentTrackIndex]
     if (!track) return
     const isLocked =
       !track.isPreview &&
-      Number((track as any).chapterPrice) > 0 &&
+      Number(track.chapterPrice) > 0 &&
       !unlockedChapterIds.has(track.id)
     if (isLocked) {
       pause()
@@ -359,7 +362,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
       )}
 
       {/* Chapter-level ad/coin unlock for audiobooks */}
-      {!isFree && !access.hasFullAccess && user && (
+      {(hasChapterPricing || !isFree) && !access.hasFullAccess && user && (
         <AudiobookChapterUnlock
           bookId={book.id}
           tracks={displayTracks as AudioTrack[]}
