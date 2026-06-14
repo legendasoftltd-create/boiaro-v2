@@ -156,7 +156,7 @@ export function QuickUnlockModal({
 
   const handleAdCompleted = useCallback(async () => {
     setAdOverlayOpen(false);
-    if (adInFlightRef.current) return;
+    if (!adInFlightRef.current) return;
     adInFlightRef.current = true;
     setWatching(true);
 
@@ -244,7 +244,7 @@ export function QuickUnlockModal({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[420px] p-0 gap-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[420px] p-0 gap-0 overflow-y-auto max-h-[90svh]">
         {/* Unlocked success state */}
         {unlocked ? (
           <div className="text-center py-10 px-6 space-y-4 animate-fade-in">
@@ -504,42 +504,54 @@ export function QuickUnlockModal({
                     <span className="text-[11px] text-muted-foreground">অথবা টাকায় পেমেন্ট</span>
                     <div className="flex-1 h-px bg-border" />
                   </div>
-                  <div className="rounded-xl border-2 border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-950/20 p-3 space-y-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CreditCard className="w-4 h-4 text-emerald-600" />
-                      <p className="text-sm font-semibold">এই চ্যাপ্টার কিনুন — ৳{track.chapterTakaPrice}</p>
+                  <div className="rounded-xl border-2 border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-950/20 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold">এই চ্যাপ্টার কিনুন — ৳{track.chapterTakaPrice}</p>
+                        <p className="text-[11px] text-muted-foreground">সরাসরি পেমেন্ট। কয়েন লাগবে না।</p>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">একটি চ্যাপ্টারের জন্য সরাসরি পেমেন্ট। কয়েন লাগবে না।</p>
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        className="flex-1 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                        className="flex-1 h-10 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
                         disabled={payingTaka}
                         onClick={() => handleTakaPayment("sslcommerz")}
                       >
-                        {payingTaka ? <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" /> : <CreditCard className="w-3 h-3" />}
+                        {payingTaka ? (
+                          <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" />
+                        ) : (
+                          <CreditCard className="w-3.5 h-3.5" />
+                        )}
                         কার্ড / নেট ব্যাংকিং
                       </Button>
                       <Button
                         size="sm"
-                        variant="outline"
-                        className="flex-1 gap-1.5 text-xs border-pink-500/40 text-pink-600 hover:bg-pink-50"
+                        className="flex-1 h-10 gap-1.5 text-xs bg-[#E2136E] hover:bg-[#c4105d] text-white border-0"
                         disabled={payingTaka}
                         onClick={() => handleTakaPayment("bkash")}
                       >
-                        <span className="font-bold">b</span>কাশ
+                        {payingTaka ? (
+                          <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" />
+                        ) : (
+                          <span className="font-extrabold text-sm">b</span>
+                        )}
+                        কাশ
                       </Button>
                     </div>
                   </div>
                 </>
               )}
 
-              {/* Cash purchase */}
-              <Button size="sm" variant="ghost" className="w-full text-xs gap-1.5 text-muted-foreground h-9" asChild>
-                <Link to={`/checkout?book_id=${bookId}&format=audiobook`}>
-                  <ShoppingCart className="w-3.5 h-3.5" /> ক্যাশে কিনুন — ৳{audiobookPrice}
-                </Link>
-              </Button>
+              {/* Full audiobook cash purchase — only show when audiobook has a non-zero price */}
+              {audiobookPrice > 0 && (
+                <Button size="sm" variant="ghost" className="w-full text-xs gap-1.5 text-muted-foreground h-9" asChild>
+                  <Link to={`/checkout?book_id=${bookId}&format=audiobook`}>
+                    <ShoppingCart className="w-3.5 h-3.5" /> সম্পূর্ণ অডিওবুক কিনুন — ৳{audiobookPrice}
+                  </Link>
+                </Button>
+              )}
 
               {/* Footer info */}
               <p className="text-[10px] text-muted-foreground/60 text-center pt-1">
