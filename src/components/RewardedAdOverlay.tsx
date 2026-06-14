@@ -108,29 +108,29 @@ export function RewardedAdOverlay({ open, onCompleted, onSkipped, adLabel = "অ
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onSkipped(); }}>
       <DialogContent
-        className="sm:max-w-[480px] p-0 gap-0 overflow-hidden"
+        className="w-[calc(100vw-32px)] max-w-[480px] p-0 gap-0 overflow-hidden rounded-2xl"
         onInteractOutside={e => e.preventDefault()}
       >
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-muted/30">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Tv className="w-4 h-4 text-primary" />
-            <span>{adLabel} দেখছেন...</span>
+          <div className="flex items-center gap-2 text-sm font-medium min-w-0">
+            <Tv className="w-4 h-4 text-primary shrink-0" />
+            <span className="truncate">{adLabel} দেখছেন...</span>
           </div>
-          <div className="flex items-center gap-3">
-            {countdown > 0 ? (
-              <span className="text-xs text-muted-foreground bg-muted rounded-full px-2.5 py-1 font-mono">
+          <div className="flex items-center gap-2 shrink-0 ml-2">
+            {countdown > 0 && (
+              <span className="text-xs text-muted-foreground bg-muted rounded-full px-2.5 py-1 font-mono tabular-nums">
                 {countdown}s
               </span>
-            ) : null}
+            )}
             {countdown === 0 ? (
-              <Button size="sm" className="h-7 text-xs gap-1" onClick={onCompleted}>
+              <Button size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={onCompleted}>
                 রিওয়ার্ড নিন
               </Button>
             ) : (
               <button
                 onClick={onSkipped}
-                className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
                 title="বাতিল করুন"
               >
                 <X className="w-4 h-4" />
@@ -140,20 +140,20 @@ export function RewardedAdOverlay({ open, onCompleted, onSkipped, adLabel = "অ
         </div>
 
         {/* Progress bar */}
-        <div className="h-1 w-full bg-muted">
+        <div className="h-1 w-full bg-muted overflow-hidden">
           <div
-            className="h-full bg-primary transition-all duration-1000"
+            className="h-full bg-primary transition-all duration-1000 ease-linear"
             style={{ width: `${progressPct}%` }}
           />
         </div>
 
         {/* Ad content area */}
-        <div className="min-h-[250px] flex flex-col items-center justify-center bg-background p-4">
+        <div className="min-h-[200px] sm:min-h-[250px] flex flex-col items-center justify-center bg-background p-4">
           {hasRealAd ? (
-            <div ref={adContainerRef} className="w-full flex justify-center">
+            <div ref={adContainerRef} className="w-full flex justify-center overflow-hidden">
               <ins
                 className="adsbygoogle"
-                style={{ display: "block", width: "100%", maxWidth: "468px", height: "60px" }}
+                style={{ display: "block", width: "100%", minHeight: "60px" }}
                 data-ad-client={config.adsensePublisherId}
                 data-ad-slot={config.rewardedUnitId}
                 data-ad-format="auto"
@@ -161,13 +161,13 @@ export function RewardedAdOverlay({ open, onCompleted, onSkipped, adLabel = "অ
               />
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
-                <Tv className="w-10 h-10 text-primary animate-pulse" />
+            <div className="flex flex-col items-center gap-3 text-center px-2">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-primary/10 flex items-center justify-center">
+                <Tv className="w-8 h-8 sm:w-10 sm:h-10 text-primary animate-pulse" />
               </div>
               <div>
-                <p className="font-semibold text-foreground">অ্যাড দেখা হচ্ছে</p>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="font-semibold text-foreground text-sm sm:text-base">অ্যাড দেখা হচ্ছে</p>
+                <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                   {countdown > 0 ? `আর ${countdown} সেকেন্ড...` : "সম্পন্ন!"}
                 </p>
               </div>
@@ -175,7 +175,7 @@ export function RewardedAdOverlay({ open, onCompleted, onSkipped, adLabel = "অ
           )}
         </div>
 
-        <p className="text-[10px] text-muted-foreground/50 text-center px-4 pb-3">
+        <p className="text-[10px] text-muted-foreground/50 text-center px-4 pb-3 leading-relaxed">
           পুরো অ্যাড দেখুন এবং রিওয়ার্ড পান
         </p>
       </DialogContent>

@@ -142,7 +142,7 @@ export default function UserDashboard() {
           </CardContent>
         </Card>
 
-        <AdBannerBlock placementKey="dashboard_middle" />
+        <AdBannerBlock placementKey="dashboard_middle" noContainer />
 
         {/* Recent Reading Progress */}
         <div className="grid md:grid-cols-2 gap-6 mb-6">

@@ -113,43 +113,43 @@ export function WatchAdButton({ onRewardEarned, placement = "general", variant =
   return (
     <>
       <RewardedAdOverlay open={adOpen} onCompleted={handleAdCompleted} onSkipped={handleAdSkipped} />
-      <div className={`rounded-xl border border-border/50 bg-card p-4 space-y-3 ${className || ""}`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+      <div className={`rounded-xl border border-border/50 bg-card p-3 sm:p-4 space-y-3 min-w-0 overflow-hidden ${className || ""}`}>
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="w-8 h-8 shrink-0 rounded-lg bg-primary/15 flex items-center justify-center">
               <Tv className="w-4 h-4 text-primary" />
             </div>
-            <div>
-              <p className="text-sm font-semibold">অ্যাড দেখে কয়েন আয় করুন</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">অ্যাড দেখে কয়েন আয় করুন</p>
               <p className="text-xs text-muted-foreground">প্রতিটি অ্যাড = {coinPerAd} কয়েন</p>
             </div>
           </div>
-          <Badge variant="secondary" className="text-xs">{remaining}/{dailyLimit}</Badge>
+          <Badge variant="secondary" className="text-xs shrink-0">{remaining}/{dailyLimit}</Badge>
         </div>
 
-        <Button className="w-full gap-2" disabled={isDisabled} onClick={openAd}>
+        <Button className="w-full gap-2 text-sm" disabled={isDisabled} onClick={openAd}>
           {claiming ? (
             <>
-              <div className="animate-spin h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full" />
-              প্রক্রিয়া হচ্ছে...
+              <div className="animate-spin h-4 w-4 shrink-0 border-2 border-primary-foreground border-t-transparent rounded-full" />
+              <span className="truncate">প্রক্রিয়া হচ্ছে...</span>
             </>
           ) : cooldownLeft > 0 ? (
-            <><Tv className="w-4 h-4" /> {cooldownLeft}s অপেক্ষা করুন</>
+            <><Tv className="w-4 h-4 shrink-0" /><span className="truncate">{cooldownLeft}s অপেক্ষা করুন</span></>
           ) : remaining <= 0 ? (
-            <><Tv className="w-4 h-4" /> আজকের সীমা পূর্ণ</>
+            <><Tv className="w-4 h-4 shrink-0" /><span className="truncate">আজকের সীমা পূর্ণ</span></>
           ) : (
-            <><Tv className="w-4 h-4" /> অ্যাড দেখুন — +{coinPerAd} কয়েন</>
+            <><Tv className="w-4 h-4 shrink-0" /><span className="truncate">অ্যাড দেখুন — +{coinPerAd} কয়েন</span></>
           )}
         </Button>
 
         {remaining > 0 && (
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex flex-col xs:flex-row items-start xs:items-center justify-between gap-1 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <Flame className="w-3 h-3 text-orange-400" />
-              আরো {nextStreakIn}টি অ্যাডে +{STREAK_BONUS} বোনাস কয়েন
+              <Flame className="w-3 h-3 shrink-0 text-orange-400" />
+              আরো {nextStreakIn}টিতে +{STREAK_BONUS} বোনাস
             </span>
             <span className="flex items-center gap-1">
-              <Gift className="w-3 h-3" />
+              <Gift className="w-3 h-3 shrink-0" />
               প্রতি {STREAK_THRESHOLD}টিতে বোনাস
             </span>
           </div>

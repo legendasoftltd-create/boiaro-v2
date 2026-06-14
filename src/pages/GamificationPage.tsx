@@ -79,7 +79,7 @@ export default function GamificationPage() {
             <Trophy className="w-6 h-6 text-primary" /> Gamification Center
           </h1>
 
-          <AdBannerBlock placementKey="gamification_page" />
+          <AdBannerBlock placementKey="gamification_page" noContainer />
 
           {/* Stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">

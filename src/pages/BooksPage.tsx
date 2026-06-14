@@ -283,7 +283,7 @@ export default function BooksPage() {
               </div>
             )}
 
-            <AdBannerBlock placementKey="books_listing_top" />
+            <AdBannerBlock placementKey="books_listing_top" noContainer />
 
             {/* Results */}
             {loading ? (
