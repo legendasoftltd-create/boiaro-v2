@@ -1,8 +1,9 @@
 import {
   Play, Pause, SkipBack, SkipForward, ChevronDown,
-  Volume2, VolumeX, List, Rewind, FastForward, MessageSquare,
+  Volume2, VolumeX, List, Rewind, FastForward, MessageSquare, Lock,
 } from "lucide-react"
 import { useState, useCallback } from "react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +24,7 @@ export function FullPlayer() {
     togglePlay, nextTrack, prevTrack, goToTrack, seekTo,
     setPlaybackRate, setVolume, closeFullPlayer, formatTime,
     skipForward10, skipBackward10, showPaywall, isPreviewMode, previewLimitSeconds,
+    isTrackLocked,
   } = useAudioPlayer()
 
   const [showChapters, setShowChapters] = useState(false)
@@ -219,20 +221,33 @@ export function FullPlayer() {
                 {tracks.map((track, i) => {
                   const isActive = i === currentTrackIndex
                   const isCurrentlyPlaying = isActive && isPlaying
+                  const locked = isTrackLocked(track.id)
                   return (
                     <button
                       key={track.id}
-                      onClick={() => goToTrack(i)}
+                      onClick={() => {
+                        if (locked) {
+                          toast.error("এই অধ্যায়টি আনলক করুন", {
+                            description: "কয়েন বা টাকা দিয়ে আনলক করতে বইয়ের পেজে যান।",
+                          })
+                          return
+                        }
+                        goToTrack(i)
+                      }}
                       className={`w-full flex items-center gap-3 py-3 px-3 rounded-xl transition-all text-left ${
                         isActive
                           ? "bg-[hsl(220,50%,15%)] ring-1 ring-[hsl(220,50%,25%)]"
+                          : locked
+                          ? "opacity-60 cursor-not-allowed hover:bg-secondary/20"
                           : "hover:bg-secondary/40 text-foreground"
                       }`}
                     >
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 transition-all ${
-                        isActive ? "bg-[hsl(220,70%,50%)] text-white" : "bg-secondary text-muted-foreground"
+                        isActive ? "bg-[hsl(220,70%,50%)] text-white" : locked ? "bg-secondary/50 text-muted-foreground" : "bg-secondary text-muted-foreground"
                       }`}>
-                        {isCurrentlyPlaying ? (
+                        {locked ? (
+                          <Lock className="w-3.5 h-3.5" />
+                        ) : isCurrentlyPlaying ? (
                           <div className="flex gap-[3px] items-end h-3">
                             <div className="w-[3px] rounded-full bg-white animate-pulse" style={{ height: '100%' }} />
                             <div className="w-[3px] rounded-full bg-white animate-pulse" style={{ height: '55%', animationDelay: '100ms' }} />
@@ -244,11 +259,15 @@ export function FullPlayer() {
                         <p className={`text-sm font-medium truncate ${isActive ? "text-[hsl(220,70%,65%)]" : ""}`}>{track.title}</p>
                         <p className="text-xs text-muted-foreground">{track.duration}</p>
                       </div>
-                      {isActive && (
+                      {locked ? (
+                        <Badge className="bg-amber-500/20 text-amber-400 text-[10px] border border-amber-500/30 flex-shrink-0">
+                          {track.chapterPrice ? `${track.chapterPrice} কয়েন` : "লক"}
+                        </Badge>
+                      ) : isActive ? (
                         <Badge className="bg-[hsl(220,70%,50%)] text-white text-[10px] border-0 flex-shrink-0">
                           {isPlaying ? "Playing" : "Paused"}
                         </Badge>
-                      )}
+                      ) : null}
                     </button>
                   )
                 })}

@@ -71,6 +71,8 @@ interface AudioPlayerContextType extends PlayerState {
   setAccessLoading: (val: boolean) => void
   /** Register IDs of tracks that must not auto-play without explicit unlock */
   setLockedTrackIds: (ids: Set<string>) => void
+  /** Check synchronously whether a track ID is chapter-locked (reads ref, no re-render) */
+  isTrackLocked: (trackId: string) => boolean
 }
 
 const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(undefined)
@@ -641,14 +643,18 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const prevTrack = useCallback(() => {
     setState((p) => {
       if (p.currentTrackIndex <= 0) return p
-      userGesturePlayRef.current = p.isPlaying
+      const prevId = p.tracks[p.currentTrackIndex - 1]?.id
+      const prevIsLocked = prevId ? lockedTrackIdsRef.current.has(prevId) : false
+      userGesturePlayRef.current = p.isPlaying && !prevIsLocked
       prevTrackKeyRef.current = null
       return { ...p, currentTrackIndex: p.currentTrackIndex - 1, currentTime: 0 }
     })
   }, [])
 
   const goToTrack = useCallback((index: number) => {
-    userGesturePlayRef.current = true
+    const targetId = stateRef.current.tracks[index]?.id
+    const isLocked = targetId ? lockedTrackIdsRef.current.has(targetId) : false
+    userGesturePlayRef.current = !isLocked
     prevTrackKeyRef.current = null
     setState((p) => ({ ...p, currentTrackIndex: index, currentTime: 0 }))
   }, [])
@@ -680,6 +686,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const openFullPlayer = useCallback(() => setState((p) => ({ ...p, isFullPlayerOpen: true })), [])
   const closeFullPlayer = useCallback(() => setState((p) => ({ ...p, isFullPlayerOpen: false })), [])
   const setLockedTrackIds = useCallback((ids: Set<string>) => { lockedTrackIdsRef.current = ids }, [])
+  const isTrackLocked = useCallback((trackId: string) => lockedTrackIdsRef.current.has(trackId), [])
 
   // Media Session API for lock screen / notification controls & background play
   useEffect(() => {
@@ -771,6 +778,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         accessLoading,
         setAccessLoading,
         setLockedTrackIds,
+        isTrackLocked,
       }}
     >
       {children}
@@ -796,6 +804,7 @@ export function useAudioPlayer() {
       playTrack: () => {}, nextTrack: () => {}, prevTrack: () => {},
       openFullPlayer: () => {}, closeFullPlayer: () => {}, minimize: () => {},
       restore: () => {}, stop: () => {}, audioRef: { current: null },
+      isTrackLocked: () => false,
     } as any;
   }
   return ctx
