@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Flame, Trophy, Target, Award, Crown, Star, BookOpen, Headphones, Coins, Users, Zap, Medal } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AdBannerBlock } from "@/components/AdBannerBlock";
+import { WatchAdButton } from "@/components/WatchAdButton";
 
 const STREAK_MILESTONES = [3, 7, 14, 30, 60, 100];
 const GOAL_TYPES = [
@@ -76,6 +78,8 @@ export default function GamificationPage() {
           <h1 className="text-2xl font-serif font-bold text-foreground mb-6 flex items-center gap-2">
             <Trophy className="w-6 h-6 text-primary" /> Gamification Center
           </h1>
+
+          <AdBannerBlock placementKey="gamification_page" />
 
           {/* Stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -153,6 +157,10 @@ export default function GamificationPage() {
                   {streak?.last_activity_date && (
                     <p className="text-[11px] text-muted-foreground">Last active: {new Date(streak.last_activity_date).toLocaleDateString()}</p>
                   )}
+                  <div className="pt-2">
+                    <p className="text-[13px] font-medium text-muted-foreground mb-2">অ্যাড দেখে কয়েন আয় করুন</p>
+                    <WatchAdButton placement="gamification_streak" />
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>

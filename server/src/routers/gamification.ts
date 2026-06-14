@@ -150,7 +150,9 @@ export const gamificationRouter = router({
     });
     if (existing) return { success: false, reason: "already_claimed" };
 
-    const DAILY_REWARD = 10;
+    const setting = await prisma.platformSetting.findUnique({ where: { key: "coin_daily_login_reward" } });
+    const DAILY_REWARD = parseInt(setting?.value || "10", 10);
+
     await prisma.$transaction([
       prisma.coinTransaction.create({
         data: { user_id: ctx.userId, amount: DAILY_REWARD, type: "earn", description: "Daily login reward", source: "daily_login" },
@@ -162,6 +164,59 @@ export const gamificationRouter = router({
       }),
     ]);
     return { success: true, reward: DAILY_REWARD };
+  }),
+
+  checkBadges: protectedProcedure.mutation(async ({ ctx }) => {
+    const userId = ctx.userId!;
+
+    const [allBadges, earnedBadgeIds, streak, unlockCount, adCount, dailyCount, referralCount] = await Promise.all([
+      prisma.badgeDefinition.findMany({ where: { is_active: true } }),
+      prisma.userBadge.findMany({ where: { user_id: userId }, select: { badge_id: true } }).then(r => new Set(r.map(b => b.badge_id))),
+      prisma.userStreak.findUnique({ where: { user_id: userId } }),
+      prisma.contentUnlock.count({ where: { user_id: userId, status: "active" } }),
+      prisma.coinTransaction.count({ where: { user_id: userId, source: "ad_reward" } }),
+      prisma.coinTransaction.count({ where: { user_id: userId, source: "daily_login" } }),
+      prisma.referral.count({ where: { referrer_id: userId, status: "completed" } }),
+    ]);
+
+    const awarded: string[] = [];
+
+    for (const badge of allBadges) {
+      if (earnedBadgeIds.has(badge.id)) continue;
+
+      const threshold = badge.condition_value ?? 1;
+      let earned = false;
+
+      switch (badge.condition_type) {
+        case "unlock_count": earned = unlockCount >= threshold; break;
+        case "streak": earned = (streak?.current_streak ?? 0) >= threshold; break;
+        case "ad_count": earned = adCount >= threshold; break;
+        case "daily_login_count": earned = dailyCount >= threshold; break;
+        case "referral_count": earned = referralCount >= threshold; break;
+        case "first_unlock": earned = unlockCount >= 1; break;
+        case "first_referral": earned = referralCount >= 1; break;
+        default: break;
+      }
+
+      if (earned) {
+        await prisma.userBadge.create({ data: { user_id: userId, badge_id: badge.id } }).catch(() => null);
+        if (badge.coin_reward && badge.coin_reward > 0) {
+          await prisma.$transaction([
+            prisma.coinTransaction.create({
+              data: { user_id: userId, amount: badge.coin_reward, type: "bonus", description: `ব্যাজ পুরস্কার: ${badge.title}`, source: "badge_reward" },
+            }),
+            prisma.userCoin.upsert({
+              where: { user_id: userId },
+              create: { user_id: userId, balance: badge.coin_reward, total_earned: badge.coin_reward, total_spent: 0 },
+              update: { balance: { increment: badge.coin_reward }, total_earned: { increment: badge.coin_reward } },
+            }),
+          ]).catch(() => null);
+        }
+        awarded.push(badge.key);
+      }
+    }
+
+    return { awarded };
   }),
 
   adRewardStatus: protectedProcedure.query(async ({ ctx }) => {

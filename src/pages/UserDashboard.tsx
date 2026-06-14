@@ -14,6 +14,8 @@ import {
 import { Link } from "react-router-dom"
 import { useUserRole } from "@/hooks/useUserRole"
 import { toMediaUrl } from "@/lib/mediaUrl"
+import { AdBannerBlock } from "@/components/AdBannerBlock"
+import { WatchAdButton } from "@/components/WatchAdButton"
 
 export default function UserDashboard() {
   const { user, profile } = useAuth()
@@ -134,8 +136,13 @@ export default function UserDashboard() {
                 <p className="text-[11px] text-muted-foreground">মোট খরচ</p>
               </div>
             </div>
+            <div className="mt-3">
+              <WatchAdButton placement="dashboard_wallet" variant="compact" className="w-full justify-center" />
+            </div>
           </CardContent>
         </Card>
+
+        <AdBannerBlock placementKey="dashboard_middle" />
 
         {/* Recent Reading Progress */}
         <div className="grid md:grid-cols-2 gap-6 mb-6">

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { useBrowseBooks, useCategories } from "@/hooks/useBooks"
 import { ContentFilterProvider } from "@/contexts/ContentFilterContext"
+import { AdBannerBlock } from "@/components/AdBannerBlock"
 import { Search, BookOpen, Headphones, Package, Flame, Gift, Sparkles, X, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
 
 /*──────────────────────────────────────────────
@@ -281,6 +282,8 @@ export default function BooksPage() {
                 ))}
               </div>
             )}
+
+            <AdBannerBlock placementKey="books_listing_top" />
 
             {/* Results */}
             {loading ? (

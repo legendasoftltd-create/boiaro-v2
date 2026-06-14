@@ -116,7 +116,17 @@ export function AdBannerBlock({ placementKey, device = "all" }: Props) {
   const showAdsense = config.systemEnabled && config.providerType === "adsense" &&
     config.adsensePublisherId && config.webBannerUnitId;
 
-  if (banners.length === 0 && !showAdsense) return null;
+  if (banners.length === 0 && !showAdsense) {
+    // Show a slot indicator when the ad system is enabled but no content is configured yet
+    if (!config.systemEnabled) return null;
+    return (
+      <div className="container mx-auto px-4 lg:px-8 py-2">
+        <div className="w-full rounded-lg border border-dashed border-border/30 bg-muted/20 flex items-center justify-center py-3 min-h-[56px]">
+          <p className="text-[11px] text-muted-foreground/40 select-none">[ বিজ্ঞাপন · {placementKey} ]</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto px-4 lg:px-8 py-3 space-y-3">

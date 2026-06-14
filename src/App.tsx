@@ -19,6 +19,7 @@ const CartDrawer = lazy(() => import("@/components/cart/CartDrawer").then(m => (
 const RoleApplicationSubmitter = lazy(() => import("@/components/RoleApplicationSubmitter").then(m => ({ default: m.RoleApplicationSubmitter })));
 const PresenceTracker = lazy(() => import("@/components/PresenceTracker").then(m => ({ default: m.PresenceTracker })));
 const BandwidthReporter = lazy(() => import("@/components/BandwidthReporter").then(m => ({ default: m.BandwidthReporter })));
+const DailyLoginReward = lazy(() => import("@/components/DailyLoginReward").then(m => ({ default: m.DailyLoginReward })));
 
 // Critical path — eagerly loaded
 import Index from "./pages/Index.tsx";
@@ -206,6 +207,7 @@ const App = () => {
               <Suspense fallback={null}><RoleApplicationSubmitter /></Suspense>
               <Suspense fallback={null}><PresenceTracker /></Suspense>
               <Suspense fallback={null}><BandwidthReporter /></Suspense>
+              <Suspense fallback={null}><DailyLoginReward /></Suspense>
               <Suspense fallback={<PageLoader />}>
               <NavigationErrorBoundary>
               <Routes>

@@ -149,7 +149,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
-      await signUpMutation.mutateAsync({ email, password, displayName })
+      const referralCode = localStorage.getItem("pending_referral_code") || undefined
+      await signUpMutation.mutateAsync({ email, password, displayName, referralCode })
+      if (referralCode) localStorage.removeItem("pending_referral_code")
       return { error: null }
     } catch (err: any) {
       return { error: new Error(err?.message || "Signup failed") }

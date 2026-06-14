@@ -24,6 +24,7 @@ export const authRouter = router({
       email: z.string().email(),
       password: z.string().min(6),
       displayName: z.string().optional(),
+      referralCode: z.string().optional(),
     }))
     .mutation(async ({ input }) => {
       const existing = await prisma.user.findUnique({ where: { email: input.email } });
@@ -45,6 +46,56 @@ export const authRouter = router({
           roles: { create: { role: "user" } },
         },
       });
+
+      // Process referral if a code was provided
+      if (input.referralCode) {
+        const code = input.referralCode.trim().toUpperCase();
+        const referrerProfile = await prisma.profile.findUnique({ where: { referral_code: code } });
+        if (referrerProfile && referrerProfile.user_id !== user.id) {
+          const [signupRewardSetting, referredBonusSetting] = await Promise.all([
+            prisma.platformSetting.findUnique({ where: { key: "referral_signup_reward" } }),
+            prisma.platformSetting.findUnique({ where: { key: "referral_referred_bonus" } }),
+          ]);
+          const signupReward = parseInt(signupRewardSetting?.value || "20", 10);
+          const referredBonus = parseInt(referredBonusSetting?.value || "10", 10);
+
+          await Promise.all([
+            prisma.referral.create({
+              data: {
+                referral_code: code,
+                referrer_id: referrerProfile.user_id,
+                referred_user_id: user.id,
+                reward_amount: signupReward,
+                status: "completed",
+                reward_status: "paid",
+                completed_at: new Date(),
+              },
+            }),
+            prisma.profile.update({
+              where: { user_id: user.id },
+              data: { referred_by: code },
+            }),
+            prisma.$transaction([
+              prisma.coinTransaction.create({
+                data: { user_id: referrerProfile.user_id, amount: signupReward, type: "earn", description: "রেফারেল বোনাস - নতুন সদস্য", source: "referral_reward" },
+              }),
+              prisma.userCoin.upsert({
+                where: { user_id: referrerProfile.user_id },
+                create: { user_id: referrerProfile.user_id, balance: signupReward, total_earned: signupReward, total_spent: 0 },
+                update: { balance: { increment: signupReward }, total_earned: { increment: signupReward } },
+              }),
+              prisma.coinTransaction.create({
+                data: { user_id: user.id, amount: referredBonus, type: "bonus", description: "নতুন সদস্য রেফারেল বোনাস", source: "referral_bonus" },
+              }),
+              prisma.userCoin.upsert({
+                where: { user_id: user.id },
+                create: { user_id: user.id, balance: referredBonus, total_earned: referredBonus, total_spent: 0 },
+                update: { balance: { increment: referredBonus }, total_earned: { increment: referredBonus } },
+              }),
+            ]),
+          ]).catch(() => {});
+        }
+      }
 
       sendNotificationEmail({
         to: user.email,

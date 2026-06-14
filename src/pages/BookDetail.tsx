@@ -14,6 +14,7 @@ import { BookReviews } from "@/components/book-detail/BookReviews"
 import { RelatedBooks } from "@/components/book-detail/RelatedBooks"
 import { BookComments } from "@/components/book-detail/BookComments"
 import { Button } from "@/components/ui/button"
+import { AdBannerBlock } from "@/components/AdBannerBlock"
 import { ArrowLeft, Loader2 } from "lucide-react"
 import type { MasterBook, Author, Publisher, Category, Narrator } from "@/lib/types"
 import type { AudioTrack } from "@/contexts/AudioPlayerContext"
@@ -304,8 +305,10 @@ export default function BookDetail() {
           liveReviewsCount={engagement.liveReviewsCount}
           liveReads={engagement.liveReads}
         />
+        <AdBannerBlock placementKey="book_detail_middle" />
         <BookFormatTabs book={book} audioTracks={audioTracks} />
         <BookReviews book={book} onReviewChange={engagement.refreshReviewStats} />
+        <AdBannerBlock placementKey="book_detail_bottom" />
         <BookComments bookId={book.id} />
         <RelatedBooks book={book} allBooks={[]} />
       </div>

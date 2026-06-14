@@ -9,11 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Coins, Gift, Play, Clock, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { RewardedAdOverlay } from "@/components/RewardedAdOverlay";
 
 export default function RewardCenter() {
   const { user } = useAuth();
   const { wallet, transactions, refetch } = useWallet();
   const [claiming, setClaiming] = useState(false);
+  const [adOpen, setAdOpen] = useState(false);
 
   const { data: settings } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user });
   const { data: adStatus, refetch: refetchAdStatus } = trpc.gamification.adRewardStatus.useQuery(undefined, { enabled: !!user });
@@ -45,32 +47,36 @@ export default function RewardCenter() {
     return true;
   };
 
-  const handleWatchAd = async () => {
+  const handleWatchAd = () => {
     if (!user || !canWatch()) return;
+    setAdOpen(true);
+  };
+
+  const handleAdCompleted = async () => {
+    setAdOpen(false);
     setClaiming(true);
-
-    await new Promise(r => setTimeout(r, 2000));
-
     const result = await claimAdRewardMutation.mutateAsync({ placement: "reward_center" }).catch(() => null);
     if (!result?.success) {
       if (result?.reason === "daily_limit_reached") {
         toast.error("আজকের সীমা শেষ। আগামীকাল আবার চেষ্টা করুন!");
       } else {
-        // Fallback: use adjustCoins directly
         await adjustCoinsMutation.mutateAsync({
           amount: coinsPerAd,
           type: "earn",
-          description: `বিজ্ঞাপন থেকে কয়েন অর্জন`,
+          description: "বিজ্ঞাপন থেকে কয়েন অর্জন",
           source: "ad_reward",
         }).catch(() => toast.error("কয়েন যোগ ব্যর্থ"));
       }
     } else {
       toast.success(`🎉 ${coinsPerAd} কয়েন যোগ হয়েছে!`);
     }
-
     refetch();
     refetchAdStatus();
     setClaiming(false);
+  };
+
+  const handleAdSkipped = () => {
+    setAdOpen(false);
   };
 
   if (!user) return null;
@@ -178,6 +184,12 @@ export default function RewardCenter() {
         </Card>
       </main>
       <Footer />
+      <RewardedAdOverlay
+        open={adOpen}
+        onCompleted={handleAdCompleted}
+        onSkipped={handleAdSkipped}
+        adLabel="রিওয়ার্ড বিজ্ঞাপন"
+      />
     </div>
   );
 }
