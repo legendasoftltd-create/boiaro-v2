@@ -335,6 +335,16 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
           return
         }
       }
+      // CRITICAL: Block play if the current track requires chapter unlock.
+      // This catches resume attempts (mini-player, Media Session, OS controls)
+      // on a track that has not been unlocked via coin or taka payment.
+      const currentTrack = stateRef.current.tracks[stateRef.current.currentTrackIndex]
+      if (currentTrack && lockedTrackIdsRef.current.has(currentTrack.id)) {
+        audio.pause()
+        setState((prev) => ({ ...prev, isPlaying: false }))
+        debugLog("play event BLOCKED — chapter requires unlock", currentTrack.id)
+        return
+      }
       setState((prev) => ({ ...prev, isPlaying: true, error: null }))
     })
 
