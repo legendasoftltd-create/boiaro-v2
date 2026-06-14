@@ -277,7 +277,7 @@ export const adminRouter = router({
         data: {
           ...data,
           published_date: parsedPublishedDate,
-          submission_status: data.submission_status ?? "approved",
+          submission_status: data.submission_status ?? "pending",
           submitted_by: ctx.userId,
           ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
           ...(author_id ? { author: { connect: { id: author_id } } } : {}),
@@ -426,7 +426,7 @@ export const adminRouter = router({
       if (existing) {
         throw new TRPCError({ code: "CONFLICT", message: `This book already has a ${data.format} format. Edit the existing one instead.` });
       }
-      const finalStatus = data.submission_status ?? "approved";
+      const finalStatus = data.submission_status ?? "pending";
       const fmt = await prisma.bookFormat.create({
         data: {
           ...data,
