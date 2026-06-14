@@ -6,10 +6,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Tv, Coins, Sparkles, ShoppingCart, Lock, Play, Gift, Info, Headphones, Zap, CreditCard } from "lucide-react";
+import { Tv, Coins, Sparkles, ShoppingCart, Lock, Play, Gift, Info, Headphones, Zap, CreditCard, CheckCircle2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { RewardedAdOverlay } from "@/components/RewardedAdOverlay";
+
+const GATEWAY_META: Record<string, { label: string; color: string; bg: string; border: string; logo?: string }> = {
+  sslcommerz: { label: "কার্ড / নেট ব্যাংকিং", color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-400/50" },
+  bkash:      { label: "bKash",                  color: "text-[#E2136E]",    bg: "bg-pink-50 dark:bg-pink-950/30",    border: "border-pink-400/50" },
+  nagad:      { label: "Nagad",                   color: "text-orange-600",   bg: "bg-orange-50 dark:bg-orange-950/30", border: "border-orange-400/50" },
+};
 
 // No-op logging shim — replace with server logging when needed
 function logEvent(_module: string, _event: string, _metadata: Record<string, unknown>, _userId?: string, _level?: string) {}
@@ -60,7 +66,19 @@ export function QuickUnlockModal({
   const unlockContentMutation = trpc.wallet.unlockContent.useMutation();
   const initiateChapterPaymentMutation = trpc.wallet.initiateChapterPayment.useMutation();
   const [payingTaka, setPayingTaka] = useState(false);
+  const [selectedGateway, setSelectedGateway] = useState<string>("");
   const utils = trpc.useUtils();
+
+  const { data: activeGateways = [] } = trpc.wallet.activePaymentGateways.useQuery(undefined, {
+    enabled: !!(track?.chapterTakaPrice && track.chapterTakaPrice > 0),
+  });
+
+  // Pre-select first gateway when list loads
+  useEffect(() => {
+    if (activeGateways.length > 0 && !selectedGateway) {
+      setSelectedGateway(activeGateways[0].gateway_key);
+    }
+  }, [activeGateways]);
 
   useEffect(() => {
     if (open) {
@@ -496,50 +514,77 @@ export function QuickUnlockModal({
                 </div>
               )}
 
-              {/* Option: Pay via Taka */}
-              {track.chapterTakaPrice != null && track.chapterTakaPrice > 0 && (
+              {/* Option: Pay via Taka — dynamic gateway list */}
+              {track.chapterTakaPrice != null && track.chapterTakaPrice > 0 && activeGateways.length > 0 && (
                 <>
                   <div className="flex items-center gap-3 py-0.5">
                     <div className="flex-1 h-px bg-border" />
                     <span className="text-[11px] text-muted-foreground">অথবা টাকায় পেমেন্ট</span>
                     <div className="flex-1 h-px bg-border" />
                   </div>
-                  <div className="rounded-xl border-2 border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-950/20 p-4 space-y-3">
+                  <div className="rounded-xl border-2 border-border/50 bg-card p-4 space-y-3">
                     <div className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <CreditCard className="w-4 h-4 text-primary flex-shrink-0" />
                       <div>
                         <p className="text-sm font-semibold">এই চ্যাপ্টার কিনুন — ৳{track.chapterTakaPrice}</p>
-                        <p className="text-[11px] text-muted-foreground">সরাসরি পেমেন্ট। কয়েন লাগবে না।</p>
+                        <p className="text-[11px] text-muted-foreground">পেমেন্ট পদ্ধতি বেছে নিন</p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="flex-1 h-10 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                        disabled={payingTaka}
-                        onClick={() => handleTakaPayment("sslcommerz")}
-                      >
-                        {payingTaka ? (
-                          <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" />
-                        ) : (
-                          <CreditCard className="w-3.5 h-3.5" />
-                        )}
-                        কার্ড / নেট ব্যাংকিং
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="flex-1 h-10 gap-1.5 text-xs bg-[#E2136E] hover:bg-[#c4105d] text-white border-0"
-                        disabled={payingTaka}
-                        onClick={() => handleTakaPayment("bkash")}
-                      >
-                        {payingTaka ? (
-                          <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" />
-                        ) : (
-                          <span className="font-extrabold text-sm">b</span>
-                        )}
-                        কাশ
-                      </Button>
+
+                    {/* Gateway selection list */}
+                    <div className="space-y-2">
+                      {activeGateways.map(gw => {
+                        const meta = GATEWAY_META[gw.gateway_key] ?? { label: gw.label, color: "text-foreground", bg: "bg-secondary/30", border: "border-border" };
+                        const isSelected = selectedGateway === gw.gateway_key;
+                        return (
+                          <button
+                            key={gw.gateway_key}
+                            onClick={() => setSelectedGateway(gw.gateway_key)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                              isSelected
+                                ? `${meta.border} ${meta.bg}`
+                                : "border-border/40 hover:border-border"
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${meta.bg}`}>
+                              {gw.gateway_key === "bkash" ? (
+                                <span className={`font-extrabold ${meta.color}`}>b</span>
+                              ) : gw.gateway_key === "nagad" ? (
+                                <span className={`font-extrabold text-xs ${meta.color}`}>N</span>
+                              ) : (
+                                <CreditCard className={`w-4 h-4 ${meta.color}`} />
+                              )}
+                            </div>
+                            <span className={`text-sm font-medium flex-1 ${isSelected ? meta.color : ""}`}>
+                              {meta.label || gw.label}
+                            </span>
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                              isSelected ? "border-primary bg-primary" : "border-muted-foreground/30"
+                            }`}>
+                              {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
+
+                    <Button
+                      className="w-full h-11 gap-2 font-semibold"
+                      disabled={payingTaka || !selectedGateway}
+                      onClick={() => handleTakaPayment(selectedGateway as "sslcommerz" | "bkash")}
+                    >
+                      {payingTaka ? (
+                        <>
+                          <div className="animate-spin h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full" />
+                          পেমেন্ট প্রক্রিয়া হচ্ছে...
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="w-4 h-4" />
+                          ৳{track.chapterTakaPrice} পেমেন্ট করুন
+                        </>
+                      )}
+                    </Button>
                   </div>
                 </>
               )}

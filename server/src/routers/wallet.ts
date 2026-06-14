@@ -166,8 +166,10 @@ export const walletRouter = router({
         const sslGateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
         if (!sslGateway || !sslGateway.is_enabled) throw new TRPCError({ code: "BAD_REQUEST", message: "SSLCommerz is not configured" });
         const cfg = sslGateway.config as Record<string, unknown>;
-        const storeId = cfg.store_id as string;
-        const storePass = cfg.store_pass as string;
+        const cfgStr2 = (k: string) => { const v = cfg[k]; return typeof v === "string" && (v as string).trim() ? (v as string).trim() : undefined; };
+        const storeId = cfgStr2("store_id") || process.env.SSLCOMMERZ_STORE_ID;
+        const storePass = cfgStr2("store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+        if (!storeId || !storePass) throw new TRPCError({ code: "BAD_REQUEST", message: "SSLCommerz credentials missing. Contact admin." });
         const mode = sslGateway.mode === "live" ? "live" : "sandbox";
         const payload = new URLSearchParams({
           store_id: storeId, store_passwd: storePass,
@@ -509,6 +511,58 @@ export const walletRouter = router({
       ...u,
       book: u.book ? { ...u.book, cover_url: resolveFileUrl(u.book.cover_url) } : null,
     }));
+  }),
+
+  activePaymentGateways: publicProcedure.query(() =>
+    prisma.paymentGateway.findMany({
+      where: { is_enabled: true, gateway_key: { notIn: ["cod", "demo", "stripe", "paypal", "razorpay"] } },
+      select: { id: true, gateway_key: true, label: true, mode: true, sort_priority: true },
+      orderBy: { sort_priority: "asc" },
+    })
+  ),
+
+  userPaymentHistory: protectedProcedure.query(async ({ ctx }) => {
+    const [chapterPurchases, coinPurchases] = await Promise.all([
+      prisma.chapterPurchase.findMany({
+        where: { user_id: ctx.userId },
+        include: { track: { select: { title: true, track_number: true } } },
+        orderBy: { created_at: "desc" },
+        take: 50,
+      }),
+      prisma.payment.findMany({
+        where: { user_id: ctx.userId },
+        orderBy: { created_at: "desc" },
+        take: 50,
+      }),
+    ]);
+
+    const chapterItems = chapterPurchases.map(p => ({
+      id: p.id,
+      type: "chapter" as const,
+      title: p.track?.title ?? `Chapter ${p.track?.track_number ?? ""}`,
+      amount: p.price,
+      currency: "BDT",
+      method: p.payment_method,
+      status: p.payment_status,
+      transaction_id: p.transaction_id,
+      created_at: p.created_at.toISOString(),
+    }));
+
+    const coinItems = coinPurchases.map(p => ({
+      id: p.id,
+      type: (p.subscription_id ? "subscription" : "order") as "subscription" | "order",
+      title: p.subscription_id ? "সাবস্ক্রিপশন" : "অর্ডার পেমেন্ট",
+      amount: p.amount,
+      currency: "BDT",
+      method: p.method,
+      status: p.status,
+      transaction_id: p.transaction_id,
+      created_at: p.created_at.toISOString(),
+    }));
+
+    return [...chapterItems, ...coinItems].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   }),
 
   hasSubscription: protectedProcedure

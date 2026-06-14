@@ -11,10 +11,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Coins, TrendingUp, TrendingDown, Wallet, Gift,
-  BookOpen, CheckCircle
+  BookOpen, CheckCircle, CreditCard, Clock, XCircle,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toMediaUrl } from "@/lib/mediaUrl";
+
+const GATEWAY_LABELS: Record<string, string> = {
+  sslcommerz: "কার্ড / নেট ব্যাংকিং",
+  bkash: "bKash",
+  nagad: "Nagad",
+  cod: "ক্যাশ অন ডেলিভারি",
+};
+
+const PAYMENT_TYPE_LABELS: Record<string, string> = {
+  chapter: "চ্যাপ্টার আনলক",
+  subscription: "সাবস্ক্রিপশন",
+  order: "অর্ডার",
+};
 
 export default function WalletPage() {
   const { user } = useAuth();
@@ -23,6 +36,7 @@ export default function WalletPage() {
 
   const { data: unlocks = [] } = trpc.wallet.userUnlocksWithBooks.useQuery(undefined, { enabled: !!user });
   const { data: settings } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user });
+  const { data: paymentHistory = [] } = trpc.wallet.userPaymentHistory.useQuery(undefined, { enabled: !!user });
   const conversionRatio = settings?.conversionRatio ?? 1;
 
   if (!user) return null;
@@ -101,7 +115,8 @@ export default function WalletPage() {
         <Tabs defaultValue="transactions">
           <TabsList className="w-full">
             <TabsTrigger value="transactions" className="flex-1">লেনদেন</TabsTrigger>
-            <TabsTrigger value="unlocks" className="flex-1">আনলক করা কন্টেন্ট</TabsTrigger>
+            <TabsTrigger value="payments" className="flex-1">পেমেন্ট ইতিহাস</TabsTrigger>
+            <TabsTrigger value="unlocks" className="flex-1">আনলক</TabsTrigger>
           </TabsList>
 
           <TabsContent value="transactions" className="space-y-4 mt-4">
@@ -156,6 +171,64 @@ export default function WalletPage() {
                   </Card>
                 ))}
               </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="payments" className="space-y-2 mt-4">
+            {paymentHistory.length === 0 ? (
+              <Card className="border-border/30">
+                <CardContent className="p-8 text-center text-muted-foreground">
+                  কোনো পেমেন্ট রেকর্ড নেই
+                </CardContent>
+              </Card>
+            ) : (
+              paymentHistory.map((p: any) => {
+                const statusColor = p.status === "paid"
+                  ? "bg-emerald-500/20 text-emerald-400"
+                  : p.status === "pending"
+                  ? "bg-amber-500/20 text-amber-400"
+                  : "bg-red-500/20 text-red-400";
+                const StatusIcon = p.status === "paid" ? CheckCircle : p.status === "pending" ? Clock : XCircle;
+                return (
+                  <Card key={p.id} className="border-border/30">
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        p.status === "paid" ? "bg-emerald-500/10" : p.status === "pending" ? "bg-amber-500/10" : "bg-red-500/10"
+                      }`}>
+                        <CreditCard className={`w-5 h-5 ${
+                          p.status === "paid" ? "text-emerald-400" : p.status === "pending" ? "text-amber-400" : "text-red-400"
+                        }`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{p.title}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <Badge className={`text-[10px] ${statusColor}`}>
+                            <StatusIcon className="w-3 h-3 mr-1" />
+                            {p.status === "paid" ? "সফল" : p.status === "pending" ? "অপেক্ষমাণ" : "বাতিল"}
+                          </Badge>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {PAYMENT_TYPE_LABELS[p.type] || p.type}
+                          </Badge>
+                          <span className="text-[11px] text-muted-foreground">
+                            {GATEWAY_LABELS[p.method] || p.method}
+                          </span>
+                        </div>
+                        {p.transaction_id && (
+                          <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate">
+                            Txn: {p.transaction_id}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-base font-bold text-primary">৳{p.amount}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {new Date(p.created_at).toLocaleDateString("bn-BD")}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
           </TabsContent>
 

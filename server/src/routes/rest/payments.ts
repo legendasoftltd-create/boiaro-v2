@@ -165,10 +165,12 @@ async function finalizeChapterPurchase(params: { purchaseId: string; transaction
   const purchase = await prisma.chapterPurchase.findUnique({ where: { id: params.purchaseId } });
   if (!purchase || purchase.payment_status === "paid") return false;
 
+  const txnId = params.transactionId || purchase.transaction_id;
+
   await prisma.$transaction(async (tx: any) => {
     await tx.chapterPurchase.update({
       where: { id: purchase.id },
-      data: { payment_status: "paid", transaction_id: params.transactionId || purchase.transaction_id },
+      data: { payment_status: "paid", transaction_id: txnId },
     });
     await tx.contentUnlock.upsert({
       where: {
@@ -186,6 +188,18 @@ async function finalizeChapterPurchase(params: { purchaseId: string; transaction
         unlock_method: "purchase",
       },
       update: { status: "active" },
+    });
+    // Record in unified payments table for history
+    await tx.payment.create({
+      data: {
+        user_id: purchase.user_id,
+        amount: purchase.price,
+        method: purchase.payment_method,
+        status: "paid",
+        transaction_id: txnId || `CHPT-${purchase.id}`,
+        order_id: null,
+        subscription_id: null,
+      },
     });
   });
   return true;
