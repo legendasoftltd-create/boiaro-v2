@@ -29,6 +29,8 @@ import { ebookPreviewRouter } from "./ebook-preview.js";
 import { presenceRestRouter } from "./presence.js";
 import { chaptersRestRouter } from "./chapters.js";
 import { adsRestRouter } from "./ads.js";
+import { gamificationRestRouter } from "./gamification.js";
+import { referralRestRouter } from "./referral.js";
 
 export const restRouter = Router();
 
@@ -62,3 +64,5 @@ restRouter.use("/ebook-preview", ebookPreviewRouter);
 restRouter.use("/presence", presenceRestRouter);
 restRouter.use("/", chaptersRestRouter);
 restRouter.use("/ads", adsRestRouter);
+restRouter.use("/gamification", gamificationRestRouter);
+restRouter.use("/referral", referralRestRouter);

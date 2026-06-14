@@ -1,16 +1,18 @@
 {
   "info": {
     "name": "Boiaro Mobile API",
-    "description": "Complete REST API collection for the Boiaro mobile app — covers auth, chapters (listing, coin unlock, gateway payment), ad management, and wallet.",
-    "_postman_id": "boiaro-mobile-api-v1",
+    "description": "Complete REST API for the Boiaro mobile app — auth, chapters, ads, gamification, referral, and wallet.",
+    "_postman_id": "boiaro-mobile-api-v2",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl",  "value": "http://localhost:3001/api/v1", "type": "string" },
-    { "key": "token",    "value": "", "type": "string" },
-    { "key": "bookId",   "value": "", "type": "string" },
-    { "key": "trackId",  "value": "", "type": "string" },
-    { "key": "purchaseId", "value": "", "type": "string" }
+    { "key": "baseUrl",    "value": "http://localhost:3001/api/v1", "type": "string" },
+    { "key": "token",      "value": "", "type": "string" },
+    { "key": "bookId",     "value": "", "type": "string" },
+    { "key": "trackId",    "value": "", "type": "string" },
+    { "key": "purchaseId", "value": "", "type": "string" },
+    { "key": "bannerId",   "value": "", "type": "string" },
+    { "key": "referralCode", "value": "", "type": "string" }
   ],
   "auth": {
     "type": "bearer",
@@ -21,28 +23,25 @@
       "name": "🔐 Auth",
       "item": [
         {
-          "name": "Sign Up (with referral)",
-          "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.token) pm.collectionVariables.set('token', j.token);"], "type": "text/javascript" } }],
+          "name": "Sign Up (with referral code)",
+          "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.token) pm.collectionVariables.set('token', j.token);", "if (j.refresh_token) pm.collectionVariables.set('refreshToken', j.refresh_token);"], "type": "text/javascript" } }],
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"displayName\": \"Test User\",\n  \"referralCode\": \"ABCD1234\"\n}"
-            },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\",\n  \"display_name\": \"Test User\",\n  \"referral_code\": \"{{referralCode}}\"\n}" },
             "url": { "raw": "{{baseUrl}}/auth/signup", "host": ["{{baseUrl}}"], "path": ["auth", "signup"] }
-          }
+          },
+          "description": "Creates a new user account.\n\n- `referral_code` is optional — when provided and valid, both the new user and referrer receive coin bonuses.\n- Save the returned `token` for subsequent requests."
         },
         {
           "name": "Login",
           "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.token) pm.collectionVariables.set('token', j.token);"], "type": "text/javascript" } }],
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
-            },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}" },
             "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
           }
         },
@@ -50,21 +49,27 @@
           "name": "Refresh Token",
           "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.token) pm.collectionVariables.set('token', j.token);"], "type": "text/javascript" } }],
           "request": {
+            "auth": { "type": "noauth" },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"<your-refresh-token>\"\n}"
-            },
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"<paste-refresh-token-here>\"\n}" },
             "url": { "raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth", "refresh"] }
           }
         },
         {
-          "name": "Me (profile)",
+          "name": "Get My Profile",
           "request": {
             "method": "GET",
             "header": [],
             "url": { "raw": "{{baseUrl}}/me", "host": ["{{baseUrl}}"], "path": ["me"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] }
           }
         }
       ]
@@ -73,98 +78,64 @@
       "name": "📚 Chapter Unlock Flow",
       "item": [
         {
-          "name": "1. List Chapters (with unlock status)",
-          "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.chapters && j.chapters.length > 0) pm.collectionVariables.set('trackId', j.chapters[0].id);"], "type": "text/javascript" } }],
+          "name": "1. List Book Chapters (with unlock status)",
+          "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.chapters && j.chapters.length > 0) {", "  pm.collectionVariables.set('trackId', j.chapters[0].id);", "  pm.collectionVariables.set('bookId', j.book_id);", "}"], "type": "text/javascript" } }],
           "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/books/{{bookId}}/chapters",
-              "host": ["{{baseUrl}}"],
-              "path": ["books", "{{bookId}}", "chapters"]
-            }
+            "url": { "raw": "{{baseUrl}}/books/{{bookId}}/chapters", "host": ["{{baseUrl}}"], "path": ["books", "{{bookId}}", "chapters"] }
           },
-          "description": "Returns all audiobook chapters for a book with per-user unlock status.\n\nResponse fields:\n- `pricing_mode`: 'per_chapter' | 'whole_book'\n- `book_coin_price`: coin cost for full-book unlock\n- `chapters[].is_unlocked`: true if user has access\n- `chapters[].is_free`: true for preview chapters\n- `chapters[].chapter_price_coins`: cost to unlock individually"
+          "description": "Returns all audiobook chapters with per-user unlock status. Auth is optional — unauthenticated calls get `is_unlocked: false` for all non-preview chapters.\n\nKey response fields:\n- `pricing_mode`: `per_chapter` | `whole_book`\n- `chapters[].is_unlocked`: true if user can play this chapter\n- `chapters[].is_free`: true for preview chapters (no unlock needed)\n- `chapters[].chapter_price_coins`: coins needed to unlock individually"
         },
         {
           "name": "2a. Unlock Chapter with Coins",
           "request": {
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{}" },
-            "url": {
-              "raw": "{{baseUrl}}/chapters/{{trackId}}/unlock-coin",
-              "host": ["{{baseUrl}}"],
-              "path": ["chapters", "{{trackId}}", "unlock-coin"]
-            }
+            "url": { "raw": "{{baseUrl}}/chapters/{{trackId}}/unlock-coin", "host": ["{{baseUrl}}"], "path": ["chapters", "{{trackId}}", "unlock-coin"] }
           },
-          "description": "Deducts `chapter_price` coins from the user's wallet and creates a `content_unlock` record.\n\nResponse:\n- `success`: true\n- `coins_spent`: coins deducted\n- `new_balance`: updated wallet balance\n- `already_unlocked`: true if chapter was already accessible"
+          "description": "Deducts `chapter_price` coins from wallet and creates a permanent content unlock.\n\nResponse:\n- `success`: true\n- `coins_spent`: amount deducted\n- `new_balance`: updated coin balance\n- `already_unlocked`: true if already accessible (no charge)"
         },
         {
-          "name": "2b. Initiate Chapter Payment (SSLCommerz)",
+          "name": "2b. Initiate Chapter Payment — SSLCommerz",
           "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.purchase_id) pm.collectionVariables.set('purchaseId', j.purchase_id);"], "type": "text/javascript" } }],
           "request": {
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"book_id\": \"{{bookId}}\",\n  \"gateway\": \"sslcommerz\",\n  \"success_redirect\": \"myapp://payment/success\",\n  \"fail_redirect\": \"myapp://payment/failed\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/chapters/{{trackId}}/initiate-payment",
-              "host": ["{{baseUrl}}"],
-              "path": ["chapters", "{{trackId}}", "initiate-payment"]
-            }
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{bookId}}\",\n  \"gateway\": \"sslcommerz\",\n  \"success_redirect\": \"myapp://payment/success\",\n  \"fail_redirect\": \"myapp://payment/failed\"\n}" },
+            "url": { "raw": "{{baseUrl}}/chapters/{{trackId}}/initiate-payment", "host": ["{{baseUrl}}"], "path": ["chapters", "{{trackId}}", "initiate-payment"] }
           },
-          "description": "Starts an SSLCommerz payment session for a chapter.\n\n`success_redirect` and `fail_redirect` can be mobile deep links (e.g. `myapp://payment/success`). The mobile app should open `gateway_url` in a WebView/browser.\n\nResponse:\n- `purchase_id`: save this to poll status later\n- `gateway_url`: open in WebView\n- `amount`: BDT amount"
+          "description": "Starts an SSLCommerz payment for a chapter.\n\n`success_redirect` / `fail_redirect` can be mobile deep links (`myapp://...`). Open `gateway_url` in an in-app WebView. Save `purchase_id` to poll status later."
         },
         {
-          "name": "2c. Initiate Chapter Payment (bKash)",
+          "name": "2c. Initiate Chapter Payment — bKash",
           "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.purchase_id) pm.collectionVariables.set('purchaseId', j.purchase_id);"], "type": "text/javascript" } }],
           "request": {
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"book_id\": \"{{bookId}}\",\n  \"gateway\": \"bkash\",\n  \"success_redirect\": \"myapp://payment/success\",\n  \"fail_redirect\": \"myapp://payment/failed\"\n}"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/chapters/{{trackId}}/initiate-payment",
-              "host": ["{{baseUrl}}"],
-              "path": ["chapters", "{{trackId}}", "initiate-payment"]
-            }
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{bookId}}\",\n  \"gateway\": \"bkash\",\n  \"success_redirect\": \"myapp://payment/success\",\n  \"fail_redirect\": \"myapp://payment/failed\"\n}" },
+            "url": { "raw": "{{baseUrl}}/chapters/{{trackId}}/initiate-payment", "host": ["{{baseUrl}}"], "path": ["chapters", "{{trackId}}", "initiate-payment"] }
           }
         },
         {
           "name": "3. Poll Payment Status",
           "request": {
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/chapters/payment-status/{{purchaseId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["chapters", "payment-status", "{{purchaseId}}"]
-            }
+            "url": { "raw": "{{baseUrl}}/chapters/payment-status/{{purchaseId}}", "host": ["{{baseUrl}}"], "path": ["chapters", "payment-status", "{{purchaseId}}"] }
           },
-          "description": "Poll this after the user returns from the payment gateway WebView.\n\nResponse:\n- `status`: 'pending' | 'completed' | 'failed'\n- `is_unlocked`: true when chapter access is granted\n\nPoll every 3–5 seconds until `is_unlocked` is true or `status` is 'failed'."
+          "description": "Poll after the user returns from the WebView. Check every 3–5 seconds.\n\nResponse:\n- `status`: `pending` | `completed` | `failed`\n- `is_unlocked`: true when the chapter is accessible — stop polling when this is true"
         },
         {
           "name": "4. Get My Unlocked Chapters",
           "request": {
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
             "method": "GET",
             "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/books/{{bookId}}/unlocked-chapters",
-              "host": ["{{baseUrl}}"],
-              "path": ["books", "{{bookId}}", "unlocked-chapters"]
-            }
+            "url": { "raw": "{{baseUrl}}/books/{{bookId}}/unlocked-chapters", "host": ["{{baseUrl}}"], "path": ["books", "{{bookId}}", "unlocked-chapters"] }
           },
-          "description": "Returns all chapters the authenticated user can play.\n\nResponse:\n- `full_book_unlocked`: true if the user bought the full audiobook\n- `unlocked_track_ids[]`: list of track IDs the user can stream\n- `unlocked_chapters[]`: track details with unlock timestamps"
+          "description": "Returns all chapters the user can play.\n\n- `full_book_unlocked: true` → user bought the entire audiobook, all chapters are accessible\n- `unlocked_track_ids[]` → individual chapter IDs the user has unlocked\n- `unlocked_chapters[]` → details + unlock timestamps"
         }
       ]
     },
@@ -179,7 +150,7 @@
             "header": [],
             "url": { "raw": "{{baseUrl}}/ads/settings", "host": ["{{baseUrl}}"], "path": ["ads", "settings"] }
           },
-          "description": "Public. Returns global ad system configuration.\n\nKey fields:\n- `system_enabled`: whether ads are active at all\n- `provider_type`: 'adsense' | 'none'\n- `rewarded_coins`: coins per rewarded ad view\n- `max_per_day`: daily rewarded ad limit per user\n- `cooldown_minutes`: wait time between rewarded ads"
+          "description": "Public. Returns the global ad system configuration from platform_settings.\n\nKey fields:\n- `system_enabled`: kill-switch for the whole ad system\n- `provider_type`: `adsense` | `none`\n- `rewarded_coins`: coins awarded per rewarded ad\n- `max_per_day`: how many rewarded ads a user can watch per day\n- `cooldown_minutes`: required wait between rewarded ads"
         },
         {
           "name": "Get Active Banners",
@@ -192,46 +163,41 @@
               "host": ["{{baseUrl}}"],
               "path": ["ads", "banners"],
               "query": [
-                { "key": "placement", "value": "homepage_top", "description": "Filter by placement key (optional)" },
-                { "key": "device",    "value": "mobile",        "description": "Filter by device: mobile | tablet | desktop | all (optional)" }
+                { "key": "placement", "value": "homepage_top", "description": "Filter by placement key — omit for all" },
+                { "key": "device",    "value": "mobile",        "description": "mobile | tablet | desktop | all — omit for all" }
               ]
             }
           },
-          "description": "Public. Returns active image banners with their image URLs, destination links, and impression/click counts.\n\nOmit query params to get all active banners."
+          "description": "Returns active image banners within their validity window. Includes `image_url` (absolute), `destination_url`, and impression/click counts.\n\nCommon placement keys: `homepage_top`, `book_detail_middle`, `book_detail_bottom`, `books_listing_top`, `gamification_page`, `dashboard_middle`"
         },
         {
-          "name": "Get Ad Placements",
+          "name": "Get Ad Placement Slots",
           "request": {
             "auth": { "type": "noauth" },
             "method": "GET",
             "header": [],
             "url": { "raw": "{{baseUrl}}/ads/placements", "host": ["{{baseUrl}}"], "path": ["ads", "placements"] }
           },
-          "description": "Public. Returns all enabled ad placement slots (e.g. homepage_top, book_detail_middle, etc.)."
+          "description": "Returns all enabled ad placement slots — use these `placement_key` values when fetching banners or claiming rewarded ad rewards."
         },
         {
           "name": "Get Rewarded Ad Status",
           "request": {
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
             "method": "GET",
             "header": [],
             "url": { "raw": "{{baseUrl}}/ads/rewarded/status", "host": ["{{baseUrl}}"], "path": ["ads", "rewarded", "status"] }
           },
-          "description": "Auth required. Check before showing the Watch Ad button.\n\nResponse:\n- `can_watch`: true if the user may watch an ad right now\n- `remaining`: how many more ads they can watch today\n- `cooldown_seconds_left`: seconds to wait (0 = ready)\n- `today_count` / `daily_limit`"
+          "description": "Check before showing the Watch Ad button.\n\nResponse:\n- `can_watch`: true if the user may watch an ad right now\n- `remaining`: ads left today\n- `cooldown_seconds_left`: seconds remaining in cooldown (0 = ready)\n- `coin_per_ad`: reward per view\n- `today_count` / `daily_limit`"
         },
         {
           "name": "Claim Rewarded Ad Reward",
           "request": {
-            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }] },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"placement\": \"mobile_player\",\n  \"ad_event_id\": \"ga_rewarded_abc123\"\n}"
-            },
+            "body": { "mode": "raw", "raw": "{\n  \"placement\": \"mobile_player\",\n  \"ad_event_id\": \"admob_event_abc123\"\n}" },
             "url": { "raw": "{{baseUrl}}/ads/rewarded/claim", "host": ["{{baseUrl}}"], "path": ["ads", "rewarded", "claim"] }
           },
-          "description": "Auth required. Call this AFTER the ad has been fully watched.\n\nResponse:\n- `success`: true\n- `reward`: coins awarded\n- `new_balance`: updated wallet balance\n- `remaining`: ads left today\n\nError codes:\n- 400 `daily_limit_reached`\n- 429 `cooldown` (too soon after last ad)"
+          "description": "Call AFTER the ad has been fully watched.\n\n`ad_event_id` is optional — pass the ad network's event/impression ID for analytics.\n\nResponse:\n- `success`: true\n- `reward`: coins awarded\n- `new_balance`: updated wallet balance\n- `remaining`: ads the user can still watch today\n\nError status codes:\n- `400` → `daily_limit_reached`\n- `429` → `cooldown` (includes `cooldown_seconds_left`)"
         },
         {
           "name": "Record Banner Impression",
@@ -239,13 +205,10 @@
             "auth": { "type": "noauth" },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"banner_id\": \"<banner-uuid>\"\n}"
-            },
+            "body": { "mode": "raw", "raw": "{\n  \"banner_id\": \"{{bannerId}}\"\n}" },
             "url": { "raw": "{{baseUrl}}/ads/impression", "host": ["{{baseUrl}}"], "path": ["ads", "impression"] }
           },
-          "description": "Fire when a banner enters the viewport. Auth is optional. Increments the banner's impression counter."
+          "description": "Fire when a banner enters the viewport. Auth is optional. Increments the banner's impression counter silently."
         },
         {
           "name": "Record Banner Click",
@@ -253,13 +216,185 @@
             "auth": { "type": "noauth" },
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"banner_id\": \"<banner-uuid>\"\n}"
-            },
+            "body": { "mode": "raw", "raw": "{\n  \"banner_id\": \"{{bannerId}}\"\n}" },
             "url": { "raw": "{{baseUrl}}/ads/click", "host": ["{{baseUrl}}"], "path": ["ads", "click"] }
           },
           "description": "Fire when the user taps a banner. Auth is optional. Increments the click counter."
+        }
+      ]
+    },
+    {
+      "name": "🎮 Gamification",
+      "item": [
+        {
+          "name": "Get Full Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/summary", "host": ["{{baseUrl}}"], "path": ["gamification", "summary"] }
+          },
+          "description": "One-shot endpoint: returns streak, total points, badge list, and wallet balance in a single call. Use this for the gamification page initial load."
+        },
+        {
+          "name": "Get Streak",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/streak", "host": ["{{baseUrl}}"], "path": ["gamification", "streak"] }
+          }
+        },
+        {
+          "name": "Update Streak (on app open)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/streak/update", "host": ["{{baseUrl}}"], "path": ["gamification", "streak", "update"] }
+          },
+          "description": "Call once per app open/login. Automatically increments the streak if the user was active yesterday, resets to 1 if they missed a day, and is a no-op if already updated today.\n\nResponse: the updated `UserStreak` record."
+        },
+        {
+          "name": "Get Points + History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/gamification/points?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["gamification", "points"],
+              "query": [{ "key": "limit", "value": "20" }]
+            }
+          }
+        },
+        {
+          "name": "Add Points",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"points\": 10,\n  \"event_type\": \"chapter_listen\",\n  \"reference_id\": \"<book-id>\"\n}" },
+            "url": { "raw": "{{baseUrl}}/gamification/points", "host": ["{{baseUrl}}"], "path": ["gamification", "points"] }
+          },
+          "description": "Award gamification points for an event.\n\nCommon `event_type` values: `chapter_listen`, `book_finish`, `review_written`, `daily_login`, `referral_complete`"
+        },
+        {
+          "name": "Get Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/leaderboard", "host": ["{{baseUrl}}"], "path": ["gamification", "leaderboard"] }
+          },
+          "description": "Returns the top 20 users by total gamification points with their rank, display name, and avatar."
+        },
+        {
+          "name": "Get My Badges",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/badges", "host": ["{{baseUrl}}"], "path": ["gamification", "badges"] }
+          },
+          "description": "Returns all badges the current user has earned, ordered by earn date descending."
+        },
+        {
+          "name": "Get Badge Definitions (all badges that exist)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/badges/definitions", "host": ["{{baseUrl}}"], "path": ["gamification", "badges", "definitions"] }
+          },
+          "description": "Returns all active badge definitions — use this to show a 'badge gallery' with locked/unlocked states.\n\nKey fields per badge:\n- `condition_type`: `unlock_count` | `streak` | `ad_count` | `daily_login_count` | `referral_count` | `first_unlock` | `first_referral`\n- `condition_value`: threshold the user must reach\n- `coin_reward`: coins awarded when the badge is earned"
+        },
+        {
+          "name": "Check & Auto-Award Badges",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/badges/check", "host": ["{{baseUrl}}"], "path": ["gamification", "badges", "check"] }
+          },
+          "description": "Evaluates every active badge condition against the current user's stats and awards any that are newly met. Also credits coin rewards for newly earned badges.\n\nCall this after key events: chapter unlock, referral completion, streak milestone, ad viewing session.\n\nResponse:\n- `awarded[]`: array of `{ key, title, coin_reward }` for newly earned badges\n- `awarded_count`: number of new badges earned (0 = nothing new)"
+        },
+        {
+          "name": "Claim Daily Login Reward",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/daily-reward", "host": ["{{baseUrl}}"], "path": ["gamification", "daily-reward"] }
+          },
+          "description": "Claims the daily coin reward. Can only be called once per calendar day.\n\nReward amount is read from the `coin_daily_login_reward` platform setting (admin-configurable).\n\nResponse:\n- `success`: true\n- `reward`: coins awarded\n- `new_balance`: updated wallet balance\n\nError: 400 `already_claimed` if already done today."
+        },
+        {
+          "name": "Get My Goals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/gamification/goals", "host": ["{{baseUrl}}"], "path": ["gamification", "goals"] }
+          }
+        },
+        {
+          "name": "Add Goal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"goal_type\": \"reading\",\n  \"target_value\": 30,\n  \"period\": \"daily\"\n}" },
+            "url": { "raw": "{{baseUrl}}/gamification/goals", "host": ["{{baseUrl}}"], "path": ["gamification", "goals"] }
+          },
+          "description": "Creates a new reading/listening goal.\n\n`goal_type`: `reading` | `listening` | `chapters` | any custom string\n`period`: `daily` | `weekly` | `monthly`\n`target_value`: the goal threshold (e.g. 30 minutes, 5 chapters)"
+        },
+        {
+          "name": "Log Activity",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"action\": \"play\",\n  \"activity_type\": \"audiobook\",\n  \"book_id\": \"{{bookId}}\",\n  \"format\": \"audiobook\",\n  \"page\": \"player\"\n}" },
+            "url": { "raw": "{{baseUrl}}/gamification/activity", "host": ["{{baseUrl}}"], "path": ["gamification", "activity"] }
+          },
+          "description": "Log a user action for analytics/activity tracking. All fields except `action` are optional.\n\nCommon `action` values: `play`, `pause`, `chapter_start`, `chapter_complete`, `book_open`, `search`"
+        },
+        {
+          "name": "Log Consumption Time",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{bookId}}\",\n  \"format\": \"audiobook\",\n  \"seconds\": 300\n}" },
+            "url": { "raw": "{{baseUrl}}/gamification/consumption-time", "host": ["{{baseUrl}}"], "path": ["gamification", "consumption-time"] }
+          },
+          "description": "Record how long a user spent reading/listening to a book. Send periodically during playback (e.g. every 60 seconds, or on pause/stop).\n\n`seconds`: time spent in this session — backend accumulates totals."
+        }
+      ]
+    },
+    {
+      "name": "🤝 Referral",
+      "item": [
+        {
+          "name": "Get Referral Settings (public)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/referral/settings", "host": ["{{baseUrl}}"], "path": ["referral", "settings"] }
+          },
+          "description": "Public. Returns referral program reward configuration.\n\nResponse:\n- `signup_reward_coins`: coins the referrer earns when someone signs up with their code\n- `referred_bonus_coins`: coins the new user earns for using a referral code"
+        },
+        {
+          "name": "Validate Referral Code (pre-signup check)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/referral/validate/{{referralCode}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["referral", "validate", "{{referralCode}}"]
+            }
+          },
+          "description": "Public. Check if a referral code is valid before the user submits the signup form.\n\nResponse:\n- `valid`: true/false\n- `referrer_name`: display name of the referrer (to show 'You were invited by X')"
+        },
+        {
+          "name": "Get My Referral Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/referral/info", "host": ["{{baseUrl}}"], "path": ["referral", "info"] }
+          },
+          "description": "Auth required. Returns the user's referral code and their referral history.\n\nResponse:\n- `referral_code`: the user's shareable code\n- `referred_by`: code of whoever referred them (null if none)\n- `total_referrals` / `completed_referrals` / `pending_referrals`\n- `total_earned`: total coins earned from referrals\n- `signup_reward_coins` / `referred_bonus_coins`: current platform rewards\n- `referrals[]`: history with status and timestamps"
         }
       ]
     },
@@ -275,14 +410,14 @@
           }
         },
         {
-          "name": "Get Coin Settings",
+          "name": "Get Coin Settings (public)",
           "request": {
             "auth": { "type": "noauth" },
             "method": "GET",
             "header": [],
             "url": { "raw": "{{baseUrl}}/wallet/coin-settings", "host": ["{{baseUrl}}"], "path": ["wallet", "coin-settings"] }
           },
-          "description": "Public. Returns conversion ratio, daily ad limit, cooldown, etc."
+          "description": "Public. Returns conversion ratio, daily ad limit, cooldown, and other coin system settings."
         },
         {
           "name": "Get Transaction History",
@@ -293,44 +428,38 @@
               "raw": "{{baseUrl}}/wallet/transactions?limit=20",
               "host": ["{{baseUrl}}"],
               "path": ["wallet", "transactions"],
-              "query": [{ "key": "limit", "value": "20" }]
+              "query": [{ "key": "limit", "value": "20", "description": "Max 100" }]
             }
           }
         },
         {
-          "name": "Claim Daily Login Reward",
+          "name": "Claim Daily Login Reward (wallet route)",
           "request": {
             "method": "POST",
             "header": [],
             "url": { "raw": "{{baseUrl}}/wallet/claim-daily", "host": ["{{baseUrl}}"], "path": ["wallet", "claim-daily"] }
           },
-          "description": "Can only be called once per calendar day. Reward amount comes from `coin_daily_login_reward` platform setting."
+          "description": "Alias for `/gamification/daily-reward` — prefer that one as it returns more context. Reward amount is read from `coin_daily_login_reward` platform setting."
         },
         {
-          "name": "Claim Ad Reward (legacy)",
+          "name": "Claim Ad Reward (legacy wallet route)",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"placement\": \"mobile_player\"\n}"
-            },
+            "body": { "mode": "raw", "raw": "{\n  \"placement\": \"mobile_player\"\n}" },
             "url": { "raw": "{{baseUrl}}/wallet/claim-ad", "host": ["{{baseUrl}}"], "path": ["wallet", "claim-ad"] }
           },
-          "description": "Legacy endpoint. Prefer `/ads/rewarded/claim` for new integrations — it supports cooldown checking and ad event tracking."
+          "description": "Legacy alias — prefer `/ads/rewarded/claim` which also supports cooldown checking and ad event ID logging."
         },
         {
           "name": "Unlock Full Book with Coins",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"book_id\": \"{{bookId}}\",\n  \"format\": \"audiobook\",\n  \"coin_cost\": 50\n}"
-            },
+            "body": { "mode": "raw", "raw": "{\n  \"book_id\": \"{{bookId}}\",\n  \"format\": \"audiobook\",\n  \"coin_cost\": 50\n}" },
             "url": { "raw": "{{baseUrl}}/wallet/unlock", "host": ["{{baseUrl}}"], "path": ["wallet", "unlock"] }
           },
-          "description": "Unlock an entire book format (e.g. `audiobook`) for the user. For per-chapter unlocks, use `/chapters/:trackId/unlock-coin` instead."
+          "description": "Unlock an entire book format (e.g. `audiobook`, `ebook`) for a flat coin cost. For per-chapter unlocks, use `/chapters/:trackId/unlock-coin` instead."
         }
       ]
     },
@@ -379,7 +508,24 @@
               "path": ["access", "{{bookId}}", "audiobook"]
             }
           },
-          "description": "Returns whether the current user can access a specific book format."
+          "description": "Returns whether the current user has access to a specific book format. More lightweight than fetching full chapter list."
+        },
+        {
+          "name": "Search Books",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/search?q=হুমায়ূন&type=book",
+              "host": ["{{baseUrl}}"],
+              "path": ["search"],
+              "query": [
+                { "key": "q",    "value": "হুমায়ূন" },
+                { "key": "type", "value": "book", "description": "book | author | narrator" }
+              ]
+            }
+          }
         }
       ]
     }
