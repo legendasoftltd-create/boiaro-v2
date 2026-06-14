@@ -27,7 +27,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     loadBook, book: activeBook, isPlaying, togglePlay, tracks, currentTrackIndex,
     goToTrack, openFullPlayer, progressPercentage, isLoading, error, currentTime, duration, formatTime,
     setPreviewLimitSeconds, setHasFullAccess, isPreviewMode, showPaywall, setShowPaywall,
-    setAccessLoading, seekTo, pause,
+    setAccessLoading, seekTo, pause, setLockedTrackIds,
   } = useAudioPlayer()
 
   const { user } = useAuth()
@@ -103,13 +103,25 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   }, [access.hasFullAccess, access.previewLimitSeconds, access.loading, setHasFullAccess, setPreviewLimitSeconds, setAccessLoading])
 
 
-  // ── Guard: intercept auto-advance into paid locked chapters ──────────────
-  // The audio player's auto-advance (track ended) and nextTrack() both
-  // bypass handleChapterClick. This effect fires whenever the active track
-  // index changes and pauses + shows the lock modal if the new track is paid.
+  // ── Sync locked track IDs into AudioPlayerContext so auto-advance is blocked at source ──
+  useEffect(() => {
+    if (!hasChapterPricing || hasFullUnlock) {
+      setLockedTrackIds(new Set())
+      return
+    }
+    const locked = new Set(
+      audioTracks
+        .filter(t => !t.isPreview && Number(t.chapterPrice) > 0 && !unlockedChapterIds.has(t.id))
+        .map(t => t.id)
+    )
+    setLockedTrackIds(locked)
+  }, [audioTracks, hasChapterPricing, hasFullUnlock, unlockedChapterIds, setLockedTrackIds])
+
+  // ── Guard: show lock modal when currentTrackIndex lands on a locked chapter ──
+  // This fires when the player advances to a locked track (auto-advance is already
+  // blocked at source; this shows the modal so the user knows how to unlock it).
   useEffect(() => {
     if (!isThisBookActive || hasFullUnlock || !hasChapterPricing) return
-    // Prefer audioTracks (has chapterPrice) over context tracks
     const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
     const track = sourceTracks[currentTrackIndex]
     if (!track) return

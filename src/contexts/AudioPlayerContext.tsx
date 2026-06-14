@@ -69,6 +69,8 @@ interface AudioPlayerContextType extends PlayerState {
   /** Whether the access check is still in progress — preview enforcement is paused while true */
   accessLoading: boolean
   setAccessLoading: (val: boolean) => void
+  /** Register IDs of tracks that must not auto-play without explicit unlock */
+  setLockedTrackIds: (ids: Set<string>) => void
 }
 
 const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(undefined)
@@ -87,6 +89,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const pendingSeekRef = useRef<number | null>(null)
   // Track whether play was triggered by user gesture
   const userGesturePlayRef = useRef(false)
+  // Set of track IDs that require unlock before playing — updated by AudiobookTab
+  const lockedTrackIdsRef = useRef<Set<string>>(new Set())
 
   // Preview/paywall state
   const [previewLimitSeconds, setPreviewLimitSeconds] = useState(300)
@@ -286,17 +290,23 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     })
 
     audio.addEventListener("ended", () => {
-      setState((prev) => {
-        if (prev.currentTrackIndex < prev.tracks.length - 1) {
-          // Move to next track — will be loaded via effect
-          return { ...prev, currentTrackIndex: prev.currentTrackIndex + 1, currentTime: 0, isPlaying: false }
-        }
-        return { ...prev, isPlaying: false }
-      })
-      // Auto-advance: load next track and play
       const prev = stateRef.current
-      if (prev.currentTrackIndex < prev.tracks.length - 1) {
-        setTimeout(() => loadTrackSource(prev.currentTrackIndex + 1, true), 50)
+      const nextIndex = prev.currentTrackIndex + 1
+      if (nextIndex >= prev.tracks.length) {
+        setState((p) => ({ ...p, isPlaying: false }))
+        return
+      }
+      const nextTrackId = prev.tracks[nextIndex]?.id
+      const nextIsLocked = nextTrackId ? lockedTrackIdsRef.current.has(nextTrackId) : false
+      setState((p) => ({
+        ...p,
+        currentTrackIndex: nextIndex,
+        currentTime: 0,
+        isPlaying: false,
+      }))
+      // Only auto-play the next track if it is not chapter-locked
+      if (!nextIsLocked) {
+        setTimeout(() => loadTrackSource(nextIndex, true), 50)
       }
     })
 
@@ -593,7 +603,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const nextTrack = useCallback(() => {
     setState((p) => {
       if (p.currentTrackIndex >= p.tracks.length - 1) return p
-      userGesturePlayRef.current = p.isPlaying
+      const nextId = p.tracks[p.currentTrackIndex + 1]?.id
+      const nextIsLocked = nextId ? lockedTrackIdsRef.current.has(nextId) : false
+      // Don't auto-play if the next track is chapter-locked
+      userGesturePlayRef.current = p.isPlaying && !nextIsLocked
       prevTrackKeyRef.current = null
       return { ...p, currentTrackIndex: p.currentTrackIndex + 1, currentTime: 0 }
     })
@@ -640,6 +653,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   const openFullPlayer = useCallback(() => setState((p) => ({ ...p, isFullPlayerOpen: true })), [])
   const closeFullPlayer = useCallback(() => setState((p) => ({ ...p, isFullPlayerOpen: false })), [])
+  const setLockedTrackIds = useCallback((ids: Set<string>) => { lockedTrackIdsRef.current = ids }, [])
 
   // Media Session API for lock screen / notification controls & background play
   useEffect(() => {
@@ -730,6 +744,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setShowPaywall,
         accessLoading,
         setAccessLoading,
+        setLockedTrackIds,
       }}
     >
       {children}
