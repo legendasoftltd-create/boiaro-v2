@@ -147,6 +147,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
           isActive: t.status === "active",
           isPreview,
           chapterPrice: isPreview ? undefined : (t.chapter_price != null ? Number(t.chapter_price) : undefined),
+          chapterTakaPrice: isPreview ? undefined : (t.chapter_taka_price != null ? Number(t.chapter_taka_price) : undefined),
         } as AudioTrack
       })
       .filter((t: AudioTrack | null): t is AudioTrack => Boolean((t?.audioUrl || "").trim()))

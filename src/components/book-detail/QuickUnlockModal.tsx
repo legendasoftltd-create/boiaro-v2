@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Tv, Coins, Sparkles, ShoppingCart, Lock, Play, Gift, Info, Headphones, Zap } from "lucide-react";
+import { Tv, Coins, Sparkles, ShoppingCart, Lock, Play, Gift, Info, Headphones, Zap, CreditCard } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { RewardedAdOverlay } from "@/components/RewardedAdOverlay";
@@ -17,7 +17,7 @@ function logEvent(_module: string, _event: string, _metadata: Record<string, unk
 interface QuickUnlockModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  track: { id: string; title: string; chapterPrice: number; duration?: string } | null;
+  track: { id: string; title: string; chapterPrice: number; chapterTakaPrice?: number; duration?: string } | null;
   bookId: string;
   audiobookPrice: number;
   fullUnlockCost: number;
@@ -58,6 +58,8 @@ export function QuickUnlockModal({
   const claimAdRewardMutation = trpc.gamification.claimAdReward.useMutation();
   const adjustCoinsMutation = trpc.wallet.adjustCoins.useMutation();
   const unlockContentMutation = trpc.wallet.unlockContent.useMutation();
+  const initiateChapterPaymentMutation = trpc.wallet.initiateChapterPayment.useMutation();
+  const [payingTaka, setPayingTaka] = useState(false);
   const utils = trpc.useUtils();
 
   useEffect(() => {
@@ -220,6 +222,20 @@ export function QuickUnlockModal({
     if (!track) return;
     await performCoinUnlock(track);
   }, [track, performCoinUnlock]);
+
+  const handleTakaPayment = useCallback(async (method: "sslcommerz" | "bkash") => {
+    if (!track || payingTaka) return;
+    setPayingTaka(true);
+    try {
+      const result = await initiateChapterPaymentMutation.mutateAsync({ trackId: track.id, bookId, paymentMethod: method });
+      if (result.gateway_url) {
+        window.location.href = result.gateway_url;
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "পেমেন্ট শুরু করা যায়নি");
+      setPayingTaka(false);
+    }
+  }, [track, bookId, payingTaka, initiateChapterPaymentMutation]);
 
   if (!track) return null;
 
@@ -478,6 +494,44 @@ export function QuickUnlockModal({
                     </Button>
                   </div>
                 </div>
+              )}
+
+              {/* Option: Pay via Taka */}
+              {track.chapterTakaPrice != null && track.chapterTakaPrice > 0 && (
+                <>
+                  <div className="flex items-center gap-3 py-0.5">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-[11px] text-muted-foreground">অথবা টাকায় পেমেন্ট</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <div className="rounded-xl border-2 border-emerald-500/30 bg-emerald-50/30 dark:bg-emerald-950/20 p-3 space-y-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CreditCard className="w-4 h-4 text-emerald-600" />
+                      <p className="text-sm font-semibold">এই চ্যাপ্টার কিনুন — ৳{track.chapterTakaPrice}</p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">একটি চ্যাপ্টারের জন্য সরাসরি পেমেন্ট। কয়েন লাগবে না।</p>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={payingTaka}
+                        onClick={() => handleTakaPayment("sslcommerz")}
+                      >
+                        {payingTaka ? <div className="animate-spin h-3 w-3 border-2 border-white border-t-transparent rounded-full" /> : <CreditCard className="w-3 h-3" />}
+                        কার্ড / নেট ব্যাংকিং
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 gap-1.5 text-xs border-pink-500/40 text-pink-600 hover:bg-pink-50"
+                        disabled={payingTaka}
+                        onClick={() => handleTakaPayment("bkash")}
+                      >
+                        <span className="font-bold">b</span>কাশ
+                      </Button>
+                    </div>
+                  </div>
+                </>
               )}
 
               {/* Cash purchase */}

@@ -161,6 +161,36 @@ async function finalizeCoinPurchase(params: { purchaseId: string; transactionId?
   return true;
 }
 
+async function finalizeChapterPurchase(params: { purchaseId: string; transactionId?: string }) {
+  const purchase = await prisma.chapterPurchase.findUnique({ where: { id: params.purchaseId } });
+  if (!purchase || purchase.payment_status === "paid") return false;
+
+  await prisma.$transaction(async (tx: any) => {
+    await tx.chapterPurchase.update({
+      where: { id: purchase.id },
+      data: { payment_status: "paid", transaction_id: params.transactionId || purchase.transaction_id },
+    });
+    await tx.contentUnlock.upsert({
+      where: {
+        user_id_book_id_format: {
+          user_id: purchase.user_id,
+          book_id: purchase.book_id,
+          format: `audiobook_chapter_${purchase.track_id}`,
+        },
+      },
+      create: {
+        user_id: purchase.user_id,
+        book_id: purchase.book_id,
+        format: `audiobook_chapter_${purchase.track_id}`,
+        status: "active",
+        unlock_method: "purchase",
+      },
+      update: { status: "active" },
+    });
+  });
+  return true;
+}
+
 async function finalizeSubscriptionPayment(params: { subscriptionId: string; paymentMethod: string; transactionId?: string }) {
   const sub = await prisma.userSubscription.findUnique({
     where: { id: params.subscriptionId },
@@ -407,6 +437,12 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
       // parts: ["COIN", uuid-p1, uuid-p2, uuid-p3, uuid-p4, uuid-p5, timestamp]
       coinPurchaseId = parts.slice(1, 6).join("-");
     }
+    // Detect chapter purchase: tran_id format is CHPT-{purchaseId}-{timestamp}
+    let chapterPurchaseId: string | undefined;
+    if (tranId?.startsWith("CHPT-")) {
+      const parts = tranId.split("-");
+      chapterPurchaseId = parts.slice(1, 6).join("-");
+    }
     const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
     const gatewayConfig = asObject(gateway?.config);
     const storeId = getString(gatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
@@ -451,6 +487,8 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
         await finalizeSubscriptionPayment({ subscriptionId, paymentMethod: "sslcommerz", transactionId: tranId });
       } else if (coinPurchaseId) {
         await finalizeCoinPurchase({ purchaseId: coinPurchaseId, transactionId: tranId });
+      } else if (chapterPurchaseId) {
+        await finalizeChapterPurchase({ purchaseId: chapterPurchaseId, transactionId: tranId });
       }
     } else if (status !== "success") {
       if (orderId) {
@@ -472,11 +510,16 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
           where: { id: coinPurchaseId },
           data: { payment_status: status === "cancelled" ? "cancelled" : "failed" },
         }).catch(() => {});
+      } else if (chapterPurchaseId) {
+        await prisma.chapterPurchase.update({
+          where: { id: chapterPurchaseId },
+          data: { payment_status: status === "cancelled" ? "cancelled" : "failed" },
+        }).catch(() => {});
       }
     }
 
     const separator = redirect.includes("?") ? "&" : "?";
-    const finalUrl = coinPurchaseId
+    const finalUrl = coinPurchaseId || chapterPurchaseId
       ? redirect
       : subscriptionId
         ? `${redirect}${separator}subscription_id=${encodeURIComponent(subscriptionId)}`
@@ -530,6 +573,10 @@ paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
       const parts = tranId.split("-");
       const purchaseId = parts.slice(1, 6).join("-");
       await finalizeCoinPurchase({ purchaseId, transactionId: tranId });
+    } else if (tranId?.startsWith("CHPT-")) {
+      const parts = tranId.split("-");
+      const purchaseId = parts.slice(1, 6).join("-");
+      await finalizeChapterPurchase({ purchaseId, transactionId: tranId });
     }
   }
 
@@ -597,6 +644,67 @@ paymentsRestRouter.get("/bkash/callback", async (req, res) => {
   } catch (err) {
     console.error("bKash callback error:", err);
     res.redirect(`${frontendBase}/coin-store?status=failed`);
+  }
+});
+
+// ── bKash chapter payment callback ───────────────────────────────────────────
+paymentsRestRouter.get("/bkash/chapter-callback", async (req, res) => {
+  const frontendBase = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+  const { purchase_id, paymentID, status } = req.query as Record<string, string>;
+
+  const purchase = purchase_id ? await prisma.chapterPurchase.findUnique({ where: { id: purchase_id } }) : null;
+  const bookId = purchase?.book_id || "";
+  const redirectBase = `${frontendBase}/books/${bookId}`;
+
+  try {
+    if (!purchase_id || !paymentID || status !== "success" || !purchase) {
+      res.redirect(`${redirectBase}?chapter_status=${status === "cancel" ? "cancelled" : "failed"}`);
+      return;
+    }
+
+    const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: purchase.payment_method } });
+    const cfg = asObject(gateway?.config);
+    const cfgStr = (k: string) => getString(cfg, k);
+    const appKey = cfgStr("app_key") || process.env.BKASH_APP_KEY;
+    const appSecret = cfgStr("app_secret") || process.env.BKASH_APP_SECRET;
+    const username = cfgStr("username") || process.env.BKASH_USERNAME;
+    const password = cfgStr("password") || process.env.BKASH_PASSWORD;
+
+    if (!appKey || !appSecret || !username || !password) {
+      res.redirect(`${redirectBase}?chapter_status=failed`); return;
+    }
+
+    const mode = (gateway?.mode === "live" || (!gateway?.mode && process.env.BKASH_APP_KEY)) ? "live" : "test";
+    const baseUrl = mode === "live" ? "https://tokenized.pay.bka.sh/v1.2.0-beta" : "https://tokenized.sandbox.bka.sh/v1.2.0-beta";
+
+    const tokenRes = await fetch(`${baseUrl}/tokenized/checkout/token/grant`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", username, password },
+      body: JSON.stringify({ app_key: appKey, app_secret: appSecret }),
+    });
+    const tokenData = await tokenRes.json() as Record<string, unknown>;
+    const idToken = typeof tokenData.id_token === "string" ? tokenData.id_token : undefined;
+    if (!idToken) { res.redirect(`${redirectBase}?chapter_status=failed`); return; }
+
+    const execRes = await fetch(`${baseUrl}/tokenized/checkout/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", authorization: idToken, "x-app-key": appKey },
+      body: JSON.stringify({ paymentID }),
+    });
+    const execData = await execRes.json() as Record<string, unknown>;
+    const txnId = typeof execData.trxID === "string" ? execData.trxID : paymentID;
+    const execStatus = String(execData.statusCode || "").toLowerCase();
+
+    if (execStatus === "0000") {
+      await finalizeChapterPurchase({ purchaseId: purchase_id, transactionId: txnId });
+      res.redirect(`${redirectBase}?chapter_status=success`);
+    } else {
+      await prisma.chapterPurchase.update({ where: { id: purchase_id }, data: { payment_status: "failed" } }).catch(() => {});
+      res.redirect(`${redirectBase}?chapter_status=failed`);
+    }
+  } catch (err) {
+    console.error("bKash chapter callback error:", err);
+    res.redirect(`${redirectBase}?chapter_status=failed`);
   }
 });
 

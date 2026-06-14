@@ -192,22 +192,41 @@ model AdminUserRole {
 }
 
 model AudiobookTrack {
-  id             String   @id @default(uuid())
-  audio_url      String?
-  book_format_id String
-  chapter_price  Float?
-  created_at     DateTime @default(now())
-  created_by     String?
-  duration       String?
-  is_preview     Boolean? @default(false)
-  media_type     String   @default("audio")
-  status         String   @default("active")
-  title          String
-  track_number   Int
+  id                 String   @id @default(uuid())
+  audio_url          String?
+  book_format_id     String
+  chapter_price      Float?
+  chapter_taka_price Float?
+  created_at         DateTime @default(now())
+  created_by         String?
+  duration           String?
+  is_preview         Boolean? @default(false)
+  media_type         String   @default("audio")
+  status             String   @default("active")
+  title              String
+  track_number       Int
 
-  book_format BookFormat @relation(fields: [book_format_id], references: [id])
+  book_format      BookFormat       @relation(fields: [book_format_id], references: [id])
+  chapter_purchases ChapterPurchase[]
 
   @@map("audiobook_tracks")
+}
+
+model ChapterPurchase {
+  id             String   @id @default(uuid())
+  book_id        String
+  track_id       String
+  user_id        String
+  price          Float
+  payment_method String   @default("sslcommerz")
+  payment_status String   @default("pending")
+  transaction_id String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  track AudiobookTrack @relation(fields: [track_id], references: [id])
+
+  @@map("chapter_purchases")
 }
 
 model Author {

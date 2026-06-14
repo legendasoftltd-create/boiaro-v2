@@ -20,6 +20,7 @@ export interface AudioTrack {
   isActive?: boolean
   isPreview: boolean
   chapterPrice?: number
+  chapterTakaPrice?: number
 }
 
 interface PlayerState {

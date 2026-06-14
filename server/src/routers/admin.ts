@@ -467,6 +467,7 @@ export const adminRouter = router({
         status: z.string().optional(),
         media_type: z.string().optional(),
         chapter_price: z.number().nullable().optional(),
+        chapter_taka_price: z.number().nullable().optional(),
       })
     )
     .mutation(({ ctx, input }) =>
@@ -479,11 +480,11 @@ export const adminRouter = router({
     ),
 
   updateAudiobookTrackAdmin: adminProcedure
-    .input(z.object({ id: z.string(), title: z.string().min(1), chapter_price: z.number().nullable().optional() }))
+    .input(z.object({ id: z.string(), title: z.string().min(1), chapter_price: z.number().nullable().optional(), chapter_taka_price: z.number().nullable().optional() }))
     .mutation(({ input }) =>
       prisma.audiobookTrack.update({
         where: { id: input.id },
-        data: { title: input.title, chapter_price: input.chapter_price ?? null },
+        data: { title: input.title, chapter_price: input.chapter_price ?? null, chapter_taka_price: input.chapter_taka_price ?? null },
       })
     ),
 

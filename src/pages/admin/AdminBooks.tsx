@@ -54,6 +54,7 @@ export default function AdminBooks() {
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [editingTrackTitle, setEditingTrackTitle] = useState("");
   const [editingTrackPrice, setEditingTrackPrice] = useState("");
+  const [editingTrackTakaPrice, setEditingTrackTakaPrice] = useState("");
   const [fullAudiobookPrice, setFullAudiobookPrice] = useState<number | null>(null);
   const [formatForm, setFormatForm] = useState<any>({ format: "ebook" });
   const [recordPurchaseInLedger, setRecordPurchaseInLedger] = useState(false);
@@ -63,7 +64,7 @@ export default function AdminBooks() {
   const [uploadingTrack, setUploadingTrack] = useState(false);
   const [addingTrack, setAddingTrack] = useState(false);
   const [savingTrack, setSavingTrack] = useState(false);
-  const [trackForm, setTrackForm] = useState({ title: "", audio_url: "", duration: "", chapter_price: "" });
+  const [trackForm, setTrackForm] = useState({ title: "", audio_url: "", duration: "", chapter_price: "", chapter_taka_price: "" });
   const [uploadedMediaType, setUploadedMediaType] = useState<"audio" | "video">("audio");
   const coverInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -298,6 +299,7 @@ export default function AdminBooks() {
     setSavingTrack(true);
     const nextOrder = tracks.length + 1;
     const chapterPrice = trackForm.chapter_price ? Number(trackForm.chapter_price) : null;
+    const chapterTakaPrice = trackForm.chapter_taka_price ? Number(trackForm.chapter_taka_price) : null;
 
     try {
       await addTrackMutation.mutateAsync({
@@ -310,6 +312,7 @@ export default function AdminBooks() {
         status: "active",
         media_type: uploadedMediaType,
         chapter_price: chapterPrice,
+        chapter_taka_price: chapterTakaPrice,
       });
     } catch (error: any) {
       toast.error(error.message || "Failed to add track");
@@ -319,7 +322,7 @@ export default function AdminBooks() {
 
     setSavingTrack(false);
     setAddingTrack(false);
-    setTrackForm({ title: "", audio_url: "", duration: "", chapter_price: "" });
+    setTrackForm({ title: "", audio_url: "", duration: "", chapter_price: "", chapter_taka_price: "" });
     toast.success(`Chapter ${nextOrder} added`);
     loadTracks(selectedFormatId);
   };
@@ -343,13 +346,14 @@ export default function AdminBooks() {
     const trimmed = editingTrackTitle.trim();
     if (!trimmed) { toast.error("Title cannot be empty"); return; }
     const price = editingTrackPrice ? Number(editingTrackPrice) : null;
+    const takaPrice = editingTrackTakaPrice ? Number(editingTrackTakaPrice) : null;
     try {
-      await updateTrackMutation.mutateAsync({ id, title: trimmed, chapter_price: price });
+      await updateTrackMutation.mutateAsync({ id, title: trimmed, chapter_price: price, chapter_taka_price: takaPrice });
     } catch (error: any) {
       toast.error(error.message || "Failed to update track");
       return;
     }
-    setTracks(tracks.map(t => t.id === id ? { ...t, title: trimmed, chapter_price: price } : t));
+    setTracks(tracks.map(t => t.id === id ? { ...t, title: trimmed, chapter_price: price, chapter_taka_price: takaPrice } : t));
     setEditingTrackId(null);
     toast.success("Track updated");
   };
@@ -1607,10 +1611,18 @@ export default function AdminBooks() {
                             <Input
                               value={editingTrackPrice}
                               onChange={e => setEditingTrackPrice(e.target.value)}
-                              className="h-7 text-sm w-24"
-                              placeholder={String(DEFAULT_CHAPTER_PRICE)}
+                              className="h-7 text-sm w-20"
+                              placeholder="Coins"
                               type="number"
-                              min="1"
+                              min="0"
+                            />
+                            <Input
+                              value={editingTrackTakaPrice}
+                              onChange={e => setEditingTrackTakaPrice(e.target.value)}
+                              className="h-7 text-sm w-20"
+                              placeholder="৳ Taka"
+                              type="number"
+                              min="0"
                             />
                           </div>
                           <div className="flex gap-2">
@@ -1634,6 +1646,7 @@ export default function AdminBooks() {
                           setEditingTrackId(t.id);
                           setEditingTrackTitle(t.title);
                           setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : "");
+                          setEditingTrackTakaPrice((t as any).chapter_taka_price ? String((t as any).chapter_taka_price) : "");
                         }
                       }}
                       title="Click to edit price"
@@ -1671,7 +1684,7 @@ export default function AdminBooks() {
                             : <Download className="h-3 w-3" />}
                         </Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingTrackId(t.id); setEditingTrackTitle(t.title); setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : ""); }}>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingTrackId(t.id); setEditingTrackTitle(t.title); setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : ""); setEditingTrackTakaPrice((t as any).chapter_taka_price ? String((t as any).chapter_taka_price) : ""); }}>
                         <Pencil className="h-3 w-3" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => deleteTrack(t.id)}>
@@ -1695,16 +1708,29 @@ export default function AdminBooks() {
                     placeholder={`Chapter ${tracks.length + 1}`}
                   />
                 </div>
-                <div>
-                  <Label>Chapter Price (coins)</Label>
-                  <Input
-                    value={trackForm.chapter_price}
-                    onChange={e => setTrackForm(f => ({ ...f, chapter_price: e.target.value }))}
-                    placeholder={`Default: ${DEFAULT_CHAPTER_PRICE}`}
-                    type="number"
-                    min="1"
-                  />
-                  <p className="text-[10px] text-muted-foreground mt-0.5">Leave blank for default ({DEFAULT_CHAPTER_PRICE} coins ≈ ৳{(DEFAULT_CHAPTER_PRICE * 0.05).toFixed(0)})</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Chapter Price (coins)</Label>
+                    <Input
+                      value={trackForm.chapter_price}
+                      onChange={e => setTrackForm(f => ({ ...f, chapter_price: e.target.value }))}
+                      placeholder={`Default: ${DEFAULT_CHAPTER_PRICE}`}
+                      type="number"
+                      min="0"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Leave blank for default</p>
+                  </div>
+                  <div>
+                    <Label>Chapter Price (৳ Taka)</Label>
+                    <Input
+                      value={trackForm.chapter_taka_price}
+                      onChange={e => setTrackForm(f => ({ ...f, chapter_taka_price: e.target.value }))}
+                      placeholder="e.g. 10"
+                      type="number"
+                      min="0"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">For direct taka payment</p>
+                  </div>
                 </div>
                 <div>
                   <Label>Media File (MP3 / M4A / MP4) *</Label>
@@ -1738,7 +1764,7 @@ export default function AdminBooks() {
                   <Button onClick={saveNewTrack} disabled={savingTrack} className="flex-1">
                     {savingTrack ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save Chapter"}
                   </Button>
-                  <Button variant="outline" onClick={() => { setAddingTrack(false); setTrackForm({ title: "", audio_url: "", duration: "", chapter_price: "" }); }}>
+                  <Button variant="outline" onClick={() => { setAddingTrack(false); setTrackForm({ title: "", audio_url: "", duration: "", chapter_price: "", chapter_taka_price: "" }); }}>
                     Cancel
                   </Button>
                 </div>
