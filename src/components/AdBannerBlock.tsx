@@ -100,10 +100,13 @@ function BannerItem({ banner, onImpression, onClick }: {
 export function AdBannerBlock({ placementKey, device = "all", noContainer = false }: Props) {
   const { user } = useAuth();
   const { config } = useAdConfig();
-  const { data: allBanners = [] } = trpc.books.activeAdBanners.useQuery();
-  const { data: placements = [] } = trpc.books.activePlacements.useQuery();
+  const { data: allBanners = [], isLoading: bannersLoading } = trpc.books.activeAdBanners.useQuery();
+  const { data: placements = [], isLoading: placementsLoading } = trpc.books.activePlacements.useQuery();
   const recordImpression = trpc.books.recordAdImpression.useMutation();
   const recordClick = trpc.books.recordAdClick.useMutation();
+
+  // Stay hidden while loading to avoid layout shift
+  if (bannersLoading || placementsLoading) return null;
 
   // Check if this placement is enabled and device-matched
   const placement = placements.find((p: any) => p.placement_key === placementKey);
@@ -126,19 +129,8 @@ export function AdBannerBlock({ placementKey, device = "all", noContainer = fals
     ? "py-2 space-y-2"
     : "container mx-auto px-4 lg:px-8 py-2 space-y-2";
 
-  // Nothing to show — render labeled slot when system is enabled so admin can see placement
-  if (banners.length === 0 && !showAdsense) {
-    if (!config.systemEnabled) return null;
-    return (
-      <div className={noContainer ? "py-2" : "container mx-auto px-4 lg:px-8 py-2"}>
-        <div className="w-full rounded-lg border border-dashed border-border/30 bg-muted/10 flex items-center justify-center py-3 min-h-[52px]">
-          <p className="text-[11px] text-muted-foreground/40 select-none font-mono">
-            [ বিজ্ঞাপন · {placementKey} ]
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // Nothing to show — hide the section entirely
+  if (banners.length === 0 && !showAdsense) return null;
 
   return (
     <div className={wrapClass}>
