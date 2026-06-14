@@ -206,6 +206,16 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
       loadBook(book, audiobook, audioTracks.length > 0 ? audioTracks : undefined, true)
       return
     }
+    // If currently paused on a locked chapter, show the unlock modal instead of resuming
+    if (!isPlaying && hasChapterPricing && !hasFullUnlock) {
+      const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
+      const currentTrack = sourceTracks[currentTrackIndex] as AudioTrack & { chapterPrice?: number }
+      if (currentTrack && !currentTrack.isPreview && Number(currentTrack.chapterPrice) > 0
+          && !unlockedChapterIds.has(currentTrack.id)) {
+        setLockedTrack(currentTrack as AudioTrack & { chapterPrice: number })
+        return
+      }
+    }
     togglePlay()
   }
 

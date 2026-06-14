@@ -390,6 +390,22 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // TIGHT CHAPTER-LOCK ENFORCEMENT: 200ms interval catches any path that starts
+  // playing a chapter that requires coin/taka unlock before it loads.
+  useEffect(() => {
+    if (!state.isPlaying) return
+    const interval = setInterval(() => {
+      const audio = audioRef.current
+      if (!audio || audio.paused || lockedTrackIdsRef.current.size === 0) return
+      const currentTrack = stateRef.current.tracks[stateRef.current.currentTrackIndex]
+      if (currentTrack && lockedTrackIdsRef.current.has(currentTrack.id)) {
+        audio.pause()
+        setState((prev) => ({ ...prev, isPlaying: false }))
+      }
+    }, 200)
+    return () => clearInterval(interval)
+  }, [state.isPlaying])
+
   // TIGHT PREVIEW ENFORCEMENT: 200ms interval as backup to timeupdate (~250ms)
   // Catches any audio that slips past the timeupdate check
   useEffect(() => {
