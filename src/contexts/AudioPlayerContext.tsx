@@ -465,8 +465,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       currentPosition: Math.floor(state.currentTime),
       totalDuration: Math.floor(audio?.duration || 0),
       currentTrack: state.currentTrackIndex + 1,
+      playbackSpeed: state.playbackRate,
     }).catch(() => {}) // silent — progress save is best-effort
-  }, [user, state.book, state.currentTime, state.currentTrackIndex])
+  }, [user, state.book, state.currentTime, state.currentTrackIndex, state.playbackRate])
 
   const loadBook = useCallback((book: MasterBook, audiobook: AudiobookFormat, tracks?: AudioTrack[], autoPlay?: boolean) => {
     const finalTracks: AudioTrack[] = (tracks || [])
@@ -529,12 +530,17 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     if (!user) return
     const data = await utils.profiles.listeningProgressByBook.fetch({ bookId }).catch(() => null)
     if (data) {
+      const savedSpeed = data.playback_speed ? Number(data.playback_speed) : null
       setState((prev) => ({
         ...prev,
         currentTrackIndex: Math.max(0, (data.current_track || 1) - 1),
         currentTime: Number(data.current_position) || 0,
         progressPercentage: Number(data.percentage) || 0,
+        ...(savedSpeed && savedSpeed > 0 ? { playbackRate: savedSpeed } : {}),
       }))
+      if (savedSpeed && savedSpeed > 0 && audioRef.current) {
+        audioRef.current.playbackRate = savedSpeed
+      }
     }
   }
 

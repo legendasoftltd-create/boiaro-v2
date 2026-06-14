@@ -98,6 +98,7 @@ export function WatchAdButton({ onRewardEarned, placement = "general", variant =
           className={`text-xs gap-1.5 ${className || ""}`}
           disabled={isDisabled}
           onClick={openAd}
+          aria-label={cooldownLeft > 0 ? `অ্যাড দেখুন — ${cooldownLeft} সেকেন্ড অপেক্ষা করুন` : `অ্যাড দেখুন এবং ${coinPerAd} কয়েন আয় করুন`}
         >
           {claiming ? (
             <div className="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full" />
@@ -127,7 +128,7 @@ export function WatchAdButton({ onRewardEarned, placement = "general", variant =
           <Badge variant="secondary" className="text-xs shrink-0">{remaining}/{dailyLimit}</Badge>
         </div>
 
-        <Button className="w-full gap-2 text-sm" disabled={isDisabled} onClick={openAd}>
+        <Button className="w-full gap-2 text-sm" disabled={isDisabled} onClick={openAd} aria-label={cooldownLeft > 0 ? `অ্যাড দেখুন — ${cooldownLeft} সেকেন্ড অপেক্ষা করুন` : `অ্যাড দেখুন এবং ${coinPerAd} কয়েন আয় করুন`}>
           {claiming ? (
             <>
               <div className="animate-spin h-4 w-4 shrink-0 border-2 border-primary-foreground border-t-transparent rounded-full" />

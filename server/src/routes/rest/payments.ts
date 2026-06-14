@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createHash } from "crypto";
 import { sendHttpError } from "../../lib/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
@@ -127,7 +128,7 @@ async function finalizePaidOrder(params: { orderId: string; paymentMethod: strin
         </table>
         <a href="https://boiaro.com/dashboard" style="display:inline-block;padding:10px 24px;background:#6d28d9;color:#fff;border-radius:8px;text-decoration:none">View My Library</a>`,
       text: `Order confirmed. Total: ৳${Number(order.total_amount).toFixed(2)}`,
-    }).catch(() => {});
+    }).catch((err) => console.error("[payment] DB update failed:", err));
   }
 
   return true;
@@ -242,7 +243,7 @@ async function finalizeSubscriptionPayment(params: { subscriptionId: string; pay
           <tr><td style="padding:8px 0;color:#6b7280">Amount Paid</td><td style="padding:8px 0;font-weight:600">৳${Number(sub.amount_paid ?? 0).toFixed(2)}</td></tr>
         </table>`,
       text: `Your ${sub.plan.name} subscription is active until ${fmt(endDate)}.`,
-    }).catch(() => {});
+    }).catch((err) => console.error("[payment] DB update failed:", err));
   }
 
   return true;
@@ -424,10 +425,55 @@ paymentsRestRouter.post("/initiate", requireAuth, async (req: AuthenticatedReque
   }
 });
 
+/**
+ * SSLCommerz verify_sign algorithm:
+ * 1. Take fields listed in verify_key from the payload
+ * 2. Replace store_passwd value with MD5(store_passwd)
+ * 3. Sort keys alphabetically
+ * 4. Concatenate as key=value& pairs
+ * 5. MD5 hash of the string must equal verify_sign
+ */
+function verifySslCommerzSign(payload: Record<string, unknown>, storePassword: string): boolean {
+  const verifyKey = getString(payload, "verify_key");
+  const verifySign = getString(payload, "verify_sign");
+  if (!verifyKey || !verifySign) return false;
+
+  const fields = verifyKey.split(",").map(k => k.trim());
+  const hashedPass = createHash("md5").update(storePassword).digest("hex");
+
+  const parts = fields
+    .sort()
+    .map(key => {
+      const val = key === "store_passwd" ? hashedPass : String(payload[key] ?? "");
+      return `${key}=${val}`;
+    });
+
+  const computedHash = createHash("md5").update(parts.join("&")).digest("hex");
+  return computedHash === verifySign;
+}
+
+function isSafeRedirect(url: string): boolean {
+  const allowed = [
+    process.env.FRONTEND_URL,
+    process.env.DASHBOARD_URL,
+    "http://localhost:8080",
+    "http://localhost:3000",
+  ].filter(Boolean) as string[];
+  try {
+    const target = new URL(url);
+    return allowed.some(origin => {
+      try { return new URL(origin).origin === target.origin; } catch { return false; }
+    });
+  } catch { return false; }
+}
+
 async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, status: "success" | "failed" | "cancelled") {
   const fallbackBase = process.env.FRONTEND_URL || "http://localhost:8080";
+  const rawRedirect = getString(asObject(req.query), "redirect");
   const redirect =
-    getString(asObject(req.query), "redirect") || `${fallbackBase}/payment/callback?status=${status}`;
+    rawRedirect && isSafeRedirect(rawRedirect)
+      ? rawRedirect
+      : `${fallbackBase}/payment/callback?status=${status}`;
 
   try {
     const payload = asObject(req.method === "POST" ? req.body : req.query);
@@ -444,24 +490,36 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
     const orderId = payment?.order_id;
     const subscriptionId = payment?.subscription_id;
 
-    // Detect coin purchase: tran_id format is COIN-{purchaseId}-{timestamp}
+    // Detect coin purchase: tran_id format is COIN-{uuid}-{timestamp}
+    const UUID_PATTERN = /^(?:COIN|CHPT)-([\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})-\d+$/i;
     let coinPurchaseId: string | undefined;
     if (tranId?.startsWith("COIN-")) {
-      const parts = tranId.split("-");
-      // parts: ["COIN", uuid-p1, uuid-p2, uuid-p3, uuid-p4, uuid-p5, timestamp]
-      coinPurchaseId = parts.slice(1, 6).join("-");
+      const match = tranId.match(UUID_PATTERN);
+      coinPurchaseId = match?.[1];
+      if (!coinPurchaseId) console.warn("[payment] Malformed COIN tran_id:", tranId);
     }
-    // Detect chapter purchase: tran_id format is CHPT-{purchaseId}-{timestamp}
+    // Detect chapter purchase: tran_id format is CHPT-{uuid}-{timestamp}
     let chapterPurchaseId: string | undefined;
     if (tranId?.startsWith("CHPT-")) {
-      const parts = tranId.split("-");
-      chapterPurchaseId = parts.slice(1, 6).join("-");
+      const match = tranId.match(UUID_PATTERN);
+      chapterPurchaseId = match?.[1];
+      if (!chapterPurchaseId) console.warn("[payment] Malformed CHPT tran_id:", tranId);
     }
     const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
     const gatewayConfig = asObject(gateway?.config);
     const storeId = getString(gatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
     const storePassword = getString(gatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
     const mode = gateway?.mode === "live" ? "live" : "test";
+
+    // Verify SSLCommerz signature when present (IPN and direct callbacks both send verify_sign)
+    if (storePassword && payload["verify_sign"]) {
+      const signValid = verifySslCommerzSign(payload, storePassword);
+      if (!signValid) {
+        console.warn("[payment] SSLCommerz verify_sign mismatch — rejecting callback");
+        res.status(400).json({ error: "Invalid signature" });
+        return;
+      }
+    }
 
     let validationResponse: Record<string, unknown> | null = null;
     if (status === "success" && valId && storeId && storePassword) {
@@ -523,12 +581,12 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
         await prisma.coinPurchase.update({
           where: { id: coinPurchaseId },
           data: { payment_status: status === "cancelled" ? "cancelled" : "failed" },
-        }).catch(() => {});
+        }).catch((err) => console.error("[payment] DB update failed:", err));
       } else if (chapterPurchaseId) {
         await prisma.chapterPurchase.update({
           where: { id: chapterPurchaseId },
           data: { payment_status: status === "cancelled" ? "cancelled" : "failed" },
-        }).catch(() => {});
+        }).catch((err) => console.error("[payment] DB update failed:", err));
       }
     }
 
@@ -559,6 +617,18 @@ paymentsRestRouter.all("/sslcommerz/cancel", async (req, res) => {
 
 paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
   const payload = asObject(req.body);
+
+  // Verify SSLCommerz IPN signature before trusting any payload field
+  if (payload["verify_sign"]) {
+    const gw = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
+    const storePass = getString(asObject(gw?.config), "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+    if (storePass && !verifySslCommerzSign(payload, storePass)) {
+      console.warn("[ipn] SSLCommerz verify_sign mismatch — rejecting IPN");
+      res.status(400).json({ error: "Invalid signature" });
+      return;
+    }
+  }
+
   const tranId = getString(payload, "tran_id");
   const status = String(payload.status || "").toUpperCase();
   const payment = tranId
@@ -578,19 +648,22 @@ paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
     },
   });
 
+  const IPN_UUID_PATTERN = /^(?:COIN|CHPT)-([\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})-\d+$/i;
   if (status === "VALID" || status === "VALIDATED") {
     if (payment?.order_id) {
       await finalizePaidOrder({ orderId: payment.order_id, paymentMethod: "sslcommerz", transactionId: tranId });
     } else if (payment?.subscription_id) {
       await finalizeSubscriptionPayment({ subscriptionId: payment.subscription_id, paymentMethod: "sslcommerz", transactionId: tranId });
     } else if (tranId?.startsWith("COIN-")) {
-      const parts = tranId.split("-");
-      const purchaseId = parts.slice(1, 6).join("-");
-      await finalizeCoinPurchase({ purchaseId, transactionId: tranId });
+      const match = tranId.match(IPN_UUID_PATTERN);
+      const purchaseId = match?.[1];
+      if (purchaseId) await finalizeCoinPurchase({ purchaseId, transactionId: tranId });
+      else console.warn("[ipn] Malformed COIN tran_id:", tranId);
     } else if (tranId?.startsWith("CHPT-")) {
-      const parts = tranId.split("-");
-      const purchaseId = parts.slice(1, 6).join("-");
-      await finalizeChapterPurchase({ purchaseId, transactionId: tranId });
+      const match = tranId.match(IPN_UUID_PATTERN);
+      const purchaseId = match?.[1];
+      if (purchaseId) await finalizeChapterPurchase({ purchaseId, transactionId: tranId });
+      else console.warn("[ipn] Malformed CHPT tran_id:", tranId);
     }
   }
 
@@ -652,7 +725,7 @@ paymentsRestRouter.get("/bkash/callback", async (req, res) => {
       await finalizeCoinPurchase({ purchaseId: purchase_id, transactionId: txnId });
       res.redirect(`${frontendBase}/coin-store?status=success`);
     } else {
-      await prisma.coinPurchase.update({ where: { id: purchase_id }, data: { payment_status: "failed" } }).catch(() => {});
+      await prisma.coinPurchase.update({ where: { id: purchase_id }, data: { payment_status: "failed" } }).catch((err) => console.error("[payment] DB update failed:", err));
       res.redirect(`${frontendBase}/coin-store?status=failed`);
     }
   } catch (err) {
@@ -713,7 +786,7 @@ paymentsRestRouter.get("/bkash/chapter-callback", async (req, res) => {
       await finalizeChapterPurchase({ purchaseId: purchase_id, transactionId: txnId });
       res.redirect(`${redirectBase}?chapter_status=success`);
     } else {
-      await prisma.chapterPurchase.update({ where: { id: purchase_id }, data: { payment_status: "failed" } }).catch(() => {});
+      await prisma.chapterPurchase.update({ where: { id: purchase_id }, data: { payment_status: "failed" } }).catch((err) => console.error("[payment] DB update failed:", err));
       res.redirect(`${redirectBase}?chapter_status=failed`);
     }
   } catch (err) {

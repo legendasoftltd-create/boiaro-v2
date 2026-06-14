@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -49,6 +50,42 @@ app.use("/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(attachAuth);
+
+// CSRF protection — require X-Requested-With on state-changing REST calls.
+// Browser cross-origin requests cannot set custom headers without a CORS preflight,
+// so this stops naive CSRF attacks without needing a token for stateless JWT auth.
+// Exempt SSLCommerz IPN callbacks (server-to-server, no custom header possible).
+app.use("/api/v1", (req, res, next) => {
+  // SSLCommerz callbacks are server-to-server POST requests — no custom headers possible
+  if (["POST", "PATCH", "PUT", "DELETE"].includes(req.method) && !req.originalUrl.startsWith("/api/v1/payments/sslcommerz/")) {
+    if (!req.headers["x-requested-with"]) {
+      res.status(403).json({ success: false, error: "FORBIDDEN", message: "Missing X-Requested-With header" });
+      return;
+    }
+  }
+  next();
+});
+
+// Enforce JSON content-type on mutation endpoints
+app.use("/api/v1", (req, res, next) => {
+  if (["POST", "PATCH", "PUT"].includes(req.method) && req.headers["content-type"] && !req.is("application/json")) {
+    res.status(415).json({ success: false, error: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be application/json" });
+    return;
+  }
+  next();
+});
+
+// Rate limiting — applied before routes
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests, please try again later" } });
+const claimLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests, please try again later" } });
+const globalLimiter = rateLimit({ windowMs: 60 * 1000, max: 150, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests, please try again later" } });
+
+app.use("/api/v1/auth", authLimiter);
+app.use("/api/v1/wallet/claim-daily", claimLimiter);
+app.use("/api/v1/wallet/claim-ad", claimLimiter);
+app.use("/api/v1/ads/rewarded/claim", claimLimiter);
+app.use("/api/v1", globalLimiter);
+
 app.use("/api/v1", restRouter);
 
 // ── Uploads directory ─────────────────────────────────────────────────────────

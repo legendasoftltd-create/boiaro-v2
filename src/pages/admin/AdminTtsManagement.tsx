@@ -449,7 +449,7 @@ function AmbientManagement() {
       formData.append("file", file);
       const res = await fetch(`${API_BASE}/api/v1/tts/ambient-upload`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, "X-Requested-With": "XMLHttpRequest" },
         body: formData,
       });
       if (!res.ok) {

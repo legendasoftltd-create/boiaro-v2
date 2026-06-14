@@ -9,6 +9,7 @@ import { Footer } from "@/components/Footer"
 import { SectionSkeleton } from "@/components/SectionSkeleton"
 import { HeroBannerStrip } from "@/components/HeroBannerStrip"
 import { AdBannerBlock } from "@/components/AdBannerBlock"
+import { ErrorBoundary } from "@/components/ErrorBoundary"
 
 const ContinueReading = lazy(() => import("@/components/ContinueReading").then(m => ({ default: m.ContinueReading })))
 const ContinueListening = lazy(() => import("@/components/ContinueListening").then(m => ({ default: m.ContinueListening })))
@@ -107,11 +108,17 @@ const Index = () => {
     <ContentFilterProvider>
       <main className="min-h-screen bg-background">
         <Navbar />
-        <Hero />
-        <HeroBannerStrip />
+        <ErrorBoundary>
+          <Hero />
+        </ErrorBoundary>
+        <ErrorBoundary>
+          <HeroBannerStrip />
+        </ErrorBoundary>
         <div className="transition-opacity duration-200 ease-out">
           {orderedKeys.map(key => (
-            <LazySection key={key} sectionKey={key} books={books} popularAudiobooks={popularAudiobooks} />
+            <ErrorBoundary key={key}>
+              <LazySection sectionKey={key} books={books} popularAudiobooks={popularAudiobooks} />
+            </ErrorBoundary>
           ))}
         </div>
         <Footer />

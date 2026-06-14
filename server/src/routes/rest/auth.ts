@@ -49,7 +49,7 @@ function sendSocialLoginResponse(
 
 authRestRouter.post("/signup", async (req, res) => {
   try {
-    const { email, password, display_name } = req.body;
+    const { email, password, display_name, referral_code: inputReferralCode } = req.body;
     if (!email || !password) {
       res.status(400).json({ error: "Missing required fields" });
       return;
@@ -65,7 +65,7 @@ authRestRouter.post("/signup", async (req, res) => {
     }
     const password_hash = await bcrypt.hash(password, 12);
     const referral_code = generateReferralCode();
-    await prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         email,
         password_hash,
@@ -73,6 +73,23 @@ authRestRouter.post("/signup", async (req, res) => {
         roles: { create: { role: "user" } },
       },
     });
+
+    // Record pending referral (coins granted on first login)
+    if (inputReferralCode) {
+      const code = String(inputReferralCode).trim().toUpperCase();
+      const referrerProfile = await prisma.profile.findUnique({ where: { referral_code: code } });
+      if (referrerProfile && referrerProfile.user_id !== user.id) {
+        const signupRewardSetting = await prisma.platformSetting.findUnique({ where: { key: "referral_signup_reward" } });
+        const signupReward = parseInt(signupRewardSetting?.value || "20", 10);
+        await Promise.all([
+          prisma.referral.create({
+            data: { referral_code: code, referrer_id: referrerProfile.user_id, referred_user_id: user.id, reward_amount: signupReward, status: "pending", reward_status: "pending" },
+          }),
+          prisma.profile.update({ where: { user_id: user.id }, data: { referred_by: code } }),
+        ]).catch(() => {});
+      }
+    }
+
     res.status(201).json({ message: "Signup successful. Please verify your email." });
   } catch (error) {
     sendHttpError(res, error);

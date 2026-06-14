@@ -48,25 +48,31 @@ walletRestRouter.post("/claim-daily", requireAuth, async (req: AuthenticatedRequ
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const existing = await prisma.coinTransaction.findFirst({
-      where: { user_id: req.auth.userId!, source: "daily_login", created_at: { gte: todayStart } },
-    });
-    if (existing) {
-      res.status(400).json({ error: "Daily reward already claimed" });
-      return;
-    }
+
     const dailySetting = await prisma.platformSetting.findUnique({ where: { key: "coin_daily_login_reward" } });
     const DAILY_REWARD = parseInt(dailySetting?.value || "10", 10);
-    const [, wallet] = await prisma.$transaction([
-      prisma.coinTransaction.create({
+
+    // Atomic: re-check inside the transaction to prevent race-condition double-claims
+    const wallet = await prisma.$transaction(async (tx) => {
+      const existing = await tx.coinTransaction.findFirst({
+        where: { user_id: req.auth.userId!, source: "daily_login", created_at: { gte: todayStart } },
+      });
+      if (existing) return null;
+
+      await tx.coinTransaction.create({
         data: { user_id: req.auth.userId!, amount: DAILY_REWARD, type: "earn", description: "Daily login reward", source: "daily_login" },
-      }),
-      prisma.userCoin.upsert({
+      });
+      return tx.userCoin.upsert({
         where: { user_id: req.auth.userId! },
         create: { user_id: req.auth.userId!, balance: DAILY_REWARD, total_earned: DAILY_REWARD, total_spent: 0 },
         update: { balance: { increment: DAILY_REWARD }, total_earned: { increment: DAILY_REWARD } },
-      }),
-    ]);
+      });
+    });
+
+    if (!wallet) {
+      res.status(400).json({ error: "Daily reward already claimed" });
+      return;
+    }
     res.json({ reward: DAILY_REWARD, message: "Daily reward claimed", new_balance: wallet.balance });
   } catch (error) {
     sendHttpError(res, error);
@@ -145,11 +151,13 @@ walletRestRouter.get("/coin-settings", async (_req, res) => {
 
 walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { book_id, format, coin_cost } = req.body;
-    if (!book_id || !format || coin_cost === undefined) {
-      res.status(400).json({ error: "Missing required fields" });
+    const { book_id, format } = req.body;
+    // coin_cost is intentionally NOT accepted from the client — always resolved from DB
+    if (!book_id || !format) {
+      res.status(400).json({ error: "Missing required fields: book_id, format" });
       return;
     }
+
     const existing = await prisma.contentUnlock.findFirst({
       where: { user_id: req.auth.userId!, book_id, format, status: "active" },
     });
@@ -157,15 +165,69 @@ walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, 
       res.status(400).json({ error: "Content already unlocked" });
       return;
     }
-    const wallet = await prisma.userCoin.findUnique({ where: { user_id: req.auth.userId! } });
-    if (!wallet || wallet.balance < coin_cost) {
-      res.status(400).json({ error: "Insufficient coins" });
+
+    // Resolve the real coin cost from DB — client-supplied cost is intentionally ignored
+    let coin_cost = 0;
+    let bookFormatId: string | undefined;
+    let salePriceTaka = 0;
+
+    const UUID_RE = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+    const chapterMatch = format.match(/^audiobook_chapter_([\da-f-]+)$/);
+    if (chapterMatch) {
+      const trackId = chapterMatch[1];
+      if (!UUID_RE.test(trackId)) {
+        res.status(400).json({ error: "Invalid chapter format" });
+        return;
+      }
+      const [track, book] = await Promise.all([
+        prisma.audiobookTrack.findUnique({
+          where: { id: trackId },
+          select: { is_preview: true, chapter_price: true, book_format: { select: { id: true, book_id: true, coin_price: true } } },
+        }),
+        prisma.book.findUnique({ where: { id: book_id }, select: { is_free: true } }),
+      ]);
+      if (!track || track.book_format.book_id !== book_id) {
+        res.status(404).json({ error: "Chapter not found" });
+        return;
+      }
+      if (track.is_preview || Boolean(book?.is_free)) {
+        res.status(400).json({ error: "Chapter is free — no coin unlock needed" });
+        return;
+      }
+      coin_cost = Math.round(track.chapter_price ?? track.book_format.coin_price ?? 0);
+      bookFormatId = track.book_format.id;
+    } else {
+      const [bookFormat, book] = await Promise.all([
+        prisma.bookFormat.findFirst({
+          where: { book_id, format },
+          select: { id: true, coin_price: true, price: true },
+        }),
+        prisma.book.findUnique({ where: { id: book_id }, select: { is_free: true } }),
+      ]);
+      if (!bookFormat) {
+        res.status(404).json({ error: "Book format not found" });
+        return;
+      }
+      if (Boolean(book?.is_free) || (bookFormat.coin_price ?? 0) === 0) {
+        res.status(400).json({ error: "Content is free — no coin unlock needed" });
+        return;
+      }
+      coin_cost = bookFormat.coin_price ?? 0;
+      bookFormatId = bookFormat.id;
+      salePriceTaka = Number(bookFormat.price ?? 0);
+    }
+
+    if (coin_cost <= 0) {
+      res.status(400).json({ error: "Content is free — no coin unlock needed" });
       return;
     }
-    const bookFormat = await prisma.bookFormat.findFirst({
-      where: { book_id, format },
-      select: { id: true, price: true },
-    });
+
+    const wallet = await prisma.userCoin.findUnique({ where: { user_id: req.auth.userId! } });
+    if (!wallet || wallet.balance < coin_cost) {
+      res.status(400).json({ error: "Insufficient coins", required: coin_cost, balance: wallet?.balance ?? 0 });
+      return;
+    }
+
     const unlock = await prisma.$transaction(async (tx: any) => {
       const created = await tx.contentUnlock.upsert({
         where: { user_id_book_id_format: { user_id: req.auth.userId!, book_id, format } },
@@ -181,12 +243,13 @@ walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, 
       });
       return created;
     });
-    const saleAmount = Number(bookFormat?.price ?? 0);
-    if (saleAmount > 0) {
-      await calculateEarnings({ bookId: book_id, format, saleAmount, contentUnlockId: unlock.id });
+
+    if (salePriceTaka > 0) {
+      await calculateEarnings({ bookId: book_id, format, saleAmount: salePriceTaka, contentUnlockId: unlock.id });
     }
+
     const updatedWallet = await prisma.userCoin.findUnique({ where: { user_id: req.auth.userId! } });
-    res.json({ success: true, message: "Content unlocked", new_balance: updatedWallet?.balance ?? 0 });
+    res.json({ success: true, message: "Content unlocked", new_balance: updatedWallet?.balance ?? 0, coins_spent: coin_cost });
   } catch (error) {
     sendHttpError(res, error);
   }

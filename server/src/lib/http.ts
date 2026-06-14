@@ -10,9 +10,12 @@ const trpcStatusMap: Record<string, number> = {
   CONFLICT: 409,
 };
 
+// Unified REST error response: { success: false, error: string, message: string }
 export function sendHttpError(res: Response, error: unknown) {
   if (error instanceof ZodError) {
     res.status(400).json({
+      success: false,
+      error: "VALIDATION_ERROR",
       message: "Validation failed",
       issues: error.flatten(),
     });
@@ -21,12 +24,13 @@ export function sendHttpError(res: Response, error: unknown) {
 
   if (error instanceof TRPCError) {
     res.status(trpcStatusMap[error.code] ?? 500).json({
+      success: false,
+      error: error.code,
       message: error.message,
-      code: error.code,
     });
     return;
   }
 
   console.error(error);
-  res.status(500).json({ message: "Internal server error" });
+  res.status(500).json({ success: false, error: "INTERNAL_ERROR", message: "Internal server error" });
 }

@@ -17,10 +17,19 @@ const bookSummarySelect = {
 
 libraryRestRouter.get("/purchases", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const purchases = await prisma.userPurchase.findMany({
-      where: { user_id: req.auth.userId!, status: "active" },
-      orderBy: { created_at: "desc" },
-    });
+    const limit = Math.min(Number(req.query.limit ?? 20), 100);
+    const offset = Number(req.query.offset ?? 0);
+
+    const [purchases, total] = await Promise.all([
+      prisma.userPurchase.findMany({
+        where: { user_id: req.auth.userId!, status: "active" },
+        orderBy: { created_at: "desc" },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.userPurchase.count({ where: { user_id: req.auth.userId!, status: "active" } }),
+    ]);
+
     const bookIds = [...new Set(purchases.map((p) => p.book_id))];
     const books = await prisma.book.findMany({
       where: { id: { in: bookIds } },
@@ -34,6 +43,10 @@ libraryRestRouter.get("/purchases", requireAuth, async (req: AuthenticatedReques
         purchased_at: p.created_at,
         books: bookMap.get(p.book_id) ?? null,
       })),
+      total,
+      limit,
+      offset,
+      has_more: offset + limit < total,
     });
   } catch (error) {
     sendHttpError(res, error);
@@ -42,10 +55,19 @@ libraryRestRouter.get("/purchases", requireAuth, async (req: AuthenticatedReques
 
 libraryRestRouter.get("/unlocks", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const unlocks = await prisma.contentUnlock.findMany({
-      where: { user_id: req.auth.userId!, status: "active" },
-      orderBy: { created_at: "desc" },
-    });
+    const limit = Math.min(Number(req.query.limit ?? 20), 100);
+    const offset = Number(req.query.offset ?? 0);
+
+    const [unlocks, total] = await Promise.all([
+      prisma.contentUnlock.findMany({
+        where: { user_id: req.auth.userId!, status: "active" },
+        orderBy: { created_at: "desc" },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.contentUnlock.count({ where: { user_id: req.auth.userId!, status: "active" } }),
+    ]);
+
     const bookIds = [...new Set(unlocks.map((u) => u.book_id))];
     const books = await prisma.book.findMany({
       where: { id: { in: bookIds } },
@@ -59,6 +81,10 @@ libraryRestRouter.get("/unlocks", requireAuth, async (req: AuthenticatedRequest,
         unlocked_at: u.created_at,
         books: bookMap.get(u.book_id) ?? null,
       })),
+      total,
+      limit,
+      offset,
+      has_more: offset + limit < total,
     });
   } catch (error) {
     sendHttpError(res, error);
@@ -67,13 +93,15 @@ libraryRestRouter.get("/unlocks", requireAuth, async (req: AuthenticatedRequest,
 
 libraryRestRouter.get("/continue-reading", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const limit = Math.min(Number(req.query.limit ?? 10), 50);
+
     const progressList = await prisma.readingProgress.findMany({
       where: {
         user_id: req.auth.userId!,
         percentage: { gt: 0, lt: 100 },
       },
       orderBy: { last_read_at: "desc" },
-      take: 10,
+      take: limit,
     });
     const bookIds = progressList.map((p) => p.book_id);
     const books = await prisma.book.findMany({
@@ -98,13 +126,15 @@ libraryRestRouter.get("/continue-reading", requireAuth, async (req: Authenticate
 
 libraryRestRouter.get("/continue-listening", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const limit = Math.min(Number(req.query.limit ?? 10), 50);
+
     const progressList = await prisma.listeningProgress.findMany({
       where: {
         user_id: req.auth.userId!,
         percentage: { gt: 0, lt: 100 },
       },
       orderBy: { last_listened_at: "desc" },
-      take: 10,
+      take: limit,
     });
     const bookIds = progressList.map((p) => p.book_id);
     const books = await prisma.book.findMany({

@@ -318,7 +318,7 @@ export default function BooksPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={prevPage}
+                      onClick={() => { prevPage(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                       disabled={page === 0}
                       className="gap-1"
                     >
@@ -352,7 +352,7 @@ export default function BooksPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={nextPage}
+                      onClick={() => { nextPage(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
                       disabled={!hasMore}
                       className="gap-1"
                     >

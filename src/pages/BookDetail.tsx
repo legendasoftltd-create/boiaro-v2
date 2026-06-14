@@ -244,6 +244,40 @@ export default function BookDetail() {
   }, [dbBook?.id])
 
   useEffect(() => {
+    if (!dbBook) return;
+    const title = `${dbBook.title} — BoiAro`;
+    document.title = title;
+
+    const setMeta = (property: string, content: string) => {
+      let el = document.querySelector<HTMLMetaElement>(`meta[property="${property}"]`) ||
+               document.querySelector<HTMLMetaElement>(`meta[name="${property}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute(property.startsWith("og:") ? "property" : "name", property);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+
+    const coverUrl = dbBook.cover_url || "";
+    const description = dbBook.description || dbBook.description_bn || "বইআরোতে এই বইটি পড়ুন।";
+    const pageUrl = window.location.href;
+
+    setMeta("og:title", dbBook.title);
+    setMeta("og:description", description);
+    setMeta("og:image", coverUrl);
+    setMeta("og:url", pageUrl);
+    setMeta("og:type", "book");
+    setMeta("description", description);
+    setMeta("twitter:card", "summary_large_image");
+    setMeta("twitter:title", dbBook.title);
+    setMeta("twitter:description", description);
+    setMeta("twitter:image", coverUrl);
+
+    return () => { document.title = "BoiAro"; };
+  }, [dbBook?.id])
+
+  useEffect(() => {
     if (!bookId) return
     engagement.trackRead()
   }, [bookId])

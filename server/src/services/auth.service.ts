@@ -6,6 +6,45 @@ import { resolveUrls } from "../lib/mediaUrl.js";
 import type { signInSchema } from "../schemas/auth.js";
 import type { z } from "zod";
 
+// Completes a pending referral and grants coins to both parties.
+// Called on first signIn so coins are only granted to users who actually log in.
+async function completePendingReferral(userId: string): Promise<void> {
+  const pending = await prisma.referral.findFirst({
+    where: { referred_user_id: userId, status: "pending", reward_status: "pending" },
+  });
+  if (!pending) return;
+
+  const [signupRewardSetting, referredBonusSetting] = await Promise.all([
+    prisma.platformSetting.findUnique({ where: { key: "referral_signup_reward" } }),
+    prisma.platformSetting.findUnique({ where: { key: "referral_referred_bonus" } }),
+  ]);
+  const signupReward = parseInt(signupRewardSetting?.value || "20", 10);
+  const referredBonus = parseInt(referredBonusSetting?.value || "10", 10);
+
+  await prisma.$transaction([
+    prisma.referral.update({
+      where: { id: pending.id },
+      data: { status: "completed", reward_status: "paid", completed_at: new Date(), reward_amount: signupReward },
+    }),
+    prisma.coinTransaction.create({
+      data: { user_id: pending.referrer_id, amount: signupReward, type: "earn", description: "রেফারেল বোনাস - নতুন সদস্য", source: "referral_reward" },
+    }),
+    prisma.userCoin.upsert({
+      where: { user_id: pending.referrer_id },
+      create: { user_id: pending.referrer_id, balance: signupReward, total_earned: signupReward, total_spent: 0 },
+      update: { balance: { increment: signupReward }, total_earned: { increment: signupReward } },
+    }),
+    prisma.coinTransaction.create({
+      data: { user_id: userId, amount: referredBonus, type: "bonus", description: "নতুন সদস্য রেফারেল বোনাস", source: "referral_bonus" },
+    }),
+    prisma.userCoin.upsert({
+      where: { user_id: userId },
+      create: { user_id: userId, balance: referredBonus, total_earned: referredBonus, total_spent: 0 },
+      update: { balance: { increment: referredBonus }, total_earned: { increment: referredBonus } },
+    }),
+  ]);
+}
+
 export async function signInUser(input: z.infer<typeof signInSchema>) {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
@@ -38,6 +77,9 @@ export async function signInUser(input: z.infer<typeof signInSchema>) {
       message: "Account deactivated. Contact support.",
     });
   }
+
+  // Complete any pending referral on first login (deferred from signup to prevent abuse)
+  completePendingReferral(user.id).catch(() => {});
 
   const { accessToken, refreshToken } = signTokens(user.id, user.email);
 

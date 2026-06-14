@@ -15,7 +15,7 @@ import { sendNotificationEmail } from "../lib/mailer.js";
 import { sendOtpSms, normalizeBdPhone } from "../lib/sms.js";
 
 function generateReferralCode() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  return crypto.randomBytes(4).toString("hex").toUpperCase();
 }
 
 export const authRouter = router({
@@ -47,18 +47,13 @@ export const authRouter = router({
         },
       });
 
-      // Process referral if a code was provided
+      // Record referral as pending — coins granted only after email verification
       if (input.referralCode) {
         const code = input.referralCode.trim().toUpperCase();
         const referrerProfile = await prisma.profile.findUnique({ where: { referral_code: code } });
         if (referrerProfile && referrerProfile.user_id !== user.id) {
-          const [signupRewardSetting, referredBonusSetting] = await Promise.all([
-            prisma.platformSetting.findUnique({ where: { key: "referral_signup_reward" } }),
-            prisma.platformSetting.findUnique({ where: { key: "referral_referred_bonus" } }),
-          ]);
+          const signupRewardSetting = await prisma.platformSetting.findUnique({ where: { key: "referral_signup_reward" } });
           const signupReward = parseInt(signupRewardSetting?.value || "20", 10);
-          const referredBonus = parseInt(referredBonusSetting?.value || "10", 10);
-
           await Promise.all([
             prisma.referral.create({
               data: {
@@ -66,33 +61,14 @@ export const authRouter = router({
                 referrer_id: referrerProfile.user_id,
                 referred_user_id: user.id,
                 reward_amount: signupReward,
-                status: "completed",
-                reward_status: "paid",
-                completed_at: new Date(),
+                status: "pending",       // stays pending until email verified
+                reward_status: "pending",
               },
             }),
             prisma.profile.update({
               where: { user_id: user.id },
               data: { referred_by: code },
             }),
-            prisma.$transaction([
-              prisma.coinTransaction.create({
-                data: { user_id: referrerProfile.user_id, amount: signupReward, type: "earn", description: "রেফারেল বোনাস - নতুন সদস্য", source: "referral_reward" },
-              }),
-              prisma.userCoin.upsert({
-                where: { user_id: referrerProfile.user_id },
-                create: { user_id: referrerProfile.user_id, balance: signupReward, total_earned: signupReward, total_spent: 0 },
-                update: { balance: { increment: signupReward }, total_earned: { increment: signupReward } },
-              }),
-              prisma.coinTransaction.create({
-                data: { user_id: user.id, amount: referredBonus, type: "bonus", description: "নতুন সদস্য রেফারেল বোনাস", source: "referral_bonus" },
-              }),
-              prisma.userCoin.upsert({
-                where: { user_id: user.id },
-                create: { user_id: user.id, balance: referredBonus, total_earned: referredBonus, total_spent: 0 },
-                update: { balance: { increment: referredBonus }, total_earned: { increment: referredBonus } },
-              }),
-            ]),
           ]).catch(() => {});
         }
       }
@@ -396,7 +372,7 @@ export const authRouter = router({
         throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Please wait before requesting another OTP." });
       }
 
-      const otp = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit
+      const otp = String(100000 + (crypto.randomInt(900000))); // 6-digit crypto-secure
       const otp_hash = await bcrypt.hash(otp, 10);
       const expires_at = new Date(Date.now() + 5 * 60 * 1000); // 5 min
 
@@ -457,7 +433,7 @@ export const authRouter = router({
           const profile = await prisma.profile.findUnique({ where: { user_id: existingByEmail.id } });
           user = { id: existingByEmail.id, email: existingByEmail.email, roles: [], profile };
         } else {
-          const referral_code = Math.random().toString(36).substring(2, 8).toUpperCase();
+          const referral_code = generateReferralCode();
           const newUser = await prisma.user.create({
             data: {
               email,

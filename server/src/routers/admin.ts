@@ -16,6 +16,10 @@ function orderSellableAmount(order: { total_amount?: number | null; shipping_cos
   return Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
 }
 
+function audit(actorId: string, action: string, targetId?: string, targetType?: string, details?: object) {
+  prisma.auditLog.create({ data: { actor_id: actorId, action, target_id: targetId, target_type: targetType, details: details as any } }).catch(() => {});
+}
+
 /** Recompute and persist rating + reviews_count on the Book after a review status change. */
 async function syncBookRatingStats(bookId: string) {
   const [{ _avg }, reviewsCount] = await Promise.all([
@@ -611,8 +615,8 @@ export const adminRouter = router({
         description: z.string().optional(),
       })
     )
-    .mutation(async ({ input }) => {
-      return prisma.$transaction(async (tx: any) => {
+    .mutation(async ({ input, ctx }) => {
+      const result = await prisma.$transaction(async (tx: any) => {
         const wallet = await tx.userCoin.findUnique({ where: { user_id: input.userId } });
         if (!wallet) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Wallet not found" });
@@ -640,6 +644,8 @@ export const adminRouter = router({
         });
         return updatedWallet;
       });
+      audit(ctx.userId, "adjust_coins", input.userId, "user", { amount: input.amount, description: input.description });
+      return result;
     }),
 
   listReferrals: adminProcedure
@@ -653,21 +659,31 @@ export const adminRouter = router({
 
   approveBook: adminProcedure
     .input(z.object({ bookId: z.string() }))
-    .mutation(({ input }) =>
-      prisma.book.update({
+    .mutation(async ({ input, ctx }) => {
+      const formatCount = await prisma.bookFormat.count({
+        where: { book_id: input.bookId, submission_status: "approved", is_available: true },
+      });
+      if (formatCount === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Book must have at least one approved, available format before it can be approved" });
+      }
+      const book = await prisma.book.update({
         where: { id: input.bookId },
         data: { submission_status: "approved" },
-      })
-    ),
+      });
+      audit(ctx.userId, "approve_book", input.bookId, "book");
+      return book;
+    }),
 
   rejectBook: adminProcedure
     .input(z.object({ bookId: z.string(), reason: z.string().optional() }))
-    .mutation(({ input }) =>
-      prisma.book.update({
+    .mutation(async ({ input, ctx }) => {
+      const book = await prisma.book.update({
         where: { id: input.bookId },
         data: { submission_status: "rejected" },
-      })
-    ),
+      });
+      audit(ctx.userId, "reject_book", input.bookId, "book", { reason: input.reason });
+      return book;
+    }),
 
   // ── Users ───────────────────────────────────────────────────────────────────
   listUsers: adminProcedure

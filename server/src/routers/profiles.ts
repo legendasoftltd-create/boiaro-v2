@@ -146,6 +146,7 @@ export const profilesRouter = router({
         currentPosition: z.number(),
         totalDuration: z.number(),
         currentTrack: z.number().int().optional(),
+        playbackSpeed: z.number().min(0.25).max(4).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -163,6 +164,7 @@ export const profilesRouter = router({
           current_track: input.currentTrack,
           percentage,
           last_listened_at: new Date(),
+          ...(input.playbackSpeed != null && { playback_speed: input.playbackSpeed }),
         },
         update: {
           current_position: input.currentPosition,
@@ -170,6 +172,7 @@ export const profilesRouter = router({
           current_track: input.currentTrack,
           percentage,
           last_listened_at: new Date(),
+          ...(input.playbackSpeed != null && { playback_speed: input.playbackSpeed }),
         },
       });
     }),

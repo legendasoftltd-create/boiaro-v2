@@ -206,7 +206,7 @@ model AudiobookTrack {
   title              String
   track_number       Int
 
-  book_format      BookFormat       @relation(fields: [book_format_id], references: [id])
+  book_format      BookFormat       @relation(fields: [book_format_id], references: [id], onDelete: Cascade)
   chapter_purchases ChapterPurchase[]
 
   @@map("audiobook_tracks")
@@ -303,7 +303,7 @@ model BookComment {
   updated_at DateTime @updatedAt
   user_id    String
 
-  book    Book         @relation(fields: [book_id], references: [id])
+  book    Book         @relation(fields: [book_id], references: [id], onDelete: Cascade)
   parent  BookComment? @relation("CommentReplies", fields: [parent_id], references: [id])
   replies BookComment[] @relation("CommentReplies")
   likes   CommentLike[]
@@ -319,7 +319,7 @@ model BookContributor {
   role       String
   user_id    String
 
-  book Book @relation(fields: [book_id], references: [id])
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@map("book_contributors")
 }
@@ -378,7 +378,7 @@ model BookRead {
   created_at DateTime @default(now())
   user_id    String
 
-  book Book @relation(fields: [book_id], references: [id])
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@map("book_reads")
 }
@@ -389,7 +389,7 @@ model Bookmark {
   created_at DateTime @default(now())
   user_id    String
 
-  book Book @relation(fields: [book_id], references: [id])
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@map("bookmarks")
 }
@@ -526,6 +526,7 @@ model CoinTransaction {
   type         String   @default("earn")
   user_id      String
 
+  @@index([user_id, created_at])
   @@map("coin_transactions")
 }
 
@@ -597,14 +598,16 @@ model ContentUnlock {
   book_id       String
   coins_spent   Int?
   created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
   format        String
   status        String   @default("active")
   unlock_method String   @default("coin")
   user_id       String
 
-  book Book @relation(fields: [book_id], references: [id])
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, book_id, format])
+  @@index([user_id, format])
   @@map("content_unlocks")
 }
 
@@ -679,7 +682,7 @@ model DailyBookStat {
   unique_readers Int      @default(0)
   views          Int      @default(0)
 
-  book Book @relation(fields: [book_id], references: [id])
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@map("daily_book_stats")
 }
@@ -710,7 +713,7 @@ model EbookChapter {
   status         String   @default("draft")
   updated_at     DateTime @updatedAt
 
-  book_format BookFormat @relation(fields: [book_format_id], references: [id])
+  book_format BookFormat @relation(fields: [book_format_id], references: [id], onDelete: Cascade)
 
   @@map("ebook_chapters")
 }
@@ -879,11 +882,12 @@ model ListeningProgress {
   current_track    Int?
   last_listened_at DateTime?
   percentage       Float?
+  playback_speed   Float?
   total_duration   Float?
   updated_at       DateTime @updatedAt
   user_id          String
 
-  book Book @relation(fields: [book_id], references: [id])
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, book_id])
   @@map("listening_progress")
@@ -1217,7 +1221,7 @@ model ReadingProgress {
   updated_at    DateTime  @updatedAt
   user_id       String
 
-  book Book @relation(fields: [book_id], references: [id])
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, book_id])
   @@map("reading_progress")
@@ -1236,6 +1240,7 @@ model Referral {
   source           String?
   status           String   @default("pending")
 
+  @@index([referrer_id])
   @@map("referrals")
 }
 
@@ -1249,7 +1254,7 @@ model Review {
   updated_at DateTime @updatedAt
   user_id    String
 
-  book Book @relation(fields: [book_id], references: [id])
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
   @@map("reviews")
 }
@@ -1263,6 +1268,8 @@ model RewardedAdLog {
   status         String   @default("pending")
   user_id        String
 
+  @@unique([user_id, ad_event_id])
+  @@index([user_id, created_at])
   @@map("rewarded_ad_logs")
 }
 
@@ -1727,4 +1734,18 @@ model WithdrawalRequest {
   user_id        String
 
   @@map("withdrawal_requests")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actor_id   String
+  action     String
+  target_id  String?
+  target_type String?
+  details    Json?
+  created_at DateTime @default(now())
+
+  @@index([actor_id, created_at])
+  @@index([action])
+  @@map("audit_logs")
 }

@@ -76,6 +76,7 @@ progressRestRouter.get("/listening", requireAuth, async (req: AuthenticatedReque
       position_seconds: Math.round(progress.current_position ?? 0),
       total_seconds: Math.round(progress.total_duration ?? 0),
       last_listened_at: progress.last_listened_at,
+      playback_speed: progress.playback_speed ?? 1,
     });
   } catch (error) {
     sendHttpError(res, error);
@@ -84,12 +85,13 @@ progressRestRouter.get("/listening", requireAuth, async (req: AuthenticatedReque
 
 progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { book_id, track_number = 1, position_seconds = 0, total_seconds = 0 } = req.body;
+    const { book_id, track_number = 1, position_seconds = 0, total_seconds = 0, playback_speed } = req.body;
     if (!book_id) {
       res.status(400).json({ error: "book_id is required" });
       return;
     }
     const percentage = total_seconds > 0 ? Math.min((position_seconds / total_seconds) * 100, 100) : 0;
+    const speedVal = playback_speed != null ? Math.min(Math.max(Number(playback_speed), 0.25), 4) : undefined;
     await prisma.listeningProgress.upsert({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
       create: {
@@ -100,6 +102,7 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
         total_duration: total_seconds,
         percentage,
         last_listened_at: new Date(),
+        ...(speedVal != null && { playback_speed: speedVal }),
       },
       update: {
         current_track: track_number,
@@ -107,6 +110,7 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
         total_duration: total_seconds,
         percentage,
         last_listened_at: new Date(),
+        ...(speedVal != null && { playback_speed: speedVal }),
       },
     });
     res.json({ message: "Listening progress saved" });

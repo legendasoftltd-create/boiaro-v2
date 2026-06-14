@@ -88,7 +88,7 @@ export default function Profile() {
 
       const res = await fetch(`${API_BASE}/api/v1/profile/upload-image`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, "X-Requested-With": "XMLHttpRequest" },
         body: formData,
       })
 
