@@ -55,7 +55,8 @@ walletRestRouter.post("/claim-daily", requireAuth, async (req: AuthenticatedRequ
       res.status(400).json({ error: "Daily reward already claimed" });
       return;
     }
-    const DAILY_REWARD = 10;
+    const dailySetting = await prisma.platformSetting.findUnique({ where: { key: "coin_daily_login_reward" } });
+    const DAILY_REWARD = parseInt(dailySetting?.value || "10", 10);
     const [, wallet] = await prisma.$transaction([
       prisma.coinTransaction.create({
         data: { user_id: req.auth.userId!, amount: DAILY_REWARD, type: "earn", description: "Daily login reward", source: "daily_login" },
@@ -77,8 +78,12 @@ walletRestRouter.post("/claim-ad", requireAuth, async (req: AuthenticatedRequest
     const { placement = "general" } = req.body;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const MAX_PER_DAY = 10;
-    const AD_REWARD = 1;
+    const [maxSetting, rewardSetting] = await Promise.all([
+      prisma.platformSetting.findUnique({ where: { key: "ad_max_per_day" } }),
+      prisma.platformSetting.findUnique({ where: { key: "ad_rewarded_coins" } }),
+    ]);
+    const MAX_PER_DAY = parseInt(maxSetting?.value || "10", 10);
+    const AD_REWARD = parseInt(rewardSetting?.value || "1", 10);
     const todayCount = await prisma.coinTransaction.count({
       where: { user_id: req.auth.userId!, source: "ad_reward", created_at: { gte: todayStart } },
     });

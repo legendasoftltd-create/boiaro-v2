@@ -27,6 +27,8 @@ import { ttsRestRouter } from "./tts.js";
 import { categorySectionsRestRouter } from "./category-sections.js";
 import { ebookPreviewRouter } from "./ebook-preview.js";
 import { presenceRestRouter } from "./presence.js";
+import { chaptersRestRouter } from "./chapters.js";
+import { adsRestRouter } from "./ads.js";
 
 export const restRouter = Router();
 
@@ -58,3 +60,5 @@ restRouter.use("/tts", ttsRestRouter);
 restRouter.use("/category-sections", categorySectionsRestRouter);
 restRouter.use("/ebook-preview", ebookPreviewRouter);
 restRouter.use("/presence", presenceRestRouter);
+restRouter.use("/", chaptersRestRouter);
+restRouter.use("/ads", adsRestRouter);
