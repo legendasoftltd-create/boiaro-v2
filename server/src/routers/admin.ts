@@ -218,6 +218,12 @@ export const adminRouter = router({
       return { url: resolved, filename };
     }),
 
+  setBookActiveStatus: adminProcedure
+    .input(z.object({ id: z.string(), is_active: z.boolean() }))
+    .mutation(({ input }) =>
+      prisma.book.update({ where: { id: input.id }, data: { is_active: input.is_active } })
+    ),
+
   upsertBook: adminProcedure
     .input(
       z.object({
@@ -231,6 +237,7 @@ export const adminRouter = router({
         category_id: z.string().optional().nullable(),
         publisher_id: z.string().optional().nullable(),
         cover_url: z.string().optional().nullable(),
+        is_active: z.boolean().optional(),
         is_featured: z.boolean().optional(),
         is_bestseller: z.boolean().optional(),
         is_new: z.boolean().optional(),

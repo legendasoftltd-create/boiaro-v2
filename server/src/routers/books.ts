@@ -38,6 +38,7 @@ export const booksRouter = router({
 
       const where: any = {
         submission_status: "approved",
+        is_active: true,
         ...(formatBookIds && { id: { in: formatBookIds } }),
         ...(categoryId && { category_id: categoryId }),
         ...(filter === "free" && { is_free: true }),
@@ -114,7 +115,7 @@ export const booksRouter = router({
     .input(z.object({ slug: z.string() }))
     .query(async ({ input }) => {
       const book = await prisma.book.findUnique({
-        where: { slug: input.slug, submission_status: "approved" },
+        where: { slug: input.slug, submission_status: "approved", is_active: true },
         include: {
           author: true,
           publisher: true,
@@ -137,7 +138,7 @@ export const booksRouter = router({
       orderBy: [{ priority: "desc" }, { name: "asc" }],
       include: {
         _count: {
-          select: { books: { where: { submission_status: "approved" } } },
+          select: { books: { where: { submission_status: "approved", is_active: true } } },
         },
       },
     })
@@ -323,13 +324,13 @@ export const booksRouter = router({
         prisma.narrator.findUnique({ where: { id: input.id } }),
         prisma.bookFormat.findMany({
           where: { narrator_id: input.id, format: "audiobook", is_available: true, submission_status: "approved" },
-          include: { book: { select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, submission_status: true } } },
+          include: { book: { select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, submission_status: true, is_active: true } } },
         }),
       ]);
       if (!narrator) return null;
       const seen = new Set<string>();
       const books = formats
-        .filter(f => f.book && f.book.submission_status === "approved" && !seen.has(f.book.id) && seen.add(f.book.id))
+        .filter(f => f.book && f.book.submission_status === "approved" && f.book.is_active && !seen.has(f.book.id) && seen.add(f.book.id))
         .map(f => f.book!);
       return { ...narrator, books };
     }),

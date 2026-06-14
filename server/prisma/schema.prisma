@@ -403,6 +403,7 @@ model Book {
   created_at        DateTime @default(now())
   description       String?
   description_bn    String?
+  is_active         Boolean  @default(true)
   is_bestseller     Boolean? @default(false)
   is_featured       Boolean? @default(false)
   is_free           Boolean? @default(false)

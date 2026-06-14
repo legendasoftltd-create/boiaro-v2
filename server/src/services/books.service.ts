@@ -31,6 +31,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     cursor: cursor ? { id: cursor } : undefined,
     where: {
       submission_status: "approved",
+      is_active: true,
       ...(categoryId && { category_id: categoryId }),
       ...(isFeatured !== undefined && { is_featured: isFeatured }),
       ...(isBestseller !== undefined && { is_bestseller: isBestseller }),
@@ -156,7 +157,7 @@ async function computeLiveBookStats(bookId: string) {
 export async function getBookById(id: string) {
   const [book, liveStats] = await Promise.all([
     prisma.book.findFirst({
-      where: { id, submission_status: "approved" },
+      where: { id, submission_status: "approved", is_active: true },
       include: {
         author: true,
         publisher: true,
@@ -253,7 +254,7 @@ export async function getBookByIdForRest(
 
 export async function getBookBySlug(slug: string) {
   const book = await prisma.book.findFirst({
-    where: { slug, submission_status: "approved" },
+    where: { slug, submission_status: "approved", is_active: true },
     include: {
       author: true,
       publisher: true,

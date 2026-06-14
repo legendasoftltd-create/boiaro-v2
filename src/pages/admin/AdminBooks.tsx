@@ -88,7 +88,9 @@ export default function AdminBooks() {
   const formats = selectedBookId ? (formatsByBookId[selectedBookId] || []) : [];
   const formatsLoaded = !!selectedBookId && formatsHydratedBookId === selectedBookId;
   const { log } = useAdminLogger();
+  const [filterActive, setFilterActive] = useState("all");
   const upsertBookMutation = trpc.admin.upsertBook.useMutation();
+  const setBookActiveMutation = trpc.admin.setBookActiveStatus.useMutation();
   const deleteBookMutation = trpc.admin.deleteBookWithFormats.useMutation();
   const upsertFormatMutation = trpc.admin.upsertBookFormat.useMutation();
   const deleteFormatMutation = trpc.admin.deleteBookFormatCascade.useMutation();
@@ -710,6 +712,8 @@ export default function AdminBooks() {
       if (filterStock === "out" && (hcFmt.stock_count || 0) > 0) return false;
       if (filterStock === "low" && ((hcFmt.stock_count || 0) <= 0 || (hcFmt.stock_count || 0) > 5)) return false;
     }
+    if (filterActive === "active" && b.is_active === false) return false;
+    if (filterActive === "inactive" && b.is_active !== false) return false;
     return true;
   });
 
@@ -754,6 +758,14 @@ export default function AdminBooks() {
             <SelectItem value="out">🔴 Out of Stock</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={filterActive} onValueChange={setFilterActive}>
+          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Visibility" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Visibility</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="rounded-lg border">
@@ -768,6 +780,7 @@ export default function AdminBooks() {
               <TableHead>Publisher</TableHead>
               <TableHead>Formats</TableHead>
               <TableHead>Featured</TableHead>
+              <TableHead>Active</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -805,6 +818,23 @@ export default function AdminBooks() {
                   </div>
                 </TableCell>
                 <TableCell>{b.is_featured ? "✓" : "—"}</TableCell>
+                <TableCell>
+                  <Switch
+                    checked={b.is_active !== false}
+                    onCheckedChange={(val) => {
+                      setBookActiveMutation.mutate(
+                        { id: b.id, is_active: val },
+                        {
+                          onSuccess: () => {
+                            setBooks((prev) => prev.map((bk) => bk.id === b.id ? { ...bk, is_active: val } : bk));
+                            toast.success(val ? "Book activated" : "Book deactivated");
+                          },
+                          onError: () => toast.error("Failed to update visibility"),
+                        }
+                      );
+                    }}
+                  />
+                </TableCell>
                 <TableCell className="text-right space-x-1">
                   <Button size="sm" variant="outline" onClick={() => openFormats(b.id)}>Formats</Button>
                   <Button size="sm" variant="ghost" onClick={() => openEdit(b)}><Pencil className="h-3 w-3" /></Button>
@@ -813,7 +843,7 @@ export default function AdminBooks() {
               </TableRow>
             ))}
             {!books.length && (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No books yet</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No books yet</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -1574,7 +1604,7 @@ export default function AdminBooks() {
           {tracks.length > 0 && (
             <div className="space-y-0">
               {/* Table header */}
-              <div className="grid grid-cols-[2rem_1fr_5rem_5rem_4.5rem_auto] items-center gap-2 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/30">
+              <div className="grid grid-cols-[2rem_1fr_5rem_6rem_4.5rem_auto] items-center gap-2 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/30">
                 <span>#</span>
                 <span>Title</span>
                 <span>Duration</span>
@@ -1585,79 +1615,104 @@ export default function AdminBooks() {
               {tracks.map((t: any) => {
                 const chapterCost = t.is_preview ? 0 : (t.chapter_price ?? DEFAULT_CHAPTER_PRICE);
                 const isDefault = !t.is_preview && t.chapter_price === null;
-                return (
-                  <div
-                    key={t.id}
-                    className="grid grid-cols-[2rem_1fr_5rem_5rem_4.5rem_auto] items-center gap-2 px-3 py-2.5 border-b border-border/10 hover:bg-secondary/30"
-                  >
-                    {/* Track number */}
-                    <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                      {t.track_number}
-                    </div>
+                const takaPriceVal = (t as any).chapter_taka_price;
 
-                    {/* Title + inline edit */}
-                    <div className="min-w-0">
-                      {editingTrackId === t.id ? (
-                        <div className="space-y-2">
-                          <div className="flex gap-2">
-                            <Input
-                              value={editingTrackTitle}
-                              onChange={e => setEditingTrackTitle(e.target.value)}
-                              onKeyDown={e => { if (e.key === "Enter") renameTrack(t.id); if (e.key === "Escape") setEditingTrackId(null); }}
-                              className="h-7 text-sm"
-                              placeholder="Track title"
-                              autoFocus
-                            />
-                            <Input
-                              value={editingTrackPrice}
-                              onChange={e => setEditingTrackPrice(e.target.value)}
-                              className="h-7 text-sm w-20"
-                              placeholder="Coins"
-                              type="number"
-                              min="0"
-                            />
-                            <Input
-                              value={editingTrackTakaPrice}
-                              onChange={e => setEditingTrackTakaPrice(e.target.value)}
-                              className="h-7 text-sm w-20"
-                              placeholder="৳ Taka"
-                              type="number"
-                              min="0"
-                            />
+                /* ── Edit mode: full-width row so all 3 fields are visible ── */
+                if (editingTrackId === t.id) {
+                  return (
+                    <div key={t.id} className="px-3 py-3 border-b border-border/20 bg-secondary/10">
+                      <div className="flex items-start gap-2">
+                        <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0 mt-0.5">
+                          {t.track_number}
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <div className="grid grid-cols-[1fr_6rem_6rem] gap-2">
+                            <div>
+                              <p className="text-[10px] text-muted-foreground mb-1">Title</p>
+                              <Input
+                                value={editingTrackTitle}
+                                onChange={e => setEditingTrackTitle(e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") renameTrack(t.id); if (e.key === "Escape") setEditingTrackId(null); }}
+                                className="h-7 text-sm"
+                                placeholder="Track title"
+                                autoFocus
+                              />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-muted-foreground mb-1">Coins</p>
+                              <Input
+                                value={editingTrackPrice}
+                                onChange={e => setEditingTrackPrice(e.target.value)}
+                                className="h-7 text-sm"
+                                placeholder="Coins"
+                                type="number"
+                                min="0"
+                              />
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-muted-foreground mb-1">৳ Taka</p>
+                              <Input
+                                value={editingTrackTakaPrice}
+                                onChange={e => setEditingTrackTakaPrice(e.target.value)}
+                                className="h-7 text-sm"
+                                placeholder="৳ Taka"
+                                type="number"
+                                min="0"
+                              />
+                            </div>
                           </div>
                           <div className="flex gap-2">
                             <Button size="sm" className="h-7" onClick={() => renameTrack(t.id)}>Save</Button>
                             <Button size="sm" variant="ghost" className="h-7" onClick={() => setEditingTrackId(null)}>Cancel</Button>
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-sm font-medium truncate">{t.title}</p>
-                      )}
+                      </div>
                     </div>
+                  );
+                }
+
+                /* ── Normal view row ── */
+                return (
+                  <div
+                    key={t.id}
+                    className="grid grid-cols-[2rem_1fr_5rem_6rem_4.5rem_auto] items-center gap-2 px-3 py-2.5 border-b border-border/10 hover:bg-secondary/30"
+                  >
+                    {/* Track number */}
+                    <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                      {t.track_number}
+                    </div>
+
+                    {/* Title */}
+                    <p className="text-sm font-medium truncate min-w-0">{t.title}</p>
 
                     {/* Duration */}
                     <span className="text-xs text-muted-foreground truncate">{t.duration || "—"}</span>
 
-                    {/* Price column */}
+                    {/* Price column — coins + taka stacked */}
                     <div
-                      className="text-xs font-medium flex items-center gap-0.5 cursor-pointer hover:text-primary"
+                      className="flex flex-col gap-0 cursor-pointer hover:text-primary"
                       onClick={() => {
-                        if (editingTrackId !== t.id) {
-                          setEditingTrackId(t.id);
-                          setEditingTrackTitle(t.title);
-                          setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : "");
-                          setEditingTrackTakaPrice((t as any).chapter_taka_price ? String((t as any).chapter_taka_price) : "");
-                        }
+                        setEditingTrackId(t.id);
+                        setEditingTrackTitle(t.title);
+                        setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : "");
+                        setEditingTrackTakaPrice(takaPriceVal ? String(takaPriceVal) : "");
                       }}
                       title="Click to edit price"
                     >
                       {t.is_preview ? (
-                        <span className="text-emerald-400">Free</span>
+                        <span className="text-xs text-emerald-400 font-medium">Free</span>
                       ) : (
-                        <span className={`flex items-center gap-0.5 ${isDefault ? "text-muted-foreground" : "text-primary"}`}>
-                          🪙 {chapterCost}
-                          {isDefault && <span className="text-[9px] opacity-60">(def)</span>}
-                        </span>
+                        <>
+                          <span className={`text-xs font-medium flex items-center gap-0.5 ${isDefault ? "text-muted-foreground" : "text-primary"}`}>
+                            🪙 {chapterCost}
+                            {isDefault && <span className="text-[9px] opacity-60">(def)</span>}
+                          </span>
+                          {takaPriceVal ? (
+                            <span className="text-[10px] text-muted-foreground">৳{takaPriceVal}</span>
+                          ) : (
+                            <span className="text-[9px] text-muted-foreground/40">no ৳</span>
+                          )}
+                        </>
                       )}
                     </div>
 
@@ -1684,7 +1739,7 @@ export default function AdminBooks() {
                             : <Download className="h-3 w-3" />}
                         </Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingTrackId(t.id); setEditingTrackTitle(t.title); setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : ""); setEditingTrackTakaPrice((t as any).chapter_taka_price ? String((t as any).chapter_taka_price) : ""); }}>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingTrackId(t.id); setEditingTrackTitle(t.title); setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : ""); setEditingTrackTakaPrice(takaPriceVal ? String(takaPriceVal) : ""); }}>
                         <Pencil className="h-3 w-3" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => deleteTrack(t.id)}>
