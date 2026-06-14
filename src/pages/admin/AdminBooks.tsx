@@ -36,6 +36,7 @@ export default function AdminBooks() {
   const [publishers, setPublishers] = useState<any[]>([]);
   const [narrators, setNarrators] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
   const [filterFeatured, setFilterFeatured] = useState("all");
   const [filterFormat, setFilterFormat] = useState("all");
@@ -139,46 +140,55 @@ export default function AdminBooks() {
     });
   }, [formatOpen, selectedBookId, formatsLoading, formatsLoaded, formats, formatForm?.id, formatForm?.format]);
 
+  const [booksLoading, setBooksLoading] = useState(false);
+
   const load = async () => {
-    const [b, a, c, p, n, bc] = await Promise.all([
-      utils.admin.listBooks.fetch({ limit: 1000, status: "approved" }),
-      utils.admin.listAuthors.fetch({}),
-      utils.admin.listCategories.fetch(),
-      utils.admin.listPublishers.fetch({}),
-      utils.admin.listNarrators.fetch({}),
-      utils.admin.listBookContributorCounts.fetch(),
-    ]);
-    const booksWithLegacyAliases = (b.books || []).map((book: any) => ({
-      ...book,
-      authors: book.author ?? null,
-      categories: book.category ?? null,
-      publishers: book.publisher ?? null,
-    }));
-    setBooks(booksWithLegacyAliases);
-    setAuthors(a || []);
-    setCategories(c || []);
-    setPublishers(p || []);
-    setNarrators(n || []);
+    setBooksLoading(true);
+    try {
+      const [b, a, c, p, n, bc] = await Promise.all([
+        utils.admin.listBooks.fetch({ limit: 1000 }),
+        utils.admin.listAuthors.fetch({}),
+        utils.admin.listCategories.fetch(),
+        utils.admin.listPublishers.fetch({}),
+        utils.admin.listNarrators.fetch({}),
+        utils.admin.listBookContributorCounts.fetch(),
+      ]);
+      const booksWithLegacyAliases = (b.books || []).map((book: any) => ({
+        ...book,
+        authors: book.author ?? null,
+        categories: book.category ?? null,
+        publishers: book.publisher ?? null,
+      }));
+      setBooks(booksWithLegacyAliases);
+      setAuthors(a || []);
+      setCategories(c || []);
+      setPublishers(p || []);
+      setNarrators(n || []);
 
-    // Build format map deduped by format type per book.
-    // If a book has duplicate rows for the same format, prefer the one where is_available !== false.
-    const fmtMapRaw: Record<string, Map<string, any>> = {};
-    (b.books || []).flatMap((book: any) => book.formats || []).forEach((f: any) => {
-      if (!fmtMapRaw[f.book_id]) fmtMapRaw[f.book_id] = new Map();
-      const existing = fmtMapRaw[f.book_id].get(f.format);
-      if (!existing || (f.is_available !== false && existing.is_available === false)) {
-        fmtMapRaw[f.book_id].set(f.format, { ...f, narrators: f.narrator ?? null });
-      }
-    });
-    const fmtMap: Record<string, any[]> = {};
-    for (const [bookId, map] of Object.entries(fmtMapRaw)) fmtMap[bookId] = Array.from(map.values());
-    setBookFormats(fmtMap);
+      // Build format map deduped by format type per book.
+      // If a book has duplicate rows for the same format, prefer the one where is_available !== false.
+      const fmtMapRaw: Record<string, Map<string, any>> = {};
+      (b.books || []).flatMap((book: any) => book.formats || []).forEach((f: any) => {
+        if (!fmtMapRaw[f.book_id]) fmtMapRaw[f.book_id] = new Map();
+        const existing = fmtMapRaw[f.book_id].get(f.format);
+        if (!existing || (f.is_available !== false && existing.is_available === false)) {
+          fmtMapRaw[f.book_id].set(f.format, { ...f, narrators: f.narrator ?? null });
+        }
+      });
+      const fmtMap: Record<string, any[]> = {};
+      for (const [bookId, map] of Object.entries(fmtMapRaw)) fmtMap[bookId] = Array.from(map.values());
+      setBookFormats(fmtMap);
 
-    const contribMap: Record<string, number> = {};
-    (bc || []).forEach((row: any) => {
-      contribMap[row.book_id] = row.count;
-    });
-    setBookContribCounts(contribMap);
+      const contribMap: Record<string, number> = {};
+      (bc || []).forEach((row: any) => {
+        contribMap[row.book_id] = row.count;
+      });
+      setBookContribCounts(contribMap);
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to load books");
+    } finally {
+      setBooksLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -699,6 +709,7 @@ export default function AdminBooks() {
       const narrator = ((bookFormats[b.id] || []).find((f: any) => f.format === "audiobook")?.narrators?.name || "").toLowerCase();
       if (!title.includes(q) && !titleEn.includes(q) && !author.includes(q) && !publisher.includes(q) && !narrator.includes(q)) return false;
     }
+    if (filterStatus !== "all" && b.submission_status !== filterStatus) return false;
     if (filterCategory !== "all" && b.category_id !== filterCategory) return false;
     if (filterFeatured === "yes" && !b.is_featured) return false;
     if (filterFeatured === "no" && b.is_featured) return false;
@@ -720,12 +731,25 @@ export default function AdminBooks() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Books</h1>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          Books
+          {booksLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {!booksLoading && <span className="text-sm font-normal text-muted-foreground">({filteredBooks.length} of {books.length})</span>}
+        </h1>
         <Button onClick={openNew}><Plus className="h-4 w-4 mr-2" />Add Book</Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <AdminSearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search by title, author, narrator..." className="flex-1 min-w-[200px] max-w-sm" />
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-36 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="approved">Approved</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={filterCategory} onValueChange={setFilterCategory}>
           <SelectTrigger className="w-44 h-9"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
@@ -842,8 +866,11 @@ export default function AdminBooks() {
                 </TableCell>
               </TableRow>
             ))}
-            {!books.length && (
-              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No books yet</TableCell></TableRow>
+            {booksLoading && (
+              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
+            )}
+            {!booksLoading && !filteredBooks.length && (
+              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">{books.length ? "No books match the current filters" : "No books yet"}</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
