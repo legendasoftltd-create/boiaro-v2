@@ -11,7 +11,9 @@
     { "key": "bookId",     "value": "", "type": "string" },
     { "key": "trackId",    "value": "", "type": "string" },
     { "key": "purchaseId", "value": "", "type": "string" },
-    { "key": "bannerId",   "value": "", "type": "string" },
+    { "key": "bannerId",    "value": "", "type": "string" },
+    { "key": "campaignId",  "value": "", "type": "string" },
+    { "key": "placementId", "value": "", "type": "string" },
     { "key": "referralCode", "value": "", "type": "string" }
   ],
   "auth": {
@@ -143,83 +145,321 @@
       "name": "📢 Ad Management",
       "item": [
         {
-          "name": "Get Ad Settings",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/ads/settings", "host": ["{{baseUrl}}"], "path": ["ads", "settings"] }
-          },
-          "description": "Public. Returns the global ad system configuration from platform_settings.\n\nKey fields:\n- `system_enabled`: kill-switch for the whole ad system\n- `provider_type`: `adsense` | `none`\n- `rewarded_coins`: coins awarded per rewarded ad\n- `max_per_day`: how many rewarded ads a user can watch per day\n- `cooldown_minutes`: required wait between rewarded ads"
-        },
-        {
-          "name": "Get Active Banners",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/ads/banners?placement=homepage_top&device=mobile",
-              "host": ["{{baseUrl}}"],
-              "path": ["ads", "banners"],
-              "query": [
-                { "key": "placement", "value": "homepage_top", "description": "Filter by placement key — omit for all" },
-                { "key": "device",    "value": "mobile",        "description": "mobile | tablet | desktop | all — omit for all" }
-              ]
+          "name": "📱 Mobile — Config & Banners",
+          "item": [
+            {
+              "name": "Get Ad Settings",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/ads/settings", "host": ["{{baseUrl}}"], "path": ["ads", "settings"] }
+              },
+              "description": "Public. Returns the full ad system configuration from platform_settings.\n\nKey fields:\n- `system_enabled`: master kill-switch for all ads\n- `provider_type`: `adsense` | `none`\n- `publisher_id`: Google AdSense publisher ID\n- `web_banner_unit_id`: AdSense unit for web banners\n- `rewarded_unit_id`: AdSense unit for rewarded ads\n- `rewarded_coins`: coins per rewarded ad view\n- `max_per_day`: daily cap on rewarded ads per user\n- `cooldown_minutes`: minimum wait between rewarded ad views\n- `premium_hide_ads`: whether premium subscribers see ads\n- `country_targeting`: array of country codes"
+            },
+            {
+              "name": "Get Active Banners",
+              "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.banners && j.banners.length > 0) pm.collectionVariables.set('bannerId', j.banners[0].id);"], "type": "text/javascript" } }],
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/ads/banners?placement=homepage_top&device=mobile",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "banners"],
+                  "query": [
+                    { "key": "placement", "value": "homepage_top", "description": "Filter by placement key (optional — omit to get all)" },
+                    { "key": "device",    "value": "mobile",        "description": "mobile | tablet | desktop | all (optional)" }
+                  ]
+                }
+              },
+              "description": "Public. Returns active banners within their scheduled validity window.\n\nResponse per banner:\n- `id`: use for impression/click tracking\n- `image_url`: absolute URL, ready for `<Image>` component\n- `destination_url`: open on tap\n- `placement_key`: where to show this banner\n- `device`: intended device (`mobile` | `desktop` | `all` | null)\n- `impressions` / `clicks`: current totals\n\nCommon placement keys:\n`homepage_top`, `book_detail_middle`, `book_detail_bottom`, `books_listing_top`, `gamification_page`, `dashboard_middle`"
+            },
+            {
+              "name": "Get Active Placement Slots",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/ads/placements", "host": ["{{baseUrl}}"], "path": ["ads", "placements"] }
+              },
+              "description": "Public. Returns all enabled placement slot definitions.\n\nUse this to know which placements exist before fetching banners for them.\n\nResponse per placement:\n- `placement_key`: unique key for this slot\n- `label`: human-readable name\n- `ad_type`: `banner` | `rewarded` | `adsense`\n- `device_visibility`: `mobile` | `desktop` | `all`\n- `frequency`: display rule (e.g. `always`, `once_per_session`)\n- `display_priority`: lower = shown first"
             }
-          },
-          "description": "Returns active image banners within their validity window. Includes `image_url` (absolute), `destination_url`, and impression/click counts.\n\nCommon placement keys: `homepage_top`, `book_detail_middle`, `book_detail_bottom`, `books_listing_top`, `gamification_page`, `dashboard_middle`"
+          ]
         },
         {
-          "name": "Get Ad Placement Slots",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/ads/placements", "host": ["{{baseUrl}}"], "path": ["ads", "placements"] }
-          },
-          "description": "Returns all enabled ad placement slots — use these `placement_key` values when fetching banners or claiming rewarded ad rewards."
+          "name": "📱 Mobile — Rewarded Ads",
+          "item": [
+            {
+              "name": "Get Rewarded Ad Status",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/ads/rewarded/status", "host": ["{{baseUrl}}"], "path": ["ads", "rewarded", "status"] }
+              },
+              "description": "Auth required. Call before showing the Watch Ad button to know if the user can watch an ad.\n\nResponse:\n- `can_watch`: **the main boolean** — show the button only if this is true\n- `remaining`: ads the user can still watch today\n- `cooldown_seconds_left`: seconds left in cooldown (0 = ready now)\n- `coin_per_ad`: reward the user will receive\n- `today_count` / `daily_limit`\n- `last_ad_at`: timestamp of last watched ad"
+            },
+            {
+              "name": "Claim Rewarded Ad Reward",
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"placement\": \"mobile_player\",\n  \"ad_event_id\": \"admob_rewarded_abc123\"\n}" },
+                "url": { "raw": "{{baseUrl}}/ads/rewarded/claim", "host": ["{{baseUrl}}"], "path": ["ads", "rewarded", "claim"] }
+              },
+              "description": "Auth required. Call AFTER the ad has been fully watched and the ad network confirms completion.\n\n`placement`: where the ad was shown (e.g. `mobile_player`, `chapter_unlock`, `gamification_streak`)\n`ad_event_id`: optional — pass the ad network's rewarded callback event ID for deduplication\n\nResponse:\n- `success`: true\n- `reward`: coins awarded\n- `new_balance`: updated wallet balance\n- `today_count`: updated count\n- `remaining`: how many more the user can watch today\n\nError responses:\n- `400` `daily_limit_reached` — user has hit their daily cap\n- `429` `cooldown` — too soon after last ad; includes `cooldown_seconds_left`"
+            },
+            {
+              "name": "Get My Rewarded Ad History",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/ads/rewarded/history?limit=20",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "rewarded", "history"],
+                  "query": [{ "key": "limit", "value": "20", "description": "Max 100" }]
+                }
+              },
+              "description": "Auth required. Returns the current user's rewarded ad log.\n\nResponse:\n- `today_count`: how many rewarded ads they've watched today\n- `total_coins_earned`: lifetime coins from rewarded ads\n- `logs[]`: full log entries with placement, coins, and timestamp"
+            }
+          ]
         },
         {
-          "name": "Get Rewarded Ad Status",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/ads/rewarded/status", "host": ["{{baseUrl}}"], "path": ["ads", "rewarded", "status"] }
-          },
-          "description": "Check before showing the Watch Ad button.\n\nResponse:\n- `can_watch`: true if the user may watch an ad right now\n- `remaining`: ads left today\n- `cooldown_seconds_left`: seconds remaining in cooldown (0 = ready)\n- `coin_per_ad`: reward per view\n- `today_count` / `daily_limit`"
+          "name": "📱 Mobile — Banner Tracking",
+          "item": [
+            {
+              "name": "Record Banner Impression",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"banner_id\": \"{{bannerId}}\"\n}" },
+                "url": { "raw": "{{baseUrl}}/ads/impression", "host": ["{{baseUrl}}"], "path": ["ads", "impression"] }
+              },
+              "description": "Auth optional. Fire when a banner becomes visible in the viewport.\n\nIncrements the banner's `impressions` counter. Silent — always returns `{ recorded: true }` even if the banner ID is wrong (to avoid crashing the app)."
+            },
+            {
+              "name": "Record Banner Click",
+              "request": {
+                "auth": { "type": "noauth" },
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": { "mode": "raw", "raw": "{\n  \"banner_id\": \"{{bannerId}}\"\n}" },
+                "url": { "raw": "{{baseUrl}}/ads/click", "host": ["{{baseUrl}}"], "path": ["ads", "click"] }
+              },
+              "description": "Auth optional. Fire when the user taps a banner (before navigating to its destination).\n\nIncrements the banner's `clicks` counter. Always returns `{ recorded: true }`."
+            }
+          ]
         },
         {
-          "name": "Claim Rewarded Ad Reward",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"placement\": \"mobile_player\",\n  \"ad_event_id\": \"admob_event_abc123\"\n}" },
-            "url": { "raw": "{{baseUrl}}/ads/rewarded/claim", "host": ["{{baseUrl}}"], "path": ["ads", "rewarded", "claim"] }
-          },
-          "description": "Call AFTER the ad has been fully watched.\n\n`ad_event_id` is optional — pass the ad network's event/impression ID for analytics.\n\nResponse:\n- `success`: true\n- `reward`: coins awarded\n- `new_balance`: updated wallet balance\n- `remaining`: ads the user can still watch today\n\nError status codes:\n- `400` → `daily_limit_reached`\n- `429` → `cooldown` (includes `cooldown_seconds_left`)"
+          "name": "🛡️ Admin — Settings",
+          "item": [
+            {
+              "name": "Update Ad Settings",
+              "request": {
+                "method": "PATCH",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"ad_system_enabled\": \"true\",\n  \"ad_rewarded_coins\": \"2\",\n  \"ad_max_per_day\": \"10\",\n  \"ad_cooldown_minutes\": \"5\",\n  \"ad_provider_type\": \"adsense\",\n  \"ad_adsense_publisher_id\": \"ca-pub-XXXXXXXXXXXXXXXX\",\n  \"ad_web_banner_unit_id\": \"1234567890\",\n  \"ad_rewarded_unit_id\": \"0987654321\",\n  \"ad_premium_hide_ads\": \"true\",\n  \"ad_free_show_ads\": \"true\",\n  \"ad_country_targeting\": \"BD,IN\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/ads/admin/settings", "host": ["{{baseUrl}}"], "path": ["ads", "admin", "settings"] }
+              },
+              "description": "Admin only (role: admin | moderator). Update any subset of ad platform settings.\n\nAllowed keys:\n- `ad_system_enabled` — `\"true\"` | `\"false\"`\n- `ad_provider_type` — `\"adsense\"` | `\"none\"`\n- `ad_adsense_publisher_id` — Google publisher ID\n- `ad_web_banner_unit_id` — Banner ad unit\n- `ad_rewarded_unit_id` — Rewarded ad unit\n- `ad_premium_hide_ads` — Hide ads for premium users\n- `ad_free_show_ads` — Show ads for free users\n- `ad_country_targeting` — Comma-separated country codes\n- `ad_rewarded_coins` — Coins per rewarded ad view\n- `ad_max_per_day` — Daily rewarded ad cap\n- `ad_cooldown_minutes` — Wait between rewarded ads\n\nResponse: `{ updated: [\"key1\", \"key2\"] }`"
+            }
+          ]
         },
         {
-          "name": "Record Banner Impression",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"banner_id\": \"{{bannerId}}\"\n}" },
-            "url": { "raw": "{{baseUrl}}/ads/impression", "host": ["{{baseUrl}}"], "path": ["ads", "impression"] }
-          },
-          "description": "Fire when a banner enters the viewport. Auth is optional. Increments the banner's impression counter silently."
+          "name": "🛡️ Admin — Banners",
+          "item": [
+            {
+              "name": "List All Banners (admin)",
+              "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.banners && j.banners.length > 0) pm.collectionVariables.set('bannerId', j.banners[0].id);"], "type": "text/javascript" } }],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/ads/admin/banners?status=active",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "admin", "banners"],
+                  "query": [
+                    { "key": "status",    "value": "active",       "description": "active | inactive | all (optional)" },
+                    { "key": "placement", "value": "",              "description": "Filter by placement key (optional)", "disabled": true }
+                  ]
+                }
+              },
+              "description": "Admin only. Returns ALL banners including inactive ones (unlike the public `/ads/banners` which only returns active, in-schedule banners).\n\nOptionally filter by `status` or `placement`."
+            },
+            {
+              "name": "Create Banner",
+              "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.id) pm.collectionVariables.set('bannerId', j.id);"], "type": "text/javascript" } }],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"placement_key\": \"homepage_top\",\n  \"title\": \"Summer Sale\",\n  \"image_url\": \"/uploads/banners/summer-sale.jpg\",\n  \"destination_url\": \"https://boiaro.com/sale\",\n  \"status\": \"active\",\n  \"display_order\": 1,\n  \"device\": \"all\",\n  \"start_date\": \"2026-06-01T00:00:00Z\",\n  \"end_date\": \"2026-06-30T23:59:59Z\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/ads/admin/banners", "host": ["{{baseUrl}}"], "path": ["ads", "admin", "banners"] }
+              },
+              "description": "Admin only. Creates a new ad banner.\n\n- `placement_key` is required — must match an existing placement slot\n- `device`: `mobile` | `desktop` | `all` | null (null = show everywhere)\n- `status`: `active` | `inactive`\n- `start_date` / `end_date`: ISO 8601 strings; null = no restriction\n- `display_order`: lower = shown first within the same placement"
+            },
+            {
+              "name": "Update Banner",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Updated Title\",\n  \"status\": \"inactive\",\n  \"display_order\": 2,\n  \"end_date\": \"2026-07-31T23:59:59Z\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/ads/admin/banners/{{bannerId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "admin", "banners", "{{bannerId}}"]
+                }
+              },
+              "description": "Admin only. Partial update — only include the fields you want to change. Null values explicitly clear a field (e.g. `\"end_date\": null` removes the expiry)."
+            },
+            {
+              "name": "Delete Banner",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/ads/admin/banners/{{bannerId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "admin", "banners", "{{bannerId}}"]
+                }
+              },
+              "description": "Admin only. Permanently deletes a banner. Consider setting `status: inactive` instead to preserve the record."
+            }
+          ]
         },
         {
-          "name": "Record Banner Click",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{\n  \"banner_id\": \"{{bannerId}}\"\n}" },
-            "url": { "raw": "{{baseUrl}}/ads/click", "host": ["{{baseUrl}}"], "path": ["ads", "click"] }
-          },
-          "description": "Fire when the user taps a banner. Auth is optional. Increments the click counter."
+          "name": "🛡️ Admin — Campaigns",
+          "item": [
+            {
+              "name": "List Campaigns",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/ads/admin/campaigns", "host": ["{{baseUrl}}"], "path": ["ads", "admin", "campaigns"] }
+              },
+              "description": "Admin only. Returns all ad campaigns ordered by creation date descending."
+            },
+            {
+              "name": "Create Campaign",
+              "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.id) pm.collectionVariables.set('campaignId', j.id);"], "type": "text/javascript" } }],
+              "request": {
+                "method": "POST",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Eid Promo 2026\",\n  \"ad_type\": \"banner\",\n  \"placement_key\": \"homepage_top\",\n  \"status\": \"active\",\n  \"start_date\": \"2026-03-28T00:00:00Z\",\n  \"end_date\": \"2026-04-05T23:59:59Z\",\n  \"target_page\": \"/\",\n  \"notes\": \"Eid season promotion\"\n}"
+                },
+                "url": { "raw": "{{baseUrl}}/ads/admin/campaigns", "host": ["{{baseUrl}}"], "path": ["ads", "admin", "campaigns"] }
+              },
+              "description": "Admin only. Creates an ad campaign.\n\n`ad_type`: `banner` | `rewarded` | `popup`\n`status`: `active` | `paused` | `ended`"
+            },
+            {
+              "name": "Update Campaign",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"status\": \"paused\",\n  \"notes\": \"Paused due to budget\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/ads/admin/campaigns/{{campaignId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "admin", "campaigns", "{{campaignId}}"],
+                  "variable": [{ "key": "campaignId", "value": "{{campaignId}}" }]
+                }
+              }
+            },
+            {
+              "name": "Delete Campaign",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/ads/admin/campaigns/{{campaignId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "admin", "campaigns", "{{campaignId}}"],
+                  "variable": [{ "key": "campaignId", "value": "{{campaignId}}" }]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "🛡️ Admin — Placements",
+          "item": [
+            {
+              "name": "List All Placement Slots (admin)",
+              "event": [{ "listen": "test", "script": { "exec": ["const j = pm.response.json();", "if (j.placements && j.placements.length > 0) pm.collectionVariables.set('placementId', j.placements[0].id);"], "type": "text/javascript" } }],
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/ads/admin/placements", "host": ["{{baseUrl}}"], "path": ["ads", "admin", "placements"] }
+              },
+              "description": "Admin only. Returns ALL placement slots including disabled ones (unlike the public `/ads/placements` which only returns enabled slots).\n\nSave an `id` to use in the Update Placement request."
+            },
+            {
+              "name": "Update Placement Slot",
+              "request": {
+                "method": "PUT",
+                "header": [{ "key": "Content-Type", "value": "application/json" }],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"is_enabled\": true,\n  \"ad_type\": \"banner\",\n  \"device_visibility\": \"mobile\",\n  \"display_priority\": 1,\n  \"frequency\": \"always\",\n  \"notes\": \"Primary mobile homepage slot\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/ads/admin/placements/{{placementId}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "admin", "placements", "{{placementId}}"],
+                  "variable": [{ "key": "placementId", "value": "{{placementId}}" }]
+                }
+              },
+              "description": "Admin only. Update a placement slot configuration.\n\n- `is_enabled`: false = this placement won't return banners to mobile/web\n- `device_visibility`: `mobile` | `desktop` | `all`\n- `frequency`: `always` | `once_per_session` | `once_per_day`\n- `display_priority`: lower = shown first"
+            }
+          ]
+        },
+        {
+          "name": "🛡️ Admin — Analytics",
+          "item": [
+            {
+              "name": "Ad Performance Report",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": { "raw": "{{baseUrl}}/ads/admin/report", "host": ["{{baseUrl}}"], "path": ["ads", "admin", "report"] }
+              },
+              "description": "Admin only. Aggregated ad performance summary.\n\nResponse:\n- `summary.total_impressions` / `total_clicks` / `ctr_percent`\n- `summary.total_rewarded_ad_views` / `today_rewarded_ad_views`\n- `summary.total_coins_distributed`: total coins awarded via rewarded ads\n- `top_banners[]`: top 10 banners by impressions with individual CTR"
+            },
+            {
+              "name": "List Rewarded Ad Logs (admin)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/ads/admin/rewarded-logs?limit=50",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["ads", "admin", "rewarded-logs"],
+                  "query": [
+                    { "key": "limit",     "value": "50",    "description": "Max 200" },
+                    { "key": "user_id",   "value": "",      "description": "Filter by user ID (optional)", "disabled": true },
+                    { "key": "placement", "value": "",      "description": "Filter by placement key (optional)", "disabled": true }
+                  ]
+                }
+              },
+              "description": "Admin only. Returns rewarded ad claim logs across all users.\n\nOptionally filter by `user_id` or `placement`.\n\nResponse:\n- `total`: total matching log entries\n- `total_coins_distributed`: sum of coins across filtered logs\n- `logs[]`: each log has `user_id`, `placement_key`, `coins_rewarded`, `ad_event_id`, `status`, `created_at`"
+            }
+          ]
         }
       ]
     },
