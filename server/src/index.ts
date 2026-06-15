@@ -12,6 +12,7 @@ import { createContext } from "./context.js";
 import { attachAuth } from "./middleware/auth.js";
 import { restRouter } from "./routes/rest/index.js";
 import { registerOgImageRoute } from "./routes/og-image.js";
+import { socialBotMiddleware } from "./middleware/social-bot.js";
 import {
   s3Configured,
   uploadWithFallback,
@@ -253,6 +254,11 @@ const frontendDist = path.resolve(__dirname, "../../dist");
 // Reads logo.png from the dist folder; ETag invalidates automatically when the
 // logo file is replaced, so social share previews update without a redeploy.
 registerOgImageRoute(app, frontendDist);
+
+// Social bot meta injection — detects link-preview crawlers on /books/:slug
+// and returns server-rendered HTML with book-specific OG tags. Bots don't run
+// JS so the SPA's useEffect meta updates are invisible to them.
+app.use(socialBotMiddleware);
 
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(frontendDist));
