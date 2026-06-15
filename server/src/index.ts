@@ -52,13 +52,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use(attachAuth);
 
 // CSRF protection — require X-Requested-With on state-changing REST calls.
-// Browser cross-origin requests cannot set custom headers without a CORS preflight,
-// so this stops naive CSRF attacks without needing a token for stateless JWT auth.
-// Exempt SSLCommerz IPN callbacks (server-to-server, no custom header possible).
+// Exempt: SSLCommerz callbacks (server-to-server), and any request bearing a
+// Bearer token (mobile apps / API clients). Bearer-token auth is inherently
+// CSRF-safe because browsers cannot set the Authorization header cross-origin.
 app.use("/api/v1", (req, res, next) => {
-  // SSLCommerz callbacks are server-to-server POST requests — no custom headers possible
-  if (["POST", "PATCH", "PUT", "DELETE"].includes(req.method) && !req.originalUrl.startsWith("/api/v1/payments/sslcommerz/")) {
-    if (!req.headers["x-requested-with"]) {
+  if (["POST", "PATCH", "PUT", "DELETE"].includes(req.method)) {
+    const isPaymentCallback = req.originalUrl.startsWith("/api/v1/payments/sslcommerz/");
+    const hasBearerToken = /^Bearer\s+\S+$/i.test(req.headers["authorization"] ?? "");
+    const hasXRequestedWith = !!req.headers["x-requested-with"];
+    if (!isPaymentCallback && !hasBearerToken && !hasXRequestedWith) {
       res.status(403).json({ success: false, error: "FORBIDDEN", message: "Missing X-Requested-With header" });
       return;
     }
