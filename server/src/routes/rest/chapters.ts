@@ -3,6 +3,20 @@ import { sendHttpError } from "../../lib/http.js";
 import { requireAuth, AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings } from "../../lib/earnings.js";
+import { s3Configured, createPresignedGetUrl, isS3Url } from "../../lib/s3.js";
+import { resolveFileUrl } from "../../lib/mediaUrl.js";
+
+const AUDIO_URL_TTL = 3600; // 1 hour
+
+async function resolveAudioUrl(rawUrl: string | null | undefined): Promise<string | null> {
+  if (!rawUrl) return null;
+  const resolved = resolveFileUrl(rawUrl);
+  if (!resolved) return null;
+  if (s3Configured && isS3Url(resolved)) {
+    try { return await createPresignedGetUrl(resolved, AUDIO_URL_TTL); } catch { return null; }
+  }
+  return resolved;
+}
 
 export const chaptersRestRouter = Router();
 
@@ -46,6 +60,7 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
         is_preview: true,
         chapter_price: true,
         chapter_taka_price: true,
+        audio_url: true,
       },
     });
 
@@ -76,22 +91,32 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
     const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0);
     const pricingMode = hasPerChapterPricing ? "per_chapter" : "whole_book";
 
+    // Resolve presigned audio URLs for playable tracks (preview or user-unlocked)
+    const chapters = await Promise.all(
+      tracks.map(async t => {
+        const playable = t.is_preview === true || unlockedTrackIds.has(t.id);
+        const audio_url = playable ? await resolveAudioUrl(t.audio_url) : null;
+        return {
+          id: t.id,
+          track_number: t.track_number,
+          title: t.title,
+          duration: t.duration ?? null,
+          is_preview: t.is_preview ?? false,
+          chapter_price_coins: t.chapter_price ?? null,
+          chapter_price_bdt: t.chapter_taka_price ?? t.chapter_price ?? null,
+          is_free: t.is_preview === true,
+          is_unlocked: playable,
+          audio_url,
+        };
+      })
+    );
+
     res.json({
       book_id: bookId,
       pricing_mode: pricingMode,
       book_coin_price: bookFormat.coin_price ?? null,
       book_taka_price: bookFormat.price ?? null,
-      chapters: tracks.map(t => ({
-        id: t.id,
-        track_number: t.track_number,
-        title: t.title,
-        duration: t.duration ?? null,
-        is_preview: t.is_preview ?? false,
-        chapter_price_coins: t.chapter_price ?? null,
-        chapter_price_bdt: t.chapter_taka_price ?? t.chapter_price ?? null,
-        is_free: t.is_preview === true,
-        is_unlocked: t.is_preview === true || unlockedTrackIds.has(t.id),
-      })),
+      chapters,
     });
   } catch (error) {
     sendHttpError(res, error);
