@@ -42,12 +42,18 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
         id: true,
         price: true,
         coin_price: true,
+        book: { select: { is_free: true } },
       },
     });
     if (!bookFormat) {
       res.status(404).json({ error: "Audiobook format not found for this book" });
       return;
     }
+
+    // A book is entirely free if it costs 0 taka AND 0 coins (or null), or is_free flag is set
+    const isEntirelyFree =
+      bookFormat.book?.is_free === true ||
+      ((bookFormat.price ?? 0) === 0 && (bookFormat.coin_price ?? 0) === 0);
 
     const tracks = await prisma.audiobookTrack.findMany({
       where: { book_format_id: bookFormat.id, status: "active" },
@@ -91,10 +97,12 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
     const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0);
     const pricingMode = hasPerChapterPricing ? "per_chapter" : "whole_book";
 
-    // Resolve presigned audio URLs for playable tracks (preview or user-unlocked)
+    // Resolve presigned audio URLs for playable tracks:
+    // preview tracks, user-unlocked tracks, or every track if the book is free
     const chapters = await Promise.all(
       tracks.map(async t => {
-        const playable = t.is_preview === true || unlockedTrackIds.has(t.id);
+        const isFreeTrack = t.is_preview === true || isEntirelyFree;
+        const playable = isFreeTrack || unlockedTrackIds.has(t.id);
         const audio_url = playable ? await resolveAudioUrl(t.audio_url) : null;
         return {
           id: t.id,
@@ -102,9 +110,9 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
           title: t.title,
           duration: t.duration ?? null,
           is_preview: t.is_preview ?? false,
-          chapter_price_coins: t.chapter_price ?? null,
-          chapter_price_bdt: t.chapter_taka_price ?? t.chapter_price ?? null,
-          is_free: t.is_preview === true,
+          chapter_price_coins: isFreeTrack ? 0 : (t.chapter_price ?? null),
+          chapter_price_bdt: isFreeTrack ? 0 : (t.chapter_taka_price ?? t.chapter_price ?? null),
+          is_free: isFreeTrack,
           is_unlocked: playable,
           audio_url,
         };
