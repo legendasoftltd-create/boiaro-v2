@@ -3,8 +3,7 @@ import sharp from "sharp";
 import path from "path";
 import fs from "fs";
 
-// Brand colours matching index.css CSS variables
-const BG = { r: 14, g: 14, b: 17, alpha: 255 } as const;   // hsl(240 10% 6%)
+const BG = { r: 255, g: 255, b: 255, alpha: 255 } as const;  // white
 const GOLD = { r: 217, g: 166, b: 38, alpha: 255 } as const; // hsl(43 70% 50%)
 
 export function registerOgImageRoute(app: express.Application, distDir: string) {
