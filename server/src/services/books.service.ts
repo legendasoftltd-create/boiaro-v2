@@ -166,6 +166,10 @@ export async function getBookById(id: string) {
           where: { submission_status: "approved", is_available: true },
           include: {
             narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, user_id: true } },
+            audiobook_tracks: {
+              where: { status: "active" },
+              orderBy: { track_number: "asc" as const },
+            },
           },
         },
       },
@@ -263,6 +267,10 @@ export async function getBookBySlug(slug: string) {
         where: { submission_status: "approved", is_available: true },
         include: {
           narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, user_id: true } },
+          audiobook_tracks: {
+            where: { status: "active" },
+            orderBy: { track_number: "asc" as const },
+          },
         },
       },
     },

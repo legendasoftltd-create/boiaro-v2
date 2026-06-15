@@ -10,8 +10,17 @@ export const chaptersRestRouter = Router();
 // Public (auth optional). Returns all active chapters with per-user unlock status.
 chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedRequest, res) => {
   try {
-    const bookId = String(req.params.bookId);
+    const param = String(req.params.bookId);
     const userId = req.auth?.userId ?? null;
+
+    // Accept either a UUID (id) or a slug — resolve to book_id
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let bookId = param;
+    if (!UUID_RE.test(param)) {
+      const book = await prisma.book.findFirst({ where: { slug: param }, select: { id: true } });
+      if (!book) { res.status(404).json({ error: "Book not found" }); return; }
+      bookId = book.id;
+    }
 
     const bookFormat = await prisma.bookFormat.findFirst({
       where: { book_id: bookId, format: "audiobook" },
@@ -93,8 +102,16 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
 // Auth required. Returns only the unlocked chapter IDs for the current user.
 chaptersRestRouter.get("/books/:bookId/unlocked-chapters", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const bookId = String(req.params.bookId);
+    const param = String(req.params.bookId);
     const userId = req.auth.userId!;
+
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let bookId = param;
+    if (!UUID_RE.test(param)) {
+      const book = await prisma.book.findFirst({ where: { slug: param }, select: { id: true } });
+      if (!book) { res.status(404).json({ error: "Book not found" }); return; }
+      bookId = book.id;
+    }
 
     const fullUnlock = await prisma.contentUnlock.findFirst({
       where: { user_id: userId, book_id: bookId, format: "audiobook", status: "active" },
