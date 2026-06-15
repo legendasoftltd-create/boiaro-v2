@@ -11,6 +11,7 @@ import { appRouter } from "./routers/_app.js";
 import { createContext } from "./context.js";
 import { attachAuth } from "./middleware/auth.js";
 import { restRouter } from "./routes/rest/index.js";
+import { registerOgImageRoute } from "./routes/og-image.js";
 import {
   s3Configured,
   uploadWithFallback,
@@ -247,6 +248,12 @@ app.get("/health", (_req, res) => {
 // ── Frontend (production) ─────────────────────────────────────────────────────
 
 const frontendDist = path.resolve(__dirname, "../../dist");
+
+// Dynamic OG image — registered before express.static so the route takes priority.
+// Reads logo.png from the dist folder; ETag invalidates automatically when the
+// logo file is replaced, so social share previews update without a redeploy.
+registerOgImageRoute(app, frontendDist);
+
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(frontendDist));
   app.get("*", (_req, res) => res.sendFile(path.join(frontendDist, "index.html")));
