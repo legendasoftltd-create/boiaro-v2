@@ -150,7 +150,7 @@ authRestRouter.post("/reset-password", async (req, res) => {
         where: { id: user.id },
         data: { reset_otp: token, reset_otp_expires: expires },
       });
-      const appUrl = (process.env.FRONTEND_URL || process.env.BASE_URL || "https://boiaro.com.bd").replace(/\/$/, "");
+      const appUrl = (process.env.FRONTEND_URL || process.env.BASE_URL || "https://boiaro.com").replace(/\/$/, "");
       const resetLink = `${appUrl}/reset-password?email=${encodeURIComponent(user.email)}&token=${token}`;
       await sendMail({
         to: email,
