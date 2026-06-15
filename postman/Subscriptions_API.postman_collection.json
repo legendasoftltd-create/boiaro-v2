@@ -1,11 +1,11 @@
 {
   "info": {
     "name": "BoiAro — Subscriptions API",
-    "description": "Full subscription lifecycle for mobile apps.\n\n**Base URL (production):** `https://boiaro.com.bd`\n**Auth:** Pass `Authorization: Bearer {{access_token}}` on all protected endpoints.\n\n---\n\n## Subscription Flow\n\n```\n1. GET  /plans              → list available plans\n2. POST /subscribe          → create pending sub + get SSLCommerz gateway_url\n3. ── user completes payment in WebView / browser ──\n4. SSLCommerz callback activates subscription automatically\n5. GET  /active             → confirm status is \"active\"\n```\n\n**Free / fully-discounted plans** skip the payment step and activate immediately.\n\n## Subscription statuses\n| status     | meaning |\n|------------|---------|\n| `pending`  | Created, awaiting payment |\n| `active`   | Payment confirmed, access granted |\n| `failed`   | Payment failed |\n| `cancelled`| Payment cancelled by user |\n| `expired`  | end_date passed (checked at query time) |",
+    "description": "Full subscription lifecycle for mobile apps.\n\n**Base URL (production):** `https://boiaro.com`\n**Auth:** Pass `Authorization: Bearer {{access_token}}` on all protected endpoints.\n\n---\n\n## Subscription Flow\n\n```\n1. GET  /plans              → list available plans\n2. POST /subscribe          → create pending sub + get SSLCommerz gateway_url\n3. ── user completes payment in WebView / browser ──\n4. SSLCommerz callback activates subscription automatically\n5. GET  /active             → confirm status is \"active\"\n```\n\n**Free / fully-discounted plans** skip the payment step and activate immediately.\n\n## Subscription statuses\n| status     | meaning |\n|------------|---------|\n| `pending`  | Created, awaiting payment |\n| `active`   | Payment confirmed, access granted |\n| `failed`   | Payment failed |\n| `cancelled`| Payment cancelled by user |\n| `expired`  | end_date passed (checked at query time) |",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl",       "value": "https://boiaro.com.bd", "type": "string" },
+    { "key": "baseUrl",       "value": "https://boiaro.com", "type": "string" },
     { "key": "access_token",  "value": "", "type": "string" },
     { "key": "plan_id",       "value": "", "type": "string" },
     { "key": "subscription_id", "value": "", "type": "string" }

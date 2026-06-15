@@ -1,11 +1,11 @@
 {
   "info": {
     "name": "BoiAro — Author / Narrator / Publisher Profiles API",
-    "description": "Get a single author, narrator, or publisher by ID.\n\nEach response includes:\n- **`followers_count`** — total number of users following this profile\n- **`books_count`** — total books/audiobooks associated with this profile\n- **`is_following`** — whether the authenticated user currently follows this profile (`false` for unauthenticated requests)\n\n**Base URL (production):** `https://boiaro.com.bd`\n**Auth:** Optional. Pass `Authorization: Bearer {{access_token}}` to get a correct `is_following` value.",
+    "description": "Get a single author, narrator, or publisher by ID.\n\nEach response includes:\n- **`followers_count`** — total number of users following this profile\n- **`books_count`** — total books/audiobooks associated with this profile\n- **`is_following`** — whether the authenticated user currently follows this profile (`false` for unauthenticated requests)\n\n**Base URL (production):** `https://boiaro.com`\n**Auth:** Optional. Pass `Authorization: Bearer {{access_token}}` to get a correct `is_following` value.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "https://boiaro.com.bd", "type": "string" },
+    { "key": "baseUrl", "value": "https://boiaro.com", "type": "string" },
     { "key": "access_token", "value": "", "type": "string" },
     { "key": "author_id", "value": "", "type": "string" },
     { "key": "narrator_id", "value": "", "type": "string" },
@@ -57,7 +57,7 @@
               "status": "OK",
               "code": 200,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"id\": \"abc-123\",\n  \"name\": \"হুমায়ূন আহমেদ\",\n  \"name_en\": \"Humayun Ahmed\",\n  \"avatar_url\": \"https://boiaro.com.bd/uploads/avatar.png\",\n  \"bio\": \"বাংলাদেশের জনপ্রিয় লেখক।\",\n  \"genre\": \"Fiction\",\n  \"is_featured\": true,\n  \"is_trending\": false,\n  \"followers_count\": 1240,\n  \"books_count\": 38,\n  \"is_following\": true\n}"
+              "body": "{\n  \"id\": \"abc-123\",\n  \"name\": \"হুমায়ূন আহমেদ\",\n  \"name_en\": \"Humayun Ahmed\",\n  \"avatar_url\": \"https://boiaro.com/uploads/avatar.png\",\n  \"bio\": \"বাংলাদেশের জনপ্রিয় লেখক।\",\n  \"genre\": \"Fiction\",\n  \"is_featured\": true,\n  \"is_trending\": false,\n  \"followers_count\": 1240,\n  \"books_count\": 38,\n  \"is_following\": true\n}"
             },
             {
               "name": "Not Found",
@@ -151,7 +151,7 @@
               "status": "OK",
               "code": 200,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"id\": \"nar-456\",\n  \"name\": \"রাহেলা পারভীন\",\n  \"name_en\": \"Rahela Parveen\",\n  \"avatar_url\": \"https://boiaro.com.bd/uploads/nar.png\",\n  \"bio\": \"পেশাদার কণ্ঠশিল্পী।\",\n  \"specialty\": \"Drama\",\n  \"rating\": 4.8,\n  \"is_featured\": true,\n  \"is_trending\": true,\n  \"followers_count\": 530,\n  \"books_count\": 12,\n  \"is_following\": false\n}"
+              "body": "{\n  \"id\": \"nar-456\",\n  \"name\": \"রাহেলা পারভীন\",\n  \"name_en\": \"Rahela Parveen\",\n  \"avatar_url\": \"https://boiaro.com/uploads/nar.png\",\n  \"bio\": \"পেশাদার কণ্ঠশিল্পী।\",\n  \"specialty\": \"Drama\",\n  \"rating\": 4.8,\n  \"is_featured\": true,\n  \"is_trending\": true,\n  \"followers_count\": 530,\n  \"books_count\": 12,\n  \"is_following\": false\n}"
             },
             {
               "name": "Not Found",
@@ -245,7 +245,7 @@
               "status": "OK",
               "code": 200,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"id\": \"pub-789\",\n  \"name\": \"প্রথমা প্রকাশন\",\n  \"name_en\": \"Prothoma Prokashon\",\n  \"logo_url\": \"https://boiaro.com.bd/uploads/pub.png\",\n  \"description\": \"বাংলাদেশের অন্যতম প্রকাশনী।\",\n  \"is_verified\": true,\n  \"is_featured\": true,\n  \"followers_count\": 820,\n  \"books_count\": 145,\n  \"is_following\": true\n}"
+              "body": "{\n  \"id\": \"pub-789\",\n  \"name\": \"প্রথমা প্রকাশন\",\n  \"name_en\": \"Prothoma Prokashon\",\n  \"logo_url\": \"https://boiaro.com/uploads/pub.png\",\n  \"description\": \"বাংলাদেশের অন্যতম প্রকাশনী।\",\n  \"is_verified\": true,\n  \"is_featured\": true,\n  \"followers_count\": 820,\n  \"books_count\": 145,\n  \"is_following\": true\n}"
             },
             {
               "name": "Not Found",

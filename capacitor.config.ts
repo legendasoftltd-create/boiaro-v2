@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: 'BoiAro',
   webDir: 'dist',
   server: {
-    url: 'https://boiaro.com.bd',
+    url: 'https://boiaro.com',
     cleartext: true,
   },
 };

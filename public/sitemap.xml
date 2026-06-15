@@ -1,42 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://boiaro.com.bd/</loc>
+    <loc>https://boiaro.com/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://boiaro.com.bd/books</loc>
+    <loc>https://boiaro.com/books</loc>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://boiaro.com.bd/authors</loc>
+    <loc>https://boiaro.com/authors</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://boiaro.com.bd/narrators</loc>
+    <loc>https://boiaro.com/narrators</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://boiaro.com.bd/blog</loc>
+    <loc>https://boiaro.com/blog</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://boiaro.com.bd/subscriptions</loc>
+    <loc>https://boiaro.com/subscriptions</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://boiaro.com.bd/auth</loc>
+    <loc>https://boiaro.com/auth</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://boiaro.com.bd/apply</loc>
+    <loc>https://boiaro.com/apply</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>

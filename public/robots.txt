@@ -13,4 +13,4 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://boiaro.com.bd/sitemap.xml
+Sitemap: https://boiaro.com/sitemap.xml
