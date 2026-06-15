@@ -27,6 +27,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
+// Trust nginx reverse proxy so X-Forwarded-For is used for rate limiting
+app.set("trust proxy", 1);
+
 const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:8080")
   .split(",")
   .map((o) => o.trim());
@@ -52,15 +55,18 @@ app.use(express.urlencoded({ extended: true }));
 app.use(attachAuth);
 
 // CSRF protection — require X-Requested-With on state-changing REST calls.
-// Exempt: SSLCommerz callbacks (server-to-server), and any request bearing a
-// Bearer token (mobile apps / API clients). Bearer-token auth is inherently
-// CSRF-safe because browsers cannot set the Authorization header cross-origin.
+// Exempt:
+//   - SSLCommerz callbacks (server-to-server, no custom headers possible)
+//   - Auth endpoints (login/signup/refresh — no token exists yet to provide)
+//   - Any request bearing a Bearer token (mobile/API clients; browsers cannot
+//     set Authorization cross-origin, so Bearer auth is inherently CSRF-safe)
 app.use("/api/v1", (req, res, next) => {
   if (["POST", "PATCH", "PUT", "DELETE"].includes(req.method)) {
     const isPaymentCallback = req.originalUrl.startsWith("/api/v1/payments/sslcommerz/");
+    const isAuthEndpoint = req.originalUrl.startsWith("/api/v1/auth/");
     const hasBearerToken = /^Bearer\s+\S+$/i.test(req.headers["authorization"] ?? "");
     const hasXRequestedWith = !!req.headers["x-requested-with"];
-    if (!isPaymentCallback && !hasBearerToken && !hasXRequestedWith) {
+    if (!isPaymentCallback && !isAuthEndpoint && !hasBearerToken && !hasXRequestedWith) {
       res.status(403).json({ success: false, error: "FORBIDDEN", message: "Missing X-Requested-With header" });
       return;
     }
