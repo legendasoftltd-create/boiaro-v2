@@ -27,14 +27,13 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
     const param = String(req.params.bookId);
     const userId = req.auth?.userId ?? null;
 
-    // Accept either a UUID (id) or a slug — resolve to book_id
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let bookId = param;
-    if (!UUID_RE.test(param)) {
-      const book = await prisma.book.findFirst({ where: { slug: param }, select: { id: true } });
-      if (!book) { res.status(404).json({ error: "Book not found" }); return; }
-      bookId = book.id;
-    }
+    // Accept either an id or a slug — resolve to book_id
+    const book = await prisma.book.findFirst({
+      where: { OR: [{ id: param }, { slug: param }] },
+      select: { id: true },
+    });
+    if (!book) { res.status(404).json({ error: "Book not found" }); return; }
+    const bookId = book.id;
 
     const bookFormat = await prisma.bookFormat.findFirst({
       where: { book_id: bookId, format: "audiobook" },
@@ -50,11 +49,6 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
       return;
     }
 
-    // A book is entirely free if it costs 0 taka AND 0 coins (or null), or is_free flag is set
-    const isEntirelyFree =
-      bookFormat.book?.is_free === true ||
-      ((bookFormat.price ?? 0) === 0 && (bookFormat.coin_price ?? 0) === 0);
-
     const tracks = await prisma.audiobookTrack.findMany({
       where: { book_format_id: bookFormat.id, status: "active" },
       orderBy: { track_number: "asc" },
@@ -69,6 +63,17 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
         audio_url: true,
       },
     });
+
+    // Infer per-chapter pricing from whether tracks have individual prices
+    const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0);
+
+    // A book is entirely free if the is_free flag is set, or — when it's not using
+    // per-chapter pricing — the whole-book price is 0 taka AND 0 coins (or null).
+    // (In per-chapter mode the whole-book price/coin_price are legitimately 0/null,
+    // so they can't be used to infer the book is free.)
+    const isEntirelyFree =
+      bookFormat.book?.is_free === true ||
+      (!hasPerChapterPricing && (bookFormat.price ?? 0) === 0 && (bookFormat.coin_price ?? 0) === 0);
 
     let unlockedTrackIds = new Set<string>();
     if (userId) {
@@ -93,8 +98,6 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
       }
     }
 
-    // Infer per-chapter pricing from whether tracks have individual prices
-    const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0);
     const pricingMode = hasPerChapterPricing ? "per_chapter" : "whole_book";
 
     // Resolve presigned audio URLs for playable tracks:
@@ -138,13 +141,12 @@ chaptersRestRouter.get("/books/:bookId/unlocked-chapters", requireAuth, async (r
     const param = String(req.params.bookId);
     const userId = req.auth.userId!;
 
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let bookId = param;
-    if (!UUID_RE.test(param)) {
-      const book = await prisma.book.findFirst({ where: { slug: param }, select: { id: true } });
-      if (!book) { res.status(404).json({ error: "Book not found" }); return; }
-      bookId = book.id;
-    }
+    const book = await prisma.book.findFirst({
+      where: { OR: [{ id: param }, { slug: param }] },
+      select: { id: true },
+    });
+    if (!book) { res.status(404).json({ error: "Book not found" }); return; }
+    const bookId = book.id;
 
     const fullUnlock = await prisma.contentUnlock.findFirst({
       where: { user_id: userId, book_id: bookId, format: "audiobook", status: "active" },
