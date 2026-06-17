@@ -62,13 +62,18 @@ adsRestRouter.get("/banners", async (req, res) => {
     const { placement, device } = req.query;
     const where: Record<string, unknown> = { status: "active" };
     if (placement) where.placement_key = String(placement);
-    if (device && device !== "all") where.device = { in: [String(device), "all", null] };
     const now = new Date();
+    const andFilters: Record<string, unknown>[] = [
+      { OR: [{ start_date: null }, { start_date: { lte: now } }] },
+      { OR: [{ end_date: null }, { end_date: { gte: now } }] },
+    ];
+    if (device && device !== "all") {
+      andFilters.push({ OR: [{ device: { in: [String(device), "all"] } }, { device: null }] });
+    }
     const banners = await prisma.adBanner.findMany({
       where: {
         ...where,
-        OR: [{ start_date: null }, { start_date: { lte: now } }],
-        AND: [{ OR: [{ end_date: null }, { end_date: { gte: now } }] }],
+        AND: andFilters,
       },
       orderBy: [{ display_order: "asc" }, { created_at: "desc" }],
       select: { id: true, title: true, image_url: true, destination_url: true, placement_key: true, device: true, display_order: true, impressions: true, clicks: true },
