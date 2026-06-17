@@ -27,7 +27,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     loadBook, book: activeBook, isPlaying, togglePlay, tracks, currentTrackIndex,
     goToTrack, openFullPlayer, progressPercentage, isLoading, error, currentTime, duration, formatTime,
     setPreviewLimitSeconds, setHasFullAccess, isPreviewMode, showPaywall, setShowPaywall,
-    setAccessLoading, seekTo, pause, setLockedTrackIds,
+    setAccessLoading, seekTo, pause, setLockedTrackIds, setAppPromptLocked,
   } = useAudioPlayer()
 
   const { user } = useAuth()
@@ -164,6 +164,17 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
       togglePlay()
     }
   }, [showAppPrompt, contentLocked]) // intentionally minimal — only fire on prompt/lock state change
+
+  /**
+   * CRITICAL: Sync the lock into AudioPlayerContext so every play control —
+   * MiniPlayer, FullPlayer, Media Session/OS controls — refuses to resume
+   * playback, not just the in-page Listen button. Without this, pressing
+   * play in the mini-player bypasses the "download the app" prompt entirely.
+   */
+  useEffect(() => {
+    setAppPromptLocked(isThisBookActive && (showAppPrompt || contentLocked))
+    return () => { if (isThisBookActive) setAppPromptLocked(false) }
+  }, [isThisBookActive, showAppPrompt, contentLocked, setAppPromptLocked])
 
   useEffect(() => {
     const sessionKey = `app_prompt_audio_${book.id}`

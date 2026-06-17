@@ -8,7 +8,7 @@ export function MiniPlayer() {
   const {
     book, audiobook, isPlaying, currentTime, duration, tracks, currentTrackIndex,
     togglePlay, nextTrack, prevTrack, seekTo, openFullPlayer, formatTime, progressPercentage, isLoading,
-    skipForward10, skipBackward10, showPaywall, isPreviewMode, previewLimitSeconds,
+    skipForward10, skipBackward10, showPaywall, isPreviewMode, previewLimitSeconds, appPromptLocked,
   } = useAudioPlayer()
 
   if (!book || !audiobook || tracks.length === 0) return null
@@ -16,7 +16,7 @@ export function MiniPlayer() {
   const currentTrack = tracks[currentTrackIndex]
   const isVideoTrack = currentTrack?.mediaType === "video"
   const trackDurationSec = duration || 300
-  const controlsLocked = showPaywall || (isPreviewMode && currentTime >= previewLimitSeconds - 1)
+  const controlsLocked = showPaywall || appPromptLocked || (isPreviewMode && currentTime >= previewLimitSeconds - 1)
   const narratorName = audiobook.narrator?.name && audiobook.narrator.name !== ""
     ? audiobook.narrator.name
     : "Narrator not assigned"

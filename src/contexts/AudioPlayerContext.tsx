@@ -69,6 +69,14 @@ interface AudioPlayerContextType extends PlayerState {
   /** Whether the access check is still in progress — preview enforcement is paused while true */
   accessLoading: boolean
   setAccessLoading: (val: boolean) => void
+  /**
+   * True when the free-book "download the app to keep listening" prompt has
+   * locked playback. Must be respected by every play control (MiniPlayer,
+   * FullPlayer, Media Session) — not just the in-page Listen button — or the
+   * lock can be bypassed by simply pressing play again elsewhere.
+   */
+  appPromptLocked: boolean
+  setAppPromptLocked: (val: boolean) => void
   /** Register IDs of tracks that must not auto-play without explicit unlock */
   setLockedTrackIds: (ids: Set<string>) => void
   /** Check synchronously whether a track ID is chapter-locked (reads ref, no re-render) */
@@ -103,6 +111,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
    * Preview enforcement is PAUSED while accessLoading is true to prevent false paywall triggers.
    */
   const [accessLoading, setAccessLoading] = useState(true)
+  const [appPromptLocked, setAppPromptLocked] = useState(false)
   const hasFullAccessRef = useRef(hasFullAccess)
   hasFullAccessRef.current = hasFullAccess
   const previewLimitSecondsRef = useRef(previewLimitSeconds)
@@ -111,6 +120,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   accessLoadingRef.current = accessLoading
   const showPaywallRef = useRef(showPaywall)
   showPaywallRef.current = showPaywall
+  const appPromptLockedRef = useRef(appPromptLocked)
+  appPromptLockedRef.current = appPromptLocked
 
   const [state, setState] = useState<PlayerState>({
     book: null,
@@ -336,6 +347,15 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
           debugLog("play event BLOCKED — paywall active or past preview limit")
           return
         }
+      }
+      // CRITICAL: Block play if the "download the app" prompt has locked this
+      // free book. Re-pause immediately so MiniPlayer/FullPlayer/Media Session
+      // controls can't resume playback behind the modal's back.
+      if (appPromptLockedRef.current) {
+        audio.pause()
+        setState((prev) => ({ ...prev, isPlaying: false }))
+        debugLog("play event BLOCKED — app prompt has locked this content")
+        return
       }
       // CRITICAL: Block play if the current track requires chapter unlock.
       // This catches resume attempts (mini-player, Media Session, OS controls)
@@ -591,6 +611,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    if (appPromptLockedRef.current) {
+      debugLog("play() blocked — app prompt has locked this content")
+      return
+    }
+
     if (audio.src && audio.src !== "" && audio.src !== window.location.href) {
       dispatchBgMusicUnlock()
       playAudio()
@@ -632,6 +657,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         debugLog("togglePlay blocked — past preview limit, showing paywall")
         return
       }
+    }
+
+    if (!currentState.isPlaying && appPromptLockedRef.current) {
+      debugLog("togglePlay blocked — app prompt has locked this content")
+      return
     }
 
     if (currentState.isPlaying) {
@@ -812,6 +842,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setShowPaywall,
         accessLoading,
         setAccessLoading,
+        appPromptLocked,
+        setAppPromptLocked,
         setLockedTrackIds,
         isTrackLocked,
       }}

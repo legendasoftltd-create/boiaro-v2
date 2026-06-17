@@ -23,7 +23,7 @@ export function FullPlayer() {
     playbackRate, volume, isLoading, currentMediaType,
     togglePlay, nextTrack, prevTrack, goToTrack, seekTo,
     setPlaybackRate, setVolume, closeFullPlayer, formatTime,
-    skipForward10, skipBackward10, showPaywall, isPreviewMode, previewLimitSeconds,
+    skipForward10, skipBackward10, showPaywall, isPreviewMode, previewLimitSeconds, appPromptLocked,
     isTrackLocked,
   } = useAudioPlayer()
 
@@ -55,7 +55,7 @@ export function FullPlayer() {
 
   const currentTrack = tracks[currentTrackIndex]
   const trackDurationSec = duration || 300
-  const controlsLocked = showPaywall || (isPreviewMode && currentTime >= previewLimitSeconds - 1)
+  const controlsLocked = showPaywall || appPromptLocked || (isPreviewMode && currentTime >= previewLimitSeconds - 1)
   const narratorName = audiobook.narrator?.name && audiobook.narrator.name !== ""
     ? audiobook.narrator.name
     : "Narrator not assigned"
