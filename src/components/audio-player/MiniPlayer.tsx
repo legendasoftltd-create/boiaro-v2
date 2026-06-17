@@ -78,6 +78,7 @@ export function MiniPlayer() {
               size="icon"
               className="text-muted-foreground hover:text-foreground hidden sm:flex w-9 h-9"
               onClick={prevTrack}
+              disabled={controlsLocked}
             >
               <SkipBack className="w-4 h-4" />
             </Button>
@@ -86,6 +87,7 @@ export function MiniPlayer() {
               size="icon"
               className="text-muted-foreground hover:text-foreground hidden md:flex w-8 h-8 relative"
               onClick={skipBackward10}
+              disabled={controlsLocked}
             >
               <Rewind className="w-3.5 h-3.5" />
               <span className="absolute -bottom-0.5 text-[7px] font-bold text-muted-foreground">10</span>
@@ -111,6 +113,7 @@ export function MiniPlayer() {
               size="icon"
               className="text-muted-foreground hover:text-foreground hidden md:flex w-8 h-8 relative"
               onClick={skipForward10}
+              disabled={controlsLocked}
             >
               <FastForward className="w-3.5 h-3.5" />
               <span className="absolute -bottom-0.5 text-[7px] font-bold text-muted-foreground">10</span>
@@ -120,6 +123,7 @@ export function MiniPlayer() {
               size="icon"
               className="text-muted-foreground hover:text-foreground hidden sm:flex w-9 h-9"
               onClick={nextTrack}
+              disabled={controlsLocked}
             >
               <SkipForward className="w-4 h-4" />
             </Button>

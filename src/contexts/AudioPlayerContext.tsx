@@ -686,6 +686,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       setShowPaywall(true)
       return
     }
+    // Block seeking entirely while the app-prompt lock is active — Media
+    // Session/OS seek controls call this directly, bypassing any UI disabled
+    // attribute on the seek bar/skip buttons.
+    if (appPromptLockedRef.current) return
     const audio = audioRef.current
     if (audio && audio.src) {
       audio.currentTime = time
@@ -694,6 +698,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const nextTrack = useCallback(() => {
+    if (appPromptLockedRef.current) return
     setState((p) => {
       if (p.currentTrackIndex >= p.tracks.length - 1) return p
       const nextId = p.tracks[p.currentTrackIndex + 1]?.id
@@ -706,6 +711,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const prevTrack = useCallback(() => {
+    if (appPromptLockedRef.current) return
     setState((p) => {
       if (p.currentTrackIndex <= 0) return p
       const prevId = p.tracks[p.currentTrackIndex - 1]?.id
