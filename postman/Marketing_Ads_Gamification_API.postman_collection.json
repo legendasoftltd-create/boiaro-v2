@@ -1,0 +1,696 @@
+{
+  "info": {
+    "name": "BoiAro — Marketing & Ads + Gamification + Referral API (Mobile App)",
+    "description": "Mobile-app-facing endpoints for the Marketing/Ads module, the Gamification module, and the Referral program.\n\n**Base URL (production):** `https://boiaro.com`\n**Auth:** Pass `Authorization: Bearer {{access_token}}` on protected endpoints. Public endpoints are marked `noauth` and work without a token.\n\n---\n\n## Modules covered\n\n1. **Ads & Banners** (`/api/v1/ads/*`) — public settings, banner fetch, placement list, impression/click tracking, rewarded-ad claim flow.\n2. **Gamification** (`/api/v1/gamification/*`) — streaks, points, badges, leaderboard, goals, daily reward, activity/consumption logging.\n3. **Referral** (`/api/v1/referral/*`) — referral code, validation, program settings, invite history/earnings.\n\n**Not included** (admin-web only, not called by the mobile app): `/ads/admin/*` banner/campaign/placement/settings management endpoints. Ask for a separate \"Admin — Marketing\" collection if needed.\n\n## Typical mobile app flow\n\n```\n1. GET  /ads/settings                 → load ad config at app start\n2. GET  /ads/placements                → know which slots are enabled\n3. GET  /ads/banners?placement=X       → fetch banner image for a slot\n4. POST /ads/impression                → fire when banner is shown\n5. POST /ads/click                     → fire when banner is tapped\n6. GET  /ads/rewarded/status           → check if user can watch a rewarded ad\n7. POST /ads/rewarded/claim            → after ad finishes, credit coins\n\n8. POST /gamification/streak/update    → call once per app open/day\n9. GET  /gamification/summary          → render dashboard widget\n10. POST /gamification/daily-reward    → claim once-per-day coin bonus\n11. POST /gamification/badges/check    → after any unlock/streak/referral event\n\n12. GET  /referral/validate/:code      → before signup, check a friend's code is valid\n13. (signup with referred_by=code, handled by Auth API — not in this collection)\n14. GET  /referral/info                → show my code + invite history + earnings\n```",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "boiaro-marketing-ads-gamification-api-v1"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://boiaro.com", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "banner_id", "value": "", "type": "string" },
+    { "key": "referral_code", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Ads & Banners",
+      "item": [
+        {
+          "name": "Get Ad Settings",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ads/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "ads", "settings"]
+            },
+            "description": "Public. Returns global ad system configuration the app needs at startup: provider type, ad unit IDs, rewarded-ad rules, country targeting.\n\n**Response fields:**\n```\nsystem_enabled       Boolean\nprovider_type        String   — \"none\" | \"adsense\" | ...\npublisher_id         String|null\nweb_banner_unit_id   String|null\nrewarded_unit_id     String|null\npremium_hide_ads     Boolean  — hide ads for premium users\nfree_show_ads        Boolean  — show ads for free users\ncountry_targeting    String[] — ISO country codes, empty = all\nrewarded_coins       Int      — coins per rewarded ad watch\nmax_per_day          Int      — daily rewarded-ad cap\ncooldown_minutes     Int      — wait time between rewarded ads\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"system_enabled\": true,\n  \"provider_type\": \"adsense\",\n  \"publisher_id\": \"pub-1234567890123456\",\n  \"web_banner_unit_id\": \"1234567890\",\n  \"rewarded_unit_id\": \"0987654321\",\n  \"premium_hide_ads\": true,\n  \"free_show_ads\": true,\n  \"country_targeting\": [\"BD\"],\n  \"rewarded_coins\": 1,\n  \"max_per_day\": 10,\n  \"cooldown_minutes\": 5\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Banners",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ads/banners?placement=homepage_banner&device=mobile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "ads", "banners"],
+              "query": [
+                { "key": "placement", "value": "homepage_banner", "description": "Optional. Filter by placement_key (see GET /ads/placements)." },
+                { "key": "device", "value": "mobile", "description": "Optional. \"web\" | \"mobile\" | \"all\". Omit or \"all\" to skip device filtering." }
+              ]
+            },
+            "description": "Public. Returns active banners optionally filtered by placement and device. Only returns banners whose start_date/end_date window includes now and status is \"active\".\n\n**Response fields per banner:**\n```\nid               String\ntitle            String|null\nimage_url        String|null  — fully resolved absolute URL\ndestination_url  String|null  — open in-app browser/webview on tap\nplacement_key    String\ndevice           String|null  — \"web\" | \"mobile\" | \"both\" | null\ndisplay_order    Int\nimpressions      Int          — running counter\nclicks           Int          — running counter\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"banners\": [\n    {\n      \"id\": \"ffbfe1ef-f850-4013-8619-62209c97c646\",\n      \"title\": \"test\",\n      \"image_url\": \"https://boiaro-storage-2026.s3.ap-south-1.amazonaws.com/images/64cef096-77b7-4ae9-91fa-3d5adeafde5d.png\",\n      \"destination_url\": \"https://boiaro.com\",\n      \"placement_key\": \"homepage_banner\",\n      \"device\": \"both\",\n      \"display_order\": 0,\n      \"impressions\": 13,\n      \"clicks\": 1\n    }\n  ]\n}"
+            },
+            {
+              "name": "No Banners For Placement",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"banners\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Placements",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ads/placements",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "ads", "placements"]
+            },
+            "description": "Public. Returns all enabled ad placement slots, telling the app what type of ad (banner/rewarded) belongs where, and on which devices.\n\n**Response fields per placement:**\n```\nplacement_key       String   — e.g. \"homepage_banner\"\nlabel               String   — human-readable name\nad_type             String   — \"banner\" | \"rewarded\"\ndevice_visibility   String   — \"both\" | \"web\" | \"mobile\"\nfrequency           String|null\ndisplay_priority    Int\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"placements\": [\n    { \"placement_key\": \"before_audiobook\", \"label\": \"Before Audiobook Play\", \"ad_type\": \"rewarded\", \"device_visibility\": \"both\", \"frequency\": \"always\", \"display_priority\": 0 },\n    { \"placement_key\": \"before_reading\", \"label\": \"Before Reading Ebook\", \"ad_type\": \"rewarded\", \"device_visibility\": \"both\", \"frequency\": \"always\", \"display_priority\": 0 },\n    { \"placement_key\": \"book_details\", \"label\": \"Book Details Page\", \"ad_type\": \"banner\", \"device_visibility\": \"both\", \"frequency\": \"always\", \"display_priority\": 0 },\n    { \"placement_key\": \"dashboard\", \"label\": \"User Dashboard\", \"ad_type\": \"banner\", \"device_visibility\": \"both\", \"frequency\": \"always\", \"display_priority\": 0 },\n    { \"placement_key\": \"homepage_banner\", \"label\": \"Home Page Banner\", \"ad_type\": \"banner\", \"device_visibility\": \"both\", \"frequency\": \"always\", \"display_priority\": 0 },\n    { \"placement_key\": \"reward_center\", \"label\": \"Reward Center\", \"ad_type\": \"rewarded\", \"device_visibility\": \"both\", \"frequency\": \"always\", \"display_priority\": 0 },\n    { \"placement_key\": \"wallet_page\", \"label\": \"Wallet Page\", \"ad_type\": \"banner\", \"device_visibility\": \"both\", \"frequency\": \"always\", \"display_priority\": 0 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Record Banner Impression",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ads/impression",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "ads", "impression"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"banner_id\": \"{{banner_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Public. Fire-and-forget. Increments the banner's impression counter. Call once when a banner becomes visible on screen.\n\n**Body:**\n```\nbanner_id   String   required\n```"
+          },
+          "response": [
+            {
+              "name": "Recorded",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"recorded\": true }"
+            },
+            {
+              "name": "Missing banner_id",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"error\": \"banner_id is required\" }"
+            }
+          ]
+        },
+        {
+          "name": "Record Banner Click",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ads/click",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "ads", "click"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"banner_id\": \"{{banner_id}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Public. Fire-and-forget. Increments the banner's click counter. Call when the user taps a banner, before opening destination_url.\n\n**Body:**\n```\nbanner_id   String   required\n```"
+          },
+          "response": [
+            {
+              "name": "Recorded",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"recorded\": true }"
+            }
+          ]
+        },
+        {
+          "name": "Get Rewarded Ad Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ads/rewarded/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "ads", "rewarded", "status"]
+            },
+            "description": "Auth required. Tells the app whether the user can currently watch a rewarded ad (daily cap + cooldown).\n\n**Response fields:**\n```\ntoday_count            Int\ndaily_limit            Int\nremaining              Int\ncoin_per_ad            Int\ncooldown_minutes       Int\ncooldown_seconds_left  Int\ncan_watch              Boolean\nlast_ad_at             String|null  — ISO timestamp\n```"
+          },
+          "response": [
+            {
+              "name": "Can Watch",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"today_count\": 2,\n  \"daily_limit\": 10,\n  \"remaining\": 8,\n  \"coin_per_ad\": 1,\n  \"cooldown_minutes\": 5,\n  \"cooldown_seconds_left\": 0,\n  \"can_watch\": true,\n  \"last_ad_at\": \"2026-06-17T08:12:00.000Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Claim Rewarded Ad",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ads/rewarded/claim",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "ads", "rewarded", "claim"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"placement\": \"reward_center\",\n  \"ad_event_id\": \"optional-provider-event-id\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Auth required. Call after the rewarded ad finishes playing to credit coins. Server re-validates daily limit and cooldown — client values are ignored.\n\n**Body:**\n```\nplacement      String   default \"general\" — placements starting with \"quick_unlock\" bypass cooldown\nad_event_id    String?  optional — provider's ad completion event id, for idempotency/logging\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"reward\": 1,\n  \"new_balance\": 51,\n  \"today_count\": 3,\n  \"remaining\": 7\n}"
+            },
+            {
+              "name": "Daily Limit Reached",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"reason\": \"daily_limit_reached\",\n  \"daily_limit\": 10,\n  \"today_count\": 10\n}"
+            },
+            {
+              "name": "Cooldown Active",
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"reason\": \"cooldown\",\n  \"cooldown_seconds_left\": 240\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Rewarded Ad History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/ads/rewarded/history?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "ads", "rewarded", "history"],
+              "query": [{ "key": "limit", "value": "50", "description": "Optional. Max 100." }]
+            },
+            "description": "Auth required. Returns the current user's rewarded-ad claim log.\n\n**Response fields:**\n```\ntoday_count          Int\ntotal_coins_earned   Int\nlogs                 Array<{ id, ad_event_id, placement_key, coins_rewarded, status, created_at }>\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"today_count\": 2,\n  \"total_coins_earned\": 24,\n  \"logs\": [\n    { \"id\": \"log-1\", \"ad_event_id\": \"reward_center_1718000000000\", \"placement_key\": \"reward_center\", \"coins_rewarded\": 1, \"status\": \"completed\", \"created_at\": \"2026-06-17T08:12:00.000Z\" }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Gamification",
+      "item": [
+        {
+          "name": "Get Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "summary"]
+            },
+            "description": "Auth required. One-shot dashboard payload: streak + total points + badges + wallet balance. Use this to render the gamification widget without multiple round trips."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"streak\": { \"current\": 3, \"best\": 7, \"last_activity_date\": \"2026-06-17\" },\n  \"total_points\": 240,\n  \"badge_count\": 2,\n  \"badges\": [\n    { \"id\": \"b1\", \"key\": \"first_unlock\", \"title\": \"First Unlock\", \"earned_at\": \"2026-05-01T10:00:00.000Z\" }\n  ],\n  \"wallet\": { \"balance\": 51, \"total_earned\": 80, \"total_spent\": 29 }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Streak",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/streak",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "streak"]
+            },
+            "description": "Auth required. Returns the user's current/best activity streak."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"current_streak\": 3, \"best_streak\": 7, \"last_activity_date\": \"2026-06-17\" }"
+            },
+            {
+              "name": "No Streak Yet",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"current_streak\": 0, \"best_streak\": 0, \"last_activity_date\": null }"
+            }
+          ]
+        },
+        {
+          "name": "Update Streak",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/streak/update",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "streak", "update"]
+            },
+            "description": "Auth required. Call once per app open per calendar day. Increments the streak if the last activity was yesterday, resets to 1 if there was a gap, and is a no-op if already called today."
+          },
+          "response": [
+            {
+              "name": "Streak Incremented",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"user_id\": \"user-uuid\", \"current_streak\": 4, \"best_streak\": 7, \"last_activity_date\": \"2026-06-17\" }"
+            }
+          ]
+        },
+        {
+          "name": "Get Points History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/points?limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "points"],
+              "query": [{ "key": "limit", "value": "50", "description": "Optional. Max 100." }]
+            },
+            "description": "Auth required. Returns total points and recent point-earning history."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"total\": 240,\n  \"history\": [\n    { \"id\": \"p1\", \"points\": 10, \"event_type\": \"book_finished\", \"reference_id\": \"book-uuid\", \"created_at\": \"2026-06-17T08:00:00.000Z\" }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Award Points",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/points",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "points"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"points\": 10,\n  \"event_type\": \"book_finished\",\n  \"reference_id\": \"book-uuid\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Auth required. Records a points-earning event for the current user.\n\n**Body:**\n```\npoints         Int      required, >= 1\nevent_type     String   required — e.g. \"book_finished\", \"chapter_unlocked\"\nreference_id   String?  optional — e.g. the book/chapter id\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"id\": \"p2\", \"user_id\": \"user-uuid\", \"points\": 10, \"event_type\": \"book_finished\", \"reference_id\": \"book-uuid\", \"created_at\": \"2026-06-17T09:00:00.000Z\" }"
+            }
+          ]
+        },
+        {
+          "name": "Get Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/leaderboard",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "leaderboard"]
+            },
+            "description": "Auth required. Returns the top 20 users ranked by total points."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"leaderboard\": [\n    { \"rank\": 1, \"user_id\": \"user-uuid-1\", \"total_points\": 980, \"display_name\": \"Rafiq\", \"avatar_url\": \"https://.../avatar1.webp\" },\n    { \"rank\": 2, \"user_id\": \"user-uuid-2\", \"total_points\": 750, \"display_name\": \"Mim\", \"avatar_url\": null }\n  ]\n}"
+            },
+            {
+              "name": "Empty",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"leaderboard\": [] }"
+            }
+          ]
+        },
+        {
+          "name": "Get My Badges",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/badges",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "badges"]
+            },
+            "description": "Auth required. Returns badges already earned by the current user."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"badges\": [\n    { \"id\": \"badge-1\", \"key\": \"first_unlock\", \"title\": \"First Unlock\", \"description\": \"Unlocked your first book\", \"coin_reward\": 5, \"earned_at\": \"2026-05-01T10:00:00.000Z\" }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Badge Definitions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/badges/definitions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "badges", "definitions"]
+            },
+            "description": "Auth required (despite being catalog data, route currently requires a session). Returns all active badge definitions — what badges exist and the condition needed to earn each, useful for an in-app \"Achievements\" screen.\n\n**condition_type values:** `unlock_count`, `streak`, `ad_count`, `daily_login_count`, `referral_count`, `first_unlock`, `first_referral`."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"definitions\": [\n    { \"id\": \"badge-1\", \"key\": \"first_unlock\", \"title\": \"First Unlock\", \"description\": \"Unlock your first book\", \"condition_type\": \"first_unlock\", \"condition_value\": null, \"coin_reward\": 5, \"is_active\": true, \"sort_order\": 1 },\n    { \"id\": \"badge-2\", \"key\": \"streak_7\", \"title\": \"7-Day Streak\", \"description\": \"Read 7 days in a row\", \"condition_type\": \"streak\", \"condition_value\": 7, \"coin_reward\": 20, \"is_active\": true, \"sort_order\": 2 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Check & Award Badges",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/badges/check",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "badges", "check"]
+            },
+            "description": "Auth required. Evaluates all badge conditions against the user's current stats (unlocks, streak, ad views, daily logins, referrals) and auto-awards + coin-rewards any newly qualifying badges. Call this after events like finishing an unlock, hitting a new streak, or completing a referral.\n\nIdempotent — already-earned badges are skipped."
+          },
+          "response": [
+            {
+              "name": "Badges Awarded",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"awarded\": [\n    { \"key\": \"streak_7\", \"title\": \"7-Day Streak\", \"coin_reward\": 20 }\n  ],\n  \"awarded_count\": 1\n}"
+            },
+            {
+              "name": "Nothing New",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"awarded\": [], \"awarded_count\": 0 }"
+            }
+          ]
+        },
+        {
+          "name": "Get Goals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/goals",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "goals"]
+            },
+            "description": "Auth required. Returns the user's active goals."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"goals\": [\n    { \"id\": \"goal-1\", \"user_id\": \"user-uuid\", \"goal_type\": \"books_read\", \"target_value\": 3, \"period\": \"weekly\", \"status\": \"active\", \"created_at\": \"2026-06-15T00:00:00.000Z\" }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Goal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/goals",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "goals"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"goal_type\": \"books_read\",\n  \"target_value\": 3,\n  \"period\": \"weekly\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Auth required. Creates a new active goal for the user.\n\n**Body:**\n```\ngoal_type      String   required — e.g. \"books_read\", \"minutes_listened\"\ntarget_value   Int      required, >= 1\nperiod         String?  \"daily\" | \"weekly\" | \"monthly\" (default \"daily\")\n```"
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"id\": \"goal-2\", \"user_id\": \"user-uuid\", \"goal_type\": \"books_read\", \"target_value\": 3, \"period\": \"weekly\", \"status\": \"active\", \"created_at\": \"2026-06-17T09:00:00.000Z\" }"
+            }
+          ]
+        },
+        {
+          "name": "Claim Daily Reward",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/daily-reward",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "daily-reward"]
+            },
+            "description": "Auth required. Claims the once-per-calendar-day login coin reward. Reward amount comes from the `coin_daily_login_reward` platform setting (default 10)."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"success\": true, \"reward\": 10, \"new_balance\": 61 }"
+            },
+            {
+              "name": "Already Claimed Today",
+              "status": "Bad Request",
+              "code": 400,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"success\": false, \"reason\": \"already_claimed\", \"message\": \"Daily reward already claimed today\" }"
+            }
+          ]
+        },
+        {
+          "name": "Log Activity",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/activity",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "activity"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"book_opened\",\n  \"activity_type\": \"read\",\n  \"book_id\": \"book-uuid\",\n  \"format\": \"ebook\",\n  \"page\": \"book_details\",\n  \"metadata\": { \"source\": \"homepage_banner\" }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Auth required. Generic activity logger for analytics/engagement tracking.\n\n**Body:**\n```\naction          String   required — e.g. \"book_opened\", \"search\", \"share\"\nactivity_type   String?  optional — e.g. \"read\", \"listen\"\nbook_id         String?  optional\nformat          String?  optional — \"ebook\" | \"audiobook\"\npage            String?  optional — screen/page name\nmetadata         Object? optional — free-form extra data\n```"
+          },
+          "response": [
+            {
+              "name": "Recorded",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"recorded\": true, \"id\": \"log-uuid\" }"
+            }
+          ]
+        },
+        {
+          "name": "Log Consumption Time",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/gamification/consumption-time",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "gamification", "consumption-time"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"book_id\": \"book-uuid\",\n  \"format\": \"audiobook\",\n  \"seconds\": 480\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "description": "Auth required. Logs a chunk of reading/listening time for a book, used to drive goals/streaks/analytics. Call periodically (e.g. every few minutes or on pause) rather than once per session to avoid losing data on crash.\n\n**Body:**\n```\nbook_id   String   required\nformat    String   required — \"ebook\" | \"audiobook\"\nseconds   Int      required, >= 1\n```"
+          },
+          "response": [
+            {
+              "name": "Recorded",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"recorded\": true }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Referral",
+      "item": [
+        {
+          "name": "Validate Referral Code",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/referral/validate/{{referral_code}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "referral", "validate", "{{referral_code}}"]
+            },
+            "description": "Public. Checks whether a referral code exists, before showing/accepting it on the signup form.\n\nThe code is matched case-insensitively (uppercased server-side)."
+          },
+          "response": [
+            {
+              "name": "Valid",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"valid\": true, \"referrer_name\": \"Rafiq\" }"
+            },
+            {
+              "name": "Not Found",
+              "status": "Not Found",
+              "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"valid\": false, \"message\": \"Referral code not found\" }"
+            }
+          ]
+        },
+        {
+          "name": "Get Referral Program Settings",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/referral/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "referral", "settings"]
+            },
+            "description": "Public. Returns whether the referral program is enabled and the current reward amounts, for displaying on a \"Refer a friend\" screen before login."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{ \"enabled\": true, \"signup_reward_coins\": 20, \"referred_bonus_coins\": 10 }"
+            }
+          ]
+        },
+        {
+          "name": "Get My Referral Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/referral/info",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "referral", "info"]
+            },
+            "description": "Auth required. Returns the current user's own referral code, who referred them (if anyone), reward settings, and their full invite history with earnings.\n\nNote: signing up with someone's referral code is handled by the Auth/signup endpoint (`referred_by` field), not by this referral module — see the Auth API collection."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"referral_code\": \"RAFIQ23\",\n  \"referred_by\": null,\n  \"total_referrals\": 4,\n  \"completed_referrals\": 3,\n  \"pending_referrals\": 1,\n  \"total_earned\": 30,\n  \"signup_reward_coins\": 20,\n  \"referred_bonus_coins\": 10,\n  \"referrals\": [\n    {\n      \"id\": \"ref-1\",\n      \"referred_user_id\": \"user-uuid-2\",\n      \"status\": \"completed\",\n      \"reward_amount\": 10,\n      \"reward_status\": \"paid\",\n      \"created_at\": \"2026-06-10T10:00:00.000Z\",\n      \"completed_at\": \"2026-06-10T10:05:00.000Z\"\n    },\n    {\n      \"id\": \"ref-2\",\n      \"referred_user_id\": \"user-uuid-3\",\n      \"status\": \"pending\",\n      \"reward_amount\": 0,\n      \"reward_status\": \"pending\",\n      \"created_at\": \"2026-06-16T12:00:00.000Z\",\n      \"completed_at\": null\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

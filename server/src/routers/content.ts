@@ -42,15 +42,22 @@ export const contentRouter = router({
         where: { user_id: ctx.userId, book_id: bookId, format: contentType, status: "active" },
       });
 
-      if (!coinUnlock && !isFreeContent) {
+      // hasWholeBookAccess tracks real entitlement to the FULL file — distinct
+      // from merely being allowed to view a preview track/clip below.
+      let hasWholeBookAccess = isFreeContent || Boolean(coinUnlock);
+      let hasDirectChapterUnlock = false;
+
+      if (!hasWholeBookAccess) {
         const sub = await prisma.userSubscription.findFirst({
           where: { user_id: ctx.userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
         });
-        if (!sub) {
+        hasWholeBookAccess = Boolean(sub);
+        if (!hasWholeBookAccess) {
           const purchase = await prisma.userPurchase.findFirst({
             where: { user_id: ctx.userId, book_id: bookId, format: contentType, status: "active" },
           });
-          if (!purchase) {
+          hasWholeBookAccess = Boolean(purchase);
+          if (!hasWholeBookAccess) {
             // Check chapter-level unlock for audiobooks
             if (contentType === "audiobook" && trackNumber !== undefined) {
               const track = await prisma.audiobookTrack.findFirst({
@@ -66,6 +73,7 @@ export const contentRouter = router({
                   },
                 });
                 if (!chapterUnlock) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+                hasDirectChapterUnlock = true;
               }
             } else if (contentType === "ebook") {
               // Allow the URL to be returned for preview if preview_percentage > 0.
@@ -92,7 +100,13 @@ export const contentRouter = router({
           where: { book_format: { book_id: bookId }, track_number: trackNumber },
         });
         if (!track?.audio_url) return { url: null };
-        return { url: await toServeUrl(track.audio_url) };
+        // A preview track must serve the trimmed clip — never the full file —
+        // unless the user has real entitlement to the whole book/chapter, so
+        // the listening cap can't be bypassed by backgrounding the app or any
+        // other client-side trick. Falls back to the full file only if the
+        // clip hasn't been generated yet (e.g. track was just created).
+        const usePreviewClip = track.is_preview === true && !hasWholeBookAccess && !hasDirectChapterUnlock && Boolean(track.preview_audio_url);
+        return { url: await toServeUrl(usePreviewClip ? track.preview_audio_url : track.audio_url) };
       }
 
       return { url: null };
@@ -100,15 +114,59 @@ export const contentRouter = router({
 
   batchSignedUrls: protectedProcedure
     .input(z.object({ bookId: z.string() }))
-    .query(async ({ input }) => {
-      const tracks = await prisma.audiobookTrack.findMany({
-        where: { book_format: { book_id: input.bookId }, status: "active" },
-        orderBy: { track_number: "asc" },
-      });
+    .query(async ({ ctx, input }) => {
+      const { bookId } = input;
+      const [book, formatRecord, tracks] = await Promise.all([
+        prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } }),
+        prisma.bookFormat.findFirst({
+          where: { book_id: bookId, format: "audiobook", submission_status: "approved" },
+          select: { price: true },
+        }),
+        prisma.audiobookTrack.findMany({
+          where: { book_format: { book_id: bookId }, status: "active" },
+          orderBy: { track_number: "asc" },
+        }),
+      ]);
+
+      const isFreeContent = Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0;
+
+      // Whole-book entitlement: full coin unlock, active subscription, or active purchase.
+      // (Per-chapter coin unlocks are checked individually below, same as getSignedUrl.)
+      let hasWholeBookAccess = isFreeContent;
+      if (!hasWholeBookAccess) {
+        const [fullUnlock, sub, purchase] = await Promise.all([
+          prisma.contentUnlock.findFirst({
+            where: { user_id: ctx.userId, book_id: bookId, format: "audiobook", status: "active" },
+          }),
+          prisma.userSubscription.findFirst({
+            where: { user_id: ctx.userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
+          }),
+          prisma.userPurchase.findFirst({
+            where: { user_id: ctx.userId, book_id: bookId, format: "audiobook", status: "active" },
+          }),
+        ]);
+        hasWholeBookAccess = Boolean(fullUnlock || sub || purchase);
+      }
+
+      let unlockedChapterIds = new Set<string>();
+      if (!hasWholeBookAccess) {
+        const chapterUnlocks = await prisma.contentUnlock.findMany({
+          where: { user_id: ctx.userId, book_id: bookId, status: "active", format: { startsWith: "audiobook_chapter_" } },
+          select: { format: true },
+        });
+        unlockedChapterIds = new Set(chapterUnlocks.map(u => u.format.replace("audiobook_chapter_", "")));
+      }
 
       const urls: Record<number, string | null> = {};
       for (const t of tracks) {
-        urls[t.track_number] = await toServeUrl(t.audio_url);
+        const hasDirectUnlock = unlockedChapterIds.has(t.id);
+        const canAccess = hasWholeBookAccess || t.is_preview === true || hasDirectUnlock;
+        if (!canAccess) { urls[t.track_number] = null; continue; }
+        // Preview tracks serve the trimmed clip — never the full file — unless
+        // the user has real entitlement, so the cap can't be bypassed by any
+        // client-side trick. Falls back to the full file if no clip exists yet.
+        const usePreviewClip = t.is_preview === true && !hasWholeBookAccess && !hasDirectUnlock && Boolean(t.preview_audio_url);
+        urls[t.track_number] = await toServeUrl(usePreviewClip ? t.preview_audio_url : t.audio_url);
       }
       return { urls };
     }),

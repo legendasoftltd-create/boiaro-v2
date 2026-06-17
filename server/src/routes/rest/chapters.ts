@@ -61,6 +61,7 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
         chapter_price: true,
         chapter_taka_price: true,
         audio_url: true,
+        preview_audio_url: true,
       },
     });
 
@@ -104,9 +105,16 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
     // preview tracks, user-unlocked tracks, or every track if the book is free
     const chapters = await Promise.all(
       tracks.map(async t => {
+        const hasDirectUnlock = unlockedTrackIds.has(t.id);
         const isFreeTrack = t.is_preview === true || isEntirelyFree;
-        const playable = isFreeTrack || unlockedTrackIds.has(t.id);
-        const audio_url = playable ? await resolveAudioUrl(t.audio_url) : null;
+        const playable = isFreeTrack || hasDirectUnlock;
+        // A track marked is_preview (and not part of an entirely free book, and
+        // not directly unlocked by this user) must serve the trimmed preview clip
+        // — never the full file — so the listening cap can't be bypassed by
+        // backgrounding the app or any other client-side trick. Falls back to the
+        // full file only if the clip hasn't been generated yet (e.g. just created).
+        const usePreviewClip = t.is_preview === true && !isEntirelyFree && !hasDirectUnlock && Boolean(t.preview_audio_url);
+        const audio_url = playable ? await resolveAudioUrl(usePreviewClip ? t.preview_audio_url : t.audio_url) : null;
         return {
           id: t.id,
           track_number: t.track_number,

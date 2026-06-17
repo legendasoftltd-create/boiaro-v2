@@ -429,6 +429,35 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(interval)
   }, [hasFullAccess, accessLoading, state.isPlaying, previewLimitSeconds])
 
+  // FOREGROUND CATCH-UP ENFORCEMENT: timeupdate/setInterval can be throttled or
+  // suspended entirely while the app is backgrounded (minimized, screen locked),
+  // letting audio keep playing past the preview limit unobserved. The instant the
+  // app/tab becomes visible again, immediately re-check and pause + paywall if the
+  // limit was crossed while we weren't looking — don't wait for the next tick.
+  useEffect(() => {
+    const enforceOnForeground = () => {
+      if (document.visibilityState !== "visible") return
+      const audio = audioRef.current
+      if (!audio) return
+      if (accessLoadingRef.current || hasFullAccessRef.current || previewLimitSecondsRef.current <= 0) return
+      if (audio.currentTime >= previewLimitSecondsRef.current) {
+        audio.pause()
+        audio.currentTime = Math.max(0, previewLimitSecondsRef.current - 1)
+        setShowPaywall(true)
+        setState((prev) => ({ ...prev, isPlaying: false, currentTime: previewLimitSecondsRef.current - 1 }))
+        console.warn("[AudioPlayer] 🔒 Foreground catch-up — preview limit was exceeded while backgrounded")
+      }
+    }
+    document.addEventListener("visibilitychange", enforceOnForeground)
+    window.addEventListener("pageshow", enforceOnForeground)
+    window.addEventListener("focus", enforceOnForeground)
+    return () => {
+      document.removeEventListener("visibilitychange", enforceOnForeground)
+      window.removeEventListener("pageshow", enforceOnForeground)
+      window.removeEventListener("focus", enforceOnForeground)
+    }
+  }, [])
+
   // Load audio source when track index changes (but don't auto-play)
   const prevTrackKeyRef = useRef<string | null>(null)
   useEffect(() => {

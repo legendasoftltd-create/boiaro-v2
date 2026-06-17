@@ -11,6 +11,7 @@ import { sendSslWirelessSms } from "../lib/sms.js";
 import { sendPushToTokens, testFirebaseCredentials, invalidateFirebaseCache } from "../lib/firebase.js";
 import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
+import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClipsForFormat } from "../lib/audioPreview.js";
 
 function orderSellableAmount(order: { total_amount?: number | null; shipping_cost?: number | null }) {
   return Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
@@ -416,13 +417,21 @@ export const adminRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
       if (id) {
-        return prisma.bookFormat.update({
+        const updated = await prisma.bookFormat.update({
           where: { id },
           data: {
             ...data,
             ...(data.submission_status === "pending" ? { submitted_by: data.submitted_by ?? ctx.userId } : {}),
           } as any,
         });
+        // The preview-clip cut point depends on duration × preview_chapters%.
+        // If either changed, regenerate clips so they stay in sync — don't
+        // block the admin response on ffmpeg/upload time.
+        if (updated.format === "audiobook" && (data.duration !== undefined || data.preview_chapters !== undefined)) {
+          regeneratePreviewClipsForFormat(updated.id)
+            .catch((err) => console.error(`[audioPreview] regeneration failed for format ${updated.id}:`, err));
+        }
+        return updated;
       }
       const existing = await prisma.bookFormat.findFirst({
         where: { book_id: data.book_id, format: data.format as any },
@@ -481,14 +490,23 @@ export const adminRouter = router({
         chapter_taka_price: z.number().nullable().optional(),
       })
     )
-    .mutation(({ ctx, input }) =>
-      prisma.audiobookTrack.create({
+    .mutation(async ({ ctx, input }) => {
+      const track = await prisma.audiobookTrack.create({
         data: {
           ...input,
           created_by: ctx.userId,
         } as any,
-      })
-    ),
+      });
+      // Fire-and-forget: generate the trimmed preview clip so playback can
+      // never exceed the preview window, even if the client-side limit is
+      // bypassed. Don't block the admin response on ffmpeg/upload time.
+      if (track.is_preview && track.audio_url && track.media_type === "audio") {
+        computePreviewTargetSeconds(track.book_format_id)
+          .then((seconds) => generatePreviewClip(track.id, seconds))
+          .catch((err) => console.error(`[audioPreview] generation failed for new track ${track.id}:`, err));
+      }
+      return track;
+    }),
 
   updateAudiobookTrackAdmin: adminProcedure
     .input(z.object({ id: z.string(), title: z.string().min(1), chapter_price: z.number().nullable().optional(), chapter_taka_price: z.number().nullable().optional() }))

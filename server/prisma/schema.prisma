@@ -205,6 +205,7 @@ model AudiobookTrack {
   status             String   @default("active")
   title              String
   track_number       Int
+  preview_audio_url  String?
 
   book_format      BookFormat       @relation(fields: [book_format_id], references: [id], onDelete: Cascade)
   chapter_purchases ChapterPurchase[]
