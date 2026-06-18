@@ -12,7 +12,7 @@ import { SearchableSelect } from "@/components/admin/SearchableSelect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle, Sparkles, Mic, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle, Sparkles, Mic, Download, Lock, Unlock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
@@ -99,6 +99,7 @@ export default function AdminBooks() {
   const addTrackMutation = trpc.admin.addAudiobookTrackAdmin.useMutation();
   const updateTrackMutation = trpc.admin.updateAudiobookTrackAdmin.useMutation();
   const deleteTrackMutation = trpc.admin.deleteAudiobookTrackAdmin.useMutation();
+  const toggleTrackPreviewMutation = trpc.books.toggleTrackPreview.useMutation();
   const createLedgerEntryMutation = trpc.admin.createAccountingLedgerEntry.useMutation();
   const savePremiumVoiceMutation = trpc.admin.savePremiumVoiceSettings.useMutation();
   const getDownloadUrlMutation = trpc.admin.getBookDownloadUrl.useMutation();
@@ -312,6 +313,10 @@ export default function AdminBooks() {
     const nextOrder = tracks.length + 1;
     const chapterPrice = trackForm.chapter_price ? Number(trackForm.chapter_price) : null;
     const chapterTakaPrice = trackForm.chapter_taka_price ? Number(trackForm.chapter_taka_price) : null;
+    // Chapter 1 defaults to a free preview ONLY if the admin didn't enter a
+    // price — an explicit coin/taka price means they want it paid, even if
+    // it's the very first (and possibly only) chapter.
+    const noPriceEntered = !chapterPrice && !chapterTakaPrice;
 
     try {
       await addTrackMutation.mutateAsync({
@@ -320,7 +325,7 @@ export default function AdminBooks() {
         audio_url: trackForm.audio_url,
         track_number: nextOrder,
         duration: trackForm.duration || null,
-        is_preview: nextOrder === 1,
+        is_preview: nextOrder === 1 && noPriceEntered,
         status: "active",
         media_type: uploadedMediaType,
         chapter_price: chapterPrice,
@@ -352,6 +357,17 @@ export default function AdminBooks() {
     await deleteTrackMutation.mutateAsync({ id });
     if (selectedFormatId) loadTracks(selectedFormatId);
     toast.success("Track deleted");
+  };
+
+  const toggleTrackPreview = async (id: string, nextIsPreview: boolean) => {
+    try {
+      await toggleTrackPreviewMutation.mutateAsync({ trackId: id, isPreview: nextIsPreview });
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update preview status");
+      return;
+    }
+    setTracks(tracks.map(t => t.id === id ? { ...t, is_preview: nextIsPreview } : t));
+    toast.success(nextIsPreview ? "Chapter marked as free preview" : "Chapter is no longer a free preview — its price now applies");
   };
 
   const renameTrack = async (id: string) => {
@@ -1766,6 +1782,14 @@ export default function AdminBooks() {
                             : <Download className="h-3 w-3" />}
                         </Button>
                       )}
+                      <Button
+                        size="icon" variant="ghost" className="h-7 w-7"
+                        disabled={toggleTrackPreviewMutation.isPending}
+                        onClick={() => toggleTrackPreview(t.id, !t.is_preview)}
+                        title={t.is_preview ? "Remove free preview (its price will apply)" : "Mark as free preview"}
+                      >
+                        {t.is_preview ? <Unlock className="h-3 w-3 text-emerald-400" /> : <Lock className="h-3 w-3" />}
+                      </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingTrackId(t.id); setEditingTrackTitle(t.title); setEditingTrackPrice(t.chapter_price ? String(t.chapter_price) : ""); setEditingTrackTakaPrice(takaPriceVal ? String(takaPriceVal) : ""); }}>
                         <Pencil className="h-3 w-3" />
                       </Button>
