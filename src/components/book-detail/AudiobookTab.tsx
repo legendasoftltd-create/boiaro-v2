@@ -144,16 +144,21 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const brandName    = getSetting("brand_name", "BoiAro")
 
   const [showAppPrompt, setShowAppPrompt] = useState(false)
-  // Once locked, content cannot be played until the user downloads the app
+  // Once locked, content cannot be played until the user downloads the app.
+  // Uses localStorage, NOT sessionStorage: clicking the Play Store/App Store
+  // link backgrounds the page to open an external app, and mobile browsers/
+  // WebViews frequently reclaim that page process while backgrounded —
+  // sessionStorage can be wiped on return, silently unlocking playback again.
+  // localStorage is disk-backed and survives that round trip.
   const [contentLocked, setContentLocked] = useState(() =>
-    Boolean(isFree && sessionStorage.getItem(`app_prompt_locked_audio_${book.id}`))
+    Boolean(isFree && localStorage.getItem(`app_prompt_locked_audio_${book.id}`))
   )
   const playedSecondsRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Re-check lock from storage when bookId changes (component reuse)
   useEffect(() => {
-    if (isFree && sessionStorage.getItem(`app_prompt_locked_audio_${book.id}`)) {
+    if (isFree && localStorage.getItem(`app_prompt_locked_audio_${book.id}`)) {
       setContentLocked(true)
     }
   }, [book.id, isFree])
@@ -177,14 +182,14 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   }, [isThisBookActive, showAppPrompt, contentLocked, setAppPromptLocked])
 
   useEffect(() => {
-    const sessionKey = `app_prompt_audio_${book.id}`
-    if (!promptEnabled || !isFree || showAppPrompt || contentLocked || sessionStorage.getItem(sessionKey)) return
+    const storageKey = `app_prompt_audio_${book.id}`
+    if (!promptEnabled || !isFree || showAppPrompt || contentLocked || localStorage.getItem(storageKey)) return
 
     if (isThisBookActive && isPlaying) {
       timerRef.current = setInterval(() => {
         playedSecondsRef.current += 1
         if (playedSecondsRef.current >= FREE_PLAY_THRESHOLD_SECONDS) {
-          sessionStorage.setItem(sessionKey, "1")
+          localStorage.setItem(storageKey, "1")
           setShowAppPrompt(true)
           clearInterval(timerRef.current!)
         }
@@ -196,7 +201,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   }, [promptEnabled, isFree, isThisBookActive, isPlaying, showAppPrompt, contentLocked, book.id])
 
   const handleDownloadClick = () => {
-    sessionStorage.setItem(`app_prompt_locked_audio_${book.id}`, "1")
+    localStorage.setItem(`app_prompt_locked_audio_${book.id}`, "1")
     setContentLocked(true)
     setShowAppPrompt(false)
   }
