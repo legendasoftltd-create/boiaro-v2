@@ -197,8 +197,6 @@ booksRestRouter.get("/:book_id/tracks", async (req, res) => {
       res.json({ tracks: [] });
       return;
     }
-    // Book is free if flagged or if the audiobook format has no price
-    const isBookFree = Boolean(book?.is_free) || Number(bookFormat.price ?? 0) <= 0;
 
     const tracks = await prisma.audiobookTrack.findMany({
       where: { book_format_id: bookFormat.id, status: "active" },
@@ -211,14 +209,20 @@ booksRestRouter.get("/:book_id/tracks", async (req, res) => {
         is_preview: true,
         media_type: true,
         chapter_price: true,
+        chapter_taka_price: true,
         status: true,
       },
     });
 
+    // Per-chapter pricing (coin OR taka) means the whole-book price being 0
+    // is just how that mode is signaled — it does NOT mean the book is free.
+    const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0 || (t.chapter_taka_price ?? 0) > 0);
+    const isBookFree = Boolean(book?.is_free) || (!hasPerChapterPricing && Number(bookFormat.price ?? 0) <= 0);
+
     // When the book is free, all chapters are free — override is_preview and chapter_price
     // so the already-published mobile app (which relies on is_preview) needs no update.
     const result = isBookFree
-      ? tracks.map(t => ({ ...t, is_preview: true, chapter_price: null }))
+      ? tracks.map(t => ({ ...t, is_preview: true, chapter_price: null, chapter_taka_price: null }))
       : tracks;
 
     res.json({ tracks: result });

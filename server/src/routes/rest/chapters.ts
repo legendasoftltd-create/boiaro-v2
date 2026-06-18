@@ -65,8 +65,8 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
       },
     });
 
-    // Infer per-chapter pricing from whether tracks have individual prices
-    const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0);
+    // Infer per-chapter pricing from whether tracks have an individual coin OR taka price
+    const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0 || (t.chapter_taka_price ?? 0) > 0);
 
     // A book is entirely free if the is_free flag is set, or — when it's not using
     // per-chapter pricing — the whole-book price is 0 taka AND 0 coins (or null).

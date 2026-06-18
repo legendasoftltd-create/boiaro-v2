@@ -122,8 +122,8 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
 
   // Build audio tracks from embedded format tracks.
   // A book is "free" only if is_free flag is set, OR the format price is 0 AND no chapter
-  // has an individual coin price (i.e. it's not using per-chapter pricing).
-  const hasChapterPricing = audiobookFmt?.audiobook_tracks?.some((t: any) => Number(t.chapter_price) > 0)
+  // has an individual coin or taka price (i.e. it's not using per-chapter pricing).
+  const hasChapterPricing = audiobookFmt?.audiobook_tracks?.some((t: any) => Number(t.chapter_price) > 0 || Number(t.chapter_taka_price) > 0)
   const isBookFree = Boolean(dbBook.is_free) || (Number(audiobookFmt?.price ?? 0) <= 0 && !hasChapterPricing)
   let audioTracks: AudioTrack[] = []
   if (audiobookFmt?.audiobook_tracks?.length > 0) {

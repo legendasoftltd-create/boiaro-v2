@@ -36,9 +36,9 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   // Is the currently-playing track a video?
   const isCurrentTrackVideo = isThisBookActive && tracks[currentTrackIndex]?.mediaType === "video"
   const totalDurSec = durationToSeconds(audiobook.duration)
-  // Per-chapter pricing: some chapters have individual coin costs even when format price = 0
-  const hasChapterPricing = audioTracks.some(t => Number(t.chapterPrice) > 0)
-  // A book is truly free only when it's marked free AND no chapter has a coin price
+  // Per-chapter pricing: some chapters have an individual coin OR taka cost even when format price = 0
+  const hasChapterPricing = audioTracks.some(t => Number(t.chapterPrice) > 0 || Number(t.chapterTakaPrice) > 0)
+  // A book is truly free only when it's marked free AND no chapter has a coin/taka price
   const isFree = (book.isFree || audiobook.price === 0) && !hasChapterPricing
 
   // ── Chapter-level unlock state (shared with AudiobookChapterUnlock via tRPC cache) ──
@@ -111,7 +111,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     }
     const locked = new Set(
       audioTracks
-        .filter(t => !t.isPreview && Number(t.chapterPrice) > 0 && !unlockedChapterIds.has(t.id))
+        .filter(t => !t.isPreview && (Number(t.chapterPrice) > 0 || Number(t.chapterTakaPrice) > 0) && !unlockedChapterIds.has(t.id))
         .map(t => t.id)
     )
     setLockedTrackIds(locked)
@@ -127,7 +127,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     if (!track) return
     const isLocked =
       !track.isPreview &&
-      Number(track.chapterPrice) > 0 &&
+      (Number(track.chapterPrice) > 0 || Number(track.chapterTakaPrice) > 0) &&
       !unlockedChapterIds.has(track.id)
     if (isLocked) {
       pause()
@@ -226,7 +226,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     if (!isPlaying && hasChapterPricing && !hasFullUnlock) {
       const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
       const currentTrack = sourceTracks[currentTrackIndex] as AudioTrack & { chapterPrice?: number }
-      if (currentTrack && !currentTrack.isPreview && Number(currentTrack.chapterPrice) > 0
+      if (currentTrack && !currentTrack.isPreview && (Number(currentTrack.chapterPrice) > 0 || Number((currentTrack as AudioTrack).chapterTakaPrice) > 0)
           && !unlockedChapterIds.has(currentTrack.id)) {
         setLockedTrack(currentTrack as AudioTrack & { chapterPrice: number })
         return
@@ -237,10 +237,10 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
 
   const handleChapterClick = (index: number) => {
     const track = (audioTracks.length > 0 ? audioTracks : displayTracks)[index] as AudioTrack & { chapterPrice?: number }
-    // Gate on chapterPrice alone — don't require coinEnabled so the lock
-    // works even while coin settings are still loading or the coin-earn
-    // system is disabled by admin.
-    if (track && !track.isPreview && Number(track.chapterPrice) > 0) {
+    // Gate on chapterPrice/chapterTakaPrice alone — don't require coinEnabled
+    // so the lock works even while coin settings are still loading or the
+    // coin-earn system is disabled by admin.
+    if (track && !track.isPreview && (Number(track.chapterPrice) > 0 || Number(track.chapterTakaPrice) > 0)) {
       if (!hasFullUnlock && !unlockedChapterIds.has(track.id)) {
         setLockedTrack(track as AudioTrack & { chapterPrice: number })
         return
