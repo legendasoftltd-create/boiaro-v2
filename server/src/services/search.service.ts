@@ -5,10 +5,10 @@ export const searchBooks = async (q: string) => {
   const books = await prisma.book.findMany({
     where: {
       submission_status: "approved",
-      title: {
-        contains: q,
-        mode: "insensitive",
-      },
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { title_en: { contains: q, mode: "insensitive" } },
+      ],
     },
     take: 20,
     orderBy: {
