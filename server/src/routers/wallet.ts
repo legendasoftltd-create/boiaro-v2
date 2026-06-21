@@ -233,6 +233,143 @@ export const walletRouter = router({
       throw new TRPCError({ code: "BAD_REQUEST", message: `Payment method '${input.paymentMethod}' not supported.` });
     }),
 
+  // ── Full audiobook taka payment — direct gateway, no multi-step checkout ───
+  // Creates a real Order (so it's visible in admin like any other order and gets
+  // earnings/unlock handling via the standard finalizePaidOrder path), but skips
+  // straight to the gateway like the per-chapter flow instead of /checkout.
+  initiateAudiobookPayment: protectedProcedure
+    .input(z.object({ bookId: z.string(), paymentMethod: z.string().default("sslcommerz") }))
+    .mutation(async ({ ctx, input }) => {
+      const user = await prisma.user.findUnique({ where: { id: ctx.userId }, select: { email: true } });
+      const book = await prisma.book.findUnique({
+        where: { id: input.bookId },
+        select: {
+          id: true, title: true,
+          formats: { where: { format: "audiobook", is_available: true }, select: { id: true, price: true } },
+        },
+      });
+      const format = book?.formats[0];
+      if (!book || !format) throw new TRPCError({ code: "NOT_FOUND", message: "Audiobook not found" });
+
+      const price = Number(format.price ?? 0);
+      if (price <= 0) throw new TRPCError({ code: "BAD_REQUEST", message: "This audiobook is free" });
+
+      const existing = await prisma.contentUnlock.findFirst({
+        where: { user_id: ctx.userId, book_id: input.bookId, format: "audiobook", status: "active" },
+      });
+      if (existing) throw new TRPCError({ code: "BAD_REQUEST", message: "Audiobook already unlocked" });
+
+      const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      const order = await prisma.order.create({
+        data: {
+          user_id: ctx.userId,
+          order_number: orderNumber,
+          total_amount: price,
+          status: "pending",
+          payment_method: input.paymentMethod,
+          items: {
+            create: [{ book_id: input.bookId, book_format_id: format.id, format: "audiobook", quantity: 1, price }],
+          },
+          status_history: { create: { new_status: "pending", changed_by: ctx.userId } },
+        },
+      });
+
+      const frontendBase = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+      const backendBase = (process.env.BACKEND_URL || process.env.BASE_URL || "http://localhost:3001").replace(/\/$/, "");
+      const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      const successRedirect = `${frontendBase}/b/${input.bookId}?audiobook_status=success`;
+      const failRedirect = `${frontendBase}/b/${input.bookId}?audiobook_status=failed`;
+      const cancelRedirect = `${frontendBase}/b/${input.bookId}?audiobook_status=cancelled`;
+
+      if (input.paymentMethod === "sslcommerz") {
+        const sslGateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
+        if (!sslGateway || !sslGateway.is_enabled) throw new TRPCError({ code: "BAD_REQUEST", message: "SSLCommerz is not configured" });
+        const cfg = sslGateway.config as Record<string, unknown>;
+        const cfgStr2 = (k: string) => { const v = cfg[k]; return typeof v === "string" && (v as string).trim() ? (v as string).trim() : undefined; };
+        const storeId = cfgStr2("store_id") || process.env.SSLCOMMERZ_STORE_ID;
+        const storePass = cfgStr2("store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+        if (!storeId || !storePass) throw new TRPCError({ code: "BAD_REQUEST", message: "SSLCommerz credentials missing. Contact admin." });
+        const mode = sslGateway.mode === "live" ? "live" : "sandbox";
+        const payload = new URLSearchParams({
+          store_id: storeId, store_passwd: storePass,
+          total_amount: String(price), currency: "BDT", tran_id: transactionId,
+          success_url: `${backendBase}/api/v1/payments/sslcommerz/success?redirect=${encodeURIComponent(successRedirect)}`,
+          fail_url: `${backendBase}/api/v1/payments/sslcommerz/fail?redirect=${encodeURIComponent(failRedirect)}`,
+          cancel_url: `${backendBase}/api/v1/payments/sslcommerz/cancel?redirect=${encodeURIComponent(cancelRedirect)}`,
+          ipn_url: `${backendBase}/api/v1/payments/sslcommerz/ipn`,
+          product_name: book.title, product_category: "Audiobook", product_profile: "digital-goods",
+          cus_name: "Customer", cus_email: user?.email || `${ctx.userId}@boiaro.local`,
+          cus_add1: "N/A", cus_city: "Dhaka", cus_postcode: "1000", cus_country: "Bangladesh",
+          cus_phone: "01700000000", ship_name: "Customer", ship_add1: "N/A",
+          ship_city: "Dhaka", ship_state: "Dhaka", ship_postcode: "1000", ship_country: "Bangladesh",
+          shipping_method: "NO", num_of_item: "1",
+        });
+        const initUrl = mode === "live"
+          ? "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
+          : "https://sandbox.sslcommerz.com/gwprocess/v4/api.php";
+        const res = await fetch(initUrl, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: payload.toString() });
+        let sslData: Record<string, unknown>;
+        try { sslData = JSON.parse(await res.text()) as Record<string, unknown>; } catch { sslData = {}; }
+        const gatewayUrl = typeof sslData.GatewayPageURL === "string" ? sslData.GatewayPageURL : undefined;
+        if (!gatewayUrl) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: String(sslData.failedreason || "SSLCommerz initiation failed.") });
+
+        await prisma.$transaction([
+          prisma.order.update({ where: { id: order.id }, data: { status: "awaiting_payment" } }),
+          prisma.payment.create({
+            data: {
+              user_id: ctx.userId, order_id: order.id, amount: price,
+              method: "sslcommerz", status: "awaiting_payment", transaction_id: transactionId,
+            },
+          }),
+        ]);
+        return { success: true, order_id: order.id, gateway_url: gatewayUrl, price };
+      }
+
+      if (input.paymentMethod === "bkash" || input.paymentMethod === "nagad") {
+        const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: input.paymentMethod } });
+        const cfg = (gateway?.config ?? {}) as Record<string, unknown>;
+        const cfgStr = (k: string) => { const v = cfg[k]; return typeof v === "string" && v.trim() ? v.trim() : undefined; };
+        const appKey = cfgStr("app_key") || process.env.BKASH_APP_KEY;
+        const appSecret = cfgStr("app_secret") || process.env.BKASH_APP_SECRET;
+        const username = cfgStr("username") || process.env.BKASH_USERNAME;
+        const password = cfgStr("password") || process.env.BKASH_PASSWORD;
+        if (!appKey || !appSecret || !username || !password) throw new TRPCError({ code: "BAD_REQUEST", message: "bKash credentials not configured" });
+        const bkashMode = (gateway?.mode === "live" || (!gateway?.mode && process.env.BKASH_APP_KEY)) ? "live" : "test";
+        const baseUrl = bkashMode === "live" ? "https://tokenized.pay.bka.sh/v1.2.0-beta" : "https://tokenized.sandbox.bka.sh/v1.2.0-beta";
+        const tokenRes = await fetch(`${baseUrl}/tokenized/checkout/token/grant`, {
+          method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json", username, password },
+          body: JSON.stringify({ app_key: appKey, app_secret: appSecret }),
+        });
+        const tokenData = await tokenRes.json() as Record<string, unknown>;
+        const idToken = typeof tokenData.id_token === "string" ? tokenData.id_token : undefined;
+        if (!idToken) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "bKash token grant failed." });
+        const callbackUrl = `${backendBase}/api/v1/payments/bkash/callback-order?order_id=${order.id}`;
+        const createRes = await fetch(`${baseUrl}/tokenized/checkout/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json", authorization: idToken, "x-app-key": appKey },
+          body: JSON.stringify({ mode: "0011", payerReference: ctx.userId, callbackURL: callbackUrl, amount: String(price), currency: "BDT", intent: "sale", merchantInvoiceNumber: transactionId }),
+        });
+        const createData = await createRes.json() as Record<string, unknown>;
+        const bkashUrl = typeof createData.bkashURL === "string" ? createData.bkashURL : undefined;
+        const paymentID = typeof createData.paymentID === "string" ? createData.paymentID : undefined;
+        if (!bkashUrl) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: String(createData.statusMessage || "bKash payment creation failed.") });
+
+        await prisma.$transaction([
+          prisma.order.update({ where: { id: order.id }, data: { status: "awaiting_payment" } }),
+          prisma.payment.create({
+            data: {
+              user_id: ctx.userId, order_id: order.id, amount: price,
+              method: input.paymentMethod, status: "awaiting_payment", transaction_id: paymentID || transactionId,
+            },
+          }),
+        ]);
+        return { success: true, order_id: order.id, gateway_url: bkashUrl, price };
+      }
+
+      await prisma.order.delete({ where: { id: order.id } });
+      throw new TRPCError({ code: "BAD_REQUEST", message: `Payment method '${input.paymentMethod}' not supported.` });
+    }),
+
   balance: protectedProcedure.query(async ({ ctx }) => {
     const [wallet, transactions] = await Promise.all([
       prisma.userCoin.findUnique({ where: { user_id: ctx.userId } }),

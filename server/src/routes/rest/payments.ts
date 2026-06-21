@@ -873,6 +873,68 @@ paymentsRestRouter.get("/bkash/chapter-callback", async (req, res) => {
   }
 });
 
+// ── bKash full-audiobook (direct-gateway Order) callback ───────────────────
+paymentsRestRouter.get("/bkash/callback-order", async (req, res) => {
+  const frontendBase = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+  const { order_id, paymentID, status } = req.query as Record<string, string>;
+
+  const order = order_id ? await prisma.order.findUnique({ where: { id: order_id }, include: { items: true } }) : null;
+  const bookId = order?.items?.[0]?.book_id || "";
+  const redirectBase = `${frontendBase}/b/${bookId}`;
+
+  try {
+    if (!order_id || !paymentID || status !== "success" || !order) {
+      res.redirect(`${redirectBase}?audiobook_status=${status === "cancel" ? "cancelled" : "failed"}`);
+      return;
+    }
+
+    const payment = await prisma.payment.findFirst({ where: { order_id } });
+    const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: payment?.method || "bkash" } });
+    const cfg = asObject(gateway?.config);
+    const cfgStr = (k: string) => getString(cfg, k);
+    const appKey = cfgStr("app_key") || process.env.BKASH_APP_KEY;
+    const appSecret = cfgStr("app_secret") || process.env.BKASH_APP_SECRET;
+    const username = cfgStr("username") || process.env.BKASH_USERNAME;
+    const password = cfgStr("password") || process.env.BKASH_PASSWORD;
+
+    if (!appKey || !appSecret || !username || !password) {
+      res.redirect(`${redirectBase}?audiobook_status=failed`); return;
+    }
+
+    const mode = (gateway?.mode === "live" || (!gateway?.mode && process.env.BKASH_APP_KEY)) ? "live" : "test";
+    const baseUrl = mode === "live" ? "https://tokenized.pay.bka.sh/v1.2.0-beta" : "https://tokenized.sandbox.bka.sh/v1.2.0-beta";
+
+    const tokenRes = await fetch(`${baseUrl}/tokenized/checkout/token/grant`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", username, password },
+      body: JSON.stringify({ app_key: appKey, app_secret: appSecret }),
+    });
+    const tokenData = await tokenRes.json() as Record<string, unknown>;
+    const idToken = typeof tokenData.id_token === "string" ? tokenData.id_token : undefined;
+    if (!idToken) { res.redirect(`${redirectBase}?audiobook_status=failed`); return; }
+
+    const execRes = await fetch(`${baseUrl}/tokenized/checkout/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json", authorization: idToken, "x-app-key": appKey },
+      body: JSON.stringify({ paymentID }),
+    });
+    const execData = await execRes.json() as Record<string, unknown>;
+    const txnId = typeof execData.trxID === "string" ? execData.trxID : paymentID;
+    const execStatus = String(execData.statusCode || "").toLowerCase();
+
+    if (execStatus === "0000") {
+      await finalizePaidOrder({ orderId: order_id, paymentMethod: payment?.method || "bkash", transactionId: txnId });
+      res.redirect(`${redirectBase}?audiobook_status=success`);
+    } else {
+      await prisma.payment.updateMany({ where: { order_id }, data: { status: "failed" } }).catch((err) => console.error("[payment] DB update failed:", err));
+      res.redirect(`${redirectBase}?audiobook_status=failed`);
+    }
+  } catch (err) {
+    console.error("bKash order callback error:", err);
+    res.redirect(`${redirectBase}?audiobook_status=failed`);
+  }
+});
+
 paymentsRestRouter.post("/demo", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { order_id } = req.body;

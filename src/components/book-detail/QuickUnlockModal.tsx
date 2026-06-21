@@ -65,18 +65,24 @@ export function QuickUnlockModal({
   const adjustCoinsMutation = trpc.wallet.adjustCoins.useMutation();
   const unlockContentMutation = trpc.wallet.unlockContent.useMutation();
   const initiateChapterPaymentMutation = trpc.wallet.initiateChapterPayment.useMutation();
+  const initiateAudiobookPaymentMutation = trpc.wallet.initiateAudiobookPayment.useMutation();
   const [payingTaka, setPayingTaka] = useState(false);
+  const [payingFullTaka, setPayingFullTaka] = useState(false);
   const [selectedGateway, setSelectedGateway] = useState<string>("");
+  const [selectedFullGateway, setSelectedFullGateway] = useState<string>("");
   const utils = trpc.useUtils();
 
   const { data: activeGateways = [] } = trpc.wallet.activePaymentGateways.useQuery(undefined, {
-    enabled: !!(track?.chapterTakaPrice && track.chapterTakaPrice > 0),
+    enabled: !!(track?.chapterTakaPrice && track.chapterTakaPrice > 0) || audiobookPrice > 0,
   });
 
   // Pre-select first gateway when list loads
   useEffect(() => {
     if (activeGateways.length > 0 && !selectedGateway) {
       setSelectedGateway(activeGateways[0].gateway_key);
+    }
+    if (activeGateways.length > 0 && !selectedFullGateway) {
+      setSelectedFullGateway(activeGateways[0].gateway_key);
     }
   }, [activeGateways]);
 
@@ -254,6 +260,20 @@ export function QuickUnlockModal({
       setPayingTaka(false);
     }
   }, [track, bookId, payingTaka, initiateChapterPaymentMutation]);
+
+  const handleFullTakaPayment = useCallback(async (method: "sslcommerz" | "bkash") => {
+    if (payingFullTaka) return;
+    setPayingFullTaka(true);
+    try {
+      const result = await initiateAudiobookPaymentMutation.mutateAsync({ bookId, paymentMethod: method });
+      if (result.gateway_url) {
+        window.location.href = result.gateway_url;
+      }
+    } catch (e: any) {
+      toast.error(e?.message || "পেমেন্ট শুরু করা যায়নি");
+      setPayingFullTaka(false);
+    }
+  }, [bookId, payingFullTaka, initiateAudiobookPaymentMutation]);
 
   if (!track) return null;
 
@@ -589,13 +609,78 @@ export function QuickUnlockModal({
                 </>
               )}
 
-              {/* Full audiobook cash purchase — only show when audiobook has a non-zero price */}
-              {audiobookPrice > 0 && (
-                <Button size="sm" variant="ghost" className="w-full text-xs gap-1.5 text-muted-foreground h-9" asChild>
-                  <Link to={`/checkout?book_id=${bookId}&format=audiobook`}>
-                    <ShoppingCart className="w-3.5 h-3.5" /> সম্পূর্ণ অডিওবুক কিনুন — ৳{audiobookPrice}
-                  </Link>
-                </Button>
+              {/* Full audiobook — pay taka directly via gateway, no multi-step checkout */}
+              {audiobookPrice > 0 && activeGateways.length > 0 && (
+                <>
+                  <div className="flex items-center gap-3 py-0.5">
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-[11px] text-muted-foreground">অথবা সম্পূর্ণ অডিওবুক টাকায় কিনুন</span>
+                    <div className="flex-1 h-px bg-border" />
+                  </div>
+                  <div className="rounded-xl border-2 border-border/50 bg-card p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <ShoppingCart className="w-4 h-4 text-primary flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-semibold">সম্পূর্ণ অডিওবুক কিনুন — ৳{audiobookPrice}</p>
+                        <p className="text-[11px] text-muted-foreground">পেমেন্ট পদ্ধতি বেছে নিন</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {activeGateways.map(gw => {
+                        const meta = GATEWAY_META[gw.gateway_key] ?? { label: gw.label, color: "text-foreground", bg: "bg-secondary/30", border: "border-border" };
+                        const isSelected = selectedFullGateway === gw.gateway_key;
+                        return (
+                          <button
+                            key={gw.gateway_key}
+                            onClick={() => setSelectedFullGateway(gw.gateway_key)}
+                            className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                              isSelected
+                                ? `${meta.border} ${meta.bg}`
+                                : "border-border/40 hover:border-border"
+                            }`}
+                          >
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${meta.bg}`}>
+                              {gw.gateway_key === "bkash" ? (
+                                <span className={`font-extrabold ${meta.color}`}>b</span>
+                              ) : gw.gateway_key === "nagad" ? (
+                                <span className={`font-extrabold text-xs ${meta.color}`}>N</span>
+                              ) : (
+                                <CreditCard className={`w-4 h-4 ${meta.color}`} />
+                              )}
+                            </div>
+                            <span className={`text-sm font-medium flex-1 ${isSelected ? meta.color : ""}`}>
+                              {meta.label || gw.label}
+                            </span>
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
+                              isSelected ? "border-primary bg-primary" : "border-muted-foreground/30"
+                            }`}>
+                              {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-primary-foreground" />}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <Button
+                      className="w-full h-11 gap-2 font-semibold"
+                      disabled={payingFullTaka || !selectedFullGateway}
+                      onClick={() => handleFullTakaPayment(selectedFullGateway as "sslcommerz" | "bkash")}
+                    >
+                      {payingFullTaka ? (
+                        <>
+                          <div className="animate-spin h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full" />
+                          পেমেন্ট প্রক্রিয়া হচ্ছে...
+                        </>
+                      ) : (
+                        <>
+                          <CreditCard className="w-4 h-4" />
+                          ৳{audiobookPrice} পেমেন্ট করুন
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
               )}
 
               {/* Footer info */}
