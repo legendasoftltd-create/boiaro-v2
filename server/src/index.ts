@@ -76,9 +76,12 @@ app.use("/api/v1", (req, res, next) => {
   next();
 });
 
-// Enforce JSON content-type on mutation endpoints
+// Enforce JSON content-type on mutation endpoints.
+// Exempt SSLCommerz callbacks — they're posted server-to-server as
+// application/x-www-form-urlencoded and cannot be made to send JSON.
 app.use("/api/v1", (req, res, next) => {
-  if (["POST", "PATCH", "PUT"].includes(req.method) && req.headers["content-type"] && !req.is("application/json")) {
+  const isPaymentCallback = req.originalUrl.startsWith("/api/v1/payments/sslcommerz/");
+  if (!isPaymentCallback && ["POST", "PATCH", "PUT"].includes(req.method) && req.headers["content-type"] && !req.is("application/json")) {
     res.status(415).json({ success: false, error: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be application/json" });
     return;
   }
