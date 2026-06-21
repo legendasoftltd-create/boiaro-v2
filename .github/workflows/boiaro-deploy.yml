@@ -24,6 +24,12 @@ jobs:
         run: npm ci
         working-directory: server
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: server
+        env:
+          DATABASE_URL: "postgresql://ci:ci@localhost/ci"
+
       - name: Build server
         run: npm run build
         working-directory: server
@@ -73,7 +79,7 @@ jobs:
 
           rsync -az \
             -e "ssh -i ~/.ssh/deploy_key" \
-            server/package.json server/package-lock.json \
+            server/package.json server/package-lock.json server/prisma.config.ts \
             ${{ secrets.VPS_USER }}@${{ secrets.VPS_IP }}:/var/www/html/staging.boiaro.com/server/
 
           rsync -az \
