@@ -102,6 +102,7 @@ export default function AdminBooks() {
   const updateTrackMutation = trpc.admin.updateAudiobookTrackAdmin.useMutation();
   const deleteTrackMutation = trpc.admin.deleteAudiobookTrackAdmin.useMutation();
   const toggleTrackPreviewMutation = trpc.books.toggleTrackPreview.useMutation();
+  const setTrackStatusMutation = trpc.admin.setAudiobookTrackStatus.useMutation();
   const createLedgerEntryMutation = trpc.admin.createAccountingLedgerEntry.useMutation();
   const savePremiumVoiceMutation = trpc.admin.savePremiumVoiceSettings.useMutation();
   const getDownloadUrlMutation = trpc.admin.getBookDownloadUrl.useMutation();
@@ -386,6 +387,33 @@ export default function AdminBooks() {
     }
     setTracks(tracks.map(t => t.id === id ? { ...t, is_preview: nextIsPreview } : t));
     toast.success(nextIsPreview ? "Chapter marked as free preview" : "Chapter is no longer a free preview — its price now applies");
+  };
+
+  // Chapters added by narrators/creators default to "draft" (then "pending"
+  // after they hit Submit) and stay completely invisible on the public site
+  // and mobile app until status becomes "active" — even if the book/format
+  // itself is already approved and live. This lets admin activate them
+  // directly from here instead of hunting through Submissions.
+  const activateTrack = async (id: string) => {
+    try {
+      await setTrackStatusMutation.mutateAsync({ trackId: id, status: "active" });
+    } catch (error: any) {
+      toast.error(error.message || "Failed to activate chapter");
+      return;
+    }
+    setTracks(tracks.map(t => t.id === id ? { ...t, status: "active" } : t));
+    toast.success("Chapter activated — now visible on the site and app");
+  };
+
+  const trackStatusBadge = (status: string) => {
+    const config: Record<string, { cls: string; label: string }> = {
+      draft: { cls: "bg-secondary text-muted-foreground", label: "Draft — not visible" },
+      pending: { cls: "bg-amber-500/20 text-amber-400", label: "Pending — not visible" },
+      active: { cls: "bg-emerald-500/20 text-emerald-400", label: "Active" },
+      rejected: { cls: "bg-destructive/20 text-destructive", label: "Rejected" },
+    };
+    const c = config[status] || config.draft;
+    return <Badge variant="outline" className={`text-[9px] ${c.cls}`}>{c.label}</Badge>;
   };
 
   const renameTrack = async (id: string) => {
@@ -1744,7 +1772,10 @@ export default function AdminBooks() {
                     </div>
 
                     {/* Title */}
-                    <p className="text-sm font-medium truncate min-w-0">{t.title}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{t.title}</p>
+                      {t.status !== "active" && <div className="mt-0.5">{trackStatusBadge(t.status)}</div>}
+                    </div>
 
                     {/* Duration */}
                     <span className="text-xs text-muted-foreground truncate">{t.duration || "—"}</span>
@@ -1788,6 +1819,16 @@ export default function AdminBooks() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-0.5">
+                      {t.status !== "active" && (
+                        <Button
+                          size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-400"
+                          disabled={setTrackStatusMutation.isPending}
+                          onClick={() => activateTrack(t.id)}
+                          title="Activate — make visible on the site and app"
+                        >
+                          <CheckCircle className="h-3 w-3" />
+                        </Button>
+                      )}
                       {(t.audio_url || t.file_url) && (
                         <Button
                           size="icon" variant="ghost" className="h-7 w-7 text-primary hover:text-primary"
