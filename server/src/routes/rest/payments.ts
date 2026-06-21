@@ -521,13 +521,22 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
     const storePassword = getString(gatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
     const mode = gateway?.mode === "live" ? "live" : "test";
 
-    // Verify SSLCommerz signature when present (IPN and direct callbacks both send verify_sign)
+    // Verify SSLCommerz signature when present (IPN and direct callbacks both send verify_sign).
+    // On a hash mismatch for "success", don't hard-reject immediately if we have a val_id —
+    // fall through to the official validationserverAPI round-trip below, which asks SSLCommerz's
+    // own servers to confirm the transaction directly and is authoritative regardless of whether
+    // our locally-computed hash matches (the verify_key field set SSLCommerz sends isn't always
+    // stable, so a self-computed mismatch alone must not strand a paid order). Only hard-reject
+    // a "success" callback when there's no val_id to fall back on. "failed"/"cancelled" carry no
+    // unlock risk (no money moved), so a mismatch there is just logged.
     if (storePassword && payload["verify_sign"]) {
       const signValid = verifySslCommerzSign(payload, storePassword);
       if (!signValid) {
-        console.warn("[payment] SSLCommerz verify_sign mismatch — rejecting callback");
-        res.status(400).json({ error: "Invalid signature" });
-        return;
+        console.warn(`[payment] SSLCommerz verify_sign mismatch on ${status} callback`);
+        if (status === "success" && !valId) {
+          res.status(400).json({ error: "Invalid signature" });
+          return;
+        }
       }
     }
 
@@ -627,15 +636,45 @@ paymentsRestRouter.all("/sslcommerz/cancel", async (req, res) => {
 
 paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
   const payload = asObject(req.body);
+  const ipnValId = getString(payload, "val_id");
 
-  // Verify SSLCommerz IPN signature before trusting any payload field
+  // Verify SSLCommerz IPN signature before trusting any payload field. On a hash mismatch,
+  // fall back to the official validationserverAPI round-trip (same as the browser-redirect
+  // success handler) before rejecting — a self-computed hash mismatch alone must not drop a
+  // genuinely paid IPN, since SSLCommerz's own servers are the authoritative source of truth.
+  let ipnGatewayConfig: Record<string, unknown> = {};
+  let ipnStorePass: string | undefined;
+  let ipnStoreId: string | undefined;
+  let ipnMode: "live" | "test" = "test";
   if (payload["verify_sign"]) {
     const gw = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
-    const storePass = getString(asObject(gw?.config), "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
-    if (storePass && !verifySslCommerzSign(payload, storePass)) {
-      console.warn("[ipn] SSLCommerz verify_sign mismatch — rejecting IPN");
-      res.status(400).json({ error: "Invalid signature" });
-      return;
+    ipnGatewayConfig = asObject(gw?.config);
+    ipnStorePass = getString(ipnGatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+    ipnStoreId = getString(ipnGatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
+    ipnMode = gw?.mode === "live" ? "live" : "test";
+    if (ipnStorePass && !verifySslCommerzSign(payload, ipnStorePass)) {
+      console.warn("[ipn] SSLCommerz verify_sign mismatch");
+      let validatedByApi = false;
+      if (ipnValId && ipnStoreId) {
+        const validationBase = ipnMode === "live"
+          ? "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
+          : "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php";
+        const url = `${validationBase}?val_id=${encodeURIComponent(ipnValId)}&store_id=${encodeURIComponent(ipnStoreId)}&store_passwd=${encodeURIComponent(ipnStorePass)}&v=1&format=json`;
+        try {
+          const response = await fetch(url);
+          const result = (await response.json()) as Record<string, unknown>;
+          const resultStatus = String(result?.status || "").toUpperCase();
+          validatedByApi = resultStatus === "VALID" || resultStatus === "VALIDATED";
+        } catch {
+          validatedByApi = false;
+        }
+      }
+      if (!validatedByApi) {
+        console.warn("[ipn] SSLCommerz validationserverAPI also failed to confirm — rejecting IPN");
+        res.status(400).json({ error: "Invalid signature" });
+        return;
+      }
+      console.warn("[ipn] verify_sign mismatch but validationserverAPI confirmed — accepting IPN");
     }
   }
 
