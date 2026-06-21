@@ -28,6 +28,33 @@ function resolveRedirectUrl(urlOrPath: string | undefined, baseOrigin: string, d
   return `${origin}${urlOrPath.startsWith("/") ? "" : "/"}${urlOrPath}`;
 }
 
+// Customer cancelled before paying — remove the order entirely rather than leaving a
+// permanent "pending" row (which the admin panel can't tell apart from a stuck/incomplete
+// order). Coupon usage must be decremented so a cancelled checkout doesn't burn the
+// customer's coupon use. Deletion order respects FK dependencies (no cascade in schema).
+async function deleteCancelledOrder(orderId: string) {
+  const couponUsages = await prisma.couponUsage.findMany({
+    where: { order_id: orderId },
+    select: { coupon_id: true },
+  });
+
+  await prisma.$transaction([
+    ...couponUsages.map((cu) =>
+      prisma.coupon.update({
+        where: { id: cu.coupon_id },
+        data: { used_count: { decrement: 1 } },
+      })
+    ),
+    prisma.contributorEarning.deleteMany({ where: { order_id: orderId } }),
+    prisma.couponUsage.deleteMany({ where: { order_id: orderId } }),
+    prisma.orderItem.deleteMany({ where: { order_id: orderId } }),
+    prisma.orderStatusHistory.deleteMany({ where: { order_id: orderId } }),
+    prisma.payment.deleteMany({ where: { order_id: orderId } }),
+    prisma.paymentEvent.deleteMany({ where: { order_id: orderId } }),
+    prisma.order.delete({ where: { id: orderId } }),
+  ]);
+}
+
 async function finalizePaidOrder(params: { orderId: string; paymentMethod: string; transactionId?: string }) {
   const order = await prisma.order.findUnique({
     where: { id: params.orderId },
@@ -582,10 +609,12 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
         await finalizeChapterPurchase({ purchaseId: chapterPurchaseId, transactionId: tranId });
       }
     } else if (status !== "success") {
-      if (orderId) {
+      if (orderId && status === "cancelled") {
+        await deleteCancelledOrder(orderId);
+      } else if (orderId) {
         await prisma.payment.updateMany({
           where: { order_id: orderId },
-          data: { status: status === "cancelled" ? "cancelled" : "failed" },
+          data: { status: "failed" },
         });
       } else if (subscriptionId) {
         await prisma.payment.updateMany({
@@ -610,7 +639,7 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
     }
 
     const separator = redirect.includes("?") ? "&" : "?";
-    const finalUrl = coinPurchaseId || chapterPurchaseId
+    const finalUrl = coinPurchaseId || chapterPurchaseId || (orderId && status === "cancelled")
       ? redirect
       : subscriptionId
         ? `${redirect}${separator}subscription_id=${encodeURIComponent(subscriptionId)}`
@@ -790,7 +819,7 @@ paymentsRestRouter.get("/bkash/chapter-callback", async (req, res) => {
 
   const purchase = purchase_id ? await prisma.chapterPurchase.findUnique({ where: { id: purchase_id } }) : null;
   const bookId = purchase?.book_id || "";
-  const redirectBase = `${frontendBase}/books/${bookId}`;
+  const redirectBase = `${frontendBase}/b/${bookId}`;
 
   try {
     if (!purchase_id || !paymentID || status !== "success" || !purchase) {

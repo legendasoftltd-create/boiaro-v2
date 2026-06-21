@@ -331,9 +331,9 @@ chaptersRestRouter.post("/chapters/:trackId/initiate-payment", requireAuth, asyn
     const backendBase = (process.env.BACKEND_URL || process.env.BASE_URL || "http://localhost:3001").replace(/\/$/, "");
     const transactionId = `CHPT-${purchase.id}-${Date.now()}`;
 
-    const successRedirect = success_redirect ? String(success_redirect) : `${frontendBase}/books/${bookId}?chapter_status=success`;
-    const failRedirect = fail_redirect ? String(fail_redirect) : `${frontendBase}/books/${bookId}?chapter_status=failed`;
-    const cancelRedirect = fail_redirect ? String(fail_redirect) : `${frontendBase}/books/${bookId}?chapter_status=cancelled`;
+    const successRedirect = success_redirect ? String(success_redirect) : `${frontendBase}/b/${bookId}?chapter_status=success`;
+    const failRedirect = fail_redirect ? String(fail_redirect) : `${frontendBase}/b/${bookId}?chapter_status=failed`;
+    const cancelRedirect = fail_redirect ? String(fail_redirect) : `${frontendBase}/b/${bookId}?chapter_status=cancelled`;
 
     if (gateway === "sslcommerz") {
       const sslGateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });

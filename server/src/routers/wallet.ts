@@ -174,9 +174,9 @@ export const walletRouter = router({
         const payload = new URLSearchParams({
           store_id: storeId, store_passwd: storePass,
           total_amount: String(takaPrice), currency: "BDT", tran_id: transactionId,
-          success_url: `${backendBase}/api/v1/payments/sslcommerz/success?redirect=${encodeURIComponent(`${frontendBase}/books/${input.bookId}?chapter_status=success`)}`,
-          fail_url: `${backendBase}/api/v1/payments/sslcommerz/fail?redirect=${encodeURIComponent(`${frontendBase}/books/${input.bookId}?chapter_status=failed`)}`,
-          cancel_url: `${backendBase}/api/v1/payments/sslcommerz/cancel?redirect=${encodeURIComponent(`${frontendBase}/books/${input.bookId}?chapter_status=cancelled`)}`,
+          success_url: `${backendBase}/api/v1/payments/sslcommerz/success?redirect=${encodeURIComponent(`${frontendBase}/b/${input.bookId}?chapter_status=success`)}`,
+          fail_url: `${backendBase}/api/v1/payments/sslcommerz/fail?redirect=${encodeURIComponent(`${frontendBase}/b/${input.bookId}?chapter_status=failed`)}`,
+          cancel_url: `${backendBase}/api/v1/payments/sslcommerz/cancel?redirect=${encodeURIComponent(`${frontendBase}/b/${input.bookId}?chapter_status=cancelled`)}`,
           ipn_url: `${backendBase}/api/v1/payments/sslcommerz/ipn`,
           product_name: track.title, product_category: "Chapter", product_profile: "digital-goods",
           cus_name: "Customer", cus_email: user?.email || `${ctx.userId}@boiaro.local`,

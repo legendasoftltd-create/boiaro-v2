@@ -3285,6 +3285,34 @@ export const adminRouter = router({
       })
     ),
 
+  // Surfaces single-chapter audiobook purchases — these don't create an Order row
+  // (they use their own table), so without this they're invisible in the admin panel.
+  listChapterPurchases: adminProcedure
+    .input(z.object({ status: z.string().optional(), limit: z.number().optional() }).optional())
+    .query(async ({ input }) => {
+      const purchases = await prisma.chapterPurchase.findMany({
+        where: input?.status ? { payment_status: input.status } : undefined,
+        orderBy: { created_at: "desc" },
+        take: input?.limit ?? 50,
+        include: { track: { select: { title: true, track_number: true } } },
+      });
+
+      const bookIds = [...new Set(purchases.map((p) => p.book_id))];
+      const userIds = [...new Set(purchases.map((p) => p.user_id))];
+      const [books, users] = await Promise.all([
+        prisma.book.findMany({ where: { id: { in: bookIds } }, select: { id: true, title: true } }),
+        prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, email: true } }),
+      ]);
+      const bookMap = new Map(books.map((b) => [b.id, b.title]));
+      const userMap = new Map(users.map((u) => [u.id, u.email]));
+
+      return purchases.map((p) => ({
+        ...p,
+        book_title: bookMap.get(p.book_id) ?? null,
+        user_email: userMap.get(p.user_id) ?? null,
+      }));
+    }),
+
   updateCoinPackage: adminProcedure
     .input(
       z.object({

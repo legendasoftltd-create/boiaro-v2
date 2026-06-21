@@ -28,7 +28,8 @@ export default function AdminCoinPackages() {
   const [editPkg, setEditPkg] = useState<CoinPackage | null>(null);
   const [form, setForm] = useState({ name: "", coins: "", price: "", bonus_coins: "0", sort_order: "0", is_featured: false });
   const { data: packages = [] } = trpc.admin.listCoinPackages.useQuery();
-  const { data: purchases = [] } = trpc.admin.listCoinPurchases.useQuery({ status: "completed", limit: 50 });
+  const { data: purchases = [] } = trpc.admin.listCoinPurchases.useQuery({ status: "paid", limit: 50 });
+  const { data: chapterPurchases = [] } = trpc.admin.listChapterPurchases.useQuery({ status: "paid", limit: 50 });
   const upsertMutation = trpc.admin.updateCoinPackage.useMutation({
     onSuccess: async () => {
       await utils.admin.listCoinPackages.invalidate();
@@ -210,6 +211,45 @@ export default function AdminCoinPackages() {
                   <TableRow key={p.id}>
                     <TableCell className="text-xs">{new Date(p.created_at).toLocaleDateString()}</TableCell>
                     <TableCell>{p.coins_amount}</TableCell>
+                    <TableCell>৳{p.price}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-400">
+                        {p.payment_status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent Chapter Purchases */}
+      {chapterPurchases.length > 0 && (
+        <Card className="border-border/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Recent Chapter Purchases</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Book</TableHead>
+                  <TableHead>Chapter</TableHead>
+                  <TableHead>Buyer</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(chapterPurchases as any[]).slice(0, 20).map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="text-xs">{new Date(p.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-xs">{p.book_title || p.book_id}</TableCell>
+                    <TableCell className="text-xs">{p.track?.title || `#${p.track?.track_number ?? "?"}`}</TableCell>
+                    <TableCell className="text-xs">{p.user_email || p.user_id}</TableCell>
                     <TableCell>৳{p.price}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="text-[10px] bg-emerald-500/15 text-emerald-400">
