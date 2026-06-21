@@ -7,7 +7,6 @@ import { useAudioPlayer, type AudioTrack } from "@/contexts/AudioPlayerContext"
 import { useAuth } from "@/contexts/AuthContext"
 import { useAudiobookAccess } from "@/hooks/useAudiobookAccess"
 import { AudiobookChapterUnlock } from "@/components/book-detail/AudiobookChapterUnlock"
-import { AudiobookPaywallModal } from "@/components/audio-player/AudiobookPaywallModal"
 import { MobileAppPromptModal } from "@/components/MobileAppPromptModal"
 import { VideoPlayer } from "@/components/audio-player/VideoPlayer"
 import { QuickUnlockModal } from "@/components/book-detail/QuickUnlockModal"
@@ -554,20 +553,10 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
         onDownloadClick={handleDownloadClick}
       />
 
-      {/* Paywall modal */}
-      <AudiobookPaywallModal
-        open={showPaywall}
-        bookTitle={book.title}
-        bookSlug={book.slug}
-        bookId={book.id}
-        audiobookPrice={audiobook.price}
-        previewPercentage={access.previewPercentage}
-        onUnlocked={() => {
-          access.markUnlocked()
-          setShowPaywall(false)
-        }}
-        onClose={() => setShowPaywall(false)}
-      />
+      {/* Paywall modal is rendered once, globally, by <GlobalAudiobookPaywall /> at the
+          app root — it reads the same shared `showPaywall` context flag this page sets.
+          Rendering a second instance here stacked two identical full-screen overlays on
+          top of each other, and the topmost one in DOM order silently ate every tap. */}
 
       {/* Chapter unlock modal — shown when user clicks a paid locked chapter */}
       <QuickUnlockModal
