@@ -449,7 +449,17 @@ function verifySslCommerzSign(payload: Record<string, unknown>, storePassword: s
     });
 
   const computedHash = createHash("md5").update(parts.join("&")).digest("hex");
-  return computedHash === verifySign;
+  const isValid = computedHash === verifySign;
+  if (!isValid) {
+    console.warn("[payment] verify_sign mismatch debug", {
+      verifyKey,
+      fields,
+      payloadKeys: Object.keys(payload),
+      computedHash,
+      verifySign,
+    });
+  }
+  return isValid;
 }
 
 function isSafeRedirect(url: string): boolean {
