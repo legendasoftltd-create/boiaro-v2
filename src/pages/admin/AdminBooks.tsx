@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ import { useAdminLogger } from "@/hooks/useAdminLogger";
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 export default function AdminBooks() {
+  const location = useLocation();
   const utils = trpc.useUtils();
   const [books, setBooks] = useState<any[]>([]);
   const [bookFormats, setBookFormats] = useState<Record<string, any[]>>({});
@@ -193,6 +195,22 @@ export default function AdminBooks() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Deep-link from Submissions review: open the Edit dialog for a specific
+  // book once it's loaded, and/or prefill the search box / status filter.
+  const navState = location.state as { editBookId?: string; search?: string; status?: string } | null;
+  const navStateHandledRef = useRef(false);
+  useEffect(() => {
+    if (!navState || navStateHandledRef.current || books.length === 0) return;
+    navStateHandledRef.current = true;
+    if (navState.search) setSearchQuery(navState.search);
+    if (navState.status) setFilterStatus(navState.status);
+    if (navState.editBookId) {
+      const target = books.find((b: any) => b.id === navState.editBookId);
+      if (target) openEdit(target);
+      else toast.error("Could not find that book to edit");
+    }
+  }, [navState, books]);
 
   const [trackUploadPct, setTrackUploadPct] = useState<number | null>(null);
 

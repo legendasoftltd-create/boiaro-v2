@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ function ebookProxyUrl(fileUrl: string): string {
 }
 
 export default function AdminSubmissions() {
+  const navigate = useNavigate();
   const utils = trpc.useUtils();
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "draft" | "edit_requests">("pending");
   const [previewBook, setPreviewBook] = useState<any>(null);
@@ -295,8 +297,16 @@ export default function AdminSubmissions() {
                     <Image className="w-6 h-6 text-muted-foreground" />
                   </div>
                 )}
-                <div>
-                  <h2 className="text-lg font-bold">{previewBook.title}</h2>
+                <div className="flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="text-lg font-bold">{previewBook.title}</h2>
+                    <Button
+                      size="sm" variant="outline" className="h-7 text-xs gap-1 flex-shrink-0"
+                      onClick={() => navigate("/admin/books", { state: { editBookId: previewBook.id, search: previewBook.title } })}
+                    >
+                      <Pencil className="h-3 w-3" />Edit
+                    </Button>
+                  </div>
                   {previewBook.title_en && <p className="text-sm text-muted-foreground">{previewBook.title_en}</p>}
                   <p className="text-sm mt-1">Category: {previewBook.categories?.name_bn || previewBook.categories?.name || "None"}</p>
                   <div className="flex items-center gap-1.5 mt-1">
@@ -479,10 +489,69 @@ export default function AdminSubmissions() {
               )}
 
               {/* ── Approval / reinstate actions ── */}
-              {(filter === "pending" || filter === "rejected") && (() => {
+              {(filter === "pending" || filter === "rejected" || filter === "draft") && (() => {
                 const formats = (previewBook as any).book_formats || [];
                 const formatLabel: Record<string, string> = { ebook: "eBook", audiobook: "Audiobook", hardcopy: "Hard Copy" };
                 const isRejectedTab = filter === "rejected";
+                const isDraftTab = filter === "draft";
+
+                // ── DRAFT TAB: approve / move to pending / reject ─────────────
+                if (isDraftTab) {
+                  const draftFormats = formats.filter((f: any) => f.submission_status === "draft");
+                  const hasNonDraftSiblings = formats.some((f: any) => f.submission_status !== "draft");
+                  const showPerFormat = draftFormats.length > 0 && hasNonDraftSiblings;
+
+                  return (
+                    <div className="pt-2 border-t border-border/30 space-y-3">
+                      <p className="text-xs text-muted-foreground font-medium">
+                        This was sent back for correction. Approve it directly, move it back to{" "}
+                        <span className="text-amber-400">Pending</span> for normal review, or reject it.
+                      </p>
+                      {showPerFormat ? (
+                        draftFormats.map((fmt: any) => (
+                          <div key={fmt.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-secondary/30 border border-border/30">
+                            <span className="text-sm font-medium flex-1">
+                              {formatLabel[fmt.format] || fmt.format}
+                              <span className="ml-2 text-xs text-muted-foreground font-normal">draft</span>
+                            </span>
+                            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-7 text-xs gap-1"
+                              onClick={() => handleAction(previewBook.id, "approved", fmt.id)}
+                              disabled={!!actionLoading}>
+                              {actionLoading === fmt.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <><CheckCircle className="h-3 w-3" />Approve</>}
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-amber-400 border-amber-500/30"
+                              onClick={() => handleAction(previewBook.id, "pending", fmt.id)}
+                              disabled={!!actionLoading}>
+                              <RotateCcw className="h-3 w-3" />Move to Pending
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-destructive border-destructive/30"
+                              onClick={() => handleAction(previewBook.id, "rejected", fmt.id)}
+                              disabled={!!actionLoading}>
+                              <XCircle className="h-3 w-3" />Reject
+                            </Button>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex gap-2">
+                          <Button className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                            onClick={() => handleAction(previewBook.id, "approved")}
+                            disabled={!!actionLoading}>
+                            {actionLoading === previewBook.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <><CheckCircle className="h-4 w-4 mr-2" />Approve</>}
+                          </Button>
+                          <Button variant="outline" className="flex-1 text-amber-400 border-amber-500/30"
+                            onClick={() => handleAction(previewBook.id, "pending")}
+                            disabled={!!actionLoading}>
+                            <RotateCcw className="h-4 w-4 mr-2" />Move to Pending
+                          </Button>
+                          <Button variant="outline" className="flex-1 text-destructive border-destructive/30"
+                            onClick={() => handleAction(previewBook.id, "rejected")} disabled={!!actionLoading}>
+                            <XCircle className="h-4 w-4 mr-2" />Reject
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
 
                 // ── REJECTED TAB: show per-format "Reinstate → Pending" ──────
                 if (isRejectedTab) {
