@@ -119,14 +119,45 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
         .slice(0, takeLimit);
 
-    const trendingNow = [...allBooks]
-        .filter(book => (book.total_reads || 0) > 0)
-        .sort((a, b) => {
-            const scoreA = (a.total_reads * 5) + (a.is_featured ? 50 : 0);
-            const scoreB = (b.total_reads * 5) + (b.is_featured ? 50 : 0);
-            return scoreB - scoreA;
-        })
-        .slice(0, takeLimit);
+    // Mirrors trpc.books.trending exactly (same activity log, same 7-day window, same
+    // scoring) so the REST homepage API and the website's "Trending Now" section never
+    // disagree. Looks up matching books directly rather than filtering allBooks, since
+    // a genuinely trending older book can fall outside the latest-200-created window above.
+    const trendingSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const trendingActivity = await prisma.userActivityLog.findMany({
+        where: {
+            action: { in: ["book_view", "book_read", "book_purchase"] },
+            created_at: { gte: trendingSince },
+            book_id: { not: null },
+        },
+        select: { book_id: true },
+    });
+    const trendingScores: Record<string, number> = {};
+    trendingActivity.forEach((row) => {
+        if (row.book_id) trendingScores[row.book_id] = (trendingScores[row.book_id] || 0) + 1;
+    });
+    const trendingBookIds = Object.entries(trendingScores)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, takeLimit)
+        .map(([id]) => id);
+
+    const trendingBooksMap = new Map(allBooks.map((b) => [b.id, b]));
+    const missingTrendingIds = trendingBookIds.filter((id) => !trendingBooksMap.has(id));
+    if (missingTrendingIds.length > 0) {
+        const extraBooks = await prisma.book.findMany({
+            where: { id: { in: missingTrendingIds }, submission_status: "approved" },
+            include: {
+                author: { select: { id: true, name: true, avatar_url: true } },
+                category: { select: { id: true, name: true, slug: true } },
+                formats: { where: { is_available: true }, select: { format: true, price: true, in_stock: true } },
+            },
+        });
+        extraBooks.map(resolveBookUrls).forEach((b) => trendingBooksMap.set(b.id, b));
+    }
+
+    const trendingNow = trendingBookIds
+        .map((id) => trendingBooksMap.get(id))
+        .filter(Boolean);
 
     const getByFormat = (list, formatName) => {
         return list.filter(book =>
