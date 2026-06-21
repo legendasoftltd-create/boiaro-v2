@@ -438,7 +438,7 @@ function verifySslCommerzSign(payload: Record<string, unknown>, storePassword: s
   const verifySign = getString(payload, "verify_sign");
   if (!verifyKey || !verifySign) return false;
 
-  const fields = verifyKey.split(",").map(k => k.trim());
+  const fields = verifyKey.split(",").map(k => k.trim()).filter(Boolean);
   const hashedPass = createHash("md5").update(storePassword).digest("hex");
 
   const parts = fields
