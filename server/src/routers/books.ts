@@ -80,7 +80,23 @@ export const booksRouter = router({
         prisma.book.count({ where }),
       ]);
 
-      return { books: books.map(resolveBookUrls), total };
+      const allNarratorIds = [...new Set(books.flatMap((b) => b.formats.flatMap((f: any) => f.narrator_ids || [])))];
+      const narratorRows = allNarratorIds.length > 0
+        ? await prisma.narrator.findMany({
+            where: { id: { in: allNarratorIds } },
+            select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true, user_id: true },
+          })
+        : [];
+      const narratorById = new Map(narratorRows.map((n) => [n.id, n]));
+      const booksWithNarrators = books.map((b) => ({
+        ...b,
+        formats: b.formats.map((f: any) => ({
+          ...f,
+          narrators: (f.narrator_ids || []).map((nid: string) => narratorById.get(nid)).filter(Boolean),
+        })),
+      }));
+
+      return { books: booksWithNarrators.map(resolveBookUrls), total };
     }),
 
   trending: publicProcedure
@@ -653,6 +669,19 @@ export const booksRouter = router({
         },
       });
       if (!book || book.submission_status !== "approved") throw new TRPCError({ code: "NOT_FOUND" });
+
+      // Resolve all admin-selected narrators (BookFormat.narrator_ids) into full Narrator rows,
+      // attached per-format as `narrators` — ordered, with the legacy single `narrator` first.
+      const allNarratorIds = [...new Set(book.formats.flatMap((f: any) => f.narrator_ids || []))];
+      const narratorRows = allNarratorIds.length > 0
+        ? await prisma.narrator.findMany({ where: { id: { in: allNarratorIds } } })
+        : [];
+      const narratorById = new Map(narratorRows.map((n) => [n.id, n]));
+      const formatsWithNarrators = book.formats.map((f: any) => ({
+        ...f,
+        narrators: (f.narrator_ids || []).map((nid: string) => narratorById.get(nid)).filter(Boolean),
+      }));
+      (book as any).formats = formatsWithNarrators;
 
       // Only show contributors whose role-format has an approved BookFormat
       const approvedFormatTypes = new Set(book.formats.map((f: any) => f.format as string));

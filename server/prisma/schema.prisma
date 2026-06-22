@@ -345,6 +345,7 @@ model BookFormat {
   is_available                Boolean?       @default(true)
   isbn                        String?
   narrator_id                 String?
+  narrator_ids                String[]       @default([])
   original_price              Float?
   pages                       Int?
   payout_model                String         @default("standard")

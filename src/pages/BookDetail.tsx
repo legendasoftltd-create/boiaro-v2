@@ -101,6 +101,19 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     })
   }
 
+  // Admin-selected multi-narrator list (BookFormat.narrator_ids, resolved server-side)
+  for (const n of audiobookFmt?.narrators || []) {
+    addNarrator({
+      id: n.id,
+      userId: n.user_id || undefined,
+      name: n.name || n.name_en || "",
+      nameEn: n.name_en || "",
+      avatar: toMediaUrl(n.avatar_url) || "",
+      bio: n.bio || "", specialty: n.specialty || "", audiobooksCount: 0,
+      listeners: "0", rating: n.rating || 0, isFeatured: n.is_featured || false,
+    })
+  }
+
   for (const contrib of contributors.filter((c: any) => {
     const role = String(c.role || "").toLowerCase()
     const fmt = String(c.format || "").toLowerCase()
@@ -174,6 +187,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
       price: Number(audiobookFmt.price) || 0,
       duration: formatDuration(audiobookFmt.duration),
       narrator: allNarrators[0] || { id: "", name: "Narrator not assigned", nameEn: "", avatar: "", bio: "", specialty: "", audiobooksCount: 0, listeners: "0", rating: 0, isFeatured: false },
+      narrators: allNarrators,
       chapters: audioTracks.length || audiobookFmt.chapters_count || 0,
       quality: audiobookFmt.audio_quality || "standard",
       previewPercentage: audiobookFmt.preview_percentage ?? null,

@@ -86,6 +86,8 @@ export interface AudiobookFormat {
   price: number
   duration: string
   narrator: Narrator
+  /** All narrators selected for this format, in admin-chosen order (narrator above is narrators[0]). */
+  narrators?: Narrator[]
   chapters: number
   quality: "standard" | "hd"
   previewPercentage?: number | null

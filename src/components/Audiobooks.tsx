@@ -60,7 +60,9 @@ export function Audiobooks() {
                   <div className="absolute bottom-0 left-0 right-0 p-2.5">
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-blue-500/30 flex items-center justify-center ring-1 ring-blue-500/40"><User className="w-3 h-3 text-blue-400" /></div>
-                      <span className="text-[11px] text-foreground truncate font-medium">{audiobook.narrator.name}</span>
+                      <span className="text-[11px] text-foreground truncate font-medium">
+                        {(audiobook.narrators?.length ? audiobook.narrators : [audiobook.narrator]).map((n) => n.name).filter(Boolean).join(", ")}
+                      </span>
                     </div>
                   </div>
                 </div>

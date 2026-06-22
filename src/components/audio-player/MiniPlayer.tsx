@@ -17,9 +17,9 @@ export function MiniPlayer() {
   const isVideoTrack = currentTrack?.mediaType === "video"
   const trackDurationSec = duration || 300
   const controlsLocked = showPaywall || appPromptLocked || (isPreviewMode && currentTime >= previewLimitSeconds - 1)
-  const narratorName = audiobook.narrator?.name && audiobook.narrator.name !== ""
-    ? audiobook.narrator.name
-    : "Narrator not assigned"
+  const narratorNames = (audiobook.narrators?.length ? audiobook.narrators : audiobook.narrator ? [audiobook.narrator] : [])
+    .map((n) => n.name).filter(Boolean).join(", ")
+  const narratorName = narratorNames || "Narrator not assigned"
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-[hsl(240,15%,7%)]/98 backdrop-blur-2xl border-t border-border/30">

@@ -91,7 +91,12 @@ export function ContinueListening() {
                     {item.book.title}
                   </h3>
                   <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                    {item.book.formats.audiobook?.narrator.name || item.book.author.name}
+                    {(() => {
+                      const af = item.book.formats.audiobook
+                      const names = (af?.narrators?.length ? af.narrators : af?.narrator ? [af.narrator] : [])
+                        .map((n) => n.name).filter(Boolean).join(", ")
+                      return names || item.book.author.name
+                    })()}
                   </p>
                   <div className="mt-auto pt-2 md:pt-3">
                     <div className="flex items-center justify-between text-xs mb-1.5">

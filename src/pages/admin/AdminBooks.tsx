@@ -176,7 +176,8 @@ export default function AdminBooks() {
         if (!fmtMapRaw[f.book_id]) fmtMapRaw[f.book_id] = new Map();
         const existing = fmtMapRaw[f.book_id].get(f.format);
         if (!existing || (f.is_available !== false && existing.is_available === false)) {
-          fmtMapRaw[f.book_id].set(f.format, { ...f, narrators: f.narrator ?? null });
+          const narratorList = f.narrators?.length ? f.narrators : (f.narrator ? [f.narrator] : []);
+          fmtMapRaw[f.book_id].set(f.format, { ...f, narratorNames: narratorList.map((n: any) => n.name).filter(Boolean).join(", ") });
         }
       });
       const fmtMap: Record<string, any[]> = {};
@@ -768,7 +769,7 @@ export default function AdminBooks() {
       const titleEn = (b.title_en || "").toLowerCase();
       const author = (b.authors?.name || "").toLowerCase();
       const publisher = (b.publishers?.name || "").toLowerCase();
-      const narrator = ((bookFormats[b.id] || []).find((f: any) => f.format === "audiobook")?.narrators?.name || "").toLowerCase();
+      const narrator = ((bookFormats[b.id] || []).find((f: any) => f.format === "audiobook")?.narratorNames || "").toLowerCase();
       if (!title.includes(q) && !titleEn.includes(q) && !author.includes(q) && !publisher.includes(q) && !narrator.includes(q)) return false;
     }
     if (filterStatus !== "all" && b.submission_status !== filterStatus) return false;
@@ -886,8 +887,8 @@ export default function AdminBooks() {
                 <TableCell>{b.authors?.name || "—"}</TableCell>
                 <TableCell className="text-sm">
                   {(() => {
-                    const audioFmt = (bookFormats[b.id] || []).find((f: any) => f.format === "audiobook" && f.narrators?.name);
-                    return audioFmt ? audioFmt.narrators.name : "—";
+                    const audioFmt = (bookFormats[b.id] || []).find((f: any) => f.format === "audiobook" && f.narratorNames);
+                    return audioFmt ? audioFmt.narratorNames : "—";
                   })()}
                 </TableCell>
                 <TableCell className="text-sm">{b.categories?.name_bn || b.categories?.name || "—"}</TableCell>
@@ -1397,16 +1398,17 @@ export default function AdminBooks() {
 
                   <TabsContent value="audiobook" className="col-span-2 mt-0 grid grid-cols-2 gap-3">
                     <div>
-                      <Label>Narrator</Label>
+                      <Label>Narrator(s)</Label>
                       <SearchableSelect
+                        multiple
                         options={narrators.map((n) => ({
                           id: n.id,
                           label: n.name_en ? `${n.name} (${n.name_en})` : n.name,
                           searchAlt: n.name_en || "",
                         }))}
-                        value={formatForm.narrator_id || ""}
-                        onChange={(v) => setFormatForm({ ...formatForm, narrator_id: v })}
-                        placeholder="Select narrator"
+                        values={formatForm.narrator_ids || (formatForm.narrator_id ? [formatForm.narrator_id] : [])}
+                        onChangeValues={(ids) => setFormatForm({ ...formatForm, narrator_ids: ids, narrator_id: ids[0] || null })}
+                        placeholder="Select narrator(s)"
                         searchPlaceholder="Search Bangla or English name..."
                         emptyText="No narrators found"
                       />

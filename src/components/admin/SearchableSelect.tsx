@@ -21,16 +21,31 @@ interface SearchableSelectProps {
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
+  /** Enable multi-select mode — pass `values`/`onChangeValues` instead of `value`/`onChange`. */
+  multiple?: false;
 }
 
-export function SearchableSelect({
-  options,
-  value,
-  onChange,
-  placeholder = "Select...",
-  searchPlaceholder = "Search...",
-  emptyText = "No results found",
-}: SearchableSelectProps) {
+interface MultiSearchableSelectProps {
+  options: SearchableSelectOption[];
+  values: string[];
+  onChangeValues: (values: string[]) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  emptyText?: string;
+  multiple: true;
+}
+
+export function SearchableSelect(props: SearchableSelectProps | MultiSearchableSelectProps) {
+  const {
+    options,
+    placeholder = "Select...",
+    searchPlaceholder = "Search...",
+    emptyText = "No results found",
+  } = props;
+  const multiple = props.multiple === true;
+  const value = multiple ? "" : (props as SearchableSelectProps).value;
+  const values = multiple ? (props as MultiSearchableSelectProps).values : [];
+
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +54,18 @@ export function SearchableSelect({
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
     else setSearch("");
   }, [open]);
+
+  const isSelected = (id: string) => (multiple ? values.includes(id) : value === id);
+
+  const handleSelect = (id: string) => {
+    if (multiple) {
+      const next = values.includes(id) ? values.filter((v) => v !== id) : [...values, id];
+      (props as MultiSearchableSelectProps).onChangeValues(next);
+    } else {
+      (props as SearchableSelectProps).onChange(id);
+      setOpen(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     if (!search.trim()) return options;
@@ -63,9 +90,13 @@ export function SearchableSelect({
     return Object.entries(groups);
   }, [filtered, hasGroups]);
 
-  const selectedLabel = useMemo(() => {
+  const triggerLabel = useMemo(() => {
+    if (multiple) {
+      const labels = values.map((id) => options.find((o) => o.id === id)?.label).filter(Boolean) as string[];
+      return labels.length > 0 ? labels.join(", ") : null;
+    }
     return options.find((o) => o.id === value)?.label || null;
-  }, [options, value]);
+  }, [options, value, values, multiple]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -76,8 +107,8 @@ export function SearchableSelect({
           aria-expanded={open}
           className="w-full justify-between font-normal h-10"
         >
-          <span className={cn("truncate", !selectedLabel && "text-muted-foreground")}>
-            {selectedLabel || placeholder}
+          <span className={cn("truncate", !triggerLabel && "text-muted-foreground")}>
+            {triggerLabel || placeholder}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -110,13 +141,13 @@ export function SearchableSelect({
                   {items.map((o) => (
                     <button
                       key={o.id}
-                      onClick={() => { onChange(o.id); setOpen(false); }}
+                      onClick={() => handleSelect(o.id)}
                       className={cn(
                         "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left",
-                        value === o.id && "bg-accent"
+                        isSelected(o.id) && "bg-accent"
                       )}
                     >
-                      <Check className={cn("h-4 w-4 shrink-0", value === o.id ? "opacity-100" : "opacity-0")} />
+                      <Check className={cn("h-4 w-4 shrink-0", isSelected(o.id) ? "opacity-100" : "opacity-0")} />
                       <span>{o.label}</span>
                     </button>
                   ))}
@@ -125,13 +156,13 @@ export function SearchableSelect({
             : filtered.map((o) => (
                 <button
                   key={o.id}
-                  onClick={() => { onChange(o.id); setOpen(false); }}
+                  onClick={() => handleSelect(o.id)}
                   className={cn(
                     "w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left",
-                    value === o.id && "bg-accent"
+                    isSelected(o.id) && "bg-accent"
                   )}
                 >
-                  <Check className={cn("h-4 w-4 shrink-0", value === o.id ? "opacity-100" : "opacity-0")} />
+                  <Check className={cn("h-4 w-4 shrink-0", isSelected(o.id) ? "opacity-100" : "opacity-0")} />
                   <span>{o.label}</span>
                 </button>
               ))}

@@ -107,6 +107,7 @@ export const adminRouter = router({
               price: true,
               stock_count: true,
               narrator_id: true,
+              narrator_ids: true,
               submission_status: true,
               narrator: { select: { id: true, name: true } },
             },
@@ -115,7 +116,20 @@ export const adminRouter = router({
       });
       let nextCursor: string | undefined;
       if (books.length > input.limit) nextCursor = books.pop()!.id;
-      return { books, nextCursor };
+
+      const allNarratorIds = [...new Set(books.flatMap((b) => b.formats.flatMap((f) => f.narrator_ids || [])))];
+      const narratorRows = allNarratorIds.length > 0
+        ? await prisma.narrator.findMany({ where: { id: { in: allNarratorIds } }, select: { id: true, name: true } })
+        : [];
+      const narratorById = new Map(narratorRows.map((n) => [n.id, n]));
+      const booksWithNarrators = books.map((b) => ({
+        ...b,
+        formats: b.formats.map((f) => ({
+          ...f,
+          narrators: (f.narrator_ids || []).map((nid) => narratorById.get(nid)).filter(Boolean),
+        })),
+      }));
+      return { books: booksWithNarrators, nextCursor };
     }),
 
   listBookContributorCounts: adminProcedure.query(async () => {
@@ -155,6 +169,7 @@ export const adminRouter = router({
           stock_count: true,
           is_available: true,
           narrator_id: true,
+          narrator_ids: true,
           submission_status: true,
           printing_cost: true,
           unit_cost: true,
@@ -384,6 +399,7 @@ export const adminRouter = router({
         book_id: z.string(),
         format: z.string(),
         narrator_id: z.string().nullable().optional(),
+        narrator_ids: z.array(z.string()).optional(),
         price: z.number().nullable().optional(),
         original_price: z.number().nullable().optional(),
         discount: z.number().nullable().optional(),
@@ -416,6 +432,11 @@ export const adminRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...data } = input;
+      // narrator_id (single FK) stays in sync with the first entry of narrator_ids
+      // so existing single-narrator displays across the app keep working.
+      if (data.narrator_ids !== undefined) {
+        (data as any).narrator_id = data.narrator_ids[0] ?? null;
+      }
       if (id) {
         const updated = await prisma.bookFormat.update({
           where: { id },

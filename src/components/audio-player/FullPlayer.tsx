@@ -56,9 +56,9 @@ export function FullPlayer() {
   const currentTrack = tracks[currentTrackIndex]
   const trackDurationSec = duration || 300
   const controlsLocked = showPaywall || appPromptLocked || (isPreviewMode && currentTime >= previewLimitSeconds - 1)
-  const narratorName = audiobook.narrator?.name && audiobook.narrator.name !== ""
-    ? audiobook.narrator.name
-    : "Narrator not assigned"
+  const narratorNames = (audiobook.narrators?.length ? audiobook.narrators : audiobook.narrator ? [audiobook.narrator] : [])
+    .map((n) => n.name).filter(Boolean).join(", ")
+  const narratorName = narratorNames || "Narrator not assigned"
 
   return (
     <div className="fixed inset-0 z-[100] bg-[hsl(240,15%,5%)] flex flex-col">

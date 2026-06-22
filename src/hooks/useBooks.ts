@@ -64,19 +64,22 @@ export function trpcBookToMasterBook(book: any): MasterBook {
       };
     } else if (f.format === "audiobook") {
       const n = f.narrator;
+      const toNarrator = (raw: any) => ({
+        id: raw.id, name: raw.name, nameEn: raw.name_en || "",
+        avatar: toMediaUrl(raw.avatar_url) || "", bio: raw.bio || "",
+        specialty: raw.specialty || "", audiobooksCount: 0,
+        listeners: "0", rating: Number(raw.rating) || 0,
+        isFeatured: raw.is_featured || false,
+      })
+      const narrators = Array.isArray(f.narrators) ? f.narrators.map(toNarrator) : []
       formats.audiobook = {
         available: f.is_available !== false,
         price: Number(f.price) || 0,
         duration: formatDuration(f.duration),
         narrator: n
-          ? {
-              id: n.id, name: n.name, nameEn: n.name_en || "",
-              avatar: toMediaUrl(n.avatar_url) || "", bio: n.bio || "",
-              specialty: n.specialty || "", audiobooksCount: 0,
-              listeners: "0", rating: Number(n.rating) || 0,
-              isFeatured: n.is_featured || false,
-            }
+          ? toNarrator(n)
           : { id: "", name: "", nameEn: "", avatar: "", bio: "", specialty: "", audiobooksCount: 0, listeners: "0", rating: 0, isFeatured: false },
+        narrators: narrators.length > 0 ? narrators : (n ? [toNarrator(n)] : []),
         chapters: f.chapters_count || 0,
         quality: (f.audio_quality as "standard" | "hd") || "standard",
         previewPercentage: (f as any).preview_percentage ?? null,
