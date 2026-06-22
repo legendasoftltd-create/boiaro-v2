@@ -40,7 +40,7 @@ interface PlayerState {
 }
 
 interface AudioPlayerContextType extends PlayerState {
-  loadBook: (book: MasterBook, audiobook: AudiobookFormat, tracks?: AudioTrack[], autoPlay?: boolean) => void
+  loadBook: (book: MasterBook, audiobook: AudiobookFormat, tracks?: AudioTrack[], autoPlay?: boolean, startTrackId?: string) => void
   play: () => void
   pause: () => void
   togglePlay: () => void
@@ -518,10 +518,12 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }).catch(() => {}) // silent — progress save is best-effort
   }, [user, state.book, state.currentTime, state.currentTrackIndex, state.playbackRate])
 
-  const loadBook = useCallback((book: MasterBook, audiobook: AudiobookFormat, tracks?: AudioTrack[], autoPlay?: boolean) => {
+  const loadBook = useCallback((book: MasterBook, audiobook: AudiobookFormat, tracks?: AudioTrack[], autoPlay?: boolean, startTrackId?: string) => {
     const finalTracks: AudioTrack[] = (tracks || [])
       .filter((track) => (track.isActive ?? true) && Boolean((track.storagePath || track.audioUrl || "").trim()))
       .sort((a, b) => a.trackNumber - b.trackNumber)
+
+    const startIndex = startTrackId ? Math.max(0, finalTracks.findIndex((t) => t.id === startTrackId)) : 0
 
     const audio = audioRef.current
     if (audio) {
@@ -557,7 +559,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       book,
       audiobook,
       tracks: finalTracks,
-      currentTrackIndex: 0,
+      currentTrackIndex: startIndex,
       currentTime: 0,
       isPlaying: false,
       progressPercentage: 0,
@@ -567,7 +569,9 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }))
 
     if (user) {
-      loadSavedProgress(book.id)
+      // A specific starting chapter was requested (e.g. just-purchased chapter) —
+      // skip restoring saved progress so we don't jump away from it.
+      if (!startTrackId) loadSavedProgress(book.id)
       // Batch prefetch all signed URLs for this audiobook in a single edge function call
       prefetchBatchUrls(book.id).catch((e) =>
         console.warn("[AudioPlayer] batch prefetch failed", e)

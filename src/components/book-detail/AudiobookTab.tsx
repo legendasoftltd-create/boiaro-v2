@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react"
+import { useSearchParams } from "react-router-dom"
 import { Play, Pause, Clock, Mic, Headphones, AlertCircle, Loader2, Lock, Video } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -217,10 +218,10 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     : "Narrator not assigned"
   const narratorAvatar = allNarrators[0]?.avatar || ""
 
-  const handleListen = () => {
+  const handleListen = (startTrackId?: string) => {
     if (!hasPlayableSource || contentLocked) return
     if (!isThisBookActive) {
-      loadBook(book, audiobook, audioTracks.length > 0 ? audioTracks : undefined, true)
+      loadBook(book, audiobook, audioTracks.length > 0 ? audioTracks : undefined, true, startTrackId)
       return
     }
     // If currently paused on a locked chapter, show the unlock modal instead of resuming
@@ -253,6 +254,22 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     }
     goToTrack(index)
   }
+
+  // ── Arrived via "Listen Now" from a payment success page — start playback immediately ──
+  const [searchParams, setSearchParams] = useSearchParams()
+  const autoplayHandledRef = useRef(false)
+  useEffect(() => {
+    if (autoplayHandledRef.current) return
+    if (searchParams.get("autoplay") !== "1") return
+    if (!hasPlayableSource || contentLocked || isThisBookActive) return
+    autoplayHandledRef.current = true
+    const startTrackId = searchParams.get("track_id") || undefined
+    handleListen(startTrackId)
+    const next = new URLSearchParams(searchParams)
+    next.delete("autoplay")
+    next.delete("track_id")
+    setSearchParams(next, { replace: true })
+  }, [hasPlayableSource, contentLocked, isThisBookActive, searchParams])
 
   return (
     <div className="relative max-w-4xl mx-auto space-y-8">
@@ -331,7 +348,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
                 <Button
                   size="lg"
                   className="bg-[hsl(220,70%,50%)] text-white hover:bg-[hsl(220,70%,45%)] font-semibold gap-2 flex-1 sm:flex-initial rounded-xl shadow-lg shadow-[hsl(220,70%,50%)]/20"
-                  onClick={handleListen}
+                  onClick={() => handleListen()}
                   disabled={hasNoTracks || !hasPlayableSource || isLoading}
                 >
                   {isLoading && isThisBookActive ? (

@@ -41,7 +41,7 @@ export default function PaymentCallback() {
           setContentRedirect(`/read/${slug}`);
           setRedirectLabel("📖 Read Now");
         } else {
-          setContentRedirect(`/book/${slug}?tab=audiobook`);
+          setContentRedirect(`/book/${slug}?tab=audiobook&autoplay=1`);
           setRedirectLabel("🎧 Listen Now");
         }
 

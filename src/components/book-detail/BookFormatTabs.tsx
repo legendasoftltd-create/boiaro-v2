@@ -1,3 +1,5 @@
+import { useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { BookOpen, Headphones, Package } from "lucide-react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import type { MasterBook } from "@/lib/types"
@@ -17,10 +19,19 @@ export function BookFormatTabs({ book, audioTracks = [] }: Props) {
   const hasHardcopy = book.formats.hardcopy?.available
 
   const defaultTab = hasEbook ? "ebook" : hasAudiobook ? "audiobook" : "hardcopy"
+  // Honor ?tab=audiobook (e.g. from a payment success redirect) over the usual ebook-first default.
+  const [searchParams] = useSearchParams()
+  const requestedTab = searchParams.get("tab")
+  const initialTab =
+    requestedTab === "audiobook" && hasAudiobook ? "audiobook" :
+    requestedTab === "hardcopy" && hasHardcopy ? "hardcopy" :
+    requestedTab === "ebook" && hasEbook ? "ebook" :
+    defaultTab
+  const [activeTab, setActiveTab] = useState(initialTab)
 
   return (
     <section className="container mx-auto px-4 lg:px-8 py-8 lg:py-12">
-      <Tabs defaultValue={defaultTab} className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full max-w-lg mx-auto grid grid-cols-3 bg-card border border-border h-14 rounded-xl p-1">
           <TabsTrigger
             value="ebook"
