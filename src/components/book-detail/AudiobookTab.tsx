@@ -120,7 +120,9 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   // This fires when the player advances to a locked track (auto-advance is already
   // blocked at source; this shows the modal so the user knows how to unlock it).
   useEffect(() => {
-    if (!isThisBookActive || hasFullUnlock || !hasChapterPricing) return
+    // Skip if the global preview-limit paywall is already showing its own unlock modal
+    // for this same track — opening both stacks two identical full-screen overlays.
+    if (!isThisBookActive || hasFullUnlock || !hasChapterPricing || showPaywall) return
     const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
     const track = sourceTracks[currentTrackIndex]
     if (!track) return
@@ -132,7 +134,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
       pause()
       setLockedTrack(track as AudioTrack & { chapterPrice: number })
     }
-  }, [currentTrackIndex, isThisBookActive])
+  }, [currentTrackIndex, isThisBookActive, showPaywall])
 
   // ── Mobile app prompt: threshold from admin settings ──
   const { get: getSetting } = useSiteSettings()
@@ -222,7 +224,8 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
       return
     }
     // If currently paused on a locked chapter, show the unlock modal instead of resuming
-    if (!isPlaying && hasChapterPricing && !hasFullUnlock) {
+    // (unless the global paywall is already covering the screen with the same modal)
+    if (!isPlaying && hasChapterPricing && !hasFullUnlock && !showPaywall) {
       const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
       const currentTrack = sourceTracks[currentTrackIndex] as AudioTrack & { chapterPrice?: number }
       if (currentTrack && !currentTrack.isPreview && (Number(currentTrack.chapterPrice) > 0 || Number((currentTrack as AudioTrack).chapterTakaPrice) > 0)
