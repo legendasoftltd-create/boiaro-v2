@@ -81,7 +81,9 @@ export function resolveBookUrls(book: any): any {
       ? book.formats.map((fmt: any) => ({
           ...resolveUrls(fmt),
           narrator: fmt.narrator ? resolveUrls(fmt.narrator) : null,
-          narrators: fmt.narrators ? resolveUrls(fmt.narrators) : fmt.narrators,
+          narrators: Array.isArray(fmt.narrators)
+            ? fmt.narrators.map((n: any) => resolveUrls(n))
+            : fmt.narrators,
           audiobook_tracks: Array.isArray(fmt.audiobook_tracks)
             ? fmt.audiobook_tracks.map((t: any) => resolveUrls(t))
             : fmt.audiobook_tracks,
