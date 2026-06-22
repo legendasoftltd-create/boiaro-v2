@@ -1,5 +1,6 @@
-import { useParams, useNavigate } from "react-router-dom"
+import { useParams, useNavigate, useSearchParams } from "react-router-dom"
 import { useEffect } from "react"
+import { toast } from "sonner"
 import { trpc } from "@/lib/trpc"
 import { useActivityTracker } from "@/hooks/useActivityTracker"
 import { useBookEngagement } from "@/hooks/useBookEngagement"
@@ -226,7 +227,9 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
 export default function BookDetail() {
   const { slug, bookId: shortId } = useParams<{ slug?: string; bookId?: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { trackBookView } = useActivityTracker()
+  const utils = trpc.useUtils()
 
   const lookupKey = slug || shortId
   const queryInput = shortId ? { id: shortId } : { slug: slug! }
@@ -238,6 +241,36 @@ export default function BookDetail() {
 
   const bookId = dbBook?.id ?? ""
   const engagement = useBookEngagement(bookId)
+
+  // Returning from a chapter/full-audiobook payment redirect — the unlock happened
+  // server-side during the gateway callback, but cached unlock/balance queries from
+  // before the payment are stale, so the page would otherwise keep showing "locked"
+  // until a manual refresh. Invalidate and clean the status param off the URL.
+  useEffect(() => {
+    const chapterStatus = searchParams.get("chapter_status")
+    const audiobookStatus = searchParams.get("audiobook_status")
+    const status = chapterStatus || audiobookStatus
+    if (!status) return
+
+    if (status === "success") {
+      utils.wallet.userUnlocks.invalidate()
+      utils.wallet.balance.invalidate()
+      if (bookId) {
+        utils.books.detail.invalidate(queryInput as any)
+        utils.books.trackPrices.invalidate()
+      }
+      toast.success(chapterStatus ? "চ্যাপ্টার আনলক হয়েছে!" : "সম্পূর্ণ অডিওবুক আনলক হয়েছে!")
+    } else if (status === "cancelled") {
+      toast.info("পেমেন্ট বাতিল করা হয়েছে")
+    } else {
+      toast.error("পেমেন্ট ব্যর্থ হয়েছে")
+    }
+
+    const next = new URLSearchParams(searchParams)
+    next.delete("chapter_status")
+    next.delete("audiobook_status")
+    setSearchParams(next, { replace: true })
+  }, [searchParams, bookId])
 
   useEffect(() => {
     if (dbBook) trackBookView(dbBook.id, dbBook.title)
