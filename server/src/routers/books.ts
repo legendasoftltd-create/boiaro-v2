@@ -317,20 +317,24 @@ export const booksRouter = router({
     }),
 
   narrators: publicProcedure.query(async () => {
-    const [narrators, bookFormatCounts] = await Promise.all([
+    const [narrators, formats] = await Promise.all([
       prisma.narrator.findMany({
         where: { status: "active" },
         orderBy: [{ priority: "desc" }, { name: "asc" }],
       }),
-      prisma.bookFormat.groupBy({
-        by: ["narrator_id"],
-        where: { format: "audiobook", is_available: true, submission_status: "approved", narrator_id: { not: null } },
-        _count: { narrator_id: true },
+      prisma.bookFormat.findMany({
+        where: { format: "audiobook", is_available: true, submission_status: "approved" },
+        select: { book_id: true, narrator_id: true, narrator_ids: true },
       }),
     ]);
-    const countMap: Record<string, number> = {};
-    bookFormatCounts.forEach((r) => { if (r.narrator_id) countMap[r.narrator_id] = r._count.narrator_id; });
-    return narrators.map((n) => ({ ...n, audiobooksCount: countMap[n.id] || 0, listeners: 0 }));
+    const bookIdsByNarrator: Record<string, Set<string>> = {};
+    formats.forEach((f) => {
+      const ids = [f.narrator_id, ...f.narrator_ids].filter((id): id is string => !!id);
+      ids.forEach((id) => {
+        (bookIdsByNarrator[id] ??= new Set()).add(f.book_id);
+      });
+    });
+    return narrators.map((n) => ({ ...n, audiobooksCount: bookIdsByNarrator[n.id]?.size || 0, listeners: 0 }));
   }),
 
   narratorById: publicProcedure
@@ -339,7 +343,12 @@ export const booksRouter = router({
       const [narrator, formats] = await Promise.all([
         prisma.narrator.findUnique({ where: { id: input.id } }),
         prisma.bookFormat.findMany({
-          where: { narrator_id: input.id, format: "audiobook", is_available: true, submission_status: "approved" },
+          where: {
+            format: "audiobook",
+            is_available: true,
+            submission_status: "approved",
+            OR: [{ narrator_id: input.id }, { narrator_ids: { has: input.id } }],
+          },
           include: { book: { select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, submission_status: true, is_active: true } } },
         }),
       ]);
@@ -776,7 +785,10 @@ export const booksRouter = router({
         const narrator = await prisma.narrator.findFirst({ where: { user_id: ctx.userId } });
         if (narrator) {
           const fmts = await prisma.bookFormat.findMany({
-            where: { narrator_id: narrator.id, format: "audiobook" as any },
+            where: {
+              format: "audiobook" as any,
+              OR: [{ narrator_id: narrator.id }, { narrator_ids: { has: narrator.id } }],
+            },
             select: { book_id: true },
           });
           fmts.forEach(f => { if (!ownIds.has(f.book_id)) extraIds.add(f.book_id); });

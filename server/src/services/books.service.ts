@@ -42,7 +42,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
       ...(narrator && {
         formats: {
           some: {
-            narrator_id: narrator,
+            OR: [{ narrator_id: narrator }, { narrator_ids: { has: narrator } }],
             submission_status: "approved",
             is_available: true,
           },

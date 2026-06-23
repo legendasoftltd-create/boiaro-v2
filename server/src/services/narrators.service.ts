@@ -71,7 +71,7 @@ export const getNarratorById = async (id: string, userId?: string | null) => {
       },
     }),
     prisma.follow.count({ where: { followee_id: id } }),
-    prisma.bookFormat.count({ where: { narrator_id: id } }),
+    prisma.bookFormat.count({ where: { OR: [{ narrator_id: id }, { narrator_ids: { has: id } }] } }),
     userId
       ? prisma.follow.findFirst({ where: { follower_id: userId, followee_id: id }, select: { id: true } })
       : Promise.resolve(null),
