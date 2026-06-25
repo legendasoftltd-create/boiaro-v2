@@ -90,7 +90,7 @@ export function AdminUserProfileModal({ userId, open, onOpenChange }: Props) {
 
   const fmt = (d: string) => d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "—";
 
-  const creatorRoles = roles.filter(r => ["writer", "narrator", "publisher"].includes(r));
+  const creatorRoles = roles.filter(r => ["writer", "narrator", "publisher", "translator"].includes(r));
   const totalEarnings = earnings.reduce((s, e) => s + Number(e.earned_amount || 0), 0);
   const address = orders[0] ? [orders[0].shipping_address, orders[0].shipping_district].filter(Boolean).join(", ") : null;
   const phone = profile?.phone || (orders[0]?.shipping_phone) || null;

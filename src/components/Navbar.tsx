@@ -30,6 +30,7 @@ const ROLE_DASHBOARD: Record<string, string> = {
   writer: "/creator",
   publisher: "/creator",
   narrator: "/creator",
+  translator: "/creator",
   rj: "/rj",
   user: "/dashboard",
 }
@@ -48,7 +49,7 @@ export function Navbar() {
   const { user, profile, signOut } = useAuth()
   const userRoles: string[] = (user?.roles as string[]) || []
   const dashboardRoute = (() => {
-    const priority = ["admin", "writer", "publisher", "narrator", "rj"]
+    const priority = ["admin", "writer", "publisher", "narrator", "translator", "rj"]
     const role = priority.find(r => userRoles.includes(r)) || "user"
     return ROLE_DASHBOARD[role]
   })()

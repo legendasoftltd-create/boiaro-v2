@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const CREATOR_ROLES: AppRole[] = ["writer", "publisher", "narrator"];
+const CREATOR_ROLES: AppRole[] = ["writer", "publisher", "narrator", "translator"];
 
 interface NavItem {
   label: string;
@@ -21,12 +21,12 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", path: "/creator", icon: LayoutDashboard, roles: ["writer", "publisher", "narrator"] },
+  { label: "Dashboard", path: "/creator", icon: LayoutDashboard, roles: ["writer", "publisher", "narrator", "translator"] },
   { label: "My Books", path: "/creator/books", icon: BookOpen, roles: ["writer", "publisher"] },
   { label: "Audiobooks", path: "/creator/audiobooks", icon: Mic2, roles: ["narrator"] },
   { label: "Inventory", path: "/creator/inventory", icon: Package, roles: ["publisher"] },
-  { label: "Earnings", path: "/creator/earnings", icon: DollarSign, roles: ["writer", "publisher", "narrator"] },
-  { label: "Profile", path: "/creator/profile", icon: User, roles: ["writer", "publisher", "narrator"] },
+  { label: "Earnings", path: "/creator/earnings", icon: DollarSign, roles: ["writer", "publisher", "narrator", "translator"] },
+  { label: "Profile", path: "/creator/profile", icon: User, roles: ["writer", "publisher", "narrator", "translator"] },
 ];
 
 function NavLinks({

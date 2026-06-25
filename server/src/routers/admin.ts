@@ -82,7 +82,7 @@ const HOMEPAGE_SECTION_DEFAULTS: Array<{
   { section_key: "category_sections", title: "ক্যাটাগরি সেকশন", subtitle: "বিভাগ অনুযায়ী বই", is_enabled: true, sort_order: 21, display_source: null },
 ];
 
-const APP_ROLE_VALUES = ["admin", "moderator", "user", "writer", "publisher", "narrator", "rj"] as const;
+const APP_ROLE_VALUES = ["admin", "moderator", "user", "writer", "publisher", "narrator", "translator", "rj"] as const;
 const PERMISSION_ACTIONS = ["view", "create", "edit", "delete"] as const;
 
 export const adminRouter = router({
@@ -809,7 +809,7 @@ export const adminRouter = router({
           roles: {
             some: {
               role: {
-                in: ["writer", "publisher", "narrator"],
+                in: ["writer", "publisher", "narrator", "translator"],
               },
             },
           },
@@ -2894,7 +2894,7 @@ export const adminRouter = router({
 
   listCreatorPermissionUsers: adminProcedure.query(async () => {
     const roleUsers = await prisma.userRole.findMany({
-      where: { role: { in: ["writer", "publisher", "narrator"] } },
+      where: { role: { in: ["writer", "publisher", "narrator", "translator"] } },
       select: { user_id: true, role: true },
     });
     const userIds = [...new Set(roleUsers.map((r) => r.user_id))];

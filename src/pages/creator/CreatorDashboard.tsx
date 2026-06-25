@@ -3,12 +3,14 @@ import { trpc } from "@/lib/trpc";
 import WriterDashboard from "@/pages/writer/WriterDashboard";
 import PublisherDashboard from "@/pages/publisher/PublisherDashboard";
 import NarratorDashboard from "@/pages/narrator/NarratorDashboard";
+import TranslatorDashboard from "@/pages/translator/TranslatorDashboard";
 
 export default function CreatorDashboard() {
   const { hasRole } = useUserRole();
   const hasPublisher = hasRole("publisher");
   const hasWriter = hasRole("writer");
   const hasNarrator = hasRole("narrator");
+  const hasTranslator = hasRole("translator");
 
   const { data: publisherStats } = trpc.profiles.creatorStats.useQuery(
     { role: "publisher" },
@@ -34,6 +36,7 @@ export default function CreatorDashboard() {
   if (activeRole === "publisher") return <PublisherDashboard />;
   if (activeRole === "writer") return <WriterDashboard />;
   if (activeRole === "narrator") return <NarratorDashboard />;
+  if (hasTranslator) return <TranslatorDashboard />;
 
   return <div className="text-center py-20 text-muted-foreground">No creator access.</div>;
 }

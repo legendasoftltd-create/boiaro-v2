@@ -74,7 +74,7 @@ export default function UserDashboard() {
             <Button variant="outline" size="sm" asChild>
               <Link to="/profile"><Settings className="w-4 h-4 mr-1.5" /> Profile</Link>
             </Button>
-            {roles.some(r => ["writer", "publisher", "narrator"].includes(r)) && (
+            {roles.some(r => ["writer", "publisher", "narrator", "translator"].includes(r)) && (
               <Button size="sm" className="btn-gold text-[12px]" asChild>
                 <Link to="/creator">Creator Panel <ArrowRight className="w-3.5 h-3.5 ml-1" /></Link>
               </Button>

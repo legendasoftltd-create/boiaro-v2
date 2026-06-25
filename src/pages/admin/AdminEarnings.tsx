@@ -112,6 +112,7 @@ export default function AdminEarnings() {
       writer: "bg-primary/20 text-primary border-primary/30",
       publisher: "bg-purple-500/20 text-purple-400 border-purple-500/30",
       narrator: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+      translator: "bg-green-500/20 text-green-400 border-green-500/30",
       platform: "bg-muted text-muted-foreground border-border",
     };
     return <Badge variant="outline" className={`text-[10px] capitalize ${config[role] || ""}`}>{role}</Badge>;
@@ -174,6 +175,7 @@ export default function AdminEarnings() {
             <SelectItem value="writer">Writer</SelectItem>
             <SelectItem value="publisher">Publisher</SelectItem>
             <SelectItem value="narrator">Narrator</SelectItem>
+            <SelectItem value="translator">Translator</SelectItem>
             <SelectItem value="platform">Platform</SelectItem>
           </SelectContent>
         </Select>

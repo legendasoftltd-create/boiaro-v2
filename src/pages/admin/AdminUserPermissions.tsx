@@ -84,6 +84,7 @@ export default function AdminUserPermissions() {
       writer: "bg-primary/20 text-primary",
       publisher: "bg-purple-500/20 text-purple-400",
       narrator: "bg-blue-500/20 text-blue-400",
+      translator: "bg-green-500/20 text-green-400",
     };
     return <Badge key={role} variant="outline" className={`text-[10px] capitalize ${cls[role] || ""}`}>{role}</Badge>;
   };

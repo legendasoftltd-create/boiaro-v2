@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Save } from "lucide-react";
 import { toast } from "sonner";
 
-const ALL_ROLES = ["user", "admin", "writer", "publisher", "narrator", "moderator", "rj"] as const;
+const ALL_ROLES = ["user", "admin", "writer", "publisher", "narrator", "translator", "moderator", "rj"] as const;
 
 interface EditUserDialogProps {
   open: boolean;
@@ -91,6 +91,7 @@ export function EditUserDialog({ open, onOpenChange, user, onSaved }: EditUserDi
     writer: "Writer",
     publisher: "Publisher",
     narrator: "Narrator",
+    translator: "Translator",
     moderator: "Moderator",
     rj: "Radio Jockey",
   };

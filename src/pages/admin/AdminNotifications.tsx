@@ -39,6 +39,7 @@ const AUDIENCES = [
   { value: "writer", label: "All Writers" },
   { value: "publisher", label: "All Publishers" },
   { value: "narrator", label: "All Narrators" },
+  { value: "translator", label: "All Translators" },
   { value: "admin", label: "All Admins" },
   { value: "specific", label: "Specific User" },
 ];
