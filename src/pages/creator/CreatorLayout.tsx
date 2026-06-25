@@ -99,7 +99,9 @@ export default function CreatorLayout() {
     ? "Publisher"
     : hasRole("writer")
     ? "Writer"
-    : "Narrator";
+    : hasRole("narrator")
+    ? "Narrator"
+    : "Translator";
 
   return (
     <div className="min-h-screen flex bg-background">
