@@ -38,6 +38,7 @@ export default function AdminBooks() {
   const [categories, setCategories] = useState<any[]>([]);
   const [publishers, setPublishers] = useState<any[]>([]);
   const [narrators, setNarrators] = useState<any[]>([]);
+  const [translatorOptions, setTranslatorOptions] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
@@ -94,6 +95,7 @@ export default function AdminBooks() {
   const { log } = useAdminLogger();
   const [filterActive, setFilterActive] = useState("all");
   const upsertBookMutation = trpc.admin.upsertBook.useMutation();
+  const setBookTranslatorMutation = trpc.admin.setBookTranslator.useMutation();
   const setBookActiveMutation = trpc.admin.setBookActiveStatus.useMutation();
   const deleteBookMutation = trpc.admin.deleteBookWithFormats.useMutation();
   const upsertFormatMutation = trpc.admin.upsertBookFormat.useMutation();
@@ -150,7 +152,7 @@ export default function AdminBooks() {
   const load = async () => {
     setBooksLoading(true);
     try {
-      const [b, a, c, p, n, bc, bt] = await Promise.all([
+      const [b, a, c, p, n, bc, bt, tr] = await Promise.all([
         utils.admin.listBooks.fetch({ limit: 1000 }),
         utils.admin.listAuthors.fetch({}),
         utils.admin.listCategories.fetch(),
@@ -158,6 +160,7 @@ export default function AdminBooks() {
         utils.admin.listNarrators.fetch({}),
         utils.admin.listBookContributorCounts.fetch(),
         utils.admin.listBookTranslators.fetch(),
+        utils.admin.listTranslators.fetch({}),
       ]);
       const booksWithLegacyAliases = (b.books || []).map((book: any) => ({
         ...book,
@@ -170,6 +173,7 @@ export default function AdminBooks() {
       setCategories(c || []);
       setPublishers(p || []);
       setNarrators(n || []);
+      setTranslatorOptions(tr || []);
 
       // Build format map deduped by format type per book.
       // If a book has duplicate rows for the same format, prefer the one where is_available !== false.
@@ -467,20 +471,21 @@ export default function AdminBooks() {
     setEditBook(null);
     setForm({
       title: "", title_en: "", slug: "", description: "", description_bn: "",
-      author_id: "", category_id: "", publisher_id: "", cover_url: "",
+      author_id: "", category_id: "", publisher_id: "", translator_id: "", cover_url: "",
       is_featured: false, is_bestseller: false, is_new: false, is_free: false,
       language: "bn", tags: "", published_date: "",
     });
     setOpen(true);
   };
 
-  const openEdit = (book: any) => {
+  const openEdit = async (book: any) => {
     setEditBook(book);
     setForm({
       title: book.title || "", title_en: book.title_en || "", slug: book.slug || "",
       description: book.description || "", description_bn: book.description_bn || "",
       author_id: book.author_id || "", category_id: book.category_id || "",
       publisher_id: book.publisher_id || "",
+      translator_id: "",
       cover_url: book.cover_url || "",
       is_featured: book.is_featured || false, is_bestseller: book.is_bestseller || false,
       is_new: book.is_new || false, is_free: book.is_free || false,
@@ -488,11 +493,14 @@ export default function AdminBooks() {
       published_date: book.published_date ? new Date(book.published_date).toISOString().split("T")[0] : "",
     });
     setOpen(true);
+    const translatorId = await utils.admin.getBookTranslator.fetch({ bookId: book.id });
+    setForm((f: any) => ({ ...f, translator_id: translatorId || "" }));
   };
 
   const save = async () => {
+    const { translator_id, ...formRest } = form;
     const payload: any = {
-      ...form,
+      ...formRest,
       author_id: form.author_id || null,
       category_id: form.category_id || null,
       publisher_id: form.publisher_id || null,
@@ -503,6 +511,7 @@ export default function AdminBooks() {
       payload.slug = payload.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0980-\u09FF-]/g, "");
     }
 
+    let bookId: string;
     if (editBook) {
       try {
         await upsertBookMutation.mutateAsync({ id: editBook.id, ...payload });
@@ -510,6 +519,7 @@ export default function AdminBooks() {
         toast.error(error.message || "Failed to update book");
         return;
       }
+      bookId = editBook.id;
       await log({ module: "books", action: "Book updated", actionType: "update", targetType: "book", targetId: editBook.id, details: `Updated book: ${payload.title}` });
       toast.success("Book updated");
     } else {
@@ -520,8 +530,14 @@ export default function AdminBooks() {
         toast.error(error.message || "Failed to create book");
         return;
       }
+      bookId = inserted.id;
       await log({ module: "books", action: "Book created", actionType: "create", targetType: "book", targetId: inserted?.id, details: `Created book: ${payload.title}` });
       toast.success("Book created");
+    }
+    try {
+      await setBookTranslatorMutation.mutateAsync({ bookId, userId: translator_id || null });
+    } catch (error: any) {
+      toast.error(error.message || "Failed to save translator");
     }
     setOpen(false);
     load();
@@ -1030,10 +1046,19 @@ export default function AdminBooks() {
               </p>
             </div>
             <div>
-              <Label>Translator <span className="text-muted-foreground text-xs">(assigned as contributor)</span></Label>
-              <p className="text-[11px] text-muted-foreground mt-1 p-2 rounded bg-muted/30 border border-border/30">
-                Translator is assigned in the <strong>Formats dialog → Contributors</strong> section. Open "Book Formats" from the book list, select role "Translator", and pick the user.
-              </p>
+              <Label>Translator</Label>
+              <SearchableSelect
+                options={translatorOptions.map((t) => ({
+                  id: t.id,
+                  label: t.email ? `${t.name} (${t.email})` : t.name,
+                  searchAlt: t.email || "",
+                }))}
+                value={form.translator_id}
+                onChange={(v) => setForm({ ...form, translator_id: v })}
+                placeholder="Select translator (optional)"
+                searchPlaceholder="Search name or email..."
+                emptyText="No translators found. Add one under Creators → Translators."
+              />
             </div>
             <div>
               <Label>Language</Label>

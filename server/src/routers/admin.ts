@@ -1839,6 +1839,29 @@ export const adminRouter = router({
       return { message: "Translator role revoked" };
     }),
 
+  // Sets the single primary translator for a book (book-level field, mirroring author_id),
+  // implemented via BookContributor since translators have no dedicated FK column on Book.
+  setBookTranslator: adminProcedure
+    .input(z.object({ bookId: z.string(), userId: z.string().nullable() }))
+    .mutation(async ({ input }) => {
+      await prisma.bookContributor.deleteMany({ where: { book_id: input.bookId, role: "translator" } });
+      if (input.userId) {
+        await prisma.bookContributor.create({
+          data: { book_id: input.bookId, user_id: input.userId, role: "translator", format: "all" },
+        });
+      }
+      return { success: true };
+    }),
+
+  getBookTranslator: adminProcedure
+    .input(z.object({ bookId: z.string() }))
+    .query(async ({ input }) => {
+      const row = await prisma.bookContributor.findFirst({
+        where: { book_id: input.bookId, role: "translator" },
+      });
+      return row?.user_id ?? null;
+    }),
+
   searchCreatorLinkCandidates: adminProcedure
     .input(z.object({ query: z.string().min(2) }))
     .mutation(async ({ input }) => {
