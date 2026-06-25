@@ -131,22 +131,20 @@ export function BookDetailHero({ book, liveRating, liveReviewsCount, liveReads }
               </div>
             )}
 
-            {((book as any).translators || []).map((translator: any) => (
-              translator?.id && (
-                <div key={translator.id} className="flex items-center justify-center lg:justify-start gap-3 mb-3">
-                  <Link to={`/translator/${translator.id}`} className="flex items-center gap-3 group/translator cursor-pointer">
-                    {translator.avatar && (
-                      <img src={translator.avatar} alt="" className="w-8 h-8 rounded-full object-cover ring-2 ring-border group-hover/translator:ring-primary transition-colors" />
-                    )}
-                    <div className="text-left">
-                      <p className="text-xs text-muted-foreground">Translator</p>
-                      <p className="text-sm font-medium text-foreground group-hover/translator:text-primary transition-colors">{translator.name}</p>
-                    </div>
-                  </Link>
-                  <FollowButton profileId={translator.id} profileType="translator" />
-                </div>
-              )
-            ))}
+            {book.translator.id && book.translator.name && (
+              <div className="flex items-center justify-center lg:justify-start gap-3 mb-6">
+                <Link to={`/translator/${book.translator.id}`} className="flex items-center gap-3 group/translator cursor-pointer">
+                  {book.translator.avatar && (
+                    <img src={book.translator.avatar} alt={book.translator.nameEn} className="w-10 h-10 rounded-full object-cover ring-2 ring-border group-hover/translator:ring-primary transition-colors" />
+                  )}
+                  <div className="text-left">
+                    <p className="text-xs text-muted-foreground">Translator</p>
+                    <p className="text-sm font-medium text-foreground group-hover/translator:text-primary transition-colors">{book.translator.name}</p>
+                  </div>
+                </Link>
+                <FollowButton profileId={book.translator.id} profileType="translator" />
+              </div>
+            )}
 
             {book.publisher.id && book.publisher.name && (
               <div className="flex items-center justify-center lg:justify-start gap-3 mb-3">

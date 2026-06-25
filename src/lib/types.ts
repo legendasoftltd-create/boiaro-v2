@@ -50,6 +50,7 @@ export interface MasterBook {
   titleEn: string
   slug: string
   author: Author
+  translator: Author
   publisher: Publisher
   category: Category
   cover: string

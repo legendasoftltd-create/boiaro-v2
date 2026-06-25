@@ -41,7 +41,7 @@ export default function AdminUserDetail() {
   // Editable form state
   const [form, setForm] = useState<any>({});
 
-  const isCreator = type === "author" || type === "narrator" || type === "publisher";
+  const isCreator = type === "author" || type === "narrator" || type === "publisher" || type === "translator";
 
   useEffect(() => {
     loadData();
@@ -52,7 +52,7 @@ export default function AdminUserDetail() {
     setLoading(true);
     try {
       const data = await utils.admin.getAdminUserDetailPage.fetch({
-        type: type as "user" | "author" | "narrator" | "publisher",
+        type: type as "user" | "author" | "narrator" | "publisher" | "translator",
         id,
       });
       setRecord(data?.record || null);
@@ -86,6 +86,7 @@ export default function AdminUserDetail() {
           is_trending: rec?.is_trending || false,
           ...(type === "author" && { genre: rec?.genre || "" }),
           ...(type === "narrator" && { specialty: rec?.specialty || "", rating: rec?.rating || 0 }),
+          ...(type === "translator" && { genre: rec?.genre || "" }),
           ...(type === "publisher" && { is_verified: rec?.is_verified || false }),
         });
       }
@@ -108,7 +109,7 @@ export default function AdminUserDetail() {
         });
       } else if (isCreator && id) {
         await utils.admin.updateAdminCreatorProfile.fetch({
-          type: type as "author" | "narrator" | "publisher",
+          type: type as "author" | "narrator" | "publisher" | "translator",
           id,
           name: form.name,
           name_en: form.name_en,
@@ -232,7 +233,7 @@ export default function AdminUserDetail() {
                     <div><Label className="text-xs text-muted-foreground">Name (English)</Label><Input value={form.name_en} onChange={e => setForm({ ...form, name_en: e.target.value })} /></div>
                     <div><Label className="text-xs text-muted-foreground">Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
                     <div><Label className="text-xs text-muted-foreground">Avatar / Logo URL</Label><Input value={form.avatar_url} onChange={e => setForm({ ...form, avatar_url: e.target.value })} /></div>
-                    {type === "author" && <div><Label className="text-xs text-muted-foreground">Genre</Label><Input value={form.genre} onChange={e => setForm({ ...form, genre: e.target.value })} /></div>}
+                    {(type === "author" || type === "translator") && <div><Label className="text-xs text-muted-foreground">Genre</Label><Input value={form.genre} onChange={e => setForm({ ...form, genre: e.target.value })} /></div>}
                     {type === "narrator" && (
                       <>
                         <div><Label className="text-xs text-muted-foreground">Specialty</Label><Input value={form.specialty} onChange={e => setForm({ ...form, specialty: e.target.value })} /></div>

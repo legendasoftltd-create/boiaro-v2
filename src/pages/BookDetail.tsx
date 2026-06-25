@@ -30,7 +30,7 @@ function normalizeFileSize(raw: string | null | undefined): string {
   return raw;
 }
 
-function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterBook & { allNarrators: Narrator[]; translators: { id: string; name: string; avatar: string }[] }; audioTracks: AudioTrack[] } {
+function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterBook & { allNarrators: Narrator[] }; audioTracks: AudioTrack[] } {
   const author: Author = dbBook.author ? {
     id: dbBook.author_id || "",
     name: dbBook.author.name || "",
@@ -41,6 +41,18 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     booksCount: 0,
     followers: "0",
     isFeatured: dbBook.author.is_featured || false,
+  } : { id: "", name: "", nameEn: "", avatar: "", bio: "", genre: "", booksCount: 0, followers: "0", isFeatured: false }
+
+  const translator: Author = dbBook.translator ? {
+    id: dbBook.translator_id || "",
+    name: dbBook.translator.name || "",
+    nameEn: dbBook.translator.name_en || "",
+    avatar: toMediaUrl(dbBook.translator.avatar_url) || "",
+    bio: dbBook.translator.bio || "",
+    genre: dbBook.translator.genre || "",
+    booksCount: 0,
+    followers: "0",
+    isFeatured: dbBook.translator.is_featured || false,
   } : { id: "", name: "", nameEn: "", avatar: "", bio: "", genre: "", booksCount: 0, followers: "0", isFeatured: false }
 
   const publisher: Publisher = dbBook.publisher ? {
@@ -216,6 +228,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     titleEn: dbBook.title_en || "",
     slug: dbBook.slug,
     author,
+    translator,
     publisher,
     category,
     cover: toMediaUrl(dbBook.cover_url) || "",
@@ -233,11 +246,6 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     isFree: dbBook.is_free || false,
     formats: bookFormats,
     allNarrators,
-    translators: (dbBook.translators || []).map((t: any) => ({
-      id: t.id,
-      name: t.name,
-      avatar: toMediaUrl(t.avatar_url) || "",
-    })),
   }
 
   return { book, audioTracks }

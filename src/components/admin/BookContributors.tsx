@@ -31,7 +31,7 @@ export function BookContributors({ bookId }: BookContributorsProps) {
     ]);
     setContributors(contributorsData || []);
 
-    const grouped: Record<string, any[]> = { writer: [], publisher: [], narrator: [], translator: [] };
+    const grouped: Record<string, any[]> = { writer: [], publisher: [], narrator: [] };
     (usersData?.users || []).forEach((u: any) => {
       const uid = u.id;
       const display_name = u.profile?.display_name || uid.slice(0, 8) + "...";
@@ -85,7 +85,6 @@ export function BookContributors({ bookId }: BookContributorsProps) {
       writer: "bg-primary/20 text-primary border-primary/30",
       publisher: "bg-purple-500/20 text-purple-400 border-purple-500/30",
       narrator: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-      translator: "bg-green-500/20 text-green-400 border-green-500/30",
     };
     return <Badge variant="outline" className={`text-[10px] capitalize ${config[role] || ""}`}>{role}</Badge>;
   };
@@ -125,7 +124,6 @@ export function BookContributors({ bookId }: BookContributorsProps) {
                 { id: "writer", label: "Writer" },
                 { id: "publisher", label: "Publisher" },
                 { id: "narrator", label: "Narrator" },
-                { id: "translator", label: "Translator" },
               ]}
               value={addRole}
               onChange={(v) => { setAddRole(v); setAddUserId(""); }}

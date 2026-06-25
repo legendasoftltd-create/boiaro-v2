@@ -48,8 +48,8 @@ interface SearchResult {
 interface CreatorAccountCardProps {
   profileId: string;
   profileName: string;
-  profileTable: "authors" | "publishers" | "narrators";
-  creatorRole: "writer" | "publisher" | "narrator";
+  profileTable: "authors" | "publishers" | "narrators" | "translators";
+  creatorRole: "writer" | "publisher" | "narrator" | "translator";
   userId: string | null;
   onLinkChanged: () => void;
 }

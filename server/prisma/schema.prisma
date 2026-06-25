@@ -254,6 +254,29 @@ model Author {
   @@map("authors")
 }
 
+model Translator {
+  id          String   @id @default(uuid())
+  avatar_url  String?
+  bio         String?
+  created_at  DateTime @default(now())
+  email       String?
+  genre       String?
+  is_featured Boolean? @default(false)
+  is_trending Boolean? @default(false)
+  linked_at   DateTime?
+  name        String
+  name_en     String?
+  phone       String?
+  priority    Int      @default(0)
+  status      String   @default("active")
+  updated_at  DateTime @updatedAt
+  user_id     String?
+
+  books Book[]
+
+  @@map("translators")
+}
+
 model BadgeDefinition {
   id              String   @id @default(uuid())
   category        String   @default("reading")
@@ -400,6 +423,7 @@ model Bookmark {
 model Book {
   id                String   @id @default(uuid())
   author_id         String?
+  translator_id     String?
   category_id       String?
   coin_price        Int?
   cover_url         String?
@@ -429,7 +453,8 @@ model Book {
   voice_access_type String?  @default("paid")
   voice_coin_price  Int?
 
-  author    Author?    @relation(fields: [author_id], references: [id])
+  author     Author?     @relation(fields: [author_id], references: [id])
+  translator Translator? @relation(fields: [translator_id], references: [id])
   category  Category?  @relation(fields: [category_id], references: [id])
   publisher Publisher? @relation(fields: [publisher_id], references: [id])
 

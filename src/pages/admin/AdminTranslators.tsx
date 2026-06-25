@@ -3,43 +3,113 @@ import { useNavigate } from "react-router-dom";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Plus, Trash2, Eye, User } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye, User } from "lucide-react";
 import { AdminSearchBar } from "@/components/admin/AdminSearchBar";
+import { AvatarUpload } from "@/components/admin/AvatarUpload";
+import { Switch } from "@/components/ui/switch";
+import { StatusBadge } from "@/components/admin/StatusBadge";
+import { DeactivateModal } from "@/components/admin/DeactivateModal";
+import { CreatorAccountFields } from "@/components/admin/CreatorAccountFields";
+import { CreatorAccountCard } from "@/components/admin/CreatorAccountCard";
+import { useCreatorAccount } from "@/hooks/useCreatorAccount";
 import { toast } from "sonner";
+
+const EMPTY_FORM = { name: "", name_en: "", bio: "", genre: "", avatar_url: "", is_featured: false, is_trending: false, priority: 0, phone: "" };
 
 export default function AdminTranslators() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
+  const [edit, setEdit] = useState<any>(null);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deactivateTarget, setDeactivateTarget] = useState<any>(null);
+
+  const [createAccount, setCreateAccount] = useState(false);
+  const [accEmail, setAccEmail] = useState("");
+  const [accPassword, setAccPassword] = useState("");
+  const [accConfirm, setAccConfirm] = useState("");
+  const { createCreatorWithAccount, linkExistingProfile, saving: accountSaving } = useCreatorAccount();
 
   const utils = trpc.useUtils();
   const { data: items = [], isLoading, error } = trpc.admin.listTranslators.useQuery({ search: search || undefined });
-  const grantMutation = trpc.admin.grantTranslatorRole.useMutation({ onSuccess: () => utils.admin.listTranslators.invalidate() });
-  const revokeMutation = trpc.admin.revokeTranslatorRole.useMutation({ onSuccess: () => utils.admin.listTranslators.invalidate() });
+  const createMutation = trpc.admin.createTranslator.useMutation({ onSuccess: () => utils.admin.listTranslators.invalidate() });
+  const updateMutation = trpc.admin.updateTranslator.useMutation({ onSuccess: () => utils.admin.listTranslators.invalidate() });
+  const deleteMutation = trpc.admin.deleteTranslator.useMutation({ onSuccess: () => utils.admin.listTranslators.invalidate() });
 
-  const openNew = () => { setEmail(""); setOpen(true); };
+  const resetAccountFields = () => { setCreateAccount(false); setAccEmail(""); setAccPassword(""); setAccConfirm(""); };
+
+  const openNew = () => { setEdit(null); setForm(EMPTY_FORM); resetAccountFields(); setOpen(true); };
+  const openEdit = (a: any) => {
+    setEdit(a);
+    setForm({ name: a.name, name_en: a.name_en || "", bio: a.bio || "", genre: a.genre || "", avatar_url: a.avatar_url || "", is_featured: a.is_featured || false, is_trending: a.is_trending || false, priority: a.priority || 0, phone: a.phone || "" });
+    resetAccountFields();
+    setOpen(true);
+  };
 
   const save = async () => {
-    if (!email.trim()) { toast.error("Enter an email"); return; }
-    try {
-      await grantMutation.mutateAsync({ email: email.trim() });
-      toast.success("Translator role granted");
-      setOpen(false);
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to grant role");
+    const payload = { ...form, priority: Number(form.priority) || 0 };
+
+    if (edit) {
+      await updateMutation.mutateAsync({ id: edit.id, ...payload });
+      if (createAccount && !edit.user_id && accEmail) {
+        await linkExistingProfile({ email: accEmail, role: "translator", profileTable: "translators", profileId: edit.id });
+      }
+    } else {
+      if (createAccount) {
+        const result = await createCreatorWithAccount({ email: accEmail, password: accPassword, confirmPassword: accConfirm, role: "translator", profileTable: "translators", profileData: payload });
+        if (!result) return;
+      } else {
+        await createMutation.mutateAsync(payload);
+      }
     }
+
+    toast.success("Saved");
+    setOpen(false);
   };
 
   const remove = async (id: string) => {
-    if (!confirm("Remove translator role from this user?")) return;
-    await revokeMutation.mutateAsync({ userId: id });
-    toast.success("Translator role removed");
+    if (!confirm("Delete?")) return;
+    await deleteMutation.mutateAsync({ id });
+    toast.success("Deleted");
   };
+
+  const handleToggle = async (a: any) => {
+    if (a.status === "active") {
+      setDeactivateTarget(a);
+    } else {
+      await updateMutation.mutateAsync({ id: a.id, status: "active" });
+      toast.success("Activated");
+    }
+  };
+
+  const deactivateItem = async (item: any) => {
+    await updateMutation.mutateAsync({ id: item.id, status: "inactive" });
+    setDeactivateTarget(null);
+    toast.success("Deactivated");
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    setSelected(next);
+  };
+
+  const bulkSetStatus = async (status: string) => {
+    const ids = Array.from(selected);
+    if (!ids.length || !confirm(`${status === "active" ? "Activate" : "Deactivate"} ${ids.length} translator(s)?`)) return;
+    for (const id of ids) await updateMutation.mutateAsync({ id, status });
+    setSelected(new Set());
+    toast.success(`${ids.length} translator(s) ${status === "active" ? "activated" : "deactivated"}`);
+  };
+
+  const saving = createMutation.isPending || updateMutation.isPending || accountSaving;
 
   return (
     <div>
@@ -50,37 +120,60 @@ export default function AdminTranslators() {
       <div className="mb-4">
         <AdminSearchBar value={search} onChange={setSearch} placeholder="Search translators..." className="max-w-sm" />
       </div>
-      <p className="text-xs text-muted-foreground mb-4">
-        Translators are existing user accounts granted the translator role. Assign them to specific books from the book's
-        Formats dialog → Contributors section.
-      </p>
+
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 border border-border/40 mb-4">
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <Button size="sm" variant="outline" onClick={() => bulkSetStatus("active")}>Activate All</Button>
+          <Button size="sm" variant="destructive" onClick={() => bulkSetStatus("inactive")}>Deactivate All</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+        </div>
+      )}
 
       <div className="rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox checked={items.length > 0 && selected.size === items.length} onCheckedChange={() => selected.size === items.length ? setSelected(new Set()) : setSelected(new Set(items.map((a: any) => a.id)))} />
+              </TableHead>
               <TableHead className="w-12"></TableHead>
               <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Translated Books</TableHead>
+              <TableHead>Genre</TableHead>
+              <TableHead>Priority</TableHead>
+              <TableHead>Account</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">Loading…</TableCell></TableRow>}
-            {!isLoading && error && <TableRow><TableCell colSpan={6} className="text-center text-destructive py-8">Error: {error.message}</TableCell></TableRow>}
-            {!isLoading && !error && items.length === 0 && <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No translators</TableCell></TableRow>}
-            {items.map((t: any) => (
-              <TableRow key={t.id}>
-                <TableCell><Avatar className="h-8 w-8"><AvatarImage src={t.avatar_url || undefined} /><AvatarFallback className="bg-secondary text-muted-foreground text-xs"><User className="h-3.5 w-3.5" /></AvatarFallback></Avatar></TableCell>
-                <TableCell className="font-medium">{t.name}</TableCell>
-                <TableCell className="text-sm">{t.email}</TableCell>
-                <TableCell className="text-sm">{t.phone || "—"}</TableCell>
-                <TableCell>{t.booksCount}</TableCell>
+            {isLoading && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Loading…</TableCell></TableRow>}
+            {!isLoading && error && <TableRow><TableCell colSpan={8} className="text-center text-destructive py-8">Error: {error.message}</TableCell></TableRow>}
+            {!isLoading && !error && items.length === 0 && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No translators</TableCell></TableRow>}
+            {items.map((a: any) => (
+              <TableRow key={a.id}>
+                <TableCell onClick={(e) => e.stopPropagation()}><Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggleSelect(a.id)} /></TableCell>
+                <TableCell><Avatar className="h-8 w-8"><AvatarImage src={a.avatar_url || undefined} /><AvatarFallback className="bg-secondary text-muted-foreground text-xs"><User className="h-3.5 w-3.5" /></AvatarFallback></Avatar></TableCell>
+                <TableCell className="font-medium">{a.name}</TableCell>
+                <TableCell>{a.genre || "—"}</TableCell>
+                <TableCell>{a.priority}</TableCell>
+                <TableCell>
+                  {a.user_id ? (
+                    <span className="text-xs text-green-600 flex items-center gap-1">✓ Linked <span className="text-muted-foreground font-mono">{a.user_id.slice(0, 6)}..</span></span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={a.status === "active"} onCheckedChange={() => handleToggle(a)} />
+                    <StatusBadge status={a.status || "active"} />
+                  </div>
+                </TableCell>
                 <TableCell className="text-right space-x-1">
-                  <Button size="sm" variant="ghost" onClick={() => navigate(`/translator/${t.id}`)}><Eye className="h-3 w-3" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => remove(t.id)}><Trash2 className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => navigate(`/admin/user/translator/${a.id}`)}><Eye className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(a)}><Pencil className="h-3 w-3" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => remove(a.id)}><Trash2 className="h-3 w-3" /></Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -89,18 +182,33 @@ export default function AdminTranslators() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add Translator</DialogTitle></DialogHeader>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{edit ? "Edit Translator" : "Add Translator"}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div>
-              <Label>User Email</Label>
-              <Input type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <p className="text-[11px] text-muted-foreground mt-1">The user must already have a BoiAro account. This grants them the translator role.</p>
-            </div>
-            <Button className="w-full" onClick={save} disabled={grantMutation.isPending}>{grantMutation.isPending ? "Saving..." : "Grant Translator Role"}</Button>
+            <AvatarUpload currentUrl={form.avatar_url} onUrlChange={(url) => setForm({ ...form, avatar_url: url })} folder="translators" label="Translator Photo" />
+            <div><Label>Name (Bengali)</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>Name (English)</Label><Input value={form.name_en} onChange={(e) => setForm({ ...form, name_en: e.target.value })} /></div>
+            <div><Label>Genre</Label><Input value={form.genre} onChange={(e) => setForm({ ...form, genre: e.target.value })} /></div>
+            <div><Label>Priority</Label><Input type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })} /></div>
+            <div><Label>Phone</Label><Input type="tel" placeholder="+880XXXXXXXXXX" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
+            <div><Label>Bio</Label><Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} rows={3} /></div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_featured} onChange={(e) => setForm({ ...form, is_featured: e.target.checked })} />Featured</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_trending} onChange={(e) => setForm({ ...form, is_trending: e.target.checked })} />Trending</label>
+
+            {edit ? (
+              <CreatorAccountCard profileId={edit.id} profileName={edit.name} profileTable="translators" creatorRole="translator" userId={edit.user_id} onLinkChanged={() => utils.admin.listTranslators.invalidate()} />
+            ) : (
+              <CreatorAccountFields isEdit={false} hasExistingUserId={false} createAccount={createAccount} onCreateAccountChange={setCreateAccount} email={accEmail} onEmailChange={setAccEmail} password={accPassword} onPasswordChange={setAccPassword} confirmPassword={accConfirm} onConfirmPasswordChange={setAccConfirm} />
+            )}
+
+            <Button className="w-full" onClick={save} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      <DeactivateModal open={!!deactivateTarget} onOpenChange={(o) => { if (!o) setDeactivateTarget(null); }} itemName={deactivateTarget?.name || "Translator"} onConfirm={() => deactivateTarget && deactivateItem(deactivateTarget)} />
     </div>
   );
 }

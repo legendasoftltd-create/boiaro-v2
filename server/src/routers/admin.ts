@@ -97,6 +97,7 @@ export const adminRouter = router({
         orderBy: { created_at: "desc" },
         include: {
           author: { select: { id: true, name: true } },
+          translator: { select: { id: true, name: true } },
           category: { select: { id: true, name: true, name_bn: true } },
           publisher: { select: { id: true, name: true } },
           formats: {
@@ -138,23 +139,6 @@ export const adminRouter = router({
       _count: { book_id: true },
     });
     return grouped.map((row) => ({ book_id: row.book_id, count: row._count.book_id }));
-  }),
-
-  listBookTranslators: adminProcedure.query(async () => {
-    const contribs = await prisma.bookContributor.findMany({
-      where: { role: "translator" },
-      select: { book_id: true, user_id: true },
-    });
-    const userIds = [...new Set(contribs.map((c) => c.user_id))];
-    const profiles = userIds.length > 0
-      ? await prisma.profile.findMany({ where: { user_id: { in: userIds } }, select: { user_id: true, display_name: true } })
-      : [];
-    const nameMap = Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || "Unknown"]));
-    const byBook: Record<string, string[]> = {};
-    contribs.forEach((c) => {
-      (byBook[c.book_id] ??= []).push(nameMap[c.user_id] || "Unknown");
-    });
-    return Object.entries(byBook).map(([book_id, names]) => ({ book_id, names: names.join(", ") }));
   }),
 
   listBookFormatsByBook: adminProcedure
@@ -1287,6 +1271,9 @@ export const adminRouter = router({
       } else if (role === "narrator") {
         const existing = await prisma.narrator.findFirst({ where: { user_id: userId } });
         if (!existing) await prisma.narrator.create({ data: { name: displayName, user_id: userId, status: "active" } });
+      } else if (role === "translator") {
+        const existing = await prisma.translator.findFirst({ where: { user_id: userId } });
+        if (!existing) await prisma.translator.create({ data: { name: displayName, user_id: userId, status: "active" } });
       } else if (role === "rj") {
         const existing = await prisma.rjProfile.findFirst({ where: { user_id: userId } });
         if (!existing) await prisma.rjProfile.create({ data: { user_id: userId, stage_name: displayName, is_approved: true } });
@@ -1653,8 +1640,8 @@ export const adminRouter = router({
       z.object({
         email: z.string().email(),
         password: z.string().min(6),
-        role: z.enum(["writer", "publisher", "narrator"]),
-        profileTable: z.enum(["authors", "publishers", "narrators"]),
+        role: z.enum(["writer", "publisher", "narrator", "translator"]),
+        profileTable: z.enum(["authors", "publishers", "narrators", "translators"]),
         profileData: z.record(z.unknown()),
       })
     )
@@ -1682,6 +1669,8 @@ export const adminRouter = router({
         await prisma.author.create({ data: { ...(profileData as any), user_id: user.id } });
       } else if (profileTable === "publishers") {
         await prisma.publisher.create({ data: { ...(profileData as any), user_id: user.id } });
+      } else if (profileTable === "translators") {
+        await prisma.translator.create({ data: { ...(profileData as any), user_id: user.id } });
       } else {
         await prisma.narrator.create({ data: { ...(profileData as any), user_id: user.id } });
       }
@@ -1693,8 +1682,8 @@ export const adminRouter = router({
     .input(
       z.object({
         email: z.string().email(),
-        role: z.enum(["writer", "publisher", "narrator"]),
-        profileTable: z.enum(["authors", "publishers", "narrators"]),
+        role: z.enum(["writer", "publisher", "narrator", "translator"]),
+        profileTable: z.enum(["authors", "publishers", "narrators", "translators"]),
         profileId: z.string(),
       })
     )
@@ -1707,6 +1696,8 @@ export const adminRouter = router({
         await prisma.author.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       } else if (profileTable === "publishers") {
         await prisma.publisher.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
+      } else if (profileTable === "translators") {
+        await prisma.translator.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       } else {
         await prisma.narrator.update({ where: { id: profileId }, data: { user_id: user.id, linked_at: new Date() } });
       }
@@ -1723,15 +1714,16 @@ export const adminRouter = router({
   unlinkCreatorProfile: adminProcedure
     .input(
       z.object({
-        profileTable: z.enum(["authors", "publishers", "narrators"]),
+        profileTable: z.enum(["authors", "publishers", "narrators", "translators"]),
         profileId: z.string(),
       })
     )
     .mutation(async ({ input }) => {
-      const roleByTable: Record<"authors" | "publishers" | "narrators", "writer" | "publisher" | "narrator"> = {
+      const roleByTable: Record<"authors" | "publishers" | "narrators" | "translators", "writer" | "publisher" | "narrator" | "translator"> = {
         authors: "writer",
         publishers: "publisher",
         narrators: "narrator",
+        translators: "translator",
       };
       const targetRole = roleByTable[input.profileTable];
 
@@ -1744,6 +1736,10 @@ export const adminRouter = router({
         const row = await prisma.publisher.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
         previousUserId = row?.user_id;
         await prisma.publisher.update({ where: { id: input.profileId }, data: { user_id: null, linked_at: null } });
+      } else if (input.profileTable === "translators") {
+        const row = await prisma.translator.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
+        previousUserId = row?.user_id;
+        await prisma.translator.update({ where: { id: input.profileId }, data: { user_id: null, linked_at: null } });
       } else {
         const row = await prisma.narrator.findUnique({ where: { id: input.profileId }, select: { user_id: true } });
         previousUserId = row?.user_id;
@@ -1751,7 +1747,7 @@ export const adminRouter = router({
       }
 
       if (previousUserId) {
-        const [linkedAuthor, linkedPublisher, linkedNarrator] = await Promise.all([
+        const [linkedAuthor, linkedPublisher, linkedNarrator, linkedTranslator] = await Promise.all([
           targetRole === "writer"
             ? prisma.author.count({ where: { user_id: previousUserId } })
             : Promise.resolve(0),
@@ -1761,9 +1757,12 @@ export const adminRouter = router({
           targetRole === "narrator"
             ? prisma.narrator.count({ where: { user_id: previousUserId } })
             : Promise.resolve(0),
+          targetRole === "translator"
+            ? prisma.translator.count({ where: { user_id: previousUserId } })
+            : Promise.resolve(0),
         ]);
         const stillLinkedForRole =
-          targetRole === "writer" ? linkedAuthor > 0 : targetRole === "publisher" ? linkedPublisher > 0 : linkedNarrator > 0;
+          targetRole === "writer" ? linkedAuthor > 0 : targetRole === "publisher" ? linkedPublisher > 0 : targetRole === "narrator" ? linkedNarrator > 0 : linkedTranslator > 0;
 
         if (!stillLinkedForRole) {
           await prisma.userRole.deleteMany({ where: { user_id: previousUserId, role: targetRole as any } });
@@ -1773,94 +1772,54 @@ export const adminRouter = router({
       return { message: "Account unlinked successfully" };
     }),
 
-  // Translators have no dedicated profile table — they're just Users with the
-  // "translator" UserRole, tracked per-book via BookContributor (role: "translator").
+  // ── Translators ──────────────────────────────────────────────────────────────
   listTranslators: adminProcedure
     .input(z.object({ search: z.string().optional() }))
-    .query(async ({ input }) => {
-      const userRoles = await prisma.userRole.findMany({
-        where: { role: "translator" as any },
-        select: { user_id: true },
-      });
-      const userIds = userRoles.map((r) => r.user_id);
-      if (userIds.length === 0) return [];
+    .query(({ input }) =>
+      prisma.translator.findMany({
+        where: input.search
+          ? { OR: [{ name: { contains: input.search, mode: "insensitive" } }, { name_en: { contains: input.search, mode: "insensitive" } }] }
+          : undefined,
+        orderBy: [{ priority: "desc" }, { name: "asc" }],
+      })
+    ),
 
-      const users = await prisma.user.findMany({
-        where: {
-          id: { in: userIds },
-          ...(input.search
-            ? {
-                OR: [
-                  { email: { contains: input.search, mode: "insensitive" } },
-                  { profile: { display_name: { contains: input.search, mode: "insensitive" } } },
-                ],
-              }
-            : {}),
-        },
-        select: { id: true, email: true, profile: { select: { display_name: true, avatar_url: true, phone: true } } },
-      });
+  createTranslator: adminProcedure
+    .input(z.object({
+      name: z.string().min(1),
+      name_en: z.string().optional(),
+      bio: z.string().optional(),
+      genre: z.string().optional(),
+      avatar_url: z.string().optional(),
+      phone: z.string().optional(),
+      is_featured: z.boolean().optional(),
+      is_trending: z.boolean().optional(),
+      priority: z.number().optional(),
+    }))
+    .mutation(({ input }) => prisma.translator.create({ data: input as any })),
 
-      const counts = await prisma.bookContributor.groupBy({
-        by: ["user_id"],
-        where: { role: "translator", user_id: { in: userIds } },
-        _count: { user_id: true },
-      });
-      const countMap = Object.fromEntries(counts.map((c) => [c.user_id, c._count.user_id]));
-
-      return users.map((u) => ({
-        id: u.id,
-        email: u.email,
-        name: u.profile?.display_name || u.email,
-        avatar_url: u.profile?.avatar_url || null,
-        phone: u.profile?.phone || null,
-        booksCount: countMap[u.id] || 0,
-      }));
+  updateTranslator: adminProcedure
+    .input(z.object({
+      id: z.string(),
+      name: z.string().min(1).optional(),
+      name_en: z.string().optional(),
+      bio: z.string().optional(),
+      genre: z.string().optional(),
+      avatar_url: z.string().optional(),
+      phone: z.string().optional(),
+      is_featured: z.boolean().optional(),
+      is_trending: z.boolean().optional(),
+      priority: z.number().optional(),
+      status: z.string().optional(),
+    }))
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      return prisma.translator.update({ where: { id }, data: data as any });
     }),
 
-  grantTranslatorRole: adminProcedure
-    .input(z.object({ email: z.string().email() }))
-    .mutation(async ({ input }) => {
-      const user = await prisma.user.findUnique({ where: { email: input.email } });
-      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
-
-      await prisma.userRole.upsert({
-        where: { user_id_role: { user_id: user.id, role: "translator" as any } },
-        create: { user_id: user.id, role: "translator" as any },
-        update: {},
-      });
-
-      return { message: "Translator role granted" };
-    }),
-
-  revokeTranslatorRole: adminProcedure
-    .input(z.object({ userId: z.string() }))
-    .mutation(async ({ input }) => {
-      await prisma.userRole.deleteMany({ where: { user_id: input.userId, role: "translator" as any } });
-      return { message: "Translator role revoked" };
-    }),
-
-  // Sets the single primary translator for a book (book-level field, mirroring author_id),
-  // implemented via BookContributor since translators have no dedicated FK column on Book.
-  setBookTranslator: adminProcedure
-    .input(z.object({ bookId: z.string(), userId: z.string().nullable() }))
-    .mutation(async ({ input }) => {
-      await prisma.bookContributor.deleteMany({ where: { book_id: input.bookId, role: "translator" } });
-      if (input.userId) {
-        await prisma.bookContributor.create({
-          data: { book_id: input.bookId, user_id: input.userId, role: "translator", format: "all" },
-        });
-      }
-      return { success: true };
-    }),
-
-  getBookTranslator: adminProcedure
-    .input(z.object({ bookId: z.string() }))
-    .query(async ({ input }) => {
-      const row = await prisma.bookContributor.findFirst({
-        where: { book_id: input.bookId, role: "translator" },
-      });
-      return row?.user_id ?? null;
-    }),
+  deleteTranslator: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.translator.delete({ where: { id: input.id } })),
 
   searchCreatorLinkCandidates: adminProcedure
     .input(z.object({ query: z.string().min(2) }))
@@ -2709,12 +2668,13 @@ export const adminRouter = router({
 
   // ── User detail + role update ─────────────────────────────────────────────────
   getAdminUserDetailPage: adminProcedure
-    .input(z.object({ type: z.enum(["user", "author", "narrator", "publisher"]), id: z.string() }))
+    .input(z.object({ type: z.enum(["user", "author", "narrator", "publisher", "translator"]), id: z.string() }))
     .query(async ({ input }) => {
       const roleByType = {
         author: "writer",
         narrator: "narrator",
         publisher: "publisher",
+        translator: "translator",
       } as const;
 
       if (input.type === "user") {
@@ -2746,7 +2706,9 @@ export const adminRouter = router({
           ? await prisma.author.findUnique({ where: { id: input.id } })
           : input.type === "narrator"
             ? await prisma.narrator.findUnique({ where: { id: input.id } })
-            : await prisma.publisher.findUnique({ where: { id: input.id } });
+            : input.type === "translator"
+              ? await prisma.translator.findUnique({ where: { id: input.id } })
+              : await prisma.publisher.findUnique({ where: { id: input.id } });
       if (!record) return null;
 
       if (!record.user_id) {
@@ -2833,7 +2795,7 @@ export const adminRouter = router({
   updateAdminCreatorProfile: adminProcedure
     .input(
       z.object({
-        type: z.enum(["author", "narrator", "publisher"]),
+        type: z.enum(["author", "narrator", "publisher", "translator"]),
         id: z.string(),
         name: z.string().optional(),
         name_en: z.string().optional(),
@@ -2883,6 +2845,23 @@ export const adminRouter = router({
             avatar_url: input.avatar_url,
             specialty: input.specialty,
             rating: input.rating,
+          },
+        });
+      }
+      if (input.type === "translator") {
+        return prisma.translator.update({
+          where: { id: input.id },
+          data: {
+            name: input.name,
+            name_en: input.name_en,
+            email: input.email,
+            status: input.status,
+            priority: input.priority,
+            is_featured: input.is_featured,
+            is_trending: input.is_trending,
+            bio: input.bio,
+            avatar_url: input.avatar_url,
+            genre: input.genre,
           },
         });
       }

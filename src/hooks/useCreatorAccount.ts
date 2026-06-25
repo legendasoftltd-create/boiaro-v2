@@ -6,15 +6,15 @@ interface CreateCreatorOpts {
   email: string;
   password: string;
   confirmPassword: string;
-  role: "writer" | "publisher" | "narrator";
-  profileTable: "authors" | "publishers" | "narrators";
+  role: "writer" | "publisher" | "narrator" | "translator";
+  profileTable: "authors" | "publishers" | "narrators" | "translators";
   profileData: Record<string, any>;
 }
 
 interface LinkCreatorOpts {
   email: string;
-  role: "writer" | "publisher" | "narrator";
-  profileTable: "authors" | "publishers" | "narrators";
+  role: "writer" | "publisher" | "narrator" | "translator";
+  profileTable: "authors" | "publishers" | "narrators" | "translators";
   profileId: string;
 }
 

@@ -134,6 +134,7 @@ export const booksRouter = router({
         where: { slug: input.slug, submission_status: "approved", is_active: true },
         include: {
           author: true,
+          translator: true,
           publisher: true,
           category: true,
           formats: {
@@ -375,34 +376,19 @@ export const booksRouter = router({
       return { ...author, books };
     }),
 
-  // Translators have no dedicated profile table — they're tracked as BookContributor
-  // rows (role: "translator") linked to a regular User/Profile, so the "id" here is a user_id.
   translatorById: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
-      const profile = await prisma.profile.findUnique({ where: { user_id: input.id } });
-      if (!profile) return null;
-
-      const contribs = await prisma.bookContributor.findMany({
-        where: { user_id: input.id, role: "translator" },
-        select: { book_id: true },
-      });
-      const bookIds = [...new Set(contribs.map((c) => c.book_id))];
-      const books = bookIds.length > 0
-        ? await prisma.book.findMany({
-            where: { id: { in: bookIds }, submission_status: "approved" },
-            select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
-            orderBy: { published_date: "desc" },
-          })
-        : [];
-
-      return {
-        id: input.id,
-        name: profile.display_name,
-        avatar_url: profile.avatar_url,
-        bio: profile.bio,
-        books,
-      };
+      const [translator, books] = await Promise.all([
+        prisma.translator.findUnique({ where: { id: input.id } }),
+        prisma.book.findMany({
+          where: { translator_id: input.id, submission_status: "approved" },
+          select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
+          orderBy: { published_date: "desc" },
+        }),
+      ]);
+      if (!translator) return null;
+      return { ...translator, books };
     }),
 
   publisherById: publicProcedure
@@ -691,6 +677,7 @@ export const booksRouter = router({
         where,
         include: {
           author: true,
+          translator: true,
           publisher: true,
           category: true,
           formats: {
@@ -740,17 +727,8 @@ export const booksRouter = router({
       const profileMap: Record<string, { display_name: string | null; avatar_url: string | null }> = {};
       profiles.forEach(p => { profileMap[p.user_id] = p; });
 
-      const translators = visibleContributors
-        .filter((c: any) => c.role === "translator")
-        .map((c) => ({
-          id: c.user_id,
-          name: profileMap[c.user_id]?.display_name ?? "Unknown",
-          avatar_url: profileMap[c.user_id]?.avatar_url ?? null,
-        }));
-
       return resolveBookUrls({
         ...book,
-        translators,
         contributors: visibleContributors.map((c) => ({
           ...c,
           display_name: profileMap[c.user_id]?.display_name ?? null,
@@ -838,6 +816,15 @@ export const booksRouter = router({
         if (author) {
           const bks = await prisma.book.findMany({
             where: { author_id: author.id },
+            select: { id: true },
+          });
+          bks.forEach(b => { if (!ownIds.has(b.id)) extraIds.add(b.id); });
+        }
+      } else if (input.role === "translator") {
+        const translator = await prisma.translator.findFirst({ where: { user_id: ctx.userId } });
+        if (translator) {
+          const bks = await prisma.book.findMany({
+            where: { translator_id: translator.id },
             select: { id: true },
           });
           bks.forEach(b => { if (!ownIds.has(b.id)) extraIds.add(b.id); });

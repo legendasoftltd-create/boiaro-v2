@@ -72,6 +72,7 @@ export function resolveBookUrls(book: any): any {
   return {
     ...resolveUrls(book),
     author: book.author ? resolveUrls(book.author) : null,
+    translator: book.translator ? resolveUrls(book.translator) : null,
     publisher: book.publisher ? resolveUrls(book.publisher) : null,
     category: book.category ?? null,
     contributors: Array.isArray(book.contributors)

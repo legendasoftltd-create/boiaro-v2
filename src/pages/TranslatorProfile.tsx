@@ -1,6 +1,7 @@
 import { useParams, Link } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { Badge } from "@/components/ui/badge";
 import { BookOpen, Star } from "lucide-react";
 import { FollowButton } from "@/components/FollowButton";
 import { trpc } from "@/lib/trpc";
@@ -37,7 +38,12 @@ const TranslatorProfile = () => {
             <img src={toMediaUrl(translator.avatar_url) || ""} alt={translator.name || ""} className="w-full h-full object-cover" />
           </div>
           <div className="text-center md:text-left">
-            <h1 className="text-2xl md:text-3xl font-serif font-bold text-foreground">{translator.name}</h1>
+            <div className="flex items-center gap-2 justify-center md:justify-start">
+              <h1 className="text-2xl md:text-3xl font-serif font-bold text-foreground">{translator.name}</h1>
+              {translator.is_featured && <Badge className="bg-primary text-primary-foreground text-xs">Featured</Badge>}
+            </div>
+            {translator.name_en && <p className="text-sm text-muted-foreground">{translator.name_en}</p>}
+            {translator.genre && <p className="text-sm text-muted-foreground mt-1">{translator.genre}</p>}
             {translator.bio && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{stripHtml(translator.bio)}</p>}
             <div className="flex items-center gap-4 mt-4 justify-center md:justify-start">
               <span className="flex items-center gap-1 text-sm text-muted-foreground">

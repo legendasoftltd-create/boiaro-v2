@@ -33,7 +33,6 @@ export default function AdminBooks() {
   const [books, setBooks] = useState<any[]>([]);
   const [bookFormats, setBookFormats] = useState<Record<string, any[]>>({});
   const [bookContribCounts, setBookContribCounts] = useState<Record<string, number>>({});
-  const [bookTranslators, setBookTranslators] = useState<Record<string, string>>({});
   const [authors, setAuthors] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [publishers, setPublishers] = useState<any[]>([]);
@@ -95,7 +94,6 @@ export default function AdminBooks() {
   const { log } = useAdminLogger();
   const [filterActive, setFilterActive] = useState("all");
   const upsertBookMutation = trpc.admin.upsertBook.useMutation();
-  const setBookTranslatorMutation = trpc.admin.setBookTranslator.useMutation();
   const setBookActiveMutation = trpc.admin.setBookActiveStatus.useMutation();
   const deleteBookMutation = trpc.admin.deleteBookWithFormats.useMutation();
   const upsertFormatMutation = trpc.admin.upsertBookFormat.useMutation();
@@ -152,14 +150,13 @@ export default function AdminBooks() {
   const load = async () => {
     setBooksLoading(true);
     try {
-      const [b, a, c, p, n, bc, bt, tr] = await Promise.all([
+      const [b, a, c, p, n, bc, tr] = await Promise.all([
         utils.admin.listBooks.fetch({ limit: 1000 }),
         utils.admin.listAuthors.fetch({}),
         utils.admin.listCategories.fetch(),
         utils.admin.listPublishers.fetch({}),
         utils.admin.listNarrators.fetch({}),
         utils.admin.listBookContributorCounts.fetch(),
-        utils.admin.listBookTranslators.fetch(),
         utils.admin.listTranslators.fetch({}),
       ]);
       const booksWithLegacyAliases = (b.books || []).map((book: any) => ({
@@ -167,6 +164,7 @@ export default function AdminBooks() {
         authors: book.author ?? null,
         categories: book.category ?? null,
         publishers: book.publisher ?? null,
+        translators: book.translator ?? null,
       }));
       setBooks(booksWithLegacyAliases);
       setAuthors(a || []);
@@ -195,12 +193,6 @@ export default function AdminBooks() {
         contribMap[row.book_id] = row.count;
       });
       setBookContribCounts(contribMap);
-
-      const translatorMap: Record<string, string> = {};
-      (bt || []).forEach((row: any) => {
-        translatorMap[row.book_id] = row.names;
-      });
-      setBookTranslators(translatorMap);
     } catch (err: any) {
       toast.error(err?.message || "Failed to load books");
     } finally {
@@ -478,14 +470,14 @@ export default function AdminBooks() {
     setOpen(true);
   };
 
-  const openEdit = async (book: any) => {
+  const openEdit = (book: any) => {
     setEditBook(book);
     setForm({
       title: book.title || "", title_en: book.title_en || "", slug: book.slug || "",
       description: book.description || "", description_bn: book.description_bn || "",
       author_id: book.author_id || "", category_id: book.category_id || "",
       publisher_id: book.publisher_id || "",
-      translator_id: "",
+      translator_id: book.translator_id || "",
       cover_url: book.cover_url || "",
       is_featured: book.is_featured || false, is_bestseller: book.is_bestseller || false,
       is_new: book.is_new || false, is_free: book.is_free || false,
@@ -493,17 +485,15 @@ export default function AdminBooks() {
       published_date: book.published_date ? new Date(book.published_date).toISOString().split("T")[0] : "",
     });
     setOpen(true);
-    const translatorId = await utils.admin.getBookTranslator.fetch({ bookId: book.id });
-    setForm((f: any) => ({ ...f, translator_id: translatorId || "" }));
   };
 
   const save = async () => {
-    const { translator_id, ...formRest } = form;
     const payload: any = {
-      ...formRest,
+      ...form,
       author_id: form.author_id || null,
       category_id: form.category_id || null,
       publisher_id: form.publisher_id || null,
+      translator_id: form.translator_id || null,
       tags: form.tags ? form.tags.split(",").map((t: string) => t.trim()).filter(Boolean) : null,
       published_date: form.published_date || null,
     };
@@ -511,7 +501,6 @@ export default function AdminBooks() {
       payload.slug = payload.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0980-\u09FF-]/g, "");
     }
 
-    let bookId: string;
     if (editBook) {
       try {
         await upsertBookMutation.mutateAsync({ id: editBook.id, ...payload });
@@ -519,7 +508,6 @@ export default function AdminBooks() {
         toast.error(error.message || "Failed to update book");
         return;
       }
-      bookId = editBook.id;
       await log({ module: "books", action: "Book updated", actionType: "update", targetType: "book", targetId: editBook.id, details: `Updated book: ${payload.title}` });
       toast.success("Book updated");
     } else {
@@ -530,14 +518,8 @@ export default function AdminBooks() {
         toast.error(error.message || "Failed to create book");
         return;
       }
-      bookId = inserted.id;
       await log({ module: "books", action: "Book created", actionType: "create", targetType: "book", targetId: inserted?.id, details: `Created book: ${payload.title}` });
       toast.success("Book created");
-    }
-    try {
-      await setBookTranslatorMutation.mutateAsync({ bookId, userId: translator_id || null });
-    } catch (error: any) {
-      toast.error(error.message || "Failed to save translator");
     }
     setOpen(false);
     load();
@@ -916,7 +898,7 @@ export default function AdminBooks() {
                     return audioFmt ? audioFmt.narratorNames : "—";
                   })()}
                 </TableCell>
-                <TableCell className="text-sm">{bookTranslators[b.id] || "—"}</TableCell>
+                <TableCell className="text-sm">{b.translators?.name || "—"}</TableCell>
                 <TableCell className="text-sm">{b.categories?.name_bn || b.categories?.name || "—"}</TableCell>
                 <TableCell className="text-sm">{b.publishers?.name || "—"}</TableCell>
                 <TableCell>
