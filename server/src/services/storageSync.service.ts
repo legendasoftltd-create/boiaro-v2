@@ -85,43 +85,51 @@ export async function runStorageSync(): Promise<void> {
   }
 
   syncInProgress = true;
-  const queue = loadPendingQueue();
-  console.log(`[storage-sync] starting — ${queue.length} file(s) pending`);
+  try {
+    const queue = loadPendingQueue();
+    console.log(`[storage-sync] starting — ${queue.length} file(s) pending`);
 
-  let uploaded = 0;
-  let failed = 0;
+    let uploaded = 0;
+    let failed = 0;
 
-  for (const entry of queue) {
-    // Local file must still exist
-    if (!fs.existsSync(entry.localPath)) {
-      console.warn(`[storage-sync] local file missing, dropping from queue: ${entry.localPath}`);
-      removeFromPendingQueue(entry.id);
-      continue;
+    for (const entry of queue) {
+      // Local file must still exist
+      if (!fs.existsSync(entry.localPath)) {
+        console.warn(`[storage-sync] local file missing, dropping from queue: ${entry.localPath}`);
+        removeFromPendingQueue(entry.id);
+        continue;
+      }
+
+      try {
+        const buffer = fs.readFileSync(entry.localPath);
+        const s3Url = await uploadToS3(buffer, entry.originalName, entry.mimeType, entry.options);
+
+        // Patch all DB tables where the old local URL is stored
+        await patchAllDbUrls(entry.localUrl, s3Url);
+        console.log(`[storage-sync] ✓ synced ${entry.originalName} → ${s3Url}`);
+
+        // Clean up local file
+        try { fs.unlinkSync(entry.localPath); } catch {}
+
+        removeFromPendingQueue(entry.id);
+        uploaded++;
+      } catch (err) {
+        failed++;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[storage-sync] ✗ failed to sync ${entry.originalName}: ${msg}`);
+        // Leave in queue — will retry on next interval
+      }
     }
 
-    try {
-      const buffer = fs.readFileSync(entry.localPath);
-      const s3Url = await uploadToS3(buffer, entry.originalName, entry.mimeType, entry.options);
-
-      // Patch all DB tables where the old local URL is stored
-      await patchAllDbUrls(entry.localUrl, s3Url);
-      console.log(`[storage-sync] ✓ synced ${entry.originalName} → ${s3Url}`);
-
-      // Clean up local file
-      try { fs.unlinkSync(entry.localPath); } catch {}
-
-      removeFromPendingQueue(entry.id);
-      uploaded++;
-    } catch (err) {
-      failed++;
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[storage-sync] ✗ failed to sync ${entry.originalName}: ${msg}`);
-      // Leave in queue — will retry on next interval
-    }
+    console.log(`[storage-sync] done — ✓ ${uploaded} uploaded, ✗ ${failed} failed`);
+  } catch (err) {
+    // Defensive: should be unreachable since loadPendingQueue/per-entry errors are
+    // already caught above, but a stuck `syncInProgress=true` would permanently
+    // disable this background service, so guarantee the reset regardless.
+    console.error("[storage-sync] unexpected error:", err instanceof Error ? err.message : err);
+  } finally {
+    syncInProgress = false;
   }
-
-  console.log(`[storage-sync] done — ✓ ${uploaded} uploaded, ✗ ${failed} failed`);
-  syncInProgress = false;
 }
 
 // ─── Service Start ────────────────────────────────────────────────────────────
@@ -139,8 +147,13 @@ export function startStorageSyncService(): void {
   } else {
     console.log("[storage-sync] service started — S3 not yet configured, will sync when credentials are added");
   }
-  _timer = setInterval(runStorageSync, SYNC_INTERVAL_MS);
-  setImmediate(runStorageSync);
+  const run = () => {
+    runStorageSync().catch((err) => {
+      console.error("[storage-sync] unhandled rejection guard:", err instanceof Error ? err.message : err);
+    });
+  };
+  _timer = setInterval(run, SYNC_INTERVAL_MS);
+  setImmediate(run);
 }
 
 export function stopStorageSyncService(): void {

@@ -233,7 +233,7 @@ app.use((err: any, _req: express.Request, res: express.Response, next: express.N
     res.status(400).json({ error: "Unexpected file field." });
     return;
   }
-  if (err?.message?.includes("Only JPG") || err?.message?.includes("Unsupported media")) {
+  if (err?.message?.startsWith("Only ") || err?.message?.startsWith("Unsupported file type")) {
     res.status(415).json({ error: err.message });
     return;
   }
