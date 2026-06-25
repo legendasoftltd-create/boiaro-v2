@@ -69,6 +69,7 @@ export function Audiobooks() {
                 <div className="space-y-0.5 px-0.5">
                   <h3 className="font-medium text-foreground line-clamp-1 text-[13px] group-hover:text-blue-400 transition-colors">{book.title}</h3>
                   <p className="text-xs text-muted-foreground line-clamp-1">{book.author.name}</p>
+                  {book.translator?.name && <p className="text-xs text-muted-foreground line-clamp-1">Tr: {book.translator.name}</p>}
                   <div className="flex items-center justify-between pt-0.5">
                     <div className="flex items-center gap-1"><Star className="w-3 h-3 fill-primary text-primary" /><span className="text-xs text-foreground font-medium">{book.rating}</span></div>
                     <div className="flex items-center gap-1 text-muted-foreground"><Headphones className="w-3 h-3" /><span className="text-[11px]">{book.totalReads}</span></div>

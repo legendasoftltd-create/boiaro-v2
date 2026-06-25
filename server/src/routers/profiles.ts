@@ -61,6 +61,7 @@ export const profilesRouter = router({
         book: {
           include: {
             author: { select: { id: true, name: true } },
+            translator: { select: { id: true, name: true } },
             formats: { select: { id: true, format: true } },
           },
         },
@@ -84,6 +85,7 @@ export const profilesRouter = router({
         book: {
           include: {
             author: { select: { id: true, name: true } },
+            translator: { select: { id: true, name: true } },
           },
         },
       },

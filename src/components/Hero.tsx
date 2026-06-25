@@ -70,6 +70,9 @@ function HeroSlide({ book, isActive }: { book: MasterBook; isActive: boolean }) 
 
             <div className="flex items-center gap-2 md:gap-4 mb-3 md:mb-6 text-[11px] md:text-sm text-muted-foreground">
               <span className="text-foreground font-medium">{book.author.name}</span>
+              {book.translator?.name && (
+                <span className="text-foreground font-medium">Tr: {book.translator.name}</span>
+              )}
               {book.rating > 0 && (
                 <span className="flex items-center gap-1">
                   <span className="text-primary">★</span> {book.rating}

@@ -13,6 +13,7 @@ const bookSummarySelect = {
   cover_url: true,
   slug: true,
   author: { select: { name: true } },
+  translator: { select: { name: true } },
 } as const;
 
 libraryRestRouter.get("/purchases", requireAuth, async (req: AuthenticatedRequest, res) => {

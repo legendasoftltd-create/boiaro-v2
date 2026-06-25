@@ -38,6 +38,7 @@ function CategorySectionRow({ section }: CategorySectionProps) {
     slug: b.slug,
     cover: toMediaUrl(b.cover_url) || "",
     author: b.author ? { id: b.author.id, name: b.author.name, avatar: "", bio: "" } : { id: "", name: "", avatar: "", bio: "" },
+    translator: b.translator ? { id: b.translator.id, name: b.translator.name, avatar: "", bio: "" } : { id: "", name: "", avatar: "", bio: "" },
     publisher: { id: "", name: "", logo: "" },
     category: { id: section.category.id, name: section.category.name_bn || section.category.name_en || section.category.name, icon: "BookOpen", color: "" },
     description: "",

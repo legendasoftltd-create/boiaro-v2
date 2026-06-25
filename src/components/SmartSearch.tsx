@@ -18,6 +18,7 @@ interface SearchResult {
   rating?: number;
   is_free?: boolean;
   authors?: { name: string } | null;
+  translators?: { name: string } | null;
   categories?: { name: string } | null;
 }
 
@@ -71,6 +72,7 @@ export function SmartSearch({ open, onOpenChange }: { open: boolean; onOpenChang
         rating: b.rating ? Number(b.rating) : undefined,
         is_free: b.is_free,
         authors: b.author ? { name: b.author.name } : null,
+        translators: b.translator ? { name: b.translator.name } : null,
         categories: b.category ? { name: b.category.name } : null,
       }));
       setResults(mapped);
@@ -157,6 +159,7 @@ export function SmartSearch({ open, onOpenChange }: { open: boolean; onOpenChang
                 {book.title_en && <p className="text-xs text-muted-foreground truncate">{book.title_en}</p>}
                 <div className="flex items-center gap-2 mt-0.5">
                   {book.authors?.name && <span className="text-xs text-muted-foreground">{book.authors.name}</span>}
+                  {book.translators?.name && <span className="text-xs text-muted-foreground">Tr: {book.translators.name}</span>}
                   {book.categories?.name && <Badge variant="outline" className="text-[9px] px-1 py-0">{book.categories.name}</Badge>}
                 </div>
               </div>

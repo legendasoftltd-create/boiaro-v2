@@ -67,6 +67,7 @@ export function Top10MostRead() {
                     {book.title}
                   </h3>
                   <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{book.author.name}</p>
+                  {book.translator?.name && <p className="text-xs text-muted-foreground line-clamp-1">Tr: {book.translator.name}</p>}
                   <div className="flex items-center gap-3 mt-1.5">
                     {book.rating > 0 && (
                       <span className="flex items-center gap-1 text-xs">

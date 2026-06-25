@@ -99,6 +99,7 @@ export function FullPlayer() {
             {/* Track info */}
             <h2 className="text-lg md:text-xl font-serif font-bold text-foreground text-center mb-1 line-clamp-2">{book.title}</h2>
             <p className="text-sm text-muted-foreground mb-0.5">{book.author.name}</p>
+            {(book as any).translator?.name && <p className="text-xs text-muted-foreground/70">Tr: {(book as any).translator.name}</p>}
             <p className="text-xs text-muted-foreground/70 mb-3">Narrated by {narratorName}</p>
             <Badge variant="secondary" className="mb-6 text-xs bg-[hsl(220,30%,15%)] border border-[hsl(220,30%,22%)] text-muted-foreground">
               Ep. {currentTrackIndex + 1}/{tracks.length} — {currentTrack?.title || `Episode ${currentTrackIndex + 1}`}

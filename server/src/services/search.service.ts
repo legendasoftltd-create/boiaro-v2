@@ -27,6 +27,11 @@ export const searchBooks = async (q: string) => {
           name: true,
         },
       },
+      translator: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
 

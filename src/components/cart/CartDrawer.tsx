@@ -48,6 +48,7 @@ export function CartDrawer() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-foreground truncate">{item.book.title}</p>
                         <p className="text-xs text-muted-foreground truncate mt-0.5">{item.book.author.name}</p>
+                        {item.book.translator?.name && <p className="text-xs text-muted-foreground truncate">Tr: {item.book.translator.name}</p>}
                         <Badge variant="outline" className="mt-1.5 text-[10px] gap-1 rounded-md">
                           <Icon className="w-2.5 h-2.5" /> {formatLabels[item.format]}
                         </Badge>

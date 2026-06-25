@@ -57,6 +57,7 @@ export function RecentlyViewed() {
               <div className="space-y-0.5 px-0.5">
                 <h3 className="font-medium text-foreground line-clamp-1 text-[13px] group-hover:text-primary transition-colors">{book.title}</h3>
                 <p className="text-xs text-muted-foreground line-clamp-1">{(book.authors as any)?.name || ""}</p>
+                {(book as any).translators?.name && <p className="text-xs text-muted-foreground line-clamp-1">Tr: {(book as any).translators.name}</p>}
                 {book.rating ? (
                   <div className="flex items-center gap-1">
                     <Star className="w-3 h-3 fill-primary text-primary" />

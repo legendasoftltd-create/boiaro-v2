@@ -37,6 +37,7 @@ export function RelatedBooks({ book, allBooks }: Props) {
       </div>
       <p className="text-sm font-medium text-foreground line-clamp-2 group-hover:text-primary transition-colors">{b.title}</p>
       {(b.author?.name || b.authors?.name) && <p className="text-xs text-muted-foreground">{b.author?.name || b.authors?.name}</p>}
+      {(b.translator?.name || b.translators?.name) && <p className="text-xs text-muted-foreground">Tr: {b.translator?.name || b.translators?.name}</p>}
       {b.rating != null && b.rating > 0 && (
         <div className="flex items-center gap-1 mt-1">
           <Star className="w-3 h-3 fill-primary text-primary" />

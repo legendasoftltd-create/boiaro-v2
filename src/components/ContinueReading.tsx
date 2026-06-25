@@ -119,6 +119,7 @@ export function ContinueReading() {
                     {item.book.title}
                   </h3>
                   <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{item.book.author.name}</p>
+                  {(item.book as any).translator?.name && <p className="text-xs text-muted-foreground line-clamp-1">Tr: {(item.book as any).translator.name}</p>}
                   <div className="mt-auto pt-2 md:pt-3">
                     <div className="flex items-center justify-between text-xs mb-1.5">
                       <span className="text-muted-foreground">

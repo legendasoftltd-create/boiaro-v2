@@ -54,6 +54,11 @@ export function EditorsPick() {
                   <User className="w-4 h-4 text-primary" />
                   <span className="text-sm text-foreground font-medium">{featuredBook.author.name}</span>
                 </div>
+                {featuredBook.translator?.name && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-foreground font-medium">Tr: {featuredBook.translator.name}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5">
                   <Star className="w-4 h-4 fill-primary text-primary" />
                   <span className="text-sm text-foreground font-medium">{featuredBook.rating}</span>

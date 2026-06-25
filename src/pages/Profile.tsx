@@ -150,7 +150,7 @@ export default function Profile() {
               <Link to={`/book/${book.slug}`} className="font-medium text-[13px] leading-tight line-clamp-2 hover:text-primary transition-colors">
                 {book.title}
               </Link>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{book.author?.name || ""}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{book.author?.name || ""}{book.translator?.name ? ` · Tr: ${book.translator.name}` : ""}</p>
             </div>
             {type !== "bookmark" && (
               <div className="mt-1.5">

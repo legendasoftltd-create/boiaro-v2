@@ -19,6 +19,7 @@ export function useRecentlyViewed() {
     category_id: b.category_id,
     author_id: b.author_id,
     authors: b.author ? { name: b.author.name } : null,
+    translators: b.translator ? { name: b.translator.name } : null,
   }));
 
   return { books, loading: query.isLoading };
