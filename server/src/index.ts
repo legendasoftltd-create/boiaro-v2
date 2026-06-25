@@ -79,9 +79,12 @@ app.use("/api/v1", (req, res, next) => {
 // Enforce JSON content-type on mutation endpoints.
 // Exempt SSLCommerz callbacks — they're posted server-to-server as
 // application/x-www-form-urlencoded and cannot be made to send JSON.
+// Exempt multipart/form-data — file upload endpoints (profile photo,
+// TTS ambient audio, etc.) inherently send multipart bodies, not JSON.
 app.use("/api/v1", (req, res, next) => {
   const isPaymentCallback = req.originalUrl.startsWith("/api/v1/payments/sslcommerz/");
-  if (!isPaymentCallback && ["POST", "PATCH", "PUT"].includes(req.method) && req.headers["content-type"] && !req.is("application/json")) {
+  const isMultipart = req.is("multipart/form-data");
+  if (!isPaymentCallback && !isMultipart && ["POST", "PATCH", "PUT"].includes(req.method) && req.headers["content-type"] && !req.is("application/json")) {
     res.status(415).json({ success: false, error: "UNSUPPORTED_MEDIA_TYPE", message: "Content-Type must be application/json" });
     return;
   }
