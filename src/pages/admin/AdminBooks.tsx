@@ -1020,6 +1020,12 @@ export default function AdminBooks() {
               </p>
             </div>
             <div>
+              <Label>Translator <span className="text-muted-foreground text-xs">(assigned as contributor)</span></Label>
+              <p className="text-[11px] text-muted-foreground mt-1 p-2 rounded bg-muted/30 border border-border/30">
+                Translator is assigned in the <strong>Formats dialog → Contributors</strong> section. Open "Book Formats" from the book list, select role "Translator", and pick the user.
+              </p>
+            </div>
+            <div>
               <Label>Language</Label>
               <Input value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })} />
             </div>
