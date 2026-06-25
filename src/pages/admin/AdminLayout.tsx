@@ -4,7 +4,7 @@ import { useAdminPermissions } from "@/hooks/useAdminPermissions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   LayoutDashboard, BookOpen, Users, Mic2, Building2, ShoppingCart,
-  Star, Layers, ChevronLeft, ChevronRight, LogOut, CreditCard, UserCheck, DollarSign, Wallet, FileCheck, Settings, Truck, Crown, Ticket, Bell, Mail, FileText, BarChart3, PanelTop, Newspaper, Globe, ImageIcon, HeadphonesIcon, Shield, Activity, Coins, LayoutGrid, Megaphone, MonitorPlay, Sparkles, Gift, ChevronDown, Menu, AlertTriangle, MessageSquare, Package, ShieldCheck,
+  Star, Layers, ChevronLeft, ChevronRight, LogOut, CreditCard, UserCheck, DollarSign, Wallet, FileCheck, Settings, Truck, Crown, Ticket, Bell, Mail, FileText, BarChart3, PanelTop, Newspaper, Globe, ImageIcon, HeadphonesIcon, Shield, Activity, Coins, LayoutGrid, Megaphone, MonitorPlay, Sparkles, Gift, ChevronDown, Menu, AlertTriangle, MessageSquare, Package, ShieldCheck, Languages,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -61,6 +61,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Authors", path: "/admin/authors", icon: Users },
       { label: "Narrators", path: "/admin/narrators", icon: Mic2 },
+      { label: "Translators", path: "/admin/translators", icon: Languages },
       { label: "Publishers", path: "/admin/publishers", icon: Building2 },
       { label: "Applications", path: "/admin/applications", icon: UserCheck },
       { label: "Creator Perms", path: "/admin/creator-permissions", icon: Shield },

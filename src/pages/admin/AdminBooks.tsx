@@ -33,6 +33,7 @@ export default function AdminBooks() {
   const [books, setBooks] = useState<any[]>([]);
   const [bookFormats, setBookFormats] = useState<Record<string, any[]>>({});
   const [bookContribCounts, setBookContribCounts] = useState<Record<string, number>>({});
+  const [bookTranslators, setBookTranslators] = useState<Record<string, string>>({});
   const [authors, setAuthors] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [publishers, setPublishers] = useState<any[]>([]);
@@ -149,13 +150,14 @@ export default function AdminBooks() {
   const load = async () => {
     setBooksLoading(true);
     try {
-      const [b, a, c, p, n, bc] = await Promise.all([
+      const [b, a, c, p, n, bc, bt] = await Promise.all([
         utils.admin.listBooks.fetch({ limit: 1000 }),
         utils.admin.listAuthors.fetch({}),
         utils.admin.listCategories.fetch(),
         utils.admin.listPublishers.fetch({}),
         utils.admin.listNarrators.fetch({}),
         utils.admin.listBookContributorCounts.fetch(),
+        utils.admin.listBookTranslators.fetch(),
       ]);
       const booksWithLegacyAliases = (b.books || []).map((book: any) => ({
         ...book,
@@ -189,6 +191,12 @@ export default function AdminBooks() {
         contribMap[row.book_id] = row.count;
       });
       setBookContribCounts(contribMap);
+
+      const translatorMap: Record<string, string> = {};
+      (bt || []).forEach((row: any) => {
+        translatorMap[row.book_id] = row.names;
+      });
+      setBookTranslators(translatorMap);
     } catch (err: any) {
       toast.error(err?.message || "Failed to load books");
     } finally {
@@ -863,6 +871,7 @@ export default function AdminBooks() {
               <TableHead>Title</TableHead>
               <TableHead>Author</TableHead>
               <TableHead>Narrator</TableHead>
+              <TableHead>Translator</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Publisher</TableHead>
               <TableHead>Formats</TableHead>
@@ -891,6 +900,7 @@ export default function AdminBooks() {
                     return audioFmt ? audioFmt.narratorNames : "—";
                   })()}
                 </TableCell>
+                <TableCell className="text-sm">{bookTranslators[b.id] || "—"}</TableCell>
                 <TableCell className="text-sm">{b.categories?.name_bn || b.categories?.name || "—"}</TableCell>
                 <TableCell className="text-sm">{b.publishers?.name || "—"}</TableCell>
                 <TableCell>

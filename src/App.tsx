@@ -63,6 +63,7 @@ const AdminBooks = lazy(() => import("./pages/admin/AdminBooks.tsx"));
 const AdminTtsManagement = lazy(() => import("./pages/admin/AdminTtsManagement.tsx"));
 const AdminAuthors = lazy(() => import("./pages/admin/AdminAuthors.tsx"));
 const AdminNarrators = lazy(() => import("./pages/admin/AdminNarrators.tsx"));
+const AdminTranslators = lazy(() => import("./pages/admin/AdminTranslators.tsx"));
 const AdminPublishers = lazy(() => import("./pages/admin/AdminPublishers.tsx"));
 const AdminOrders = lazy(() => import("./pages/admin/AdminOrders.tsx"));
 const AdminReviews = lazy(() => import("./pages/admin/AdminReviews.tsx"));
@@ -261,6 +262,7 @@ const App = () => {
                   <Route path="tts-management" element={<AdminTtsManagement />} />
                   <Route path="authors" element={<AdminAuthors />} />
                   <Route path="narrators" element={<AdminNarrators />} />
+                  <Route path="translators" element={<AdminTranslators />} />
                   <Route path="publishers" element={<AdminPublishers />} />
                   <Route path="orders" element={<AdminOrders />} />
                   <Route path="payments" element={<AdminPayments />} />

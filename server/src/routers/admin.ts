@@ -140,6 +140,23 @@ export const adminRouter = router({
     return grouped.map((row) => ({ book_id: row.book_id, count: row._count.book_id }));
   }),
 
+  listBookTranslators: adminProcedure.query(async () => {
+    const contribs = await prisma.bookContributor.findMany({
+      where: { role: "translator" },
+      select: { book_id: true, user_id: true },
+    });
+    const userIds = [...new Set(contribs.map((c) => c.user_id))];
+    const profiles = userIds.length > 0
+      ? await prisma.profile.findMany({ where: { user_id: { in: userIds } }, select: { user_id: true, display_name: true } })
+      : [];
+    const nameMap = Object.fromEntries(profiles.map((p) => [p.user_id, p.display_name || "Unknown"]));
+    const byBook: Record<string, string[]> = {};
+    contribs.forEach((c) => {
+      (byBook[c.book_id] ??= []).push(nameMap[c.user_id] || "Unknown");
+    });
+    return Object.entries(byBook).map(([book_id, names]) => ({ book_id, names: names.join(", ") }));
+  }),
+
   listBookFormatsByBook: adminProcedure
     .input(z.object({ bookId: z.string() }))
     .query(({ input }) =>
@@ -1754,6 +1771,72 @@ export const adminRouter = router({
       }
 
       return { message: "Account unlinked successfully" };
+    }),
+
+  // Translators have no dedicated profile table — they're just Users with the
+  // "translator" UserRole, tracked per-book via BookContributor (role: "translator").
+  listTranslators: adminProcedure
+    .input(z.object({ search: z.string().optional() }))
+    .query(async ({ input }) => {
+      const userRoles = await prisma.userRole.findMany({
+        where: { role: "translator" as any },
+        select: { user_id: true },
+      });
+      const userIds = userRoles.map((r) => r.user_id);
+      if (userIds.length === 0) return [];
+
+      const users = await prisma.user.findMany({
+        where: {
+          id: { in: userIds },
+          ...(input.search
+            ? {
+                OR: [
+                  { email: { contains: input.search, mode: "insensitive" } },
+                  { profile: { display_name: { contains: input.search, mode: "insensitive" } } },
+                ],
+              }
+            : {}),
+        },
+        select: { id: true, email: true, profile: { select: { display_name: true, avatar_url: true, phone: true } } },
+      });
+
+      const counts = await prisma.bookContributor.groupBy({
+        by: ["user_id"],
+        where: { role: "translator", user_id: { in: userIds } },
+        _count: { user_id: true },
+      });
+      const countMap = Object.fromEntries(counts.map((c) => [c.user_id, c._count.user_id]));
+
+      return users.map((u) => ({
+        id: u.id,
+        email: u.email,
+        name: u.profile?.display_name || u.email,
+        avatar_url: u.profile?.avatar_url || null,
+        phone: u.profile?.phone || null,
+        booksCount: countMap[u.id] || 0,
+      }));
+    }),
+
+  grantTranslatorRole: adminProcedure
+    .input(z.object({ email: z.string().email() }))
+    .mutation(async ({ input }) => {
+      const user = await prisma.user.findUnique({ where: { email: input.email } });
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+
+      await prisma.userRole.upsert({
+        where: { user_id_role: { user_id: user.id, role: "translator" as any } },
+        create: { user_id: user.id, role: "translator" as any },
+        update: {},
+      });
+
+      return { message: "Translator role granted" };
+    }),
+
+  revokeTranslatorRole: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ input }) => {
+      await prisma.userRole.deleteMany({ where: { user_id: input.userId, role: "translator" as any } });
+      return { message: "Translator role revoked" };
     }),
 
   searchCreatorLinkCandidates: adminProcedure

@@ -19,6 +19,7 @@ const ROLE_COLORS: Record<string, string> = {
   publisher: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   narrator: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
   rj: "bg-destructive/20 text-destructive border-destructive/30",
+  translator: "bg-green-500/20 text-green-400 border-green-500/30",
 };
 
 export default function AdminRoleApplications() {
