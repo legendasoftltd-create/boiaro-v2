@@ -8,13 +8,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { PenTool, Building2, Mic2, Radio, Upload, ArrowLeft, Facebook, Instagram, Youtube, Globe, Link2 } from "lucide-react";
+import { PenTool, Building2, Mic2, Radio, Languages, Upload, ArrowLeft, Facebook, Instagram, Youtube, Globe, Link2 } from "lucide-react";
 
 const roleOptions = [
   { value: "writer", label: "Writer", icon: PenTool, desc: "Publish & manage your books" },
   { value: "publisher", label: "Publisher", icon: Building2, desc: "Manage catalog & inventory" },
   { value: "narrator", label: "Narrator", icon: Mic2, desc: "Narrate & submit audiobooks" },
   { value: "rj", label: "Radio Jockey", icon: Radio, desc: "Go live & broadcast shows" },
+  { value: "translator", label: "Translator", icon: Languages, desc: "Translate books to new languages" },
 ] as const;
 
 type RoleValue = typeof roleOptions[number]["value"];
@@ -94,7 +95,7 @@ export default function CreatorApply() {
               {/* Role Selection */}
               <div className="space-y-2">
                 <Label className="text-[13px] font-medium">Select Role *</Label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                   {roleOptions.map((r) => (
                     <button
                       key={r.value}
