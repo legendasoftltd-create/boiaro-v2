@@ -67,6 +67,7 @@ export const booksRouter = router({
           orderBy,
           include: {
             author: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, genre: true, is_featured: true } },
+            translator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, genre: true, is_featured: true } },
             publisher: { select: { id: true, name: true, name_en: true, logo_url: true, description: true, is_verified: true } },
             category: { select: { id: true, name: true, name_bn: true, slug: true, icon: true, color: true } },
             formats: {
@@ -300,6 +301,7 @@ export const booksRouter = router({
         book: {
           include: {
             author: { select: { id: true, name: true } },
+            translator: { select: { id: true, name: true } },
             formats: { select: { id: true, format: true, price: true } },
           },
         },
@@ -423,6 +425,23 @@ export const booksRouter = router({
     return authors.map((a) => ({ ...a, booksCount: countMap[a.id] || 0, followers: 0 }));
   }),
 
+  translators: publicProcedure.query(async () => {
+    const [translators, bookCounts] = await Promise.all([
+      prisma.translator.findMany({
+        where: { status: "active" },
+        orderBy: [{ priority: "desc" }, { name: "asc" }],
+      }),
+      prisma.book.groupBy({
+        by: ["translator_id"],
+        where: { submission_status: "approved", translator_id: { not: null } },
+        _count: { translator_id: true },
+      }),
+    ]);
+    const countMap: Record<string, number> = {};
+    bookCounts.forEach((r) => { if (r.translator_id) countMap[r.translator_id] = r._count.translator_id; });
+    return translators.map((t) => ({ ...t, booksCount: countMap[t.id] || 0, followers: 0 }));
+  }),
+
   voices: publicProcedure.query(() =>
     prisma.voice.findMany({
       where: { is_active: true },
@@ -460,6 +479,7 @@ export const booksRouter = router({
             id: true, title: true, cover_url: true, slug: true,
             formats: { select: { format: true, price: true } },
             author: { select: { id: true, name: true } },
+            translator: { select: { id: true, name: true } },
           },
         });
         return { ...sec, books };
@@ -528,6 +548,7 @@ export const booksRouter = router({
         where: { id: { in: bookIds } },
         include: {
           author: { select: { id: true, name: true, name_en: true } },
+          translator: { select: { id: true, name: true, name_en: true } },
           formats: { where: { submission_status: "approved" }, select: { id: true, format: true, price: true } },
         },
       });
@@ -543,6 +564,7 @@ export const booksRouter = router({
           orderBy: { total_reads: "desc" },
           include: {
             author: { select: { id: true, name: true } },
+            translator: { select: { id: true, name: true } },
             formats: { where: { submission_status: "approved" }, select: { id: true, format: true, price: true } },
           },
         });
@@ -565,6 +587,7 @@ export const booksRouter = router({
         orderBy: { total_reads: "desc" },
         include: {
           author: { select: { id: true, name: true } },
+          translator: { select: { id: true, name: true } },
           formats: { where: { submission_status: "approved" }, select: { id: true, format: true, price: true } },
         },
       });

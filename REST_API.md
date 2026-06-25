@@ -484,6 +484,7 @@ List approved books with pagination and optional filters. No auth required.
 | isFree | boolean | — | Free books only |
 | language | string | — | Filter by language |
 | authorId | uuid | — | Filter by author |
+| translatorId | uuid | — | Filter by translator |
 | publisherId | uuid | — | Filter by publisher |
 | search | string | — | Search by title |
 
@@ -517,7 +518,7 @@ List approved books with pagination and optional filters. No auth required.
 
 Get one approved book by database id. No auth required.
 
-**Success (200):** Full book object with `author`, `publisher`, `category`, `formats`.  
+**Success (200):** Full book object with `author`, `translator`, `publisher`, `category`, `formats`.  
 **Error (404):** `{ "error": "Book not found" }`
 
 ---
@@ -693,6 +694,57 @@ Get a single author's details. No auth required.
 
 ---
 
+### `GET /translators`
+
+List translators with pagination. No auth required.
+
+**Query params:** `limit` (int, default 20), `offset` (int, default 0)
+
+**Success (200):**
+```json
+{
+  "translators": [
+    {
+      "id": "uuid",
+      "name": "অনুবাদকের নাম",
+      "name_en": "Translator Name",
+      "avatar_url": "https://...",
+      "bio": "...",
+      "genre": "Fiction",
+      "is_featured": true,
+      "is_trending": false,
+      "priority": 1
+    }
+  ],
+  "total": 12,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+---
+
+### `GET /translators/:id`
+
+Get a single translator's details. No auth required.
+
+**Success (200):** Translator object (same shape as list item, plus `followers_count`, `books_count`, `is_following`).
+**Error (404):** `{ "error": "Translator not found" }`
+
+---
+
+### `POST /translators/:id/follow`
+
+Follow a translator. Requires auth.
+
+---
+
+### `POST /translators/:id/unfollow`
+
+Unfollow a translator. Requires auth.
+
+---
+
 ### `GET /narrators`
 
 List all active narrators. No auth required.
@@ -798,6 +850,7 @@ Fetch all homepage sections in a single call. No auth required. If authenticated
   "allCategory": [],
   "allAuthor": [],
   "allNarrators": [],
+  "allTranslators": [],
   "countsValue": { "counts": {}, "totalNarrators": 0 },
   "NewReleases": { "all": [], "ebooks": [], "audiobooks": [] },
   "FreeBooks": []
@@ -832,6 +885,7 @@ Supported section keys:
 - `allCategory`
 - `allAuthor`
 - `allNarrators`
+- `allTranslators`
 - `countsValue`
 - `newReleases`
 - `freeBooks`

@@ -20,6 +20,20 @@ export function trpcBookToMasterBook(book: any): MasterBook {
       }
     : { id: "", name: "", nameEn: "", avatar: "", bio: "", genre: "", booksCount: 0, followers: "0", isFeatured: false };
 
+  const translator: Author = book.translator
+    ? {
+        id: book.translator.id,
+        name: book.translator.name,
+        nameEn: book.translator.name_en || "",
+        avatar: toMediaUrl(book.translator.avatar_url) || "",
+        bio: book.translator.bio || "",
+        genre: book.translator.genre || "",
+        booksCount: 0,
+        followers: "0",
+        isFeatured: book.translator.is_featured || false,
+      }
+    : { id: "", name: "", nameEn: "", avatar: "", bio: "", genre: "", booksCount: 0, followers: "0", isFeatured: false };
+
   const publisher: Publisher = book.publisher
     ? {
         id: book.publisher.id,
@@ -107,6 +121,7 @@ export function trpcBookToMasterBook(book: any): MasterBook {
     titleEn: book.title_en || "",
     slug: book.slug,
     author,
+    translator,
     publisher,
     category,
     cover: toMediaUrl(book.cover_url) || "",
@@ -250,6 +265,24 @@ export function useNarrators() {
     listeners: String(n.listeners || 0),
     rating: Number(n.rating) || 0,
     isFeatured: n.is_featured || false,
+  }));
+}
+
+export function useTranslators() {
+  const { data: translators = [] } = trpc.books.translators.useQuery(undefined, {
+    staleTime: 5 * 60 * 1000,
+  });
+
+  return translators.map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    nameEn: t.name_en || "",
+    avatar: toMediaUrl(t.avatar_url) || "",
+    bio: t.bio || "",
+    genre: t.genre || "",
+    booksCount: t.booksCount || 0,
+    followers: String(t.followers || 0),
+    isFeatured: t.is_featured || false,
   }));
 }
 

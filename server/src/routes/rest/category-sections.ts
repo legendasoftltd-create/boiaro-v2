@@ -47,6 +47,7 @@ categorySectionsRestRouter.get("/", async (_req, res) => {
             rating: true,
             is_free: true,
             author: { select: { id: true, name: true, name_en: true } },
+            translator: { select: { id: true, name: true, name_en: true } },
             formats: { select: { format: true, price: true, is_available: true } },
           },
         });
@@ -79,6 +80,9 @@ categorySectionsRestRouter.get("/", async (_req, res) => {
             is_free: b.is_free ?? false,
             author: b.author
               ? { id: b.author.id, name: b.author.name, name_en: b.author.name_en ?? null }
+              : null,
+            translator: b.translator
+              ? { id: b.translator.id, name: b.translator.name, name_en: b.translator.name_en ?? null }
               : null,
             formats: (b.formats || []).map((f) => ({
               format: f.format,

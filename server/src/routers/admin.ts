@@ -3057,7 +3057,7 @@ export const adminRouter = router({
   getCreatorLinksByUser: adminProcedure
     .input(z.object({ userId: z.string() }))
     .query(async ({ input }) => {
-      const [authors, publishers, narrators] = await Promise.all([
+      const [authors, publishers, narrators, translators] = await Promise.all([
         prisma.author.findMany({
           where: { user_id: input.userId },
           select: { id: true, name: true, name_en: true, avatar_url: true, status: true },
@@ -3073,12 +3073,18 @@ export const adminRouter = router({
           select: { id: true, name: true, name_en: true, avatar_url: true, status: true },
           orderBy: { linked_at: "desc" },
         }),
+        prisma.translator.findMany({
+          where: { user_id: input.userId },
+          select: { id: true, name: true, name_en: true, avatar_url: true, status: true },
+          orderBy: { linked_at: "desc" },
+        }),
       ]);
 
       return {
         authors: authors.map((a) => ({ ...a, avatar_url: resolveFileUrl(a.avatar_url) })),
         publishers: publishers.map((p) => ({ ...p, logo_url: resolveFileUrl(p.logo_url) })),
         narrators: narrators.map((n) => ({ ...n, avatar_url: resolveFileUrl(n.avatar_url) })),
+        translators: translators.map((t) => ({ ...t, avatar_url: resolveFileUrl(t.avatar_url) })),
       };
     }),
 

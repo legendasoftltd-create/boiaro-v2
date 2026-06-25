@@ -75,6 +75,13 @@ export function BookCard({ book, showFormats = true, showPrice = true, showRatin
             </Link>
           </div>
         )}
+        {(book as any).translator?.id && (book as any).translator?.name && (
+          <div className="flex items-center gap-1.5">
+            <Link to={`/translator/${(book as any).translator.id}`} onClick={(e) => e.stopPropagation()} className="text-[11px] md:text-xs text-muted-foreground line-clamp-1 hover:text-primary transition-colors">
+              Tr: {(book as any).translator.name}
+            </Link>
+          </div>
+        )}
         {(showRating && book.rating > 0) || (Number(book.totalReads) > 0) ? (
           <div className="flex items-center justify-between pt-0.5">
             {showRating && book.rating > 0 && (

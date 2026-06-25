@@ -62,6 +62,7 @@ homepageRestRouter.get("/:section", async (req: AuthenticatedRequest, res) => {
       allCategory: homepageData.allCategory,
       allAuthor: homepageData.allAuthor,
       allNarrators: homepageData.allNarrators,
+      allTranslators: homepageData.allTranslators,
       countsValue: homepageData.countsValue,
       newReleases: homepageData.NewReleases,
       freeBooks: homepageData.FreeBooks,

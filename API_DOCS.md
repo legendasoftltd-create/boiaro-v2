@@ -427,6 +427,7 @@ Roles can be: `user`, `writer`, `publisher`, `narrator`, `rj`, `moderator`, `adm
       "total_reads": 1500,
       "avg_rating": 4.5,
       "author": { "id": "uuid", "name": "রবীন্দ্রনাথ", "name_en": "Rabindranath", "avatar_url": null },
+      "translator": { "id": "uuid", "name": "অনুবাদক", "name_en": "Translator", "avatar_url": null },
       "publisher": { "id": "uuid", "name": "প্রকাশনী", "name_en": "Publisher", "logo_url": null },
       "category": { "id": "uuid", "name": "উপন্যাস", "slug": "novel" },
       "formats": [
@@ -464,7 +465,7 @@ Roles can be: `user`, `writer`, `publisher`, `narrator`, `rj`, `moderator`, `adm
 { "id": "uuid" }
 ```
 
-**Response:** Full book object with `author`, `publisher`, `category`, `formats` (including narrator details)
+**Response:** Full book object with `author`, `translator`, `publisher`, `category`, `formats` (including narrator details)
 
 **Errors:** `NOT_FOUND`
 
@@ -604,6 +605,22 @@ Call once when a user opens a book. Increments the book's `total_reads` counter.
 **Auth required:** No  
 **Input:** none  
 **Response:** Array of active authors ordered by priority
+
+---
+
+### `books.translators` — List translators
+
+**Auth required:** No  
+**Input:** none  
+**Response:** Array of active translators ordered by priority, each with `booksCount` (count of approved books where `translator_id` matches)
+
+---
+
+### `books.translatorById` — Get translator by ID
+
+**Auth required:** No  
+**Input:** `{ id: string }`  
+**Response:** Translator record (`id`, `name`, `name_en`, `avatar_url`, `bio`, `genre`, `is_featured`, `is_trending`, `priority`, `status`) plus `books: []` (approved books where `translator_id` matches). Returns `null` if not found.
 
 ---
 

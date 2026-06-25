@@ -22,6 +22,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         take: 200,
         include: {
             author: { select: { id: true, name: true, avatar_url: true } },
+            translator: { select: { id: true, name: true, avatar_url: true } },
             category: { select: { id: true, name: true, slug: true } },
             formats: {
                 where: { is_available: true },
@@ -75,6 +76,20 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     });
 
     const allNarrators = await prisma.narrator.findMany({
+        where: {
+            status: "active",
+        },
+        orderBy: [
+            {
+                priority: "desc",
+            },
+            {
+                created_at: "desc",
+            },
+        ],
+    });
+
+    const allTranslators = await prisma.translator.findMany({
         where: {
             status: "active",
         },
@@ -148,6 +163,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
             where: { id: { in: missingTrendingIds }, submission_status: "approved" },
             include: {
                 author: { select: { id: true, name: true, avatar_url: true } },
+                translator: { select: { id: true, name: true, avatar_url: true } },
                 category: { select: { id: true, name: true, slug: true } },
                 formats: { where: { is_available: true }, select: { format: true, price: true, in_stock: true } },
             },
@@ -308,6 +324,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         allCategory: allCategory.slice(0, takeLimit),
         allAuthor: allAuthor.slice(0, takeLimit).map(resolveUrls),
         allNarrators: allNarrators.slice(0, takeLimit).map(resolveUrls),
+        allTranslators: allTranslators.slice(0, takeLimit).map(resolveUrls),
         "countsValue": { counts, totalNarrators },
         "NewReleases": {
             "all": filterBooksByType(allBooks).slice(0, takeLimit),

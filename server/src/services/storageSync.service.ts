@@ -41,6 +41,7 @@ async function patchAllDbUrls(localUrl: string, s3Url: string): Promise<void> {
     // People
     prisma.author.updateMany({ where: { avatar_url: localUrl }, data: { avatar_url: s3Url } }),
     prisma.narrator.updateMany({ where: { avatar_url: localUrl }, data: { avatar_url: s3Url } }),
+    prisma.translator.updateMany({ where: { avatar_url: localUrl }, data: { avatar_url: s3Url } }),
     prisma.publisher.updateMany({ where: { logo_url: localUrl }, data: { logo_url: s3Url } }),
 
     // User profiles

@@ -22,8 +22,10 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     author,
     publisher,
     narrator,
+    translator,
     authorId,
     publisherId,
+    translatorId,
   } = input;
 
   const books = await prisma.book.findMany({
@@ -38,6 +40,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
       ...(isFree !== undefined && { is_free: isFree }),
       ...(language && { language }),
       ...((authorId || author) && { author_id: authorId ?? author }),
+      ...((translatorId || translator) && { translator_id: translatorId ?? translator }),
       ...((publisherId || publisher) && { publisher_id: publisherId ?? publisher }),
       ...(narrator && {
         formats: {
@@ -59,6 +62,17 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     orderBy: { created_at: "desc" },
     include: {
       author: {
+        select: {
+          id: true,
+          name: true,
+          name_en: true,
+          avatar_url: true,
+          bio: true,
+          genre: true,
+          is_featured: true,
+        },
+      },
+      translator: {
         select: {
           id: true,
           name: true,
@@ -160,6 +174,7 @@ export async function getBookById(id: string) {
       where: { id, submission_status: "approved", is_active: true },
       include: {
         author: true,
+        translator: true,
         publisher: true,
         category: true,
         formats: {
@@ -214,6 +229,9 @@ async function appendFollowedStatusToBookDetails(
     author: book.author
       ? { ...book.author, followed: followedProfileIds.has(book.author.id) }
       : null,
+    translator: book.translator
+      ? { ...book.translator, followed: followedProfileIds.has(book.translator.id) }
+      : null,
     publisher: book.publisher
       ? { ...book.publisher, followed: followedProfileIds.has(book.publisher.id) }
       : null,
@@ -229,6 +247,7 @@ async function getFollowedProfileIdsForBookDetails(
 
   const profileIds = new Set<string>();
   if (book.author?.id) profileIds.add(book.author.id);
+  if (book.translator?.id) profileIds.add(book.translator.id);
   if (book.publisher?.id) profileIds.add(book.publisher.id);
   for (const format of book.formats) {
     if (format.narrator?.id) profileIds.add(format.narrator.id);
@@ -261,6 +280,7 @@ export async function getBookBySlug(slug: string) {
     where: { slug, submission_status: "approved", is_active: true },
     include: {
       author: true,
+      translator: true,
       publisher: true,
       category: true,
       formats: {
@@ -457,6 +477,7 @@ export async function getUserBookmarks(userId: string) {
       book: {
         include: {
           author: { select: { id: true, name: true } },
+          translator: { select: { id: true, name: true } },
           formats: {
             where: { submission_status: "approved" },
             select: { id: true, format: true, price: true },

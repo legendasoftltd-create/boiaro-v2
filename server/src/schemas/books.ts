@@ -12,8 +12,10 @@ export const bookListSchema = z.object({
   author: z.string().optional(),
   publisher: z.string().optional(),
   narrator: z.string().optional(),
+  translator: z.string().optional(),
   authorId: z.string().optional(),
   publisherId: z.string().optional(),
+  translatorId: z.string().optional(),
 });
 
 export const bookByIdSchema = z.object({

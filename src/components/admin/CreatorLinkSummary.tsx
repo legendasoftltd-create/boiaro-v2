@@ -2,7 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Link2, User, BookOpen, Mic, Building2 } from "lucide-react";
+import { Link2, User, BookOpen, Mic, Building2, Languages } from "lucide-react";
 import { Link } from "react-router-dom";
 
 interface CreatorLink {
@@ -18,6 +18,7 @@ interface CreatorLinks {
   authors: CreatorLink[];
   publishers: CreatorLink[];
   narrators: CreatorLink[];
+  translators: CreatorLink[];
 }
 
 interface CreatorLinkSummaryProps {
@@ -30,7 +31,7 @@ export function CreatorLinkSummary({ userId }: CreatorLinkSummaryProps) {
     { enabled: !!userId, staleTime: 60_000 }
   );
 
-  const totalLinks = (links?.authors?.length || 0) + (links?.publishers?.length || 0) + (links?.narrators?.length || 0);
+  const totalLinks = (links?.authors?.length || 0) + (links?.publishers?.length || 0) + (links?.narrators?.length || 0) + (links?.translators?.length || 0);
 
   if (loading) return null;
   if (!links || totalLinks === 0) return null;
@@ -39,9 +40,10 @@ export function CreatorLinkSummary({ userId }: CreatorLinkSummaryProps) {
     author: BookOpen,
     publisher: Building2,
     narrator: Mic,
+    translator: Languages,
   };
 
-  const renderLinks = (items: CreatorLink[], type: "author" | "publisher" | "narrator") => {
+  const renderLinks = (items: CreatorLink[], type: "author" | "publisher" | "narrator" | "translator") => {
     if (!items.length) return null;
     const Icon = iconMap[type];
     return items.map((item) => (
@@ -86,6 +88,7 @@ export function CreatorLinkSummary({ userId }: CreatorLinkSummaryProps) {
         {renderLinks(links.authors, "author")}
         {renderLinks(links.publishers, "publisher")}
         {renderLinks(links.narrators, "narrator")}
+        {renderLinks(links.translators, "translator")}
       </CardContent>
     </Card>
   );

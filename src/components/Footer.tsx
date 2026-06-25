@@ -10,6 +10,7 @@ const quickLinks = [
   { label: "Hard Copies", href: "/#hardcopy" },
   { label: "Authors", href: "/authors" },
   { label: "Narrators", href: "/narrators" },
+  { label: "Translators", href: "/translators" },
   { label: "Categories", href: "/#categories" },
 ];
 
