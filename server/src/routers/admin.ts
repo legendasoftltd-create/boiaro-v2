@@ -256,6 +256,7 @@ export const adminRouter = router({
         description: z.string().optional().nullable(),
         description_bn: z.string().optional().nullable(),
         author_id: z.string().optional().nullable(),
+        translator_id: z.string().optional().nullable(),
         category_id: z.string().optional().nullable(),
         publisher_id: z.string().optional().nullable(),
         cover_url: z.string().optional().nullable(),
@@ -271,13 +272,14 @@ export const adminRouter = router({
       })
     )
     .mutation(({ ctx, input }) => {
-      const { id, author_id, category_id, publisher_id, published_date, ...data } = input;
+      const { id, author_id, translator_id, category_id, publisher_id, published_date, ...data } = input;
       const normalizedTags =
         data.tags === undefined ? undefined : data.tags === null ? [] : data.tags;
       const parsedPublishedDate = published_date ? new Date(published_date) : null;
 
       const relationData = {
         author: author_id ? { connect: { id: author_id } } : { disconnect: true },
+        translator: translator_id ? { connect: { id: translator_id } } : { disconnect: true },
         category: category_id ? { connect: { id: category_id } } : { disconnect: true },
         publisher: publisher_id ? { connect: { id: publisher_id } } : { disconnect: true },
       };
@@ -303,6 +305,7 @@ export const adminRouter = router({
           submitted_by: ctx.userId,
           ...(normalizedTags !== undefined ? { tags: normalizedTags } : {}),
           ...(author_id ? { author: { connect: { id: author_id } } } : {}),
+          ...(translator_id ? { translator: { connect: { id: translator_id } } } : {}),
           ...(category_id ? { category: { connect: { id: category_id } } } : {}),
           ...(publisher_id ? { publisher: { connect: { id: publisher_id } } } : {}),
         } as any,
