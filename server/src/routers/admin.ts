@@ -76,10 +76,11 @@ const HOMEPAGE_SECTION_DEFAULTS: Array<{
   { section_key: "categories", title: "ক্যাটাগরি", subtitle: "বিষয় অনুযায়ী বই খুঁজুন", is_enabled: true, sort_order: 15, display_source: null },
   { section_key: "authors", title: "জনপ্রিয় লেখক", subtitle: "আমাদের প্রিয় লেখকগণ", is_enabled: true, sort_order: 16, display_source: null },
   { section_key: "narrators", title: "জনপ্রিয় কথক", subtitle: null, is_enabled: true, sort_order: 17, display_source: null },
-  { section_key: "live_radio", title: "Live Radio", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 18, display_source: null },
-  { section_key: "blog", title: "ব্লগ ও আর্টিকেল", subtitle: "আমাদের সাম্প্রতিক লেখা", is_enabled: true, sort_order: 19, display_source: null },
-  { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 20, display_source: null },
-  { section_key: "category_sections", title: "ক্যাটাগরি সেকশন", subtitle: "বিভাগ অনুযায়ী বই", is_enabled: true, sort_order: 21, display_source: null },
+  { section_key: "translators", title: "জনপ্রিয় অনুবাদক", subtitle: null, is_enabled: true, sort_order: 18, display_source: null },
+  { section_key: "live_radio", title: "Live Radio", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 19, display_source: null },
+  { section_key: "blog", title: "ব্লগ ও আর্টিকেল", subtitle: "আমাদের সাম্প্রতিক লেখা", is_enabled: true, sort_order: 20, display_source: null },
+  { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 21, display_source: null },
+  { section_key: "category_sections", title: "ক্যাটাগরি সেকশন", subtitle: "বিভাগ অনুযায়ী বই", is_enabled: true, sort_order: 22, display_source: null },
 ];
 
 const APP_ROLE_VALUES = ["admin", "moderator", "user", "writer", "publisher", "narrator", "translator", "rj"] as const;
