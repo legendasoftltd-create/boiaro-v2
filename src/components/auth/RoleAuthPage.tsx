@@ -34,6 +34,7 @@ const ROLE_ROUTES: Record<string, string> = {
   writer: "/creator",
   publisher: "/creator",
   narrator: "/creator",
+  translator: "/creator",
   rj: "/rj",
   user: "/dashboard",
 }
@@ -85,7 +86,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
 
   const resolveRedirect = () => {
     const userRoles = (user?.roles as string[]) || []
-    const priority = ["admin", "publisher", "writer", "narrator", "rj"]
+    const priority = ["admin", "publisher", "writer", "narrator", "translator", "rj"]
 
     if (config.roleKey !== "user" && userRoles.includes(config.roleKey)) {
       navigate(ROLE_ROUTES[config.roleKey] || "/dashboard")

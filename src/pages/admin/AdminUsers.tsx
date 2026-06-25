@@ -108,7 +108,7 @@ export default function AdminUsers() {
 
   const stats = statsData ?? {
     total: activeUsers.length,
-    creators: activeUsers.filter((u) => u.roles.some((r) => ["writer", "publisher", "narrator"].includes(r))).length,
+    creators: activeUsers.filter((u) => u.roles.some((r) => ["writer", "publisher", "narrator", "translator"].includes(r))).length,
     verified: activeUsers.filter((u) => u.email_confirmed_at).length,
     deleted: deletedUsers.length,
   };
@@ -119,6 +119,7 @@ export default function AdminUsers() {
       writer: "bg-blue-500/20 text-blue-400",
       publisher: "bg-purple-500/20 text-purple-400",
       narrator: "bg-emerald-500/20 text-emerald-400",
+      translator: "bg-green-500/20 text-green-400",
       moderator: "bg-amber-500/20 text-amber-400",
       user: "bg-muted text-muted-foreground",
     };
@@ -434,6 +435,7 @@ export default function AdminUsers() {
               <SelectItem value="writer">Writer</SelectItem>
               <SelectItem value="publisher">Publisher</SelectItem>
               <SelectItem value="narrator">Narrator</SelectItem>
+              <SelectItem value="translator">Translator</SelectItem>
               <SelectItem value="admin">Admin</SelectItem>
             </SelectContent>
           </Select>

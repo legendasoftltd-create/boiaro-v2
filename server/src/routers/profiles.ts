@@ -262,7 +262,7 @@ export const profilesRouter = router({
 
   applyForRole: protectedProcedure
     .input(z.object({
-      role: z.enum(["writer", "publisher", "narrator", "rj"]),
+      role: z.enum(["writer", "publisher", "narrator", "rj", "translator"]),
       displayName: z.string().optional(),
       notes: z.string().optional(),
       portfolioUrl: z.string().optional(),

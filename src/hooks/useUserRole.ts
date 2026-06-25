@@ -1,8 +1,8 @@
 import { useAuth } from "@/contexts/AuthContext";
 
-export type AppRole = "admin" | "moderator" | "user" | "writer" | "publisher" | "narrator" | "rj";
+export type AppRole = "admin" | "moderator" | "user" | "writer" | "publisher" | "narrator" | "rj" | "translator";
 
-const PRIORITY: AppRole[] = ["admin", "publisher", "writer", "narrator", "rj", "moderator", "user"];
+const PRIORITY: AppRole[] = ["admin", "publisher", "writer", "narrator", "translator", "rj", "moderator", "user"];
 
 export function useUserRole() {
   const { user, loading } = useAuth();

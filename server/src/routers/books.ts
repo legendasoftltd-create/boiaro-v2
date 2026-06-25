@@ -375,6 +375,36 @@ export const booksRouter = router({
       return { ...author, books };
     }),
 
+  // Translators have no dedicated profile table — they're tracked as BookContributor
+  // rows (role: "translator") linked to a regular User/Profile, so the "id" here is a user_id.
+  translatorById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      const profile = await prisma.profile.findUnique({ where: { user_id: input.id } });
+      if (!profile) return null;
+
+      const contribs = await prisma.bookContributor.findMany({
+        where: { user_id: input.id, role: "translator" },
+        select: { book_id: true },
+      });
+      const bookIds = [...new Set(contribs.map((c) => c.book_id))];
+      const books = bookIds.length > 0
+        ? await prisma.book.findMany({
+            where: { id: { in: bookIds }, submission_status: "approved" },
+            select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
+            orderBy: { published_date: "desc" },
+          })
+        : [];
+
+      return {
+        id: input.id,
+        name: profile.display_name,
+        avatar_url: profile.avatar_url,
+        bio: profile.bio,
+        books,
+      };
+    }),
+
   publisherById: publicProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
@@ -710,8 +740,17 @@ export const booksRouter = router({
       const profileMap: Record<string, { display_name: string | null; avatar_url: string | null }> = {};
       profiles.forEach(p => { profileMap[p.user_id] = p; });
 
+      const translators = visibleContributors
+        .filter((c: any) => c.role === "translator")
+        .map((c) => ({
+          id: c.user_id,
+          name: profileMap[c.user_id]?.display_name ?? "Unknown",
+          avatar_url: profileMap[c.user_id]?.avatar_url ?? null,
+        }));
+
       return resolveBookUrls({
         ...book,
+        translators,
         contributors: visibleContributors.map((c) => ({
           ...c,
           display_name: profileMap[c.user_id]?.display_name ?? null,
@@ -747,12 +786,13 @@ export const booksRouter = router({
     }),
 
   myCreatorBooks: protectedProcedure
-    .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
+    .input(z.object({ role: z.enum(["writer", "narrator", "publisher", "translator"]) }))
     .query(async ({ ctx, input }) => {
       const formatByRole: Record<string, string> = {
         writer: "ebook",
         narrator: "audiobook",
         publisher: "hardcopy",
+        translator: "ebook",
       };
       const relevantFormat = formatByRole[input.role];
       const bookInclude = {

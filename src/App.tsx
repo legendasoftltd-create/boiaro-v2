@@ -44,6 +44,7 @@ const NarratorsPage = lazy(() => import("./pages/NarratorsPage.tsx"));
 const AuthorProfile = lazy(() => import("./pages/AuthorProfile.tsx"));
 const NarratorProfile = lazy(() => import("./pages/NarratorProfile.tsx"));
 const PublisherProfile = lazy(() => import("./pages/PublisherProfile.tsx"));
+const TranslatorProfile = lazy(() => import("./pages/TranslatorProfile.tsx"));
 const CmsPage = lazy(() => import("./pages/CmsPage.tsx"));
 const BlogList = lazy(() => import("./pages/BlogList.tsx"));
 const BlogPost = lazy(() => import("./pages/BlogPost.tsx"));
@@ -228,6 +229,7 @@ const App = () => {
                 <Route path="/author/:id" element={<AuthorProfile />} />
                 <Route path="/narrator/:id" element={<NarratorProfile />} />
                 <Route path="/publisher/:id" element={<PublisherProfile />} />
+                <Route path="/translator/:id" element={<TranslatorProfile />} />
                 <Route path="/checkout" element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
                 <Route path="/orders" element={<ProtectedRoute><Orders /></ProtectedRoute>} />
                 <Route path="/apply" element={<CreatorApply />} />
@@ -327,7 +329,7 @@ const App = () => {
                 </Route>
 
                 {/* Creator Panel */}
-                <Route path="/creator" element={<ProtectedRoute requiredRole={["writer", "publisher", "narrator"]} loginPath="/creator-auth" deniedPath="/"><CreatorLayout /></ProtectedRoute>}>
+                <Route path="/creator" element={<ProtectedRoute requiredRole={["writer", "publisher", "narrator", "translator"]} loginPath="/creator-auth" deniedPath="/"><CreatorLayout /></ProtectedRoute>}>
                   <Route index element={<CreatorDashboard />} />
                   <Route path="books" element={<CreatorBooks />} />
                   <Route path="audiobooks" element={<NarratorAudiobooks />} />

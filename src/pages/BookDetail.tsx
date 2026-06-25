@@ -30,7 +30,7 @@ function normalizeFileSize(raw: string | null | undefined): string {
   return raw;
 }
 
-function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterBook & { allNarrators: Narrator[] }; audioTracks: AudioTrack[] } {
+function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterBook & { allNarrators: Narrator[]; translators: { id: string; name: string; avatar: string }[] }; audioTracks: AudioTrack[] } {
   const author: Author = dbBook.author ? {
     id: dbBook.author_id || "",
     name: dbBook.author.name || "",
@@ -233,6 +233,11 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     isFree: dbBook.is_free || false,
     formats: bookFormats,
     allNarrators,
+    translators: (dbBook.translators || []).map((t: any) => ({
+      id: t.id,
+      name: t.name,
+      avatar: toMediaUrl(t.avatar_url) || "",
+    })),
   }
 
   return { book, audioTracks }
