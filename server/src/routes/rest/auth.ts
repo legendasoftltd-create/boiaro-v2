@@ -15,6 +15,7 @@ import { prisma } from "../../lib/prisma.js";
 import { signTokens } from "../../lib/auth.js";
 import { sendMail } from "../../lib/mailer.js";
 import { sendOtpSms, normalizeBdPhone } from "../../lib/sms.js";
+import { verifyAppleIdToken, findOrCreateAppleUser } from "../../lib/appleAuth.js";
 
 export const authRestRouter = Router();
 
@@ -494,6 +495,47 @@ authRestRouter.post("/social/facebook", async (req, res) => {
     sendHttpError(res, error);
   }
 });
+
+async function handleAppleLogin(req: import("express").Request, res: Response) {
+  try {
+    const idToken = req.body?.id_token ?? req.body?.idToken;
+    if (!idToken || typeof idToken !== "string") {
+      res.status(400).json({ error: "Missing idToken" });
+      return;
+    }
+
+    const identity = await verifyAppleIdToken(idToken);
+    const firstname = req.body?.firstname as string | undefined;
+    const lastname = req.body?.lastname as string | undefined;
+    const username = req.body?.username as string | undefined;
+    const fallbackName =
+      [firstname, lastname].filter(Boolean).join(" ").trim() || username || null;
+
+    const user = await findOrCreateAppleUser(identity, fallbackName);
+
+    if (user.profile?.deleted_at) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
+    }
+    if (user.profile?.is_active === false) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
+    }
+
+    const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } = signTokens(user.id, user.email);
+    sendSocialLoginResponse(
+      res,
+      { id: user.id, email: user.email, roles: user.roles.map((r) => r.role), profile: user.profile },
+      jwtAccessToken,
+      jwtRefreshToken
+    );
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+}
+
+authRestRouter.post("/social/apple", handleAppleLogin);
+
+// Legacy alias for older clients
+authRestRouter.post("/apple", handleAppleLogin);
 
 authRestRouter.post("/facebook", async (req, res) => {
   try {

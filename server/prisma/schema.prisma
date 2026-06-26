@@ -49,6 +49,9 @@ model User {
   updated_at          DateTime  @updatedAt
   reset_otp           String?
   reset_otp_expires   DateTime?
+  // Apple's `sub` claim — the only stable identifier across logins, since Apple
+  // omits email/name from the client payload after the first authorization.
+  apple_id            String?   @unique
 
   profile   Profile?
   roles     UserRole[]

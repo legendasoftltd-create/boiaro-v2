@@ -13,6 +13,7 @@ import {
 } from "../services/auth.service.js";
 import { sendNotificationEmail } from "../lib/mailer.js";
 import { sendOtpSms, normalizeBdPhone } from "../lib/sms.js";
+import { verifyAppleIdToken, findOrCreateAppleUser } from "../lib/appleAuth.js";
 
 function generateReferralCode() {
   return crypto.randomBytes(4).toString("hex").toUpperCase();
@@ -277,6 +278,35 @@ export const authRouter = router({
           include: { profile: true, roles: true },
         });
       }
+
+      if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
+      if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
+
+      const { accessToken, refreshToken } = signTokens(user.id, user.email);
+      return {
+        accessToken,
+        refreshToken,
+        user: { id: user.id, email: user.email, roles: user.roles.map((r) => r.role), profile: user.profile },
+      };
+    }),
+
+  signInWithApple: publicProcedure
+    .input(
+      z.object({
+        idToken: z.string().min(1),
+        firstname: z.string().optional(),
+        lastname: z.string().optional(),
+        username: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const identity = await verifyAppleIdToken(input.idToken);
+      const fallbackName =
+        [input.firstname, input.lastname].filter(Boolean).join(" ").trim() ||
+        input.username ||
+        null;
+
+      const user = await findOrCreateAppleUser(identity, fallbackName);
 
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
