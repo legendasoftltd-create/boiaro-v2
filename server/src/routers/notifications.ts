@@ -59,4 +59,28 @@ export const notificationsRouter = router({
         update: input,
       })
     ),
+
+  // Register a push token (FCM for mobile/native, Firebase Web Push for browsers).
+  registerPushToken: protectedProcedure
+    .input(
+      z.object({
+        token: z.string().min(1),
+        platform: z.enum(["android", "ios", "web"]).default("web"),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      prisma.devicePushToken.upsert({
+        where: { user_id_token: { user_id: ctx.userId, token: input.token } },
+        create: { user_id: ctx.userId, token: input.token, platform: input.platform },
+        update: { platform: input.platform, updated_at: new Date() },
+      })
+    ),
+
+  unregisterPushToken: protectedProcedure
+    .input(z.object({ token: z.string().min(1) }))
+    .mutation(({ ctx, input }) =>
+      prisma.devicePushToken.deleteMany({
+        where: { user_id: ctx.userId, token: input.token },
+      })
+    ),
 });

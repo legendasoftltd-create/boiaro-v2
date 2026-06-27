@@ -71,7 +71,7 @@ notificationsRestRouter.post("/register-token", requireAuth, async (req: Authent
       return;
     }
 
-    const validPlatforms = ["android", "ios"];
+    const validPlatforms = ["android", "ios", "web"];
     const safePlatform = validPlatforms.includes(platform) ? platform : "android";
 
     await (prisma as any).devicePushToken.upsert({

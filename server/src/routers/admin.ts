@@ -2240,13 +2240,22 @@ export const adminRouter = router({
         where: { key: "firebase_push_enabled" },
       });
       const pushEnabled = pushEnabledRow?.value !== "false";
-      const tokenRows = pushEnabled
-        ? await (prisma as any).devicePushToken.findMany({
-            where: { user_id: { in: userIds } },
-            select: { token: true },
-          })
-        : [];
-      const tokens: string[] = tokenRows.map((r: any) => r.token);
+      let tokens: string[] = [];
+      if (pushEnabled) {
+        const optedOutRows = await prisma.notificationPreference.findMany({
+          where: { user_id: { in: userIds }, push_enabled: false },
+          select: { user_id: true },
+        });
+        const optedOutIds = new Set(optedOutRows.map((r) => r.user_id));
+        const eligibleUserIds = userIds.filter((id) => !optedOutIds.has(id));
+        const tokenRows = eligibleUserIds.length
+          ? await (prisma as any).devicePushToken.findMany({
+              where: { user_id: { in: eligibleUserIds } },
+              select: { token: true },
+            })
+          : [];
+        tokens = tokenRows.map((r: any) => r.token);
+      }
       const pushSent = await sendPushToTokens(tokens, {
         title: notification.title,
         message: notification.message,
@@ -2576,13 +2585,29 @@ export const adminRouter = router({
 
   // ── Firebase Push Settings ──────────────────────────────────────────────────
   getFirebaseSettings: adminProcedure.query(async () => {
-    const rows = await prisma.platformSetting.findMany({
-      where: { key: { in: ["firebase_service_account_json", "firebase_push_enabled"] } },
-    });
+    const keys = [
+      "firebase_service_account_json",
+      "firebase_push_enabled",
+      "firebase_web_api_key",
+      "firebase_web_auth_domain",
+      "firebase_web_project_id",
+      "firebase_web_storage_bucket",
+      "firebase_web_messaging_sender_id",
+      "firebase_web_app_id",
+      "firebase_web_vapid_key",
+    ];
+    const rows = await prisma.platformSetting.findMany({ where: { key: { in: keys } } });
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     return {
       service_account_json: map["firebase_service_account_json"] ?? "",
       push_enabled: map["firebase_push_enabled"] !== "false",
+      web_api_key: map["firebase_web_api_key"] ?? "",
+      web_auth_domain: map["firebase_web_auth_domain"] ?? "",
+      web_project_id: map["firebase_web_project_id"] ?? "",
+      web_storage_bucket: map["firebase_web_storage_bucket"] ?? "",
+      web_messaging_sender_id: map["firebase_web_messaging_sender_id"] ?? "",
+      web_app_id: map["firebase_web_app_id"] ?? "",
+      web_vapid_key: map["firebase_web_vapid_key"] ?? "",
     };
   }),
 
@@ -2591,21 +2616,36 @@ export const adminRouter = router({
       z.object({
         service_account_json: z.string(),
         push_enabled: z.boolean().default(true),
+        web_api_key: z.string().optional(),
+        web_auth_domain: z.string().optional(),
+        web_project_id: z.string().optional(),
+        web_storage_bucket: z.string().optional(),
+        web_messaging_sender_id: z.string().optional(),
+        web_app_id: z.string().optional(),
+        web_vapid_key: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      await Promise.all([
-        prisma.platformSetting.upsert({
-          where: { key: "firebase_service_account_json" },
-          create: { key: "firebase_service_account_json", value: input.service_account_json },
-          update: { value: input.service_account_json },
-        }),
-        prisma.platformSetting.upsert({
-          where: { key: "firebase_push_enabled" },
-          create: { key: "firebase_push_enabled", value: String(input.push_enabled) },
-          update: { value: String(input.push_enabled) },
-        }),
-      ]);
+      const entries: [string, string][] = [
+        ["firebase_service_account_json", input.service_account_json],
+        ["firebase_push_enabled", String(input.push_enabled)],
+        ["firebase_web_api_key", input.web_api_key ?? ""],
+        ["firebase_web_auth_domain", input.web_auth_domain ?? ""],
+        ["firebase_web_project_id", input.web_project_id ?? ""],
+        ["firebase_web_storage_bucket", input.web_storage_bucket ?? ""],
+        ["firebase_web_messaging_sender_id", input.web_messaging_sender_id ?? ""],
+        ["firebase_web_app_id", input.web_app_id ?? ""],
+        ["firebase_web_vapid_key", input.web_vapid_key ?? ""],
+      ];
+      await Promise.all(
+        entries.map(([key, value]) =>
+          prisma.platformSetting.upsert({
+            where: { key },
+            create: { key, value },
+            update: { value },
+          })
+        )
+      );
       invalidateFirebaseCache();
       return { success: true };
     }),

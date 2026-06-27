@@ -32,6 +32,7 @@ import { chaptersRestRouter } from "./chapters.js";
 import { adsRestRouter } from "./ads.js";
 import { gamificationRestRouter } from "./gamification.js";
 import { referralRestRouter } from "./referral.js";
+import { pushRestRouter } from "./push.js";
 
 export const restRouter = Router();
 
@@ -56,6 +57,7 @@ restRouter.use("/coin-packages", coinPackagesRestRouter);
 restRouter.use("/library", libraryRestRouter);
 restRouter.use("/subscriptions", subscriptionsRestRouter);
 restRouter.use("/notifications", notificationsRestRouter);
+restRouter.use("/push", pushRestRouter);
 restRouter.use("/orders", ordersRestRouter);
 restRouter.use("/payments", paymentsRestRouter);
 restRouter.use("/shipping", shippingRestRouter);

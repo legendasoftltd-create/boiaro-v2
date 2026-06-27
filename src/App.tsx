@@ -18,6 +18,7 @@ const GlobalAudiobookPaywall = lazy(() => import("@/components/audio-player/Glob
 const CartDrawer = lazy(() => import("@/components/cart/CartDrawer").then(m => ({ default: m.CartDrawer })));
 const RoleApplicationSubmitter = lazy(() => import("@/components/RoleApplicationSubmitter").then(m => ({ default: m.RoleApplicationSubmitter })));
 const PresenceTracker = lazy(() => import("@/components/PresenceTracker").then(m => ({ default: m.PresenceTracker })));
+const PushNotificationManager = lazy(() => import("@/components/PushNotificationManager").then(m => ({ default: m.PushNotificationManager })));
 const BandwidthReporter = lazy(() => import("@/components/BandwidthReporter").then(m => ({ default: m.BandwidthReporter })));
 const DailyLoginReward = lazy(() => import("@/components/DailyLoginReward").then(m => ({ default: m.DailyLoginReward })));
 
@@ -209,6 +210,7 @@ const App = () => {
             <AudioPlayerProvider>
               <Suspense fallback={null}><RoleApplicationSubmitter /></Suspense>
               <Suspense fallback={null}><PresenceTracker /></Suspense>
+              <Suspense fallback={null}><PushNotificationManager /></Suspense>
               <Suspense fallback={null}><BandwidthReporter /></Suspense>
               <Suspense fallback={null}><DailyLoginReward /></Suspense>
               <Suspense fallback={<PageLoader />}>

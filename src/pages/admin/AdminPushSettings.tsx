@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bell, CheckCircle, XCircle, Loader2, TestTube, Save, Eye, EyeOff } from "lucide-react";
+import { Bell, CheckCircle, XCircle, Loader2, TestTube, Save, Eye, EyeOff, Globe } from "lucide-react";
 import { toast } from "sonner";
 
 export default function AdminPushSettings() {
@@ -19,6 +20,13 @@ export default function AdminPushSettings() {
   const [form, setForm] = useState({
     service_account_json: "",
     push_enabled: true,
+    web_api_key: "",
+    web_auth_domain: "",
+    web_project_id: "",
+    web_storage_bucket: "",
+    web_messaging_sender_id: "",
+    web_app_id: "",
+    web_vapid_key: "",
   });
 
   const { data, isLoading } = trpc.admin.getFirebaseSettings.useQuery();
@@ -28,6 +36,13 @@ export default function AdminPushSettings() {
       setForm({
         service_account_json: data.service_account_json ?? "",
         push_enabled: data.push_enabled ?? true,
+        web_api_key: data.web_api_key ?? "",
+        web_auth_domain: data.web_auth_domain ?? "",
+        web_project_id: data.web_project_id ?? "",
+        web_storage_bucket: data.web_storage_bucket ?? "",
+        web_messaging_sender_id: data.web_messaging_sender_id ?? "",
+        web_app_id: data.web_app_id ?? "",
+        web_vapid_key: data.web_vapid_key ?? "",
       });
     }
   }, [data]);
@@ -188,17 +203,62 @@ export default function AdminPushSettings() {
         </CardContent>
       </Card>
 
+      {/* Web push config card */}
+      <Card className="border-border/40">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Globe className="w-4 h-4" /> Web Push (Browser) Config
+          </CardTitle>
+          <CardDescription>
+            From <span className="font-mono text-xs">Firebase Console → Project Settings → General → Your apps → Web app</span>.
+            If no web app exists yet, click "Add app" → Web (the {"</>"} icon) — no domain verification needed.
+            The VAPID key is under <span className="font-mono text-xs">Cloud Messaging tab → Web configuration → Generate key pair</span>.
+            These are all public/client-safe values (not secrets).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">API Key</Label>
+              <Input value={form.web_api_key} onChange={(e) => setForm((f) => ({ ...f, web_api_key: e.target.value }))} className="font-mono text-xs h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Auth Domain</Label>
+              <Input value={form.web_auth_domain} onChange={(e) => setForm((f) => ({ ...f, web_auth_domain: e.target.value }))} placeholder="boiaro.firebaseapp.com" className="font-mono text-xs h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Project ID</Label>
+              <Input value={form.web_project_id} onChange={(e) => setForm((f) => ({ ...f, web_project_id: e.target.value }))} placeholder="boiaro" className="font-mono text-xs h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Storage Bucket</Label>
+              <Input value={form.web_storage_bucket} onChange={(e) => setForm((f) => ({ ...f, web_storage_bucket: e.target.value }))} placeholder="boiaro.appspot.com" className="font-mono text-xs h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Messaging Sender ID</Label>
+              <Input value={form.web_messaging_sender_id} onChange={(e) => setForm((f) => ({ ...f, web_messaging_sender_id: e.target.value }))} className="font-mono text-xs h-9" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">App ID</Label>
+              <Input value={form.web_app_id} onChange={(e) => setForm((f) => ({ ...f, web_app_id: e.target.value }))} placeholder="1:123:web:abc" className="font-mono text-xs h-9" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">VAPID Key (Web Push certificate public key)</Label>
+            <Input value={form.web_vapid_key} onChange={(e) => setForm((f) => ({ ...f, web_vapid_key: e.target.value }))} className="font-mono text-xs h-9" />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Instructions */}
       <Card className="border-border/40 bg-secondary/20">
         <CardContent className="p-4 space-y-3 text-sm">
-          <p className="font-medium">Mobile app integration checklist</p>
-          <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground text-xs">
-            <li>Add <span className="font-mono">google-services.json</span> (Android) or <span className="font-mono">GoogleService-Info.plist</span> (iOS) to the mobile app</li>
-            <li>On app launch, request push permission from the OS</li>
-            <li>Get the FCM token from Firebase SDK (<span className="font-mono">getToken()</span>)</li>
-            <li>Call <span className="font-mono">POST /api/v1/notifications/register-token</span> with the token</li>
-            <li>On logout, call <span className="font-mono">DELETE /api/v1/notifications/register-token</span></li>
-          </ol>
+          <p className="font-medium">How delivery works now</p>
+          <ul className="list-disc list-inside space-y-1.5 text-muted-foreground text-xs">
+            <li><b>Web (browser):</b> handled automatically once the fields above are saved — users opt in via the bell toggle on Notification Settings, no app rebuild needed.</li>
+            <li><b>Native mobile (Capacitor app):</b> requires <span className="font-mono">google-services.json</span> (Android) / <span className="font-mono">GoogleService-Info.plist</span> (iOS) added to the native project at build time, then <span className="font-mono">npx cap sync</span> — registration code is already wired in.</li>
+            <li>Both register through the same token store and receive the same admin-sent notifications.</li>
+          </ul>
         </CardContent>
       </Card>
     </div>

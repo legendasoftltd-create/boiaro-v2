@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Bell, Mail, Megaphone, ShoppingCart, HeadphonesIcon, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 interface Preferences {
   push_enabled: boolean;
@@ -30,6 +31,7 @@ const defaults: Preferences = {
 export default function NotificationSettings() {
   const { user } = useAuth();
   const [prefs, setPrefs] = useState<Preferences>(defaults);
+  const { enablePush, disablePush } = usePushNotifications();
 
   const { data, isLoading } = trpc.notifications.preferences.useQuery(undefined, { enabled: !!user });
   const updateMutation = trpc.notifications.updatePreferences.useMutation({
@@ -83,7 +85,20 @@ export default function NotificationSettings() {
                 </div>
                 <Switch
                   checked={prefs[t.key]}
-                  onCheckedChange={(v) => setPrefs({ ...prefs, [t.key]: v })}
+                  onCheckedChange={async (v) => {
+                    if (t.key === "push_enabled") {
+                      if (v) {
+                        const ok = await enablePush();
+                        if (!ok) {
+                          toast.error("পুশ নোটিফিকেশন চালু করা যায়নি — ব্রাউজার পারমিশন দেননি বা সাপোর্ট নেই");
+                          return;
+                        }
+                      } else {
+                        disablePush();
+                      }
+                    }
+                    setPrefs({ ...prefs, [t.key]: v });
+                  }}
                   disabled={isLoading}
                 />
               </div>
