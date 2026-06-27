@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
-import { Send, HelpCircle } from "lucide-react";
+import { Send, HelpCircle, MessageSquare, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { trpc } from "@/lib/trpc";
 
@@ -29,13 +29,21 @@ export default function SupportPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ subject: "", category: "general", message: "" });
 
+  const utils = trpc.useUtils();
+  const { data: myTickets = [] } = trpc.profiles.myTickets.useQuery(undefined, { enabled: !!user });
+
   const createTicketMutation = trpc.profiles.createTicket.useMutation({
     onSuccess: () => {
       toast({ title: "টিকেট সাবমিট হয়েছে", description: "আমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।" });
-      navigate("/dashboard");
+      setForm({ subject: "", category: "general", message: "" });
+      utils.profiles.myTickets.invalidate();
     },
     onError: (e) => toast({ title: "ত্রুটি", description: e.message, variant: "destructive" }),
   });
+
+  const statusLabel: Record<string, string> = {
+    open: "খোলা", in_progress: "প্রক্রিয়াধীন", resolved: "সমাধান হয়েছে", closed: "বন্ধ",
+  };
 
   if (!user) {
     return (
@@ -89,6 +97,33 @@ export default function SupportPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {myTickets.length > 0 && (
+          <Card className="bg-card/80 border-border/40 mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg font-serif">
+                <MessageSquare className="h-5 w-5 text-primary" />আমার টিকেটসমূহ
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {myTickets.map((t: any) => (
+                <button
+                  key={t.id}
+                  onClick={() => navigate(`/support/tickets/${t.id}`)}
+                  className="w-full text-left flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-secondary/40 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{t.subject}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t.ticket_number} · {statusLabel[t.status] || t.status} · {t.replies_count} রিপ্লাই
+                    </p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </main>
       <Footer />
     </div>

@@ -51,6 +51,7 @@ const CmsPage = lazy(() => import("./pages/CmsPage.tsx"));
 const BlogList = lazy(() => import("./pages/BlogList.tsx"));
 const BlogPost = lazy(() => import("./pages/BlogPost.tsx"));
 const SupportPage = lazy(() => import("./pages/SupportPage.tsx"));
+const SupportTicketDetail = lazy(() => import("./pages/SupportTicketDetail.tsx"));
 const RewardCenter = lazy(() => import("./pages/RewardCenter.tsx"));
 const WalletPage = lazy(() => import("./pages/WalletPage.tsx"));
 const CoinStore = lazy(() => import("./pages/CoinStore.tsx"));
@@ -251,6 +252,7 @@ const App = () => {
                 <Route path="/blog" element={<BlogList />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
                 <Route path="/support" element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
+                <Route path="/support/tickets/:id" element={<ProtectedRoute><SupportTicketDetail /></ProtectedRoute>} />
                 <Route path="/rewards" element={<ProtectedRoute><RewardCenter /></ProtectedRoute>} />
                 <Route path="/wallet" element={<ProtectedRoute><WalletPage /></ProtectedRoute>} />
                 <Route path="/coin-store" element={<ProtectedRoute><CoinStore /></ProtectedRoute>} />

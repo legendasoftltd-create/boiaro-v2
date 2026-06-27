@@ -33,6 +33,7 @@ import { adsRestRouter } from "./ads.js";
 import { gamificationRestRouter } from "./gamification.js";
 import { referralRestRouter } from "./referral.js";
 import { pushRestRouter } from "./push.js";
+import { supportRestRouter } from "./support.js";
 
 export const restRouter = Router();
 
@@ -58,6 +59,7 @@ restRouter.use("/library", libraryRestRouter);
 restRouter.use("/subscriptions", subscriptionsRestRouter);
 restRouter.use("/notifications", notificationsRestRouter);
 restRouter.use("/push", pushRestRouter);
+restRouter.use("/support", supportRestRouter);
 restRouter.use("/orders", ordersRestRouter);
 restRouter.use("/payments", paymentsRestRouter);
 restRouter.use("/shipping", shippingRestRouter);

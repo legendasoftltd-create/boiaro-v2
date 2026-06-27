@@ -307,6 +307,75 @@ export const profilesRouter = router({
       })
     ),
 
+  myTickets: protectedProcedure.query(async ({ ctx }) => {
+    const tickets = await prisma.supportTicket.findMany({
+      where: { user_id: ctx.userId },
+      orderBy: { created_at: "desc" },
+      include: { replies: { select: { id: true } } },
+    });
+    return tickets.map((t) => ({
+      ...t,
+      ticket_number: `TKT-${t.id.slice(0, 8).toUpperCase()}`,
+      replies_count: t.replies.length,
+    }));
+  }),
+
+  getTicketDetail: protectedProcedure
+    .input(z.object({ ticketId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const ticket = await prisma.supportTicket.findFirst({
+        where: { id: input.ticketId, user_id: ctx.userId },
+      });
+      if (!ticket) throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+
+      const replies = await prisma.ticketReply.findMany({
+        where: { ticket_id: ticket.id },
+        orderBy: { created_at: "asc" },
+      });
+
+      return {
+        ...ticket,
+        ticket_number: `TKT-${ticket.id.slice(0, 8).toUpperCase()}`,
+        replies: replies
+          // Internal admin notes are never shown to the ticket owner.
+          .filter((r) => !(r.is_staff && r.message.startsWith("[Internal] ")))
+          .map((r) => ({
+            id: r.id,
+            message: r.message,
+            is_staff: r.is_staff,
+            created_at: r.created_at,
+          })),
+      };
+    }),
+
+  replyToTicket: protectedProcedure
+    .input(z.object({ ticketId: z.string(), message: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const ticket = await prisma.supportTicket.findFirst({
+        where: { id: input.ticketId, user_id: ctx.userId },
+      });
+      if (!ticket) throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+
+      const reply = await prisma.ticketReply.create({
+        data: {
+          ticket_id: ticket.id,
+          user_id: ctx.userId,
+          message: input.message,
+          is_staff: false,
+        },
+      });
+
+      // A user reply to a resolved/closed ticket reopens it for staff attention.
+      if (ticket.status === "resolved" || ticket.status === "closed") {
+        await prisma.supportTicket.update({
+          where: { id: ticket.id },
+          data: { status: "open" },
+        });
+      }
+
+      return reply;
+    }),
+
   creatorStats: protectedProcedure
     .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
     .query(async ({ ctx, input }) => {

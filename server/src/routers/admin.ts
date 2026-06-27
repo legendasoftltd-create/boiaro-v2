@@ -9,6 +9,7 @@ import { resolveFileUrl } from "../lib/mediaUrl.js";
 import { sendMail, sendNotificationEmail, testSmtpConnection } from "../lib/mailer.js";
 import { sendSslWirelessSms } from "../lib/sms.js";
 import { sendPushToTokens, testFirebaseCredentials, invalidateFirebaseCache } from "../lib/firebase.js";
+import { notifyUser } from "../lib/notify.js";
 import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClipsForFormat } from "../lib/audioPreview.js";
@@ -2428,16 +2429,35 @@ export const adminRouter = router({
         isInternal: z.boolean().default(false),
       })
     )
-    .mutation(({ input }) =>
-      prisma.ticketReply.create({
+    .mutation(async ({ input }) => {
+      const reply = await prisma.ticketReply.create({
         data: {
           ticket_id: input.ticketId,
           user_id: input.userId,
           message: input.isInternal ? `[Internal] ${input.message}` : input.message,
           is_staff: true,
         },
-      })
-    ),
+      });
+
+      // Notify the ticket owner — internal notes are staff-only and never sent.
+      if (!input.isInternal) {
+        const ticket = await prisma.supportTicket.findUnique({
+          where: { id: input.ticketId },
+          select: { user_id: true, subject: true },
+        });
+        if (ticket) {
+          await notifyUser(ticket.user_id, {
+            title: "আপনার সাপোর্ট টিকেটে রিপ্লাই এসেছে",
+            message: `"${ticket.subject}" — ${input.message}`,
+            type: "support",
+            link: `/support/tickets/${input.ticketId}`,
+            preferenceKey: "support_enabled",
+          });
+        }
+      }
+
+      return reply;
+    }),
 
   listEmailTemplates: adminProcedure.query(async () => {
     const rows = await prisma.emailTemplate.findMany({ orderBy: { created_at: "asc" } });
