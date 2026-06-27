@@ -68,13 +68,13 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
     // Infer per-chapter pricing from whether tracks have an individual coin OR taka price
     const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0 || (t.chapter_taka_price ?? 0) > 0);
 
-    // A book is entirely free if the is_free flag is set, or — when it's not using
-    // per-chapter pricing — the whole-book price is 0 taka AND 0 coins (or null).
-    // (In per-chapter mode the whole-book price/coin_price are legitimately 0/null,
-    // so they can't be used to infer the book is free.)
+    // A book is entirely free if it's not using per-chapter pricing AND either the
+    // is_free flag is set, or the whole-book price is 0 taka AND 0 coins (or null).
+    // Explicit per-chapter pricing always wins over the book-level is_free flag —
+    // otherwise a book-level toggle silently unlocks chapters an admin priced individually.
     const isEntirelyFree =
-      bookFormat.book?.is_free === true ||
-      (!hasPerChapterPricing && (bookFormat.price ?? 0) === 0 && (bookFormat.coin_price ?? 0) === 0);
+      !hasPerChapterPricing &&
+      (bookFormat.book?.is_free === true || ((bookFormat.price ?? 0) === 0 && (bookFormat.coin_price ?? 0) === 0));
 
     let unlockedTrackIds = new Set<string>();
     if (userId) {

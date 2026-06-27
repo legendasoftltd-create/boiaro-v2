@@ -33,9 +33,18 @@ export const contentRouter = router({
       });
       const formatRecord = await prisma.bookFormat.findFirst({
         where: { book_id: bookId, format: contentType, submission_status: "approved" },
-        select: { price: true, file_url: true, preview_percentage: true },
+        select: {
+          price: true,
+          file_url: true,
+          preview_percentage: true,
+          audiobook_tracks: contentType === "audiobook" ? { select: { chapter_price: true, chapter_taka_price: true } } : false,
+        },
       });
-      const isFreeContent = Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0;
+      // Per-chapter pricing always wins over the book-level is_free flag / format price.
+      const hasChapterPricing = (formatRecord as any)?.audiobook_tracks?.some(
+        (t: any) => Number(t.chapter_price ?? 0) > 0 || Number(t.chapter_taka_price ?? 0) > 0
+      );
+      const isFreeContent = !hasChapterPricing && (Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0);
 
       // Check access: coin unlock, purchase, or subscription
       const coinUnlock = isFreeContent ? null : await prisma.contentUnlock.findFirst({
@@ -128,7 +137,9 @@ export const contentRouter = router({
         }),
       ]);
 
-      const isFreeContent = Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0;
+      // Per-chapter pricing always wins over the book-level is_free flag / format price.
+      const hasChapterPricing = tracks.some((t) => Number(t.chapter_price ?? 0) > 0 || Number(t.chapter_taka_price ?? 0) > 0);
+      const isFreeContent = !hasChapterPricing && (Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0);
 
       // Whole-book entitlement: full coin unlock, active subscription, or active purchase.
       // (Per-chapter coin unlocks are checked individually below, same as getSignedUrl.)

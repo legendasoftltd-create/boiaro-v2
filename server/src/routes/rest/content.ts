@@ -137,8 +137,10 @@ contentRestRouter.get("/secure-audio/:trackId", async (req: AuthenticatedRequest
             where: { user_id: userId, book_id: bookId, format: `audiobook_chapter_${trackId}`, status: "active" },
           })
         : null;
-      // Check if book is free for the user (via subscription or book flag)
-      const book = !fullUnlock && !chapterUnlock
+      // Check if book is free for the user (via subscription or book flag) — but the
+      // book-level flag never overrides a chapter that has its own explicit price.
+      const hasChapterPrice = Number(track.chapter_price ?? 0) > 0;
+      const book = !fullUnlock && !chapterUnlock && !hasChapterPrice
         ? await prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } })
         : null;
 

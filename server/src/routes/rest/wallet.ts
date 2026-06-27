@@ -190,7 +190,8 @@ walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, 
         res.status(404).json({ error: "Chapter not found" });
         return;
       }
-      if (track.is_preview || Boolean(book?.is_free)) {
+      const hasChapterPrice = Number(track.chapter_price ?? 0) > 0;
+      if (track.is_preview || (!hasChapterPrice && Boolean(book?.is_free))) {
         res.status(400).json({ error: "Chapter is free — no coin unlock needed" });
         return;
       }

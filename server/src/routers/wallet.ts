@@ -457,10 +457,11 @@ export const walletRouter = router({
         if (track.book_format.book_id !== bookId) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Chapter does not belong to this book" });
         }
-        const isFormatFree = Number(track.book_format.price ?? 0) <= 0;
+        const hasChapterPrice = Number(track.chapter_price ?? 0) > 0;
+        const isFormatFree = !hasChapterPrice && Number(track.book_format.price ?? 0) <= 0;
         const book = await prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } });
-        if (Boolean(book?.is_free) || isFormatFree || track.is_preview) {
-          coinCost = 0; // book is free or chapter is a preview — always free
+        if (track.is_preview || (!hasChapterPrice && (Boolean(book?.is_free) || isFormatFree))) {
+          coinCost = 0; // chapter is a preview, or genuinely has no per-chapter price and the book/format is free
         } else {
           coinCost = track.chapter_price ?? 100; // use DB price, ignore client value
         }
@@ -586,15 +587,24 @@ export const walletRouter = router({
     .query(async ({ ctx, input }) => {
       const { bookId, format } = input;
 
-      // Free content: book flagged as free, or the format has no price
+      // Free content: book flagged as free, or the format has no price.
+      // For audiobooks using per-chapter pricing, the format-level price is
+      // legitimately 0/null, so it can't be used to infer the whole format is free —
+      // and per-chapter pricing always wins over the book-level is_free flag.
       const [book, bookFormat] = await Promise.all([
         prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } }),
         prisma.bookFormat.findFirst({
           where: { book_id: bookId, format, submission_status: "approved" },
-          select: { price: true },
+          select: {
+            price: true,
+            audiobook_tracks: format === "audiobook" ? { select: { chapter_price: true, chapter_taka_price: true } } : false,
+          },
         }),
       ]);
-      if (Boolean(book?.is_free) || Number(bookFormat?.price ?? 0) <= 0) {
+      const hasChapterPricing = (bookFormat as any)?.audiobook_tracks?.some(
+        (t: any) => Number(t.chapter_price ?? 0) > 0 || Number(t.chapter_taka_price ?? 0) > 0
+      );
+      if (!hasChapterPricing && (Boolean(book?.is_free) || Number(bookFormat?.price ?? 0) <= 0)) {
         return { hasFullAccess: true, method: "free" };
       }
 
