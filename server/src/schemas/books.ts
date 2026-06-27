@@ -23,7 +23,7 @@ export const bookByIdSchema = z.object({
 });
 
 export const bookBySlugSchema = z.object({
-  slug: z.string().min(1),
+  slug: z.string().min(1).transform((s) => s.trim()),
 });
 
 export const bookReviewsQuerySchema = z.object({

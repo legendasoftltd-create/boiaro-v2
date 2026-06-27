@@ -705,7 +705,7 @@ export const booksRouter = router({
     .input(z.object({ slug: z.string().optional(), id: z.string().optional() }))
     .query(async ({ input }) => {
       if (!input.slug && !input.id) throw new TRPCError({ code: "BAD_REQUEST", message: "slug or id required" });
-      const where = input.id ? { id: input.id } : { slug: input.slug! };
+      const where = input.id ? { id: input.id } : { slug: input.slug!.trim() };
       const book = await prisma.book.findUnique({
         where,
         include: {

@@ -250,9 +250,9 @@ export const adminRouter = router({
     .input(
       z.object({
         id: z.string().optional(),
-        title: z.string().min(1),
-        title_en: z.string().optional().nullable(),
-        slug: z.string().min(1),
+        title: z.string().min(1).transform((s) => s.trim()),
+        title_en: z.string().optional().nullable().transform((s) => s?.trim() ?? s),
+        slug: z.string().min(1).transform((s) => s.trim()),
         description: z.string().optional().nullable(),
         description_bn: z.string().optional().nullable(),
         author_id: z.string().optional().nullable(),
