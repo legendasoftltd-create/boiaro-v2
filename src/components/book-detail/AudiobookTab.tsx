@@ -320,6 +320,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
                   <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {formatDuration(audiobook.duration)}</span>
                     <span className="flex items-center gap-1"><Headphones className="w-3 h-3" /> {realTrackCount} episodes</span>
+                    <span className="flex items-center gap-1"><Headphones className="w-3 h-3" /> {book.totalListens} people listened</span>
                     <span className="uppercase">{audiobook.quality || "standard"}</span>
                   </div>
                 </div>

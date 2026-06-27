@@ -412,6 +412,21 @@ model BookRead {
   @@map("book_reads")
 }
 
+// One row per user per book — the unique constraint is what makes "listens"
+// a unique-listener count rather than a play-event count (unlike BookRead,
+// which intentionally logs every read event with no uniqueness).
+model BookListen {
+  id         String   @id @default(uuid())
+  book_id    String
+  created_at DateTime @default(now())
+  user_id    String
+
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, book_id])
+  @@map("book_listens")
+}
+
 model Bookmark {
   id         String   @id @default(uuid())
   book_id    String
@@ -452,6 +467,7 @@ model Book {
   title             String
   title_en          String?
   total_reads       Int?     @default(0)
+  total_listens     Int?     @default(0)
   updated_at        DateTime @updatedAt
   voice_access_type String?  @default("paid")
   voice_coin_price  Int?
@@ -465,6 +481,7 @@ model Book {
   comments          BookComment[]
   contributors      BookContributor[]
   reads             BookRead[]
+  listens           BookListen[]
   bookmarks         Bookmark[]
   reviews           Review[]
   reading_progress  ReadingProgress[]

@@ -151,20 +151,22 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
   return { books: resolved, nextCursor };
 }
 
-/** Compute live rating, reviews_count, and total_reads directly from DB rows. */
+/** Compute live rating, reviews_count, total_reads, and total_listens directly from DB rows. */
 async function computeLiveBookStats(bookId: string) {
-  const [reviewStats, readsCount] = await Promise.all([
+  const [reviewStats, readsCount, listensCount] = await Promise.all([
     prisma.review.aggregate({
       where: { book_id: bookId, status: "approved" },
       _avg: { rating: true },
       _count: true,
     }),
     prisma.bookRead.count({ where: { book_id: bookId } }),
+    prisma.bookListen.count({ where: { book_id: bookId } }),
   ]);
   return {
     rating: Number((reviewStats._avg.rating ?? 0).toFixed(1)),
     reviews_count: reviewStats._count,
     total_reads: readsCount,
+    total_listens: listensCount,
   };
 }
 

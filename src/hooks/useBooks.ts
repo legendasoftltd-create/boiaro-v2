@@ -130,6 +130,7 @@ export function trpcBookToMasterBook(book: any): MasterBook {
     rating: Number(book.rating) || 0,
     reviewsCount: book.reviews_count || 0,
     totalReads: String(book.total_reads || 0),
+    totalListens: String(book.total_listens || 0),
     publishedDate: book.published_date ? String(book.published_date).slice(0, 10) : "",
     language: book.language || "bn",
     tags: book.tags || [],
@@ -263,6 +264,7 @@ export function useNarrators() {
     specialty: n.specialty || "",
     audiobooksCount: n.audiobooksCount || 0,
     listeners: String(n.listeners || 0),
+    totalListens: String(n.totalListens || 0),
     rating: Number(n.rating) || 0,
     isFeatured: n.is_featured || false,
   }));

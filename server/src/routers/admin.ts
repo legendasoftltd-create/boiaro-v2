@@ -3917,14 +3917,15 @@ export const adminRouter = router({
     }),
 
   readingAnalyticsData: adminProcedure.query(async () => {
-    const [logs, books, bookReads, presenceData, settings] = await Promise.all([
+    const [logs, books, bookReads, bookListens, presenceData, settings] = await Promise.all([
       prisma.userActivityLog.findMany({
         select: { action: true, book_id: true, user_id: true, created_at: true, metadata: true },
         orderBy: { created_at: "desc" },
         take: 5000,
       }),
-      prisma.book.findMany({ select: { id: true, title: true, total_reads: true, cover_url: true } }),
+      prisma.book.findMany({ select: { id: true, title: true, total_reads: true, total_listens: true, cover_url: true } }),
       prisma.bookRead.findMany({ select: { book_id: true, user_id: true, created_at: true } }),
+      prisma.bookListen.findMany({ select: { book_id: true, user_id: true, created_at: true } }),
       prisma.userPresence.findMany(),
       prisma.platformSetting.findMany({
         where: { key: "rec_trending_period_days" },
@@ -3943,6 +3944,7 @@ export const adminRouter = router({
       })),
       books,
       bookReads,
+      bookListens,
       presenceData,
       trendingPeriod: settings[0]?.value ?? "7",
     };

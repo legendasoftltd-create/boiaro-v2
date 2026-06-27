@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveUrls, resolveFileUrl } from "../lib/mediaUrl.js";
+import { maybeRecordListen } from "../lib/listenTracking.js";
 
 export const profilesRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
@@ -155,6 +156,8 @@ export const profilesRouter = router({
       const percentage = input.totalDuration > 0
         ? Math.min((input.currentPosition / input.totalDuration) * 100, 100)
         : 0;
+
+      await maybeRecordListen(ctx.userId, input.bookId, input.currentPosition, input.totalDuration);
 
       return prisma.listeningProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },

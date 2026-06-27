@@ -337,7 +337,16 @@ export const booksRouter = router({
         (bookIdsByNarrator[id] ??= new Set()).add(f.book_id);
       });
     });
-    return narrators.map((n) => ({ ...n, audiobooksCount: bookIdsByNarrator[n.id]?.size || 0, listeners: 0 }));
+    const allBookIds = [...new Set(formats.map((f) => f.book_id))];
+    const listenRows = allBookIds.length > 0
+      ? await prisma.book.findMany({ where: { id: { in: allBookIds } }, select: { id: true, total_listens: true } })
+      : [];
+    const listensByBookId = new Map(listenRows.map((b) => [b.id, b.total_listens || 0]));
+    return narrators.map((n) => {
+      const bookIds = [...(bookIdsByNarrator[n.id] || [])];
+      const totalListens = bookIds.reduce((sum, id) => sum + (listensByBookId.get(id) || 0), 0);
+      return { ...n, audiobooksCount: bookIds.length, listeners: 0, totalListens };
+    });
   }),
 
   narratorById: publicProcedure
@@ -352,7 +361,7 @@ export const booksRouter = router({
             submission_status: "approved",
             OR: [{ narrator_id: input.id }, { narrator_ids: { has: input.id } }],
           },
-          include: { book: { select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, submission_status: true, is_active: true } } },
+          include: { book: { select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, submission_status: true, is_active: true, total_listens: true } } },
         }),
       ]);
       if (!narrator) return null;
@@ -360,7 +369,8 @@ export const booksRouter = router({
       const books = formats
         .filter(f => f.book && f.book.submission_status === "approved" && f.book.is_active && !seen.has(f.book.id) && seen.add(f.book.id))
         .map(f => f.book!);
-      return { ...narrator, books };
+      const totalListens = books.reduce((sum, b: any) => sum + (b.total_listens || 0), 0);
+      return { ...narrator, books, totalListens };
     }),
 
   authorById: publicProcedure

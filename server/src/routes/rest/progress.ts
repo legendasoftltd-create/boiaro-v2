@@ -3,6 +3,7 @@ import { sendHttpError } from "../../lib/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
+import { maybeRecordListen } from "../../lib/listenTracking.js";
 
 export const progressRestRouter = Router();
 
@@ -92,6 +93,7 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
     }
     const percentage = total_seconds > 0 ? Math.min((position_seconds / total_seconds) * 100, 100) : 0;
     const speedVal = playback_speed != null ? Math.min(Math.max(Number(playback_speed), 0.25), 4) : undefined;
+    await maybeRecordListen(req.auth.userId, book_id, position_seconds, total_seconds);
     await prisma.listeningProgress.upsert({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
       create: {

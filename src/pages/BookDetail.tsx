@@ -238,6 +238,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
     rating: Number(dbBook.rating) || 0,
     reviewsCount: dbBook.reviews_count || 0,
     totalReads: String(dbBook.total_reads || 0),
+    totalListens: String(dbBook.total_listens || 0),
     publishedDate: dbBook.published_date || "",
     language: dbBook.language || "bn",
     tags: dbBook.tags || [],

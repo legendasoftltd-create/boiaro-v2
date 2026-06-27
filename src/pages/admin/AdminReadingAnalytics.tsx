@@ -44,6 +44,7 @@ interface BookInfo {
   id: string;
   title: string;
   total_reads: number;
+  total_listens: number;
   cover_url: string | null;
 }
 
@@ -52,6 +53,7 @@ export default function AdminReadingAnalytics() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [books, setBooks] = useState<BookInfo[]>([]);
   const [bookReads, setBookReads] = useState<{ book_id: string; user_id: string; created_at: string }[]>([]);
+  const [bookListens, setBookListens] = useState<{ book_id: string; user_id: string; created_at: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [trendingPeriod, setTrendingPeriod] = useState("7");
   const [presenceData, setPresenceData] = useState<any[]>([]);
@@ -66,6 +68,12 @@ export default function AdminReadingAnalytics() {
     setBooks((data.books as any[]) || []);
     setBookReads(
       ((data.bookReads as any[]) || []).map((row: any) => ({
+        ...row,
+        created_at: new Date(row.created_at).toISOString(),
+      }))
+    );
+    setBookListens(
+      ((data.bookListens as any[]) || []).map((row: any) => ({
         ...row,
         created_at: new Date(row.created_at).toISOString(),
       }))
@@ -213,6 +221,28 @@ export default function AdminReadingAnalytics() {
       }));
   }, [bookReads, logs, bookMap]);
 
+  // ── TOP 10 MOST LISTENED ──
+  const top10Listened = useMemo(() => {
+    const map: Record<string, { listenCount: number; uniqueListeners: Set<string> }> = {};
+
+    bookListens.forEach(r => {
+      if (!map[r.book_id]) map[r.book_id] = { listenCount: 0, uniqueListeners: new Set() };
+      map[r.book_id].listenCount++;
+      map[r.book_id].uniqueListeners.add(r.user_id);
+    });
+
+    return Object.entries(map)
+      .sort((a, b) => b[1].listenCount - a[1].listenCount)
+      .slice(0, 10)
+      .map(([bookId, d], i) => ({
+        rank: i + 1,
+        bookId,
+        title: bookMap[bookId]?.title || bookId.slice(0, 8),
+        totalListens: d.listenCount,
+        uniqueListeners: d.uniqueListeners.size,
+      }));
+  }, [bookListens, bookMap]);
+
   // ── ACTIVE READERS (time buckets) ──
   const activeReaders = useMemo(() => {
     const now = Date.now();
@@ -350,6 +380,7 @@ export default function AdminReadingAnalytics() {
           <TabsTrigger value="bookviews">Book Views</TabsTrigger>
           <TabsTrigger value="unique">Unique Readers</TabsTrigger>
           <TabsTrigger value="top10">Top 10 Most Read</TabsTrigger>
+          <TabsTrigger value="top10listened">Top 10 Most Listened</TabsTrigger>
           <TabsTrigger value="trending">Trending</TabsTrigger>
         </TabsList>
 
@@ -599,6 +630,56 @@ export default function AdminReadingAnalytics() {
                   </div>
                 </>
               ) : <p className="text-sm text-muted-foreground text-center py-8">No reading data yet</p>}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── TOP 10 MOST LISTENED ── */}
+        <TabsContent value="top10listened" className="space-y-4 mt-4">
+          <Card className="border-border/30">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2"><Headphones className="h-4 w-4 text-purple-400" /> Top 10 Most Listened Audiobooks</CardTitle>
+              <Button variant="outline" size="sm" onClick={() => exportCSV(top10Listened, "top-10-listened-books")}>
+                <Download className="h-3.5 w-3.5 mr-1" /> Export
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {top10Listened.length > 0 ? (
+                <>
+                  <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={top10Listened}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="title" tick={{ fontSize: 9, fill: "hsl(var(--muted-foreground))" }} angle={-20} textAnchor="end" height={60} />
+                      <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                      <Tooltip contentStyle={tooltipStyle} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Bar dataKey="totalListens" name="Listens" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="overflow-auto max-h-[400px] mt-4">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Rank</TableHead>
+                          <TableHead>Book</TableHead>
+                          <TableHead className="text-right">Listens</TableHead>
+                          <TableHead className="text-right">Unique Listeners</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {top10Listened.map(b => (
+                          <TableRow key={b.bookId}>
+                            <TableCell className="font-bold text-purple-400 text-lg">{b.rank}</TableCell>
+                            <TableCell className="font-medium max-w-[200px] truncate">{b.title}</TableCell>
+                            <TableCell className="text-right"><Badge className="bg-purple-500/20 text-purple-400">{b.totalListens}</Badge></TableCell>
+                            <TableCell className="text-right text-sm">{b.uniqueListeners}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              ) : <p className="text-sm text-muted-foreground text-center py-8">No listening data yet</p>}
             </CardContent>
           </Card>
         </TabsContent>

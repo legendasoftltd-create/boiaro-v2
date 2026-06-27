@@ -114,6 +114,12 @@ export function BookDetailHero({ book, liveRating, liveReviewsCount, liveReads }
                 <Eye className="w-4 h-4" />
                 <span className="text-sm">{liveReads ?? book.totalReads} reads</span>
               </div>
+              {book.formats.audiobook && (
+                <div className="flex items-center gap-1 text-muted-foreground">
+                  <Headphones className="w-4 h-4" />
+                  <span className="text-sm">{book.totalListens} listens</span>
+                </div>
+              )}
             </div>
 
             {book.author.id && book.author.name && book.author.name !== "Unknown" && (

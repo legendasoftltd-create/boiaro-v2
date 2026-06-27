@@ -21,6 +21,7 @@ export interface Narrator {
   specialty: string
   audiobooksCount: number
   listeners: string
+  totalListens: string
   rating: number
   isFeatured: boolean
 }
@@ -59,6 +60,7 @@ export interface MasterBook {
   rating: number
   reviewsCount: number
   totalReads: string
+  totalListens: string
   publishedDate: string
   language: string
   tags: string[]

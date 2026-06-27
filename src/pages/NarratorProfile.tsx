@@ -48,6 +48,7 @@ const NarratorProfile = () => {
             {narrator.bio && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{stripHtml(narrator.bio)}</p>}
             <div className="flex items-center gap-4 mt-4 justify-center md:justify-start">
               {narrator.rating && <span className="flex items-center gap-1 text-sm text-muted-foreground"><Star className="w-4 h-4 fill-primary text-primary" />{narrator.rating}</span>}
+              <span className="flex items-center gap-1 text-sm text-muted-foreground"><Headphones className="w-4 h-4" />{(narrator as any).totalListens || 0} listens</span>
               <FollowButton profileId={narrator.id} profileType="narrator" />
             </div>
           </div>
