@@ -1,20 +1,24 @@
 import { useNavigate } from "react-router-dom"
 import { Trophy, Star, BookOpen, Eye } from "lucide-react"
-import { useBooks } from "@/hooks/useBooks"
+import { trpc } from "@/lib/trpc"
+import { trpcBookToMasterBook } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
 import { filterBooks } from "@/hooks/useBookFilter"
 
 export function Top10MostRead() {
   const navigate = useNavigate()
-  const { books } = useBooks()
   const { globalFilter } = useContentFilter()
 
-  const top10 = filterBooks([...books], globalFilter)
-    .sort((a, b) =>
-      parseInt(String(b.totalReads).replace(/[K+,]/g, "000")) -
-      parseInt(String(a.totalReads).replace(/[K+,]/g, "000"))
-    )
-    .slice(0, 10)
+  // Queried directly sorted by total_reads across the whole catalog — the
+  // generic homepage book list is capped at 100 most-recently-created books,
+  // which silently excluded older high-read books from this "all-time" ranking.
+  const { data } = trpc.books.browseBooks.useQuery(
+    { pageSize: 30, sort: "popular" },
+    { staleTime: 5 * 60 * 1000 }
+  )
+  const books = (data?.books || []).map(trpcBookToMasterBook)
+
+  const top10 = filterBooks(books, globalFilter).slice(0, 10)
 
   if (top10.length < 3) return null
 
