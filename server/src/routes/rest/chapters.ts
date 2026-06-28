@@ -1,10 +1,12 @@
 import { Router } from "express";
+import { z } from "zod";
 import { sendHttpError } from "../../lib/http.js";
 import { requireAuth, AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings } from "../../lib/earnings.js";
 import { s3Configured, createPresignedGetUrl, isS3Url } from "../../lib/s3.js";
 import { resolveFileUrl } from "../../lib/mediaUrl.js";
+import { verifyRevenueCatTransaction } from "../../lib/revenuecat.js";
 
 const AUDIO_URL_TTL = 3600; // 1 hour
 
@@ -284,6 +286,100 @@ chaptersRestRouter.post("/chapters/:trackId/unlock-coin", requireAuth, async (re
       book_id: bookId,
       coins_spent: coinCost,
       new_balance: updatedWallet.balance,
+    });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+const unlockIapSchema = z.object({
+  book_id: z.string().min(1),
+  transaction_id: z.string().min(1),
+  product_id: z.string().optional(),
+});
+
+// ── POST /api/v1/chapters/:trackId/unlock-iap ─────────────────────────────────
+// Auth required. Unlock a chapter using an Apple IAP purchase verified via RevenueCat.
+chaptersRestRouter.post("/chapters/:trackId/unlock-iap", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const trackId = String(req.params.trackId);
+    const userId = req.auth.userId!;
+    const input = unlockIapSchema.parse(req.body);
+
+    // Idempotency: a given Apple transaction can only ever unlock the one
+    // (user, book, track) it was first used for — replaying it elsewhere is rejected.
+    const existingTxn = await prisma.iapTransaction.findUnique({
+      where: { transaction_id: input.transaction_id },
+    });
+    if (existingTxn) {
+      const sameRequest =
+        existingTxn.user_id === userId && existingTxn.book_id === input.book_id && existingTxn.track_id === trackId;
+      if (sameRequest) {
+        res.json({ success: true, already_unlocked: true, track_id: trackId, book_id: input.book_id });
+        return;
+      }
+      res.status(409).json({ error: "This transaction has already been used to unlock different content" });
+      return;
+    }
+
+    const track = await prisma.audiobookTrack.findUnique({
+      where: { id: trackId },
+      include: { book_format: { select: { book_id: true } } },
+    });
+    if (!track) {
+      res.status(404).json({ error: "Chapter not found" });
+      return;
+    }
+    if (track.book_format.book_id !== input.book_id) {
+      res.status(400).json({ error: "Chapter does not belong to this book" });
+      return;
+    }
+
+    const bookId = track.book_format.book_id;
+    const format = `audiobook_chapter_${trackId}`;
+
+    const alreadyUnlocked = await prisma.contentUnlock.findFirst({
+      where: { user_id: userId, book_id: bookId, format, status: "active" },
+    });
+
+    // Verify the receipt with RevenueCat regardless of prior unlock status —
+    // Apple has charged the user either way, so the transaction must be
+    // recorded (and rejected if it's a forgery) before acknowledging success.
+    const verification = await verifyRevenueCatTransaction(userId, input.transaction_id, input.product_id);
+    if (!verification.ok) {
+      res.status(402).json({ error: verification.error || "Could not verify Apple purchase" });
+      return;
+    }
+
+    const unlock = await prisma.$transaction(async (tx: any) => {
+      await tx.iapTransaction.create({
+        data: {
+          user_id: userId,
+          book_id: bookId,
+          track_id: trackId,
+          product_id: input.product_id ?? null,
+          transaction_id: input.transaction_id,
+          raw_response: verification.matchedEntry as any,
+        },
+      });
+      if (alreadyUnlocked || track.is_preview) return alreadyUnlocked;
+      return tx.contentUnlock.upsert({
+        where: { user_id_book_id_format: { user_id: userId, book_id: bookId, format } },
+        create: { user_id: userId, book_id: bookId, format, unlock_method: "iap", status: "active" },
+        update: { status: "active", unlock_method: "iap" },
+      });
+    });
+
+    if (!alreadyUnlocked && unlock) {
+      await calculateEarnings({ bookId, format, saleAmount: 0, contentUnlockId: unlock.id }).catch(() => null);
+    }
+
+    res.json({
+      success: true,
+      already_unlocked: Boolean(alreadyUnlocked || track.is_preview),
+      track_id: trackId,
+      book_id: bookId,
+      message: "Book unlocked successfully",
     });
   } catch (error) {
     sendHttpError(res, error);

@@ -234,6 +234,24 @@ model ChapterPurchase {
   @@map("chapter_purchases")
 }
 
+// Apple/Google in-app purchase transactions (e.g. RevenueCat-verified consumables).
+// transaction_id is globally unique so a single receipt can never unlock more
+// than one (user, book, track) combination — the core replay-attack defense.
+model IapTransaction {
+  id             String   @id @default(uuid())
+  user_id        String
+  book_id        String
+  track_id       String?
+  product_id     String?
+  store          String   @default("app_store")
+  transaction_id String   @unique
+  raw_response   Json?
+  created_at     DateTime @default(now())
+
+  @@index([user_id])
+  @@map("iap_transactions")
+}
+
 model Author {
   id          String   @id @default(uuid())
   avatar_url  String?

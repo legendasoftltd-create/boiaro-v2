@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Settings, CreditCard, Wallet, Banknote, Globe, Save, ChevronDown, ChevronUp, Eye, EyeOff, FlaskConical } from "lucide-react";
+import { Settings, CreditCard, Wallet, Banknote, Globe, Save, ChevronDown, ChevronUp, Eye, EyeOff, FlaskConical, Smartphone } from "lucide-react";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
 
 interface Gateway {
@@ -32,6 +32,7 @@ const gatewayIcons: Record<string, typeof CreditCard> = {
   paypal: Globe,
   razorpay: CreditCard,
   demo: FlaskConical,
+  revenuecat: Smartphone,
 };
 
 const gatewayConfigFields: Record<string, { key: string; label: string; secret?: boolean; placeholder?: string }[]> = {
@@ -59,6 +60,9 @@ const gatewayConfigFields: Record<string, { key: string; label: string; secret?:
   razorpay: [
     { key: "key_id", label: "Key ID", placeholder: "rzp_test_..." },
     { key: "key_secret", label: "Key Secret", secret: true, placeholder: "••••••••" },
+  ],
+  revenuecat: [
+    { key: "secret_api_key", label: "Secret API Key", secret: true, placeholder: "sk_..." },
   ],
 };
 
@@ -117,7 +121,7 @@ export default function AdminPaymentGateways() {
     ));
   };
 
-  const hasMode = (key: string) => !["cod", "bkash", "nagad"].includes(key);
+  const hasMode = (key: string) => !["cod", "bkash", "nagad", "revenuecat"].includes(key);
 
   return (
     <div>

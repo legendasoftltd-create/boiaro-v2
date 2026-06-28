@@ -4724,11 +4724,18 @@ export const adminRouter = router({
       })
     ),
 
-  listPaymentGateways: adminProcedure.query(() =>
-    prisma.paymentGateway.findMany({
+  listPaymentGateways: adminProcedure.query(async () => {
+    // Self-heals: RevenueCat (Apple IAP) has no separate seed script, so ensure
+    // its row exists the first time an admin opens this page.
+    await prisma.paymentGateway.upsert({
+      where: { gateway_key: "revenuecat" },
+      create: { gateway_key: "revenuecat", label: "RevenueCat (Apple IAP)", is_enabled: false, config: {} },
+      update: {},
+    });
+    return prisma.paymentGateway.findMany({
       orderBy: [{ sort_priority: "asc" }, { created_at: "asc" }],
-    })
-  ),
+    });
+  }),
 
   updatePaymentGateway: adminProcedure
     .input(
