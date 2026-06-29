@@ -3216,6 +3216,22 @@ export const adminRouter = router({
               },
             });
           }
+        } else if (input.role === "translator") {
+          const existing = await prisma.translator.findFirst({ where: { user_id: input.userId } });
+          if (!existing) {
+            await prisma.translator.create({
+              data: {
+                name,
+                user_id: input.userId,
+                avatar_url: profile?.avatar_url ?? null,
+                bio: profile?.bio ?? null,
+                phone: profile?.phone ?? null,
+                genre: profile?.genre ?? null,
+                status: "active",
+                linked_at: new Date(),
+              },
+            });
+          }
         } else if (input.role === "rj") {
           const existing = await prisma.rjProfile.findUnique({ where: { user_id: input.userId } });
           if (!existing) {
@@ -4549,6 +4565,9 @@ export const adminRouter = router({
       } else if (input.role === "narrator") {
         const existing = await prisma.narrator.findFirst({ where: { user_id: input.userId } });
         if (!existing) await prisma.narrator.create({ data: { name: displayName, user_id: input.userId, status: "active" } });
+      } else if (input.role === "translator") {
+        const existing = await prisma.translator.findFirst({ where: { user_id: input.userId } });
+        if (!existing) await prisma.translator.create({ data: { name: displayName, user_id: input.userId, status: "active" } });
       } else if (input.role === "rj") {
         const existing = await prisma.rjProfile.findFirst({ where: { user_id: input.userId } });
         if (!existing) await prisma.rjProfile.create({ data: { user_id: input.userId, stage_name: displayName, is_approved: true } });
