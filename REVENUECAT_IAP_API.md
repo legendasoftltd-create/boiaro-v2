@@ -64,6 +64,36 @@ Error responses:
 | `400` | `{ "error": "Chapter does not belong to this book" }` | `book_id` doesn't match the chapter's actual book |
 | `409` | `{ "error": "This transaction has already been used to unlock different content" }` | Replay attempt — see §3 |
 
+### `POST /api/v1/books/:bookId/unlock-iap`
+
+Same flow as above, but unlocks the whole eBook or Audiobook (not a single chapter). `book_id` comes from the URL path instead of the request body.
+
+**Auth:** `Authorization: Bearer <access_token>`
+
+Request body:
+```json
+{
+  "transaction_id": "2000000123456789",
+  "product_id": "tier_1_99",
+  "format": "ebook"
+}
+```
+- `transaction_id` — Apple's transaction id for the completed purchase.
+- `product_id` — optional but recommended, same as above.
+- `format` — `"ebook"` or `"audiobook"`. A `bookId` can have both formats, each unlocked independently.
+
+Success response (`200`):
+```json
+{
+  "success": true,
+  "already_unlocked": false,
+  "book_id": "uuid",
+  "message": "Full book unlocked successfully"
+}
+```
+
+Error responses: same shape as the chapter endpoint (`402` not configured / not verified, `404` book not found, `400` validation error on `format`, `409` replay for different content). The `ContentUnlock` row uses `format: "ebook"` / `format: "audiobook"` directly (no chapter suffix) and `iap_transactions.track_id` is `null`, so it doesn't collide with per-chapter unlocks of the same book.
+
 ---
 
 ## 3. What happens on the backend, step by step
@@ -79,4 +109,4 @@ Error responses:
 
 - **No automatic revenue-split entry for IAP sales.** Same as the existing coin-unlock path, `calculateEarnings` is called with `saleAmount: 0`, so no `ContributorEarning` row is created for either flow today. If accurate contributor payouts for IAP sales are needed, the price tier → BDT/USD amount mapping needs to be decided first (e.g. passing the tier's known USD price in the request body) — out of scope here since it wasn't specified.
 - **No RevenueCat webhook handling.** Verification is pull-based (ask RevenueCat at unlock time) rather than push-based (RevenueCat notifying us). This matches the flow described in the original request and avoids needing a public webhook endpoint, but means there's no automatic refund/chargeback handling — if Apple refunds a purchase, the unlock stays active unless handled manually.
-- **Whole-book (non-chapter) IAP purchases aren't covered.** This endpoint is chapter/track-scoped only, matching the original spec's `{track_id}` design. A whole-book equivalent would need a separate endpoint (e.g. `POST /api/v1/books/:bookId/unlock-iap`) if Apple IAP is ever used for full-book purchases instead of just chapters.
+- **Whole-book IAP purchases** are now covered by `POST /api/v1/books/:bookId/unlock-iap` (§2) — same verification/idempotency logic, scoped to the whole eBook/Audiobook format instead of one chapter.
