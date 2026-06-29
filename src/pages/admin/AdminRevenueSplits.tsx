@@ -17,7 +17,7 @@ export default function AdminRevenueSplits() {
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideForm, setOverrideForm] = useState<any>({
     book_id: "", format: "ebook", writer_percentage: 35, publisher_percentage: 30,
-    narrator_percentage: 0, platform_percentage: 35, fulfillment_cost_percentage: 0,
+    narrator_percentage: 0, translator_percentage: 0, platform_percentage: 35, fulfillment_cost_percentage: 0,
   });
 
   const { data: defaultRules = [] } = trpc.admin.listDefaultRevenueRules.useQuery();
@@ -48,7 +48,7 @@ export default function AdminRevenueSplits() {
 
   const getTotal = (rule: any) =>
     Number(rule.writer_percentage || 0) + Number(rule.publisher_percentage || 0) + Number(rule.narrator_percentage || 0) +
-    Number(rule.platform_percentage || 0) + Number(rule.fulfillment_cost_percentage || 0);
+    Number(rule.translator_percentage || 0) + Number(rule.platform_percentage || 0) + Number(rule.fulfillment_cost_percentage || 0);
 
 
   const validateRule = (rule: any): string | null => {
@@ -60,14 +60,14 @@ export default function AdminRevenueSplits() {
   const saveDefault = (rule: any) => {
     const err = validateRule(rule);
     if (err) { toast.error(err); return; }
-    updateDefaultMutation.mutate({ id: rule.id, writer_percentage: Number(rule.writer_percentage), publisher_percentage: Number(rule.publisher_percentage), narrator_percentage: Number(rule.narrator_percentage), platform_percentage: Number(rule.platform_percentage), fulfillment_cost_percentage: Number(rule.fulfillment_cost_percentage) });
+    updateDefaultMutation.mutate({ id: rule.id, writer_percentage: Number(rule.writer_percentage), publisher_percentage: Number(rule.publisher_percentage), narrator_percentage: Number(rule.narrator_percentage), translator_percentage: Number(rule.translator_percentage || 0), platform_percentage: Number(rule.platform_percentage), fulfillment_cost_percentage: Number(rule.fulfillment_cost_percentage) });
   };
 
   const saveOverride = () => {
     const err = validateRule(overrideForm);
     if (err) { toast.error(err); return; }
     if (!overrideForm.book_id) { toast.error("Select a book"); return; }
-    upsertOverrideMutation.mutate({ book_id: overrideForm.book_id, format: overrideForm.format, writer_percentage: Number(overrideForm.writer_percentage), publisher_percentage: Number(overrideForm.publisher_percentage), narrator_percentage: Number(overrideForm.narrator_percentage), platform_percentage: Number(overrideForm.platform_percentage), fulfillment_cost_percentage: Number(overrideForm.fulfillment_cost_percentage) });
+    upsertOverrideMutation.mutate({ book_id: overrideForm.book_id, format: overrideForm.format, writer_percentage: Number(overrideForm.writer_percentage), publisher_percentage: Number(overrideForm.publisher_percentage), narrator_percentage: Number(overrideForm.narrator_percentage), translator_percentage: Number(overrideForm.translator_percentage || 0), platform_percentage: Number(overrideForm.platform_percentage), fulfillment_cost_percentage: Number(overrideForm.fulfillment_cost_percentage) });
   };
 
   const updateLocalDefault = (idx: number, field: string, value: number) => {
@@ -80,7 +80,7 @@ export default function AdminRevenueSplits() {
   const loadDefaultForFormat = (format: string) => {
     const rule = localDefaults.find((d: any) => d.format === format);
     if (rule) {
-      setOverrideForm((prev: any) => ({ ...prev, format, writer_percentage: rule.writer_percentage, publisher_percentage: rule.publisher_percentage, narrator_percentage: rule.narrator_percentage, platform_percentage: rule.platform_percentage, fulfillment_cost_percentage: rule.fulfillment_cost_percentage }));
+      setOverrideForm((prev: any) => ({ ...prev, format, writer_percentage: rule.writer_percentage, publisher_percentage: rule.publisher_percentage, narrator_percentage: rule.narrator_percentage, translator_percentage: rule.translator_percentage || 0, platform_percentage: rule.platform_percentage, fulfillment_cost_percentage: rule.fulfillment_cost_percentage }));
     } else {
       setOverrideForm((prev: any) => ({ ...prev, format }));
     }
@@ -92,12 +92,13 @@ export default function AdminRevenueSplits() {
   const fieldsForFormat = (format: string) => {
     const base = [{ key: "writer_percentage", label: "Writer" }, { key: "publisher_percentage", label: "Publisher" }];
     if (format === "audiobook") base.push({ key: "narrator_percentage", label: "Narrator" });
+    if (format === "ebook" || format === "audiobook") base.push({ key: "translator_percentage", label: "Translator" });
     base.push({ key: "platform_percentage", label: "BoiAro Platform" });
     if (format === "hardcopy") base.push({ key: "fulfillment_cost_percentage", label: "Fulfillment Cost" });
     return base;
   };
 
-  const statsData = stats || { totalSales: 0, platformEarnings: 0, writerPayouts: 0, publisherPayouts: 0, narratorPayouts: 0, pendingWithdrawals: 0 };
+  const statsData = stats || { totalSales: 0, platformEarnings: 0, writerPayouts: 0, publisherPayouts: 0, narratorPayouts: 0, translatorPayouts: 0, pendingWithdrawals: 0 };
 
   return (
     <div className="space-y-6">
@@ -107,20 +108,21 @@ export default function AdminRevenueSplits() {
         </h1>
         <Button onClick={() => {
           const rule = localDefaults.find((d: any) => d.format === "ebook");
-          setOverrideForm({ book_id: "", format: "ebook", writer_percentage: rule?.writer_percentage || 35, publisher_percentage: rule?.publisher_percentage || 30, narrator_percentage: 0, platform_percentage: rule?.platform_percentage || 35, fulfillment_cost_percentage: 0 });
+          setOverrideForm({ book_id: "", format: "ebook", writer_percentage: rule?.writer_percentage || 35, publisher_percentage: rule?.publisher_percentage || 30, narrator_percentage: 0, translator_percentage: rule?.translator_percentage || 0, platform_percentage: rule?.platform_percentage || 35, fulfillment_cost_percentage: 0 });
           setOverrideOpen(true);
         }}>
           <Settings className="h-4 w-4 mr-2" /> Per-Book Override
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-7 gap-3">
         {[
           { label: "Total Sales", value: `৳${Number(statsData.totalSales).toFixed(0)}`, icon: TrendingUp, color: "text-primary" },
           { label: "Platform Earnings", value: `৳${Number(statsData.platformEarnings).toFixed(0)}`, icon: DollarSign, color: "text-emerald-400" },
           { label: "Writer Payouts", value: `৳${Number(statsData.writerPayouts).toFixed(0)}`, icon: Users, color: "text-blue-400" },
           { label: "Publisher Payouts", value: `৳${Number(statsData.publisherPayouts).toFixed(0)}`, icon: Package, color: "text-purple-400" },
           { label: "Narrator Payouts", value: `৳${Number(statsData.narratorPayouts).toFixed(0)}`, icon: Headphones, color: "text-orange-400" },
+          { label: "Translator Payouts", value: `৳${Number(statsData.translatorPayouts).toFixed(0)}`, icon: Users, color: "text-green-400" },
           { label: "Pending Withdrawals", value: `৳${Number(statsData.pendingWithdrawals).toFixed(0)}`, icon: Wallet, color: "text-yellow-400" },
         ].map(s => (
           <Card key={s.label} className="bg-card/60 border-border/30">
@@ -176,7 +178,7 @@ export default function AdminRevenueSplits() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Book</TableHead><TableHead>Format</TableHead><TableHead>Writer</TableHead><TableHead>Publisher</TableHead>
-                  <TableHead>Narrator</TableHead><TableHead>Platform</TableHead><TableHead>Fulfillment</TableHead><TableHead>Actions</TableHead>
+                  <TableHead>Narrator</TableHead><TableHead>Translator</TableHead><TableHead>Platform</TableHead><TableHead>Fulfillment</TableHead><TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -187,6 +189,7 @@ export default function AdminRevenueSplits() {
                     <TableCell>{s.writer_percentage}%</TableCell>
                     <TableCell>{s.publisher_percentage}%</TableCell>
                     <TableCell>{s.narrator_percentage > 0 ? `${s.narrator_percentage}%` : "—"}</TableCell>
+                    <TableCell>{s.translator_percentage > 0 ? `${s.translator_percentage}%` : "—"}</TableCell>
                     <TableCell>{s.platform_percentage}%</TableCell>
                     <TableCell>{s.fulfillment_cost_percentage > 0 ? `${s.fulfillment_cost_percentage}%` : "—"}</TableCell>
                     <TableCell>

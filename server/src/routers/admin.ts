@@ -4630,6 +4630,7 @@ export const adminRouter = router({
       writer_percentage: r.writer_percentage,
       publisher_percentage: r.publisher_percentage,
       narrator_percentage: r.narrator_percentage,
+      translator_percentage: r.translator_percentage,
       platform_percentage: r.platform_percentage,
       fulfillment_cost_percentage: r.fulfillment_cost_percentage,
       created_at: r.created_at,
@@ -4638,7 +4639,7 @@ export const adminRouter = router({
   }),
 
   updateDefaultRevenueRule: adminProcedure
-    .input(z.object({ id: z.string(), writer_percentage: z.number(), publisher_percentage: z.number(), narrator_percentage: z.number(), platform_percentage: z.number(), fulfillment_cost_percentage: z.number() }))
+    .input(z.object({ id: z.string(), writer_percentage: z.number(), publisher_percentage: z.number(), narrator_percentage: z.number(), translator_percentage: z.number().default(0), platform_percentage: z.number(), fulfillment_cost_percentage: z.number() }))
     .mutation(({ input }) => {
       const { id, ...data } = input;
       return prisma.defaultRevenueRule.update({
@@ -4647,6 +4648,7 @@ export const adminRouter = router({
           writer_percentage: data.writer_percentage,
           publisher_percentage: data.publisher_percentage,
           narrator_percentage: data.narrator_percentage,
+          translator_percentage: data.translator_percentage,
           platform_percentage: data.platform_percentage,
           fulfillment_cost_percentage: data.fulfillment_cost_percentage,
         },
@@ -4665,6 +4667,7 @@ export const adminRouter = router({
       writer_percentage: s.writer_pct,
       publisher_percentage: s.publisher_pct,
       narrator_percentage: s.narrator_pct,
+      translator_percentage: s.translator_pct,
       platform_percentage: s.platform_pct,
       fulfillment_cost_percentage: s.fulfillment_cost_pct,
       books: bookMap[s.book_id] || null,
@@ -4672,12 +4675,13 @@ export const adminRouter = router({
   }),
 
   upsertRevenueOverride: adminProcedure
-    .input(z.object({ book_id: z.string(), format: z.string(), writer_percentage: z.number(), publisher_percentage: z.number(), narrator_percentage: z.number(), platform_percentage: z.number(), fulfillment_cost_percentage: z.number() }))
+    .input(z.object({ book_id: z.string(), format: z.string(), writer_percentage: z.number(), publisher_percentage: z.number(), narrator_percentage: z.number(), translator_percentage: z.number().default(0), platform_percentage: z.number(), fulfillment_cost_percentage: z.number() }))
     .mutation(async ({ input }) => {
       const data = {
         book_id: input.book_id, format: input.format,
         writer_pct: input.writer_percentage, publisher_pct: input.publisher_percentage,
-        narrator_pct: input.narrator_percentage, platform_pct: input.platform_percentage,
+        narrator_pct: input.narrator_percentage, translator_pct: input.translator_percentage,
+        platform_pct: input.platform_percentage,
         fulfillment_cost_pct: input.fulfillment_cost_percentage,
       };
       const existing = await prisma.formatRevenueSplit.findFirst({ where: { book_id: input.book_id, format: input.format } });
@@ -5303,6 +5307,7 @@ export const adminRouter = router({
       writerPayouts: activeEarnings.filter(e => e.role === "writer").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
       publisherPayouts: activeEarnings.filter(e => e.role === "publisher").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
       narratorPayouts: activeEarnings.filter(e => e.role === "narrator").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
+      translatorPayouts: activeEarnings.filter(e => e.role === "translator").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
       pendingWithdrawals: withdrawals.filter(w => w.status === "pending").reduce((s, w) => s + Number(w.amount || 0), 0),
     };
   }),
@@ -5455,6 +5460,7 @@ export const adminRouter = router({
           writer_percentage: d.writer_percentage,
           publisher_percentage: d.publisher_percentage,
           narrator_percentage: d.narrator_percentage,
+          translator_percentage: d.translator_percentage,
           platform_percentage: d.platform_percentage,
           fulfillment_cost_percentage: d.fulfillment_cost_percentage,
           created_at: d.created_at,
@@ -5463,7 +5469,8 @@ export const adminRouter = router({
         overrides: overrides.map(s => ({
           id: s.id, format: s.format,
           writer_percentage: s.writer_pct, publisher_percentage: s.publisher_pct,
-          narrator_percentage: s.narrator_pct, platform_percentage: s.platform_pct,
+          narrator_percentage: s.narrator_pct, translator_percentage: s.translator_pct,
+          platform_percentage: s.platform_pct,
           fulfillment_cost_percentage: s.fulfillment_cost_pct,
         })),
       };

@@ -43,6 +43,7 @@ export async function calculateEarnings(params: EarningParams): Promise<number> 
         writer: override.writer_pct,
         narrator: override.narrator_pct,
         publisher: override.publisher_pct,
+        translator: override.translator_pct,
         fulfillment: override.fulfillment_cost_pct,
         platform: override.platform_pct,
       }
@@ -51,6 +52,7 @@ export async function calculateEarnings(params: EarningParams): Promise<number> 
         writer: defaultRule.writer_percentage,
         narrator: defaultRule.narrator_percentage,
         publisher: defaultRule.publisher_percentage,
+        translator: defaultRule.translator_percentage,
         fulfillment: defaultRule.fulfillment_cost_percentage,
         platform: defaultRule.platform_percentage,
       }
@@ -61,8 +63,8 @@ export async function calculateEarnings(params: EarningParams): Promise<number> 
   const fulfillmentAmount = (saleAmount * rule.fulfillment) / 100;
 
   // Build per-role earnings map. Multiple contributors of the same role share equally.
-  type Role = "writer" | "narrator" | "publisher";
-  const roleMap: Record<Role, typeof contributors> = { writer: [], narrator: [], publisher: [] };
+  type Role = "writer" | "narrator" | "publisher" | "translator";
+  const roleMap: Record<Role, typeof contributors> = { writer: [], narrator: [], publisher: [], translator: [] };
 
   for (const c of contributors) {
     const r = c.role as Role;
@@ -115,7 +117,8 @@ export async function calculateEarnings(params: EarningParams): Promise<number> 
   const undistributedPct =
     (roleMap.writer.length === 0 ? Number(rule.writer || 0) : 0) +
     (roleMap.narrator.length === 0 ? Number(rule.narrator || 0) : 0) +
-    (roleMap.publisher.length === 0 ? Number(rule.publisher || 0) : 0);
+    (roleMap.publisher.length === 0 ? Number(rule.publisher || 0) : 0) +
+    (roleMap.translator.length === 0 ? Number(rule.translator || 0) : 0);
   const effectivePlatformPct = Number(rule.platform || 0) + undistributedPct;
   if (effectivePlatformPct > 0) {
     earningData.push({

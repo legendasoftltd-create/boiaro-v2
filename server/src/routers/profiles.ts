@@ -615,6 +615,7 @@ export const profilesRouter = router({
             writer_percentage: override.writer_pct,
             publisher_percentage: override.publisher_pct,
             narrator_percentage: override.narrator_pct,
+            translator_percentage: override.translator_pct,
             platform_percentage: override.platform_pct,
             fulfillment_cost_percentage: override.fulfillment_cost_pct,
           }
@@ -623,6 +624,7 @@ export const profilesRouter = router({
             writer_percentage: defaultRule.writer_percentage,
             publisher_percentage: defaultRule.publisher_percentage,
             narrator_percentage: defaultRule.narrator_percentage,
+            translator_percentage: defaultRule.translator_percentage,
             platform_percentage: defaultRule.platform_percentage,
             fulfillment_cost_percentage: defaultRule.fulfillment_cost_percentage,
           }

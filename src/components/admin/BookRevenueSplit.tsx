@@ -17,6 +17,7 @@ interface SplitState {
   writer_percentage: number;
   publisher_percentage: number;
   narrator_percentage: number;
+  translator_percentage: number;
   platform_percentage: number;
   fulfillment_cost_percentage: number;
   id?: string;
@@ -27,6 +28,7 @@ const FALLBACK_SPLITS: Record<string, Omit<SplitState, "useDefault" | "id">> = {
     writer_percentage: 65,
     publisher_percentage: 0,
     narrator_percentage: 0,
+    translator_percentage: 0,
     platform_percentage: 35,
     fulfillment_cost_percentage: 0,
   },
@@ -34,6 +36,7 @@ const FALLBACK_SPLITS: Record<string, Omit<SplitState, "useDefault" | "id">> = {
     writer_percentage: 0,
     publisher_percentage: 0,
     narrator_percentage: 60,
+    translator_percentage: 0,
     platform_percentage: 40,
     fulfillment_cost_percentage: 0,
   },
@@ -44,15 +47,15 @@ const FORMAT_CONFIG = [
     format: "ebook",
     label: "eBook",
     icon: BookOpen,
-    fields: ["writer_percentage", "publisher_percentage", "platform_percentage"],
-    labels: { writer_percentage: "Writer", publisher_percentage: "Publisher", platform_percentage: "BoiAro Platform" },
+    fields: ["writer_percentage", "publisher_percentage", "translator_percentage", "platform_percentage"],
+    labels: { writer_percentage: "Writer", publisher_percentage: "Publisher", translator_percentage: "Translator", platform_percentage: "BoiAro Platform" },
   },
   {
     format: "audiobook",
     label: "Audiobook",
     icon: Headphones,
-    fields: ["writer_percentage", "publisher_percentage", "narrator_percentage", "platform_percentage"],
-    labels: { writer_percentage: "Writer", publisher_percentage: "Publisher", narrator_percentage: "Narrator", platform_percentage: "BoiAro Platform" },
+    fields: ["writer_percentage", "publisher_percentage", "narrator_percentage", "translator_percentage", "platform_percentage"],
+    labels: { writer_percentage: "Writer", publisher_percentage: "Publisher", narrator_percentage: "Narrator", translator_percentage: "Translator", platform_percentage: "BoiAro Platform" },
   },
 ];
 
@@ -84,6 +87,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
           writer_percentage: Number(override.writer_percentage ?? fallback.writer_percentage),
           publisher_percentage: Number(override.publisher_percentage ?? fallback.publisher_percentage),
           narrator_percentage: Number(override.narrator_percentage ?? fallback.narrator_percentage),
+          translator_percentage: Number(override.translator_percentage ?? fallback.translator_percentage),
           platform_percentage: Number(override.platform_percentage ?? fallback.platform_percentage),
           fulfillment_cost_percentage: Number(override.fulfillment_cost_percentage ?? fallback.fulfillment_cost_percentage),
         };
@@ -93,6 +97,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
           writer_percentage: Number(def.writer_percentage ?? fallback.writer_percentage),
           publisher_percentage: Number(def.publisher_percentage ?? fallback.publisher_percentage),
           narrator_percentage: Number(def.narrator_percentage ?? fallback.narrator_percentage),
+          translator_percentage: Number(def.translator_percentage ?? fallback.translator_percentage),
           platform_percentage: Number(def.platform_percentage ?? fallback.platform_percentage),
           fulfillment_cost_percentage: Number(def.fulfillment_cost_percentage ?? fallback.fulfillment_cost_percentage),
         };
@@ -111,6 +116,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
           writer_percentage: Number(def.writer_percentage ?? fallback.writer_percentage),
           publisher_percentage: Number(def.publisher_percentage ?? fallback.publisher_percentage),
           narrator_percentage: Number(def.narrator_percentage ?? fallback.narrator_percentage),
+          translator_percentage: Number(def.translator_percentage ?? fallback.translator_percentage),
           platform_percentage: Number(def.platform_percentage ?? fallback.platform_percentage),
           fulfillment_cost_percentage: Number(def.fulfillment_cost_percentage ?? fallback.fulfillment_cost_percentage),
         }
@@ -150,6 +156,7 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
         writer_percentage: split.writer_percentage,
         publisher_percentage: split.publisher_percentage,
         narrator_percentage: split.narrator_percentage,
+        translator_percentage: split.translator_percentage,
         platform_percentage: split.platform_percentage,
         fulfillment_cost_percentage: split.fulfillment_cost_percentage,
       };

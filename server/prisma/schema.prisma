@@ -761,6 +761,7 @@ model DefaultRevenueRule {
   narrator_percentage         Float    @default(0)
   platform_percentage         Float    @default(0)
   publisher_percentage        Float    @default(0)
+  translator_percentage       Float    @default(0)
   updated_at                  DateTime @updatedAt
   writer_percentage           Float    @default(0)
 
@@ -866,6 +867,7 @@ model FormatRevenueSplit {
   narrator_pct         Float    @default(0)
   platform_pct         Float    @default(0)
   publisher_pct        Float    @default(0)
+  translator_pct       Float    @default(0)
   updated_at           DateTime @updatedAt
   writer_pct           Float    @default(0)
 
