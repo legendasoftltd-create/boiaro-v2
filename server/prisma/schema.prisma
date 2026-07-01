@@ -507,6 +507,7 @@ model Book {
   content_unlocks   ContentUnlock[]
   daily_stats       DailyBookStat[]
   user_presence     UserPresence[]
+  coupon_books      CouponBook[]
 
   @@map("books")
 }
@@ -526,6 +527,7 @@ model Category {
   status      String   @default("active")
 
   books                     Book[]
+  coupons                   Coupon[]
   homepage_category_sections HomepageCategorySection[]
 
   @@map("categories")
@@ -718,6 +720,7 @@ model CouponUsage {
 model Coupon {
   id               String   @id @default(uuid())
   applies_to       String   @default("all")
+  category_id      String?
   code             String   @unique
   created_at       DateTime @default(now())
   description      String?
@@ -733,9 +736,23 @@ model Coupon {
   usage_limit      Int?
   used_count       Int      @default(0)
 
-  usages CouponUsage[]
+  usages   CouponUsage[]
+  books    CouponBook[]
+  category Category?     @relation(fields: [category_id], references: [id], onDelete: SetNull)
 
   @@map("coupons")
+}
+
+model CouponBook {
+  id         String @id @default(uuid())
+  coupon_id  String
+  book_id    String
+
+  coupon Coupon @relation(fields: [coupon_id], references: [id], onDelete: Cascade)
+  book   Book   @relation(fields: [book_id], references: [id], onDelete: Cascade)
+
+  @@unique([coupon_id, book_id])
+  @@map("coupon_books")
 }
 
 model DailyBookStat {

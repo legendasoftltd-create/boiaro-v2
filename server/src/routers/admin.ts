@@ -3552,7 +3552,13 @@ export const adminRouter = router({
 
   // ── Coupons ─────────────────────────────────────────────────────────────────
   listCoupons: adminProcedure.query(() =>
-    prisma.coupon.findMany({ orderBy: { created_at: "desc" } })
+    prisma.coupon.findMany({
+      orderBy: { created_at: "desc" },
+      include: {
+        books: { include: { book: { select: { id: true, title: true } } } },
+        category: { select: { id: true, name: true } },
+      },
+    })
   ),
 
   createCoupon: adminProcedure
@@ -3563,6 +3569,8 @@ export const adminRouter = router({
         discount_type: z.string().default("percentage"),
         discount_value: z.number().nonnegative(),
         applies_to: z.string().default("all"),
+        category_id: z.string().nullable().optional(),
+        book_ids: z.array(z.string()).optional(),
         min_order_amount: z.number().nullable().optional(),
         usage_limit: z.number().int().nullable().optional(),
         per_user_limit: z.number().int().nullable().optional(),
@@ -3572,14 +3580,15 @@ export const adminRouter = router({
         first_order_only: z.boolean().default(false),
       })
     )
-    .mutation(({ input }) =>
-      prisma.coupon.create({
+    .mutation(async ({ input }) => {
+      const coupon = await prisma.coupon.create({
         data: {
           code: input.code.toUpperCase(),
           description: input.description ?? null,
           discount_type: input.discount_type,
           discount_value: input.discount_value,
           applies_to: input.applies_to,
+          category_id: input.applies_to === "category" ? (input.category_id ?? null) : null,
           min_order_amount: input.min_order_amount ?? null,
           usage_limit: input.usage_limit ?? null,
           per_user_limit: input.per_user_limit ?? null,
@@ -3588,8 +3597,15 @@ export const adminRouter = router({
           status: input.status,
           first_order_only: input.first_order_only,
         },
-      })
-    ),
+      });
+      if (input.applies_to === "books" && input.book_ids?.length) {
+        await prisma.couponBook.createMany({
+          data: input.book_ids.map((book_id) => ({ coupon_id: coupon.id, book_id })),
+          skipDuplicates: true,
+        });
+      }
+      return coupon;
+    }),
 
   updateCoupon: adminProcedure
     .input(
@@ -3600,6 +3616,8 @@ export const adminRouter = router({
         discount_type: z.string().default("percentage"),
         discount_value: z.number().nonnegative(),
         applies_to: z.string().default("all"),
+        category_id: z.string().nullable().optional(),
+        book_ids: z.array(z.string()).optional(),
         min_order_amount: z.number().nullable().optional(),
         usage_limit: z.number().int().nullable().optional(),
         per_user_limit: z.number().int().nullable().optional(),
@@ -3609,25 +3627,36 @@ export const adminRouter = router({
         first_order_only: z.boolean().default(false),
       })
     )
-    .mutation(({ input }) =>
-      prisma.coupon.update({
-        where: { id: input.id },
+    .mutation(async ({ input }) => {
+      const { id, book_ids, ...rest } = input;
+      const coupon = await prisma.coupon.update({
+        where: { id },
         data: {
-          code: input.code.toUpperCase(),
-          description: input.description ?? null,
-          discount_type: input.discount_type,
-          discount_value: input.discount_value,
-          applies_to: input.applies_to,
-          min_order_amount: input.min_order_amount ?? null,
-          usage_limit: input.usage_limit ?? null,
-          per_user_limit: input.per_user_limit ?? null,
-          start_date: input.start_date ? new Date(input.start_date) : new Date(),
-          end_date: input.end_date ? new Date(input.end_date) : null,
-          status: input.status,
-          first_order_only: input.first_order_only,
+          code: rest.code.toUpperCase(),
+          description: rest.description ?? null,
+          discount_type: rest.discount_type,
+          discount_value: rest.discount_value,
+          applies_to: rest.applies_to,
+          category_id: rest.applies_to === "category" ? (rest.category_id ?? null) : null,
+          min_order_amount: rest.min_order_amount ?? null,
+          usage_limit: rest.usage_limit ?? null,
+          per_user_limit: rest.per_user_limit ?? null,
+          start_date: rest.start_date ? new Date(rest.start_date) : new Date(),
+          end_date: rest.end_date ? new Date(rest.end_date) : null,
+          status: rest.status,
+          first_order_only: rest.first_order_only,
         },
-      })
-    ),
+      });
+      // Rebuild CouponBook links regardless — delete old, insert new if still "books"
+      await prisma.couponBook.deleteMany({ where: { coupon_id: id } });
+      if (rest.applies_to === "books" && book_ids?.length) {
+        await prisma.couponBook.createMany({
+          data: book_ids.map((book_id) => ({ coupon_id: id, book_id })),
+          skipDuplicates: true,
+        });
+      }
+      return coupon;
+    }),
 
   deleteCoupon: adminProcedure
     .input(z.object({ id: z.string() }))

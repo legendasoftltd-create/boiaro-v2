@@ -65,6 +65,9 @@ couponsRestRouter.get("/:code", async (req, res) => {
 });
 
 // POST /coupons/validate — validate a coupon against order details
+// Body: { code, total_amount, has_hardcopy?, has_ebook?, has_audiobook?,
+//         items?: [{book_id, amount}] }
+// items is used to scope book/category coupons to the eligible subtotal.
 couponsRestRouter.post("/validate", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.auth.userId!;
@@ -74,6 +77,7 @@ couponsRestRouter.post("/validate", requireAuth, async (req: AuthenticatedReques
       has_hardcopy = false,
       has_ebook = false,
       has_audiobook = false,
+      items = [] as { book_id: string; amount: number }[],
     } = req.body;
 
     if (!code || total_amount === undefined) {
@@ -83,6 +87,7 @@ couponsRestRouter.post("/validate", requireAuth, async (req: AuthenticatedReques
 
     const coupon = await prisma.coupon.findFirst({
       where: { code: String(code).toUpperCase(), status: "active" },
+      include: { books: { select: { book_id: true } } },
     });
 
     if (!coupon) {
@@ -121,6 +126,32 @@ couponsRestRouter.post("/validate", requireAuth, async (req: AuthenticatedReques
       return;
     }
 
+    // Book-specific: cart must contain at least one allowed book
+    if (coupon.applies_to === "books") {
+      const allowedIds = new Set(coupon.books.map((b) => b.book_id));
+      const cartIds = (items as { book_id: string }[]).map((i) => i.book_id);
+      if (!cartIds.some((id) => allowedIds.has(id))) {
+        res.status(400).json({ error: "This coupon is not valid for any book in your cart" });
+        return;
+      }
+    }
+
+    // Category-specific: cart must contain at least one book from the coupon's category
+    if (coupon.applies_to === "category" && coupon.category_id) {
+      const cartIds = (items as { book_id: string }[]).map((i) => i.book_id);
+      if (cartIds.length === 0) {
+        res.status(400).json({ error: "This coupon is not valid for any book in your cart" });
+        return;
+      }
+      const matchCount = await prisma.book.count({
+        where: { id: { in: cartIds }, category_id: coupon.category_id },
+      });
+      if (matchCount === 0) {
+        res.status(400).json({ error: "This coupon is not valid for any book in your cart" });
+        return;
+      }
+    }
+
     if (coupon.per_user_limit && coupon.per_user_limit > 0) {
       const usageCount = await prisma.couponUsage.count({
         where: { coupon_id: coupon.id, user_id: userId },
@@ -144,18 +175,39 @@ couponsRestRouter.post("/validate", requireAuth, async (req: AuthenticatedReques
       }
     }
 
-    const amount = Number(total_amount);
+    // Compute eligible base amount for discount
+    let eligibleAmount = Number(total_amount);
+    if (coupon.applies_to === "books" && items.length > 0) {
+      const allowedIds = new Set(coupon.books.map((b) => b.book_id));
+      eligibleAmount = (items as { book_id: string; amount: number }[])
+        .filter((i) => allowedIds.has(i.book_id))
+        .reduce((s, i) => s + Number(i.amount), 0);
+    } else if (coupon.applies_to === "category" && coupon.category_id && items.length > 0) {
+      const cartIds = (items as { book_id: string }[]).map((i) => i.book_id);
+      const matchingBooks = await prisma.book.findMany({
+        where: { id: { in: cartIds }, category_id: coupon.category_id },
+        select: { id: true },
+      });
+      const matchingIds = new Set(matchingBooks.map((b) => b.id));
+      eligibleAmount = (items as { book_id: string; amount: number }[])
+        .filter((i) => matchingIds.has(i.book_id))
+        .reduce((s, i) => s + Number(i.amount), 0);
+    }
+
     const discount_amount =
       coupon.discount_type === "percentage"
-        ? Math.min(amount, (amount * coupon.discount_value) / 100)
-        : Math.min(amount, coupon.discount_value);
+        ? Math.min(eligibleAmount, (eligibleAmount * coupon.discount_value) / 100)
+        : Math.min(eligibleAmount, coupon.discount_value);
 
+    const amount = Number(total_amount);
     res.json({
       valid: true,
       coupon_id: coupon.id,
       code: coupon.code,
       discount_type: coupon.discount_type,
       discount_value: coupon.discount_value,
+      applies_to: coupon.applies_to,
+      eligible_amount: eligibleAmount,
       discount_amount,
       final_amount: Math.max(0, amount - discount_amount),
     });

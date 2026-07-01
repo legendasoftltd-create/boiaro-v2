@@ -154,10 +154,13 @@ export const ordersRouter = router({
       hasHardcopy: z.boolean().optional(),
       hasEbook: z.boolean().optional(),
       hasAudiobook: z.boolean().optional(),
+      // items with amounts allow book/category-scoped discount calculation
+      items: z.array(z.object({ bookId: z.string(), amount: z.number() })).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const coupon = await prisma.coupon.findFirst({
         where: { code: input.code.toUpperCase(), status: "active" },
+        include: { books: { select: { book_id: true } } },
       });
       if (!coupon) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid coupon code" });
 
@@ -171,6 +174,30 @@ export const ordersRouter = router({
       if (coupon.applies_to === "ebook" && !input.hasEbook) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for ebook orders only" });
       if (coupon.applies_to === "audiobook" && !input.hasAudiobook) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for audiobook orders only" });
 
+      // Book-specific coupon: at least one cart item must be in the allowed list
+      if (coupon.applies_to === "books") {
+        const allowedIds = new Set(coupon.books.map((b) => b.book_id));
+        const cartIds = (input.items ?? []).map((i) => i.bookId);
+        if (!cartIds.some((id) => allowedIds.has(id))) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is not valid for any book in your cart" });
+        }
+      }
+
+      // Category coupon: at least one cart item must belong to the coupon's category
+      if (coupon.applies_to === "category" && coupon.category_id) {
+        const cartIds = (input.items ?? []).map((i) => i.bookId);
+        if (cartIds.length > 0) {
+          const matchCount = await prisma.book.count({
+            where: { id: { in: cartIds }, category_id: coupon.category_id },
+          });
+          if (matchCount === 0) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is not valid for any book in your cart" });
+          }
+        } else {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is not valid for any book in your cart" });
+        }
+      }
+
       if (coupon.per_user_limit && coupon.per_user_limit > 0) {
         const usageCount = await prisma.couponUsage.count({ where: { coupon_id: coupon.id, user_id: ctx.userId } });
         if (usageCount >= coupon.per_user_limit) throw new TRPCError({ code: "BAD_REQUEST", message: "You've already used this coupon" });
@@ -183,11 +210,26 @@ export const ordersRouter = router({
         if (orderCount > 0) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for first orders only" });
       }
 
-      const discountAmount = coupon.discount_type === "percentage"
-        ? Math.min(input.totalAmount, (input.totalAmount * coupon.discount_value) / 100)
-        : Math.min(input.totalAmount, coupon.discount_value);
+      // Compute the eligible base amount for discount
+      let eligibleAmount = input.totalAmount;
+      if (coupon.applies_to === "books" && input.items?.length) {
+        const allowedIds = new Set(coupon.books.map((b) => b.book_id));
+        eligibleAmount = input.items.filter((i) => allowedIds.has(i.bookId)).reduce((s, i) => s + i.amount, 0);
+      } else if (coupon.applies_to === "category" && coupon.category_id && input.items?.length) {
+        const cartIds = input.items.map((i) => i.bookId);
+        const matchingBooks = await prisma.book.findMany({
+          where: { id: { in: cartIds }, category_id: coupon.category_id },
+          select: { id: true },
+        });
+        const matchingIds = new Set(matchingBooks.map((b) => b.id));
+        eligibleAmount = input.items.filter((i) => matchingIds.has(i.bookId)).reduce((s, i) => s + i.amount, 0);
+      }
 
-      return { couponId: coupon.id, discountAmount, code: coupon.code };
+      const discountAmount = coupon.discount_type === "percentage"
+        ? Math.min(eligibleAmount, (eligibleAmount * coupon.discount_value) / 100)
+        : Math.min(eligibleAmount, coupon.discount_value);
+
+      return { couponId: coupon.id, discountAmount, eligibleAmount, code: coupon.code };
     }),
 
   placeOrder: protectedProcedure
