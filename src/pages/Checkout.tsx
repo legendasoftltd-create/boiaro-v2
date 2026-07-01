@@ -154,6 +154,7 @@ export default function Checkout() {
         hasHardcopy: items.some(i => i.format === "hardcopy"),
         hasEbook: items.some(i => i.format === "ebook"),
         hasAudiobook: items.some(i => i.format === "audiobook"),
+        items: items.map(i => ({ bookId: i.book.id, amount: i.price * i.quantity })),
       })
       setCouponDiscount(result.discountAmount)
       setCouponApplied(true)

@@ -174,26 +174,22 @@ export const ordersRouter = router({
       if (coupon.applies_to === "ebook" && !input.hasEbook) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for ebook orders only" });
       if (coupon.applies_to === "audiobook" && !input.hasAudiobook) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for audiobook orders only" });
 
-      // Book-specific coupon: at least one cart item must be in the allowed list
-      if (coupon.applies_to === "books") {
+      // Book-specific coupon: only enforce when items are provided (mobile may not send items)
+      if (coupon.applies_to === "books" && input.items && input.items.length > 0) {
         const allowedIds = new Set(coupon.books.map((b) => b.book_id));
-        const cartIds = (input.items ?? []).map((i) => i.bookId);
+        const cartIds = input.items.map((i) => i.bookId);
         if (!cartIds.some((id) => allowedIds.has(id))) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is not valid for any book in your cart" });
         }
       }
 
-      // Category coupon: at least one cart item must belong to the coupon's category
-      if (coupon.applies_to === "category" && coupon.category_id) {
-        const cartIds = (input.items ?? []).map((i) => i.bookId);
-        if (cartIds.length > 0) {
-          const matchCount = await prisma.book.count({
-            where: { id: { in: cartIds }, category_id: coupon.category_id },
-          });
-          if (matchCount === 0) {
-            throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is not valid for any book in your cart" });
-          }
-        } else {
+      // Category coupon: only enforce when items are provided (mobile may not send items)
+      if (coupon.applies_to === "category" && coupon.category_id && input.items && input.items.length > 0) {
+        const cartIds = input.items.map((i) => i.bookId);
+        const matchCount = await prisma.book.count({
+          where: { id: { in: cartIds }, category_id: coupon.category_id },
+        });
+        if (matchCount === 0) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is not valid for any book in your cart" });
         }
       }

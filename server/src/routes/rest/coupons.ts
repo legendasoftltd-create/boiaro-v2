@@ -126,8 +126,8 @@ couponsRestRouter.post("/validate", requireAuth, async (req: AuthenticatedReques
       return;
     }
 
-    // Book-specific: cart must contain at least one allowed book
-    if (coupon.applies_to === "books") {
+    // Book-specific: only enforce when items are provided (published mobile apps may not send items)
+    if (coupon.applies_to === "books" && (items as { book_id: string }[]).length > 0) {
       const allowedIds = new Set(coupon.books.map((b) => b.book_id));
       const cartIds = (items as { book_id: string }[]).map((i) => i.book_id);
       if (!cartIds.some((id) => allowedIds.has(id))) {
@@ -136,13 +136,9 @@ couponsRestRouter.post("/validate", requireAuth, async (req: AuthenticatedReques
       }
     }
 
-    // Category-specific: cart must contain at least one book from the coupon's category
-    if (coupon.applies_to === "category" && coupon.category_id) {
+    // Category-specific: only enforce when items are provided (published mobile apps may not send items)
+    if (coupon.applies_to === "category" && coupon.category_id && (items as { book_id: string }[]).length > 0) {
       const cartIds = (items as { book_id: string }[]).map((i) => i.book_id);
-      if (cartIds.length === 0) {
-        res.status(400).json({ error: "This coupon is not valid for any book in your cart" });
-        return;
-      }
       const matchCount = await prisma.book.count({
         where: { id: { in: cartIds }, category_id: coupon.category_id },
       });
