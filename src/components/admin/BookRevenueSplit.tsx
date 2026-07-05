@@ -208,10 +208,11 @@ export function BookRevenueSplit({ bookId }: BookRevenueSplitProps) {
                 <div className={`text-[10px] font-medium ${Math.abs(total - 100) > 0.01 ? "text-destructive" : "text-muted-foreground"}`}>
                   Total: {total}%{split.useDefault && " (default)"}
                 </div>
-                {!split.useDefault && (
+                {(!split.useDefault || split.id) && (
                   <Button size="sm" className="w-full h-7 text-xs" onClick={() => saveSplit(format)}
-                    disabled={saving === format || Math.abs(total - 100) > 0.01}>
-                    <Save className="h-3 w-3 mr-1" /> Save
+                    disabled={saving === format || (!split.useDefault && Math.abs(total - 100) > 0.01)}>
+                    <Save className="h-3 w-3 mr-1" />
+                    {split.useDefault ? "Revert to Default" : "Save"}
                   </Button>
                 )}
               </div>

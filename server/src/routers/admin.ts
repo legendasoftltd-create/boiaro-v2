@@ -5326,17 +5326,20 @@ export const adminRouter = router({
       payment_method: order.payment_method,
       cod_payment_status: order.cod_payment_status,
     }));
+    const verifiedOrderIds = new Set(verifiedOrders.map((o) => o.id));
+    // Only count earnings from orders that have actually been paid/verified
+    const verifiedEarnings = activeEarnings.filter((e) => e.order_id && verifiedOrderIds.has(e.order_id));
     const totalSales = verifiedOrders.reduce((sum, order) => {
       const itemTotal = order.items.reduce((itemSum, item) => itemSum + orderItemSaleAmount(item), 0);
       return sum + (itemTotal > 0 ? itemTotal : orderSellableAmount(order));
     }, 0);
     return {
       totalSales,
-      platformEarnings: activeEarnings.filter(e => e.role === "platform").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
-      writerPayouts: activeEarnings.filter(e => e.role === "writer").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
-      publisherPayouts: activeEarnings.filter(e => e.role === "publisher").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
-      narratorPayouts: activeEarnings.filter(e => e.role === "narrator").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
-      translatorPayouts: activeEarnings.filter(e => e.role === "translator").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
+      platformEarnings: verifiedEarnings.filter(e => e.role === "platform").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
+      writerPayouts: verifiedEarnings.filter(e => e.role === "writer").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
+      publisherPayouts: verifiedEarnings.filter(e => e.role === "publisher").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
+      narratorPayouts: verifiedEarnings.filter(e => e.role === "narrator").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
+      translatorPayouts: verifiedEarnings.filter(e => e.role === "translator").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
       pendingWithdrawals: withdrawals.filter(w => w.status === "pending").reduce((s, w) => s + Number(w.amount || 0), 0),
     };
   }),
