@@ -33,7 +33,8 @@ export async function calculateEarnings(params: EarningParams): Promise<number> 
     prisma.bookContributor.findMany({
       where: {
         book_id: bookId,
-        OR: [{ format }, { format: null }],
+        // format: null and format: "all" both mean "applies to every format"
+        OR: [{ format }, { format: null }, { format: "all" }],
       },
     }),
   ]);
