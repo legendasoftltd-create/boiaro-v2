@@ -12,7 +12,9 @@ meRestRouter.get(
   requireAuth,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const result = await getUserBookmarks(req.auth.userId!);
+      const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 100);
+      const offset = Math.max(Number(req.query.offset ?? 0), 0);
+      const result = await getUserBookmarks(req.auth.userId!, limit, offset);
       res.json(result);
     } catch (error) {
       sendHttpError(res, error);
@@ -26,15 +28,20 @@ meRestRouter.get(
   requireAuth,
   async (req: AuthenticatedRequest, res) => {
     try {
-      const bookmarks = await getUserBookmarks(req.auth.userId!);
+      const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 100);
+      const offset = Math.max(Number(req.query.offset ?? 0), 0);
+      const result = await getUserBookmarks(req.auth.userId!, limit, offset);
       res.json({
-        wishlist: bookmarks.map((b) => ({
+        wishlist: result.bookmarks.map((b) => ({
           id: b.id,
           book_id: b.book_id,
           added_at: b.created_at,
           book: b.book,
         })),
-        total: bookmarks.length,
+        total: result.total,
+        limit: result.limit,
+        offset: result.offset,
+        has_more: result.has_more,
       });
     } catch (error) {
       sendHttpError(res, error);

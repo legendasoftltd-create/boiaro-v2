@@ -329,11 +329,16 @@ export async function listBookReviews(
   bookId: string,
   input: z.infer<typeof bookReviewsQuerySchema>
 ) {
-  const reviews = await prisma.review.findMany({
-    where: { book_id: bookId, status: "approved" },
-    orderBy: { created_at: "desc" },
-    take: input.limit,
-  });
+  const where = { book_id: bookId, status: "approved" };
+  const [reviews, total] = await Promise.all([
+    prisma.review.findMany({
+      where,
+      orderBy: { created_at: "desc" },
+      skip: input.offset,
+      take: input.limit,
+    }),
+    prisma.review.count({ where }),
+  ]);
 
   const userIds = [...new Set(reviews.map((review) => review.user_id))];
   const profiles =
@@ -348,10 +353,16 @@ export async function listBookReviews(
     profiles.map((profile) => [profile.user_id, profile.display_name])
   );
 
-  return reviews.map((review) => ({
-    ...review,
-    display_name: profileMap.get(review.user_id) ?? null,
-  }));
+  return {
+    reviews: reviews.map((review) => ({
+      ...review,
+      display_name: profileMap.get(review.user_id) ?? null,
+    })),
+    total,
+    limit: input.limit,
+    offset: input.offset,
+    has_more: input.offset + input.limit < total,
+  };
 }
 
 export async function upsertBookReview(
@@ -472,25 +483,37 @@ export async function removeBookBookmark(userId: string, bookId: string) {
   return { bookmarked: false };
 }
 
-export async function getUserBookmarks(userId: string) {
-  const bookmarks = await prisma.bookmark.findMany({
-    where: { user_id: userId },
-    include: {
-      book: {
-        include: {
-          author: { select: { id: true, name: true } },
-          translator: { select: { id: true, name: true } },
-          formats: {
-            where: { submission_status: "approved" },
-            select: { id: true, format: true, price: true },
+export async function getUserBookmarks(userId: string, limit = 20, offset = 0) {
+  const where = { user_id: userId };
+  const [bookmarks, total] = await Promise.all([
+    prisma.bookmark.findMany({
+      where,
+      include: {
+        book: {
+          include: {
+            author: { select: { id: true, name: true } },
+            translator: { select: { id: true, name: true } },
+            formats: {
+              where: { submission_status: "approved" },
+              select: { id: true, format: true, price: true },
+            },
           },
         },
       },
-    },
-    orderBy: { created_at: "desc" },
-  });
-  return bookmarks.map((bm) => ({
-    ...bm,
-    book: bm.book ? resolveBookUrls(bm.book) : null,
-  }));
+      orderBy: { created_at: "desc" },
+      skip: offset,
+      take: limit,
+    }),
+    prisma.bookmark.count({ where }),
+  ]);
+  return {
+    bookmarks: bookmarks.map((bm) => ({
+      ...bm,
+      book: bm.book ? resolveBookUrls(bm.book) : null,
+    })),
+    total,
+    limit,
+    offset,
+    has_more: offset + limit < total,
+  };
 }

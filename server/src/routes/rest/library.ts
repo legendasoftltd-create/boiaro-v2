@@ -94,16 +94,14 @@ libraryRestRouter.get("/unlocks", requireAuth, async (req: AuthenticatedRequest,
 
 libraryRestRouter.get("/continue-reading", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const limit = Math.min(Number(req.query.limit ?? 10), 50);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 50);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+    const where = { user_id: req.auth.userId!, percentage: { gt: 0, lt: 100 } };
 
-    const progressList = await prisma.readingProgress.findMany({
-      where: {
-        user_id: req.auth.userId!,
-        percentage: { gt: 0, lt: 100 },
-      },
-      orderBy: { last_read_at: "desc" },
-      take: limit,
-    });
+    const [progressList, total] = await Promise.all([
+      prisma.readingProgress.findMany({ where, orderBy: { last_read_at: "desc" }, skip: offset, take: limit }),
+      prisma.readingProgress.count({ where }),
+    ]);
     const bookIds = progressList.map((p) => p.book_id);
     const books = await prisma.book.findMany({
       where: { id: { in: bookIds } },
@@ -119,6 +117,10 @@ libraryRestRouter.get("/continue-reading", requireAuth, async (req: Authenticate
         last_read_at: p.last_read_at,
         books: bookMap.get(p.book_id) ?? null,
       })),
+      total,
+      limit,
+      offset,
+      has_more: offset + limit < total,
     });
   } catch (error) {
     sendHttpError(res, error);
@@ -127,16 +129,14 @@ libraryRestRouter.get("/continue-reading", requireAuth, async (req: Authenticate
 
 libraryRestRouter.get("/continue-listening", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const limit = Math.min(Number(req.query.limit ?? 10), 50);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 50);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+    const where = { user_id: req.auth.userId!, percentage: { gt: 0, lt: 100 } };
 
-    const progressList = await prisma.listeningProgress.findMany({
-      where: {
-        user_id: req.auth.userId!,
-        percentage: { gt: 0, lt: 100 },
-      },
-      orderBy: { last_listened_at: "desc" },
-      take: limit,
-    });
+    const [progressList, total] = await Promise.all([
+      prisma.listeningProgress.findMany({ where, orderBy: { last_listened_at: "desc" }, skip: offset, take: limit }),
+      prisma.listeningProgress.count({ where }),
+    ]);
     const bookIds = progressList.map((p) => p.book_id);
     const books = await prisma.book.findMany({
       where: { id: { in: bookIds } },
@@ -152,6 +152,10 @@ libraryRestRouter.get("/continue-listening", requireAuth, async (req: Authentica
         last_listened_at: p.last_listened_at,
         books: bookMap.get(p.book_id) ?? null,
       })),
+      total,
+      limit,
+      offset,
+      has_more: offset + limit < total,
     });
   } catch (error) {
     sendHttpError(res, error);
