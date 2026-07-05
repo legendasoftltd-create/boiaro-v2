@@ -206,14 +206,18 @@ export default function AdminRevenueSplits() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">Recent Transactions</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base">Recent Transactions</CardTitle>
+          <p className="text-xs text-muted-foreground">Only earnings from paid/completed orders are shown.</p>
+        </CardHeader>
         <CardContent>
           {(earnings as any[]).length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Book</TableHead><TableHead>Format</TableHead><TableHead>Role</TableHead>
-                  <TableHead>Sale</TableHead><TableHead>%</TableHead><TableHead>Earned</TableHead><TableHead>Status</TableHead>
+                  <TableHead>Sale</TableHead><TableHead>%</TableHead><TableHead>Earned</TableHead>
+                  <TableHead>Order</TableHead><TableHead>Earning</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -222,16 +226,34 @@ export default function AdminRevenueSplits() {
                     <TableCell className="max-w-[100px] truncate">{e.books?.title || "—"}</TableCell>
                     <TableCell><Badge variant="outline" className="text-[10px] capitalize">{e.format}</Badge></TableCell>
                     <TableCell className="capitalize text-xs">{e.role}</TableCell>
-                    <TableCell>৳{e.sale_amount}</TableCell>
-                    <TableCell>{e.percentage}%</TableCell>
-                    <TableCell className="font-semibold text-emerald-400">৳{e.earned_amount}</TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px] capitalize">{e.status}</Badge></TableCell>
+                    <TableCell>৳{Number(e.sale_amount).toFixed(0)}</TableCell>
+                    <TableCell>{Number(e.percentage).toFixed(0)}%</TableCell>
+                    <TableCell className="font-semibold text-emerald-400">৳{Number(e.earned_amount).toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={`text-[10px] capitalize ${
+                        ["paid","completed","delivered","access_granted"].includes(e.order_status)
+                          ? "border-emerald-500/40 text-emerald-400"
+                          : "border-border text-muted-foreground"
+                      }`}>
+                        {e.order_status || "iap"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={`text-[10px] capitalize ${
+                        e.status === "settled" ? "border-emerald-500/40 text-emerald-400"
+                          : e.status === "confirmed" ? "border-blue-500/40 text-blue-400"
+                          : e.status === "reversed" ? "border-destructive/40 text-destructive"
+                          : "border-border text-muted-foreground"
+                      }`}>
+                        {e.status}
+                      </Badge>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-6">No earnings recorded yet.</p>
+            <p className="text-sm text-muted-foreground text-center py-6">No earnings from paid orders yet.</p>
           )}
         </CardContent>
       </Card>

@@ -5164,11 +5164,11 @@ export const adminRouter = router({
   listEarnings: adminProcedure
     .input(z.object({ limit: z.number().default(50) }).optional())
     .query(async ({ input }) => {
+      const limit = input?.limit ?? 50;
+      // Fetch more than requested so we have enough after filtering to verified orders
       const earnings = await prisma.contributorEarning.findMany({
         orderBy: { created_at: "desc" },
-        take: input?.limit ?? 50,
-        // Select explicit columns for compatibility with older DBs
-        // that may not yet have newly added contributor_earnings fields.
+        take: limit * 6,
         select: {
           id: true,
           user_id: true,
@@ -5185,12 +5185,39 @@ export const adminRouter = router({
           created_at: true,
         },
       });
-      const bookIds = [...new Set(earnings.map(e => e.book_id).filter(Boolean) as string[])];
+
+      // Only show earnings from verified (paid/completed) orders
+      const orderIds = [...new Set(earnings.map(e => e.order_id).filter(Boolean) as string[])];
+      const orders = orderIds.length > 0
+        ? await prisma.order.findMany({
+            where: { id: { in: orderIds } },
+            select: { id: true, status: true, payment_method: true, cod_payment_status: true },
+          })
+        : [];
+      const verifiedOrderIds = new Set(
+        orders.filter((o) => isVerifiedRevenueOrder({
+          status: String(o.status || ""),
+          payment_method: o.payment_method,
+          cod_payment_status: o.cod_payment_status,
+        })).map((o) => o.id)
+      );
+      const orderStatusMap = Object.fromEntries(orders.map(o => [o.id, o.status]));
+
+      // Also include IAP earnings (no order_id) — those are always verified at creation
+      const verifiedEarnings = earnings
+        .filter((e) => !e.order_id || verifiedOrderIds.has(e.order_id))
+        .slice(0, limit);
+
+      const bookIds = [...new Set(verifiedEarnings.map(e => e.book_id).filter(Boolean) as string[])];
       const books = bookIds.length > 0
         ? await prisma.book.findMany({ where: { id: { in: bookIds } }, select: { id: true, title: true } })
         : [];
       const bookMap = Object.fromEntries(books.map(b => [b.id, b]));
-      return earnings.map(e => ({ ...e, books: e.book_id ? bookMap[e.book_id] || null : null }));
+      return verifiedEarnings.map(e => ({
+        ...e,
+        books: e.book_id ? bookMap[e.book_id] || null : null,
+        order_status: e.order_id ? (orderStatusMap[e.order_id] ?? null) : null,
+      }));
     }),
 
   confirmEarnings: adminProcedure
