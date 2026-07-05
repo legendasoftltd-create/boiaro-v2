@@ -14,7 +14,10 @@ searchRestRouter.get("/", async (req, res) => {
       });
     }
 
-    const result = await searchBooks(q);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 50);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+
+    const result = await searchBooks(q, limit, offset);
 
     res.json(result);
   } catch (error) {
