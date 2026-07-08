@@ -23,7 +23,7 @@ const parsePaginationQuery = (query: Record<string, any>) => ({
 
 const bookSelect = {
   id: true, title: true, title_en: true, slug: true,
-  cover_url: true, rating: true, total_reads: true, is_free: true, is_featured: true, created_at: true,
+  cover_url: true, rating: true, total_reads: true, is_free: true, is_featured: true, subscriber_access: true, created_at: true,
   author: { select: { id: true, name: true, avatar_url: true } },
   translator: { select: { id: true, name: true, avatar_url: true } },
   category: { select: { id: true, name: true, slug: true } },

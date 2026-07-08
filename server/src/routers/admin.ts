@@ -247,6 +247,12 @@ export const adminRouter = router({
       prisma.book.update({ where: { id: input.id }, data: { is_active: input.is_active } })
     ),
 
+  setBookSubscriberAccess: adminProcedure
+    .input(z.object({ id: z.string(), subscriber_access: z.boolean() }))
+    .mutation(({ input }) =>
+      prisma.book.update({ where: { id: input.id }, data: { subscriber_access: input.subscriber_access } })
+    ),
+
   upsertBook: adminProcedure
     .input(
       z.object({
@@ -266,6 +272,7 @@ export const adminRouter = router({
         is_bestseller: z.boolean().optional(),
         is_new: z.boolean().optional(),
         is_free: z.boolean().optional(),
+        subscriber_access: z.boolean().optional(),
         language: z.string().optional().nullable(),
         tags: z.array(z.string()).nullable().optional(),
         submission_status: z.string().optional().nullable(),

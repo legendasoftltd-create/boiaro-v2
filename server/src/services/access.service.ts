@@ -13,6 +13,12 @@ export const checkMultiBookAccess = async (
 
   const normalizedFormat = Array.isArray(format) ? format[0] : format;
 
+  // Subscription only unlocks ebook and audiobook formats
+  const SUBSCRIBER_FORMATS = new Set(["ebook", "audiobook"]);
+  const formatEligibleForSubscription = !normalizedFormat || SUBSCRIBER_FORMATS.has(normalizedFormat);
+  // Book must have subscriber_access enabled (null/undefined treated as true for backwards compat)
+  const bookAllowsSubscription = book.subscriber_access !== false;
+
   // Parallel checks: purchase, subscription, coin unlock
   const [purchase, subscription, coinUnlock] = await Promise.all([
     prisma.userPurchase.findFirst({
@@ -23,13 +29,15 @@ export const checkMultiBookAccess = async (
         ...(normalizedFormat ? { format: normalizedFormat } : {}),
       },
     }),
-    prisma.userSubscription.findFirst({
-      where: {
-        user_id: userId,
-        status: "active",
-        OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
-      },
-    }),
+    formatEligibleForSubscription && bookAllowsSubscription
+      ? prisma.userSubscription.findFirst({
+          where: {
+            user_id: userId,
+            status: "active",
+            OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+          },
+        })
+      : Promise.resolve(null),
     normalizedFormat
       ? prisma.contentUnlock.findFirst({
           where: { user_id: userId, book_id: bookId, format: normalizedFormat, status: "active" },
@@ -84,6 +92,7 @@ export const checkMultiBookAccess = async (
     has_subscription: hasSubscription,
     has_purchase: hasPurchase,
     has_unlock: hasCoinUnlock,
+    subscriber_access: bookAllowsSubscription,
     preview_available,
     preview_percentage,
     preview_chapters,

@@ -73,7 +73,7 @@ categoriesRestRouter.get("/:id/books", async (req, res) => {
         take: limit,
         select: {
           id: true, title: true, title_en: true, slug: true,
-          cover_url: true, rating: true, total_reads: true, is_free: true,
+          cover_url: true, rating: true, total_reads: true, is_free: true, subscriber_access: true,
           author: { select: { id: true, name: true, avatar_url: true } },
           translator: { select: { id: true, name: true } },
           formats: { where: { is_available: true }, select: { format: true, price: true, in_stock: true } },

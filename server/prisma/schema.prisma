@@ -487,6 +487,7 @@ model Book {
   total_reads       Int?     @default(0)
   total_listens     Int?     @default(0)
   updated_at        DateTime @updatedAt
+  subscriber_access Boolean? @default(true)
   voice_access_type String?  @default("paid")
   voice_coin_price  Int?
 

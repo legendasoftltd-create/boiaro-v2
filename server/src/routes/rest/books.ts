@@ -230,3 +230,31 @@ booksRestRouter.get("/:book_id/tracks", async (req, res) => {
     sendHttpError(res, error);
   }
 });
+
+// PATCH /api/v1/books/:id/subscriber-access — admin toggle (admin/moderator only)
+// Body: { subscriber_access: boolean }
+booksRestRouter.patch("/:id/subscriber-access", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.auth?.userId;
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const userRole = await prisma.userRole.findFirst({ where: { user_id: userId, role: { in: ["admin", "moderator"] } } });
+    if (!userRole) { res.status(403).json({ error: "Admin access required" }); return; }
+
+    const bookId = String(req.params.id);
+    const { subscriber_access } = req.body;
+    if (typeof subscriber_access !== "boolean") {
+      res.status(400).json({ error: "subscriber_access must be a boolean" });
+      return;
+    }
+
+    const updated = await prisma.book.update({
+      where: { id: bookId },
+      data: { subscriber_access },
+      select: { id: true, title: true, subscriber_access: true },
+    });
+
+    res.json({ success: true, book: updated });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
