@@ -16,8 +16,8 @@ export const checkMultiBookAccess = async (
   // Subscription only unlocks ebook and audiobook formats
   const SUBSCRIBER_FORMATS = new Set(["ebook", "audiobook"]);
   const formatEligibleForSubscription = !normalizedFormat || SUBSCRIBER_FORMATS.has(normalizedFormat);
-  // Book-level master toggle (null/undefined treated as true for backwards compat)
-  const bookAllowsSubscription = book.subscriber_access !== false;
+  // Book-level master toggle — must be explicitly true
+  const bookAllowsSubscription = book.subscriber_access === true;
 
   // Parallel checks: purchase, subscription (+ format record for subscriber_access), coin unlock
   const [purchase, subscription, bookFormat, coinUnlock] = await Promise.all([
@@ -52,8 +52,8 @@ export const checkMultiBookAccess = async (
       : Promise.resolve(null),
   ]);
 
-  // Format-level subscriber_access check (null/undefined treated as true)
-  const formatAllowsSubscription = !bookFormat || bookFormat.subscriber_access !== false;
+  // Format-level subscriber_access check — must be explicitly true
+  const formatAllowsSubscription = bookFormat?.subscriber_access === true;
 
   const isFree = book.is_free;
   const hasPurchase = !!purchase;
@@ -97,7 +97,7 @@ export const checkMultiBookAccess = async (
     has_subscription: hasSubscription,
     has_purchase: hasPurchase,
     has_unlock: hasCoinUnlock,
-    subscriber_access: bookAllowsSubscription && formatAllowsSubscription,
+    subscriber_access: bookAllowsSubscription && (bookFormat ? formatAllowsSubscription : false),
     preview_available,
     preview_percentage,
     preview_chapters,

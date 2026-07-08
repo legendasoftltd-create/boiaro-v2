@@ -389,7 +389,7 @@ model BookFormat {
   in_stock                    Boolean?       @default(true)
   is_available                Boolean?       @default(true)
   isbn                        String?
-  subscriber_access           Boolean?       @default(true)
+  subscriber_access           Boolean?       @default(false)
   narrator_id                 String?
   narrator_ids                String[]       @default([])
   original_price              Float?
@@ -488,7 +488,7 @@ model Book {
   total_reads       Int?     @default(0)
   total_listens     Int?     @default(0)
   updated_at        DateTime @updatedAt
-  subscriber_access Boolean? @default(true)
+  subscriber_access Boolean? @default(false)
   voice_access_type String?  @default("paid")
   voice_coin_price  Int?
 

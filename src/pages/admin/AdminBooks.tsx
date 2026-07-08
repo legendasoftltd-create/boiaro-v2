@@ -77,7 +77,7 @@ export default function AdminBooks() {
   const [form, setForm] = useState({
     title: "", title_en: "", slug: "", description: "", description_bn: "",
     author_id: "", category_id: "", publisher_id: "", cover_url: "",
-    is_featured: false, is_bestseller: false, is_new: false, is_free: false, subscriber_access: true,
+    is_featured: false, is_bestseller: false, is_new: false, is_free: false, subscriber_access: false,
     language: "bn", tags: "", published_date: "",
   });
 
@@ -465,7 +465,7 @@ export default function AdminBooks() {
     setForm({
       title: "", title_en: "", slug: "", description: "", description_bn: "",
       author_id: "", category_id: "", publisher_id: "", translator_id: "", cover_url: "",
-      is_featured: false, is_bestseller: false, is_new: false, is_free: false, subscriber_access: true,
+      is_featured: false, is_bestseller: false, is_new: false, is_free: false, subscriber_access: false,
       language: "bn", tags: "", published_date: "",
     });
     setOpen(true);
@@ -482,7 +482,7 @@ export default function AdminBooks() {
       cover_url: book.cover_url || "",
       is_featured: book.is_featured || false, is_bestseller: book.is_bestseller || false,
       is_new: book.is_new || false, is_free: book.is_free || false,
-      subscriber_access: book.subscriber_access !== false,
+      subscriber_access: book.subscriber_access === true,
       language: book.language || "bn", tags: (book.tags || []).join(", "),
       published_date: book.published_date ? new Date(book.published_date).toISOString().split("T")[0] : "",
     });
