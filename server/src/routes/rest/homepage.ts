@@ -13,6 +13,7 @@ const ALLOWED_HOMEPAGE_TYPES = new Set(["ebook", "audiobook", "hardcopy", "hardc
 const PAGINATED_SECTIONS = new Set([
   "trendingNow", "newReleases", "popularBooks",
   "popularAudiobooks", "popularHardCopies", "popularEbooks",
+  "editorsPick", "freeBooks", "topMostRead", "becauseYouRead",
 ]);
 
 const parsePaginationQuery = (query: Record<string, any>) => ({
@@ -88,6 +89,43 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
 
   if (section === "popularEbooks") {
     const where = { submission_status: "approved", formats: { some: { format: "ebook", is_available: true } } } as const;
+    const [books, total] = await Promise.all([
+      prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
+      prisma.book.count({ where }),
+    ]);
+    return { data: books.map(resolveBookUrls), total, limit, offset, has_more: offset + limit < total };
+  }
+
+  if (section === "editorsPick") {
+    const where = { submission_status: "approved", is_featured: true } as const;
+    const [books, total] = await Promise.all([
+      prisma.book.findMany({ where, orderBy: { created_at: "desc" }, skip: offset, take: limit, select: bookSelect }),
+      prisma.book.count({ where }),
+    ]);
+    return { data: books.map(resolveBookUrls), total, limit, offset, has_more: offset + limit < total };
+  }
+
+  if (section === "freeBooks") {
+    const where = { submission_status: "approved", is_free: true } as const;
+    const [books, total] = await Promise.all([
+      prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
+      prisma.book.count({ where }),
+    ]);
+    return { data: books.map(resolveBookUrls), total, limit, offset, has_more: offset + limit < total };
+  }
+
+  if (section === "topMostRead") {
+    const where = { submission_status: "approved" } as const;
+    const [books, total] = await Promise.all([
+      prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
+      prisma.book.count({ where }),
+    ]);
+    return { data: books.map(resolveBookUrls), total, limit, offset, has_more: offset + limit < total };
+  }
+
+  if (section === "becauseYouRead") {
+    // Returns popular books ordered by read count (personalization not yet available via REST)
+    const where = { submission_status: "approved", total_reads: { not: null } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
