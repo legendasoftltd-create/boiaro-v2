@@ -254,6 +254,26 @@ async function finalizeSubscriptionPayment(params: { subscriptionId: string; pay
     data: { status: "paid", transaction_id: params.transactionId || undefined },
   });
 
+  // Expire any other pending subscriptions for the same user (stale checkout attempts)
+  const stalePending = await prisma.userSubscription.findMany({
+    where: { user_id: sub.user_id, status: "pending", id: { not: params.subscriptionId } },
+    select: { id: true },
+  });
+  if (stalePending.length > 0) {
+    const staleIds = stalePending.map((s) => s.id);
+    const staleCouponUsages = await prisma.couponUsage.findMany({
+      where: { subscription_id: { in: staleIds } },
+      select: { coupon_id: true },
+    });
+    await prisma.$transaction([
+      ...staleCouponUsages.map((cu) =>
+        prisma.coupon.update({ where: { id: cu.coupon_id }, data: { used_count: { decrement: 1 } } })
+      ),
+      prisma.couponUsage.deleteMany({ where: { subscription_id: { in: staleIds } } }),
+      prisma.userSubscription.updateMany({ where: { id: { in: staleIds } }, data: { status: "failed" } }),
+    ]);
+  }
+
   const subUser = await prisma.user.findUnique({ where: { id: sub.user_id }, select: { email: true } });
   if (subUser?.email) {
     const fmt = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
@@ -617,14 +637,25 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
           data: { status: "failed" },
         });
       } else if (subscriptionId) {
-        await prisma.payment.updateMany({
+        // Rollback coupon reservation so the user can reuse it on the next attempt
+        const subCouponUsages = await prisma.couponUsage.findMany({
           where: { subscription_id: subscriptionId },
-          data: { status: status === "cancelled" ? "cancelled" : "failed" },
+          select: { coupon_id: true },
         });
-        await prisma.userSubscription.update({
-          where: { id: subscriptionId },
-          data: { status: status === "cancelled" ? "cancelled" : "failed" },
-        });
+        await prisma.$transaction([
+          ...subCouponUsages.map((cu) =>
+            prisma.coupon.update({ where: { id: cu.coupon_id }, data: { used_count: { decrement: 1 } } })
+          ),
+          prisma.couponUsage.deleteMany({ where: { subscription_id: subscriptionId } }),
+          prisma.payment.updateMany({
+            where: { subscription_id: subscriptionId },
+            data: { status: status === "cancelled" ? "cancelled" : "failed" },
+          }),
+          prisma.userSubscription.update({
+            where: { id: subscriptionId },
+            data: { status: status === "cancelled" ? "cancelled" : "failed" },
+          }),
+        ]);
       } else if (coinPurchaseId) {
         await prisma.coinPurchase.update({
           where: { id: coinPurchaseId },

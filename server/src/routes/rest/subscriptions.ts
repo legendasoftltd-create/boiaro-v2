@@ -31,14 +31,55 @@ subscriptionsRestRouter.get("/plans", async (_req, res) => {
   }
 });
 
-// GET /subscriptions/my — current user's subscriptions
-subscriptionsRestRouter.get("/my", requireAuth, async (req: AuthenticatedRequest, res) => {
+// GET /subscriptions/status — quick active-subscription summary for mobile UI
+subscriptionsRestRouter.get("/status", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const subscriptions = await prisma.userSubscription.findMany({
-      where: { user_id: req.auth.userId! },
-      include: { plan: { select: { name: true, description: true, features: true } } },
+    const sub = await prisma.userSubscription.findFirst({
+      where: {
+        user_id: req.auth.userId!,
+        status: "active",
+        OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+      },
+      include: { plan: { select: { name: true, features: true } } },
       orderBy: { created_at: "desc" },
     });
+
+    const now = new Date();
+    const daysRemaining = sub?.end_date
+      ? Math.max(0, Math.ceil((sub.end_date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+      : null;
+
+    res.json({
+      is_subscribed: !!sub,
+      status: sub?.status ?? null,
+      plan_name: sub?.plan?.name ?? null,
+      plan_features: sub?.plan?.features ?? null,
+      end_date: sub?.end_date ?? null,
+      days_remaining: daysRemaining,
+    });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// GET /subscriptions/my — current user's subscription history (paginated)
+subscriptionsRestRouter.get("/my", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 10), 1), 50);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+    const where = { user_id: req.auth.userId! };
+
+    const [subscriptions, total] = await Promise.all([
+      prisma.userSubscription.findMany({
+        where,
+        include: { plan: { select: { name: true, description: true, features: true } } },
+        orderBy: { created_at: "desc" },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.userSubscription.count({ where }),
+    ]);
+
     res.json({
       subscriptions: subscriptions.map((s) => ({
         id: s.id,
@@ -49,12 +90,17 @@ subscriptionsRestRouter.get("/my", requireAuth, async (req: AuthenticatedRequest
         amount_paid: s.amount_paid,
         coupon_code: s.coupon_code,
         discount_amount: s.discount_amount,
+        created_at: s.created_at,
         subscription_plans: {
           name: s.plan.name,
           description: s.plan.description,
           features: s.plan.features,
         },
       })),
+      total,
+      limit,
+      offset,
+      has_more: offset + limit < total,
     });
   } catch (error) {
     sendHttpError(res, error);
@@ -79,6 +125,42 @@ subscriptionsRestRouter.get("/active", requireAuth, async (req: AuthenticatedReq
   }
 });
 
+// POST /subscriptions/cancel — cancel the current active subscription
+// Access remains until end_date; status is set to "cancelled" immediately.
+subscriptionsRestRouter.post("/cancel", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.auth.userId!;
+
+    const sub = await prisma.userSubscription.findFirst({
+      where: {
+        user_id: userId,
+        status: "active",
+        OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+      },
+      orderBy: { created_at: "desc" },
+    });
+
+    if (!sub) {
+      res.status(404).json({ error: "No active subscription to cancel" });
+      return;
+    }
+
+    await prisma.userSubscription.update({
+      where: { id: sub.id },
+      data: { status: "cancelled" },
+    });
+
+    res.json({
+      success: true,
+      message: "Subscription cancelled. You retain access until the end of the billing period.",
+      subscription_id: sub.id,
+      end_date: sub.end_date,
+    });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
 // POST /subscriptions/subscribe — initiate subscription (requires payment for paid plans)
 // Body: { plan_id, coupon_code?, payment_method? }
 // Response (paid plan):   { requires_payment: true, gateway_url, subscription_id, transaction_id }
@@ -96,6 +178,24 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
     const plan = await prisma.subscriptionPlan.findUnique({ where: { id: plan_id } });
     if (!plan || !plan.is_active) {
       res.status(404).json({ error: "Subscription plan not found or inactive" });
+      return;
+    }
+
+    // Block if user already has an active subscription
+    const existingActive = await prisma.userSubscription.findFirst({
+      where: {
+        user_id: userId,
+        status: "active",
+        OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+      },
+      select: { id: true, end_date: true },
+    });
+    if (existingActive) {
+      res.status(409).json({
+        error: "You already have an active subscription. Cancel your current subscription before subscribing to a new plan.",
+        subscription_id: existingActive.id,
+        end_date: existingActive.end_date,
+      });
       return;
     }
 
@@ -191,6 +291,8 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
       },
     });
 
+    // Reserve coupon usage at subscription creation to prevent over-use;
+    // rolled back if payment fails or is cancelled.
     if (resolvedCouponId) {
       await prisma.couponUsage.create({
         data: { coupon_id: resolvedCouponId, user_id: userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
@@ -255,7 +357,11 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
     const sslData = await sslRes.json() as Record<string, unknown>;
 
     if (sslData.status !== "SUCCESS" || !sslData.GatewayPageURL) {
-      // Clean up pending subscription if gateway fails
+      // Gateway init failed — rollback coupon reservation and mark subscription failed
+      if (resolvedCouponId) {
+        await prisma.couponUsage.deleteMany({ where: { subscription_id: sub.id } });
+        await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { decrement: 1 } } });
+      }
       await prisma.userSubscription.update({ where: { id: sub.id }, data: { status: "failed" } });
       res.status(502).json({ error: String(sslData.failedreason || sslData.message || "Failed to initiate payment") });
       return;
