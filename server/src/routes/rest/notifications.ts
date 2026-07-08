@@ -8,15 +8,23 @@ import { isFirebaseConfigured } from "../../lib/firebase.js";
 export const notificationsRestRouter = Router();
 
 // ── GET /api/v1/notifications ────────────────────────────────────────────────
-// Returns last 50 notifications for the authenticated user.
 notificationsRestRouter.get("/", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const userNotifications = await prisma.userNotification.findMany({
-      where: { user_id: req.auth.userId! },
-      include: { notification: true },
-      orderBy: { created_at: "desc" },
-      take: 50,
-    });
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 100);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+    const where = { user_id: req.auth.userId! };
+
+    const [userNotifications, total] = await Promise.all([
+      prisma.userNotification.findMany({
+        where,
+        include: { notification: true },
+        orderBy: { created_at: "desc" },
+        skip: offset,
+        take: limit,
+      }),
+      prisma.userNotification.count({ where }),
+    ]);
+
     res.json({
       notifications: userNotifications.map((un) => ({
         id: un.id,
@@ -28,6 +36,10 @@ notificationsRestRouter.get("/", requireAuth, async (req: AuthenticatedRequest, 
         is_read: un.is_read,
         created_at: un.created_at,
       })),
+      total,
+      limit,
+      offset,
+      has_more: offset + limit < total,
     });
   } catch (error) {
     sendHttpError(res, error);

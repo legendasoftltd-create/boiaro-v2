@@ -2,13 +2,14 @@
  * REST Category Sections API
  * Base prefix: /api/v1/category-sections
  *
- *  GET  /   — list all active homepage category sections with their books
+ *  GET  /          — list all active homepage category sections with preview books
+ *  GET  /:id/books — paginated full book list for a specific category section
  */
 
 import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
 import { prisma } from "../../lib/prisma.js";
-import { resolveFileUrl } from "../../lib/mediaUrl.js";
+import { resolveFileUrl, resolveBookUrls } from "../../lib/mediaUrl.js";
 
 export const categorySectionsRestRouter = Router();
 
@@ -95,6 +96,55 @@ categorySectionsRestRouter.get("/", async (_req, res) => {
     );
 
     res.json({ success: true, sections: results });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// GET /api/v1/category-sections/:id/books — paginated "see all" for a section
+categorySectionsRestRouter.get("/:id/books", async (req, res) => {
+  try {
+    const id = String(req.params.id);
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 50);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+
+    const section = await prisma.homepageCategorySection.findUnique({
+      where: { id },
+      select: { id: true, title: true, subtitle: true, category_id: true },
+    });
+    if (!section) {
+      res.status(404).json({ success: false, error: "Section not found" });
+      return;
+    }
+
+    const where = { category_id: section.category_id, submission_status: "approved" };
+    const [books, total] = await Promise.all([
+      prisma.book.findMany({
+        where,
+        orderBy: { created_at: "desc" },
+        skip: offset,
+        take: limit,
+        select: {
+          id: true, title: true, title_en: true, slug: true,
+          cover_url: true, rating: true, total_reads: true, is_free: true,
+          author: { select: { id: true, name: true, avatar_url: true } },
+          translator: { select: { id: true, name: true } },
+          formats: { where: { is_available: true }, select: { format: true, price: true, in_stock: true } },
+        },
+      }),
+      prisma.book.count({ where }),
+    ]);
+
+    res.json({
+      section_id: section.id,
+      title: section.title ?? null,
+      subtitle: section.subtitle ?? null,
+      books: books.map(resolveBookUrls),
+      total,
+      limit,
+      offset,
+      has_more: offset + limit < total,
+    });
   } catch (error) {
     sendHttpError(res, error);
   }
