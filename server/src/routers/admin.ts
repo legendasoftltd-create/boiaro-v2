@@ -432,6 +432,7 @@ export const adminRouter = router({
         in_stock: z.boolean().nullable().optional(),
         stock_count: z.number().int().nullable().optional(),
         is_available: z.boolean().nullable().optional(),
+        subscriber_access: z.boolean().nullable().optional(),
         submission_status: z.string().nullable().optional(),
         printing_cost: z.number().nullable().optional(),
         unit_cost: z.number().nullable().optional(),

@@ -389,6 +389,7 @@ model BookFormat {
   in_stock                    Boolean?       @default(true)
   is_available                Boolean?       @default(true)
   isbn                        String?
+  subscriber_access           Boolean?       @default(true)
   narrator_id                 String?
   narrator_ids                String[]       @default([])
   original_price              Float?

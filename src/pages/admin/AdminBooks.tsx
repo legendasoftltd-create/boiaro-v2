@@ -1174,6 +1174,31 @@ export default function AdminBooks() {
                         >
                           {(f.is_available ?? true) ? "Active" : "Inactive"}
                         </button>
+                        {f.format !== "hardcopy" && (
+                          <button
+                            onClick={async () => {
+                              const newVal = !(f.subscriber_access ?? true);
+                              try {
+                                await upsertFormatMutation.mutateAsync({ id: f.id, book_id: f.book_id, format: f.format, subscriber_access: newVal });
+                              } catch (error: any) {
+                                toast.error(error.message || "Failed to update subscriber access");
+                                return;
+                              }
+                              if (selectedBookId) {
+                                setFormatsByBookId((prev) => ({
+                                  ...prev,
+                                  [selectedBookId]: (prev[selectedBookId] || []).map((fmt) =>
+                                    fmt.id === f.id ? { ...fmt, subscriber_access: newVal } : fmt,
+                                  ),
+                                }));
+                              }
+                              toast.success(newVal ? "Subscriber access enabled" : "Subscriber access disabled");
+                            }}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-medium cursor-pointer transition-colors ${(f.subscriber_access ?? true) ? "bg-primary/10 text-primary hover:bg-primary/20" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}
+                          >
+                            {(f.subscriber_access ?? true) ? "Sub ✓" : "Sub ✗"}
+                          </button>
+                        )}
                         {f.format === "ebook" && f.file_url && (
                           <>
                             <Badge variant="outline" className="text-[10px] bg-green-500/10 text-green-400">File ✓</Badge>
@@ -1286,6 +1311,25 @@ export default function AdminBooks() {
                       {(formatForm.is_available ?? true) ? "Active" : "Inactive"}
                     </span>
                   </div>
+                  {formatForm.format !== "hardcopy" && (
+                    <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                      <Label htmlFor="format-subscriber" className="text-sm font-medium flex-1">
+                        Subscriber Access
+                        <span className="block text-[10px] font-normal text-muted-foreground">Allow subscribers to read/listen this format</span>
+                      </Label>
+                      <button
+                        id="format-subscriber"
+                        type="button"
+                        onClick={() => setFormatForm({ ...formatForm, subscriber_access: !(formatForm.subscriber_access ?? true) })}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${(formatForm.subscriber_access ?? true) ? "bg-primary" : "bg-muted-foreground/30"}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${(formatForm.subscriber_access ?? true) ? "translate-x-5" : ""}`} />
+                      </button>
+                      <span className={`text-xs font-medium ${(formatForm.subscriber_access ?? true) ? "text-primary" : "text-muted-foreground"}`}>
+                        {(formatForm.subscriber_access ?? true) ? "Enabled" : "Disabled"}
+                      </span>
+                    </div>
+                  )}
                   {/* Format-level Publisher */}
                   <div className="col-span-2">
                     <Label>{formatForm.format === 'hardcopy' ? 'Source / Supplier Publisher' : 'Format Publisher'}</Label>
