@@ -83,10 +83,20 @@ export default function Subscriptions() {
                 <p className="text-sm text-muted-foreground">Current Plan</p>
                 <p className="text-lg font-bold text-primary">{(activeSub as any).plan?.name}</p>
                 {activeSub.end_date && (
-                  <p className="text-xs text-muted-foreground">Expires: {new Date(activeSub.end_date).toLocaleDateString()}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(activeSub as any).status === "cancelled" ? "Access until: " : "Expires: "}
+                    {new Date(activeSub.end_date).toLocaleDateString()}
+                  </p>
+                )}
+                {(activeSub as any).status === "cancelled" && (
+                  <p className="text-xs text-amber-500 mt-1">You may re-subscribe after your current period ends.</p>
                 )}
               </div>
-              <Badge className="bg-emerald-500/20 text-emerald-400">Active</Badge>
+              {(activeSub as any).status === "cancelled" ? (
+                <Badge className="bg-amber-500/20 text-amber-400">Cancelled</Badge>
+              ) : (
+                <Badge className="bg-emerald-500/20 text-emerald-400">Active</Badge>
+              )}
             </CardContent>
           </Card>
         )}
@@ -133,10 +143,14 @@ export default function Subscriptions() {
                   <Button
                     className="w-full"
                     variant={plan.is_featured ? "default" : "outline"}
-                    disabled={subscribeMutation.isPending || (activeSub?.plan_id === plan.id)}
+                    disabled={subscribeMutation.isPending || !!activeSub}
                     onClick={(e) => { e.stopPropagation(); subscribe(plan.id); }}
                   >
-                    {activeSub?.plan_id === plan.id ? "Current Plan" : "Subscribe"}
+                    {activeSub?.plan_id === plan.id
+                      ? ((activeSub as any).status === "cancelled" ? "Cancelled" : "Current Plan")
+                      : activeSub
+                        ? "Unavailable"
+                        : "Subscribe"}
                   </Button>
                 </CardContent>
               </Card>

@@ -244,15 +244,16 @@ async function finalizeSubscriptionPayment(params: { subscriptionId: string; pay
   const endDate = new Date(now);
   endDate.setDate(endDate.getDate() + (sub.plan.duration_days || 30));
 
-  await prisma.userSubscription.update({
-    where: { id: params.subscriptionId },
-    data: { status: "active", start_date: now, end_date: endDate },
-  });
-
-  await prisma.payment.updateMany({
-    where: { subscription_id: params.subscriptionId },
-    data: { status: "paid", transaction_id: params.transactionId || undefined },
-  });
+  await prisma.$transaction([
+    prisma.userSubscription.update({
+      where: { id: params.subscriptionId },
+      data: { status: "active", start_date: now, end_date: endDate },
+    }),
+    prisma.payment.updateMany({
+      where: { subscription_id: params.subscriptionId },
+      data: { status: "paid", transaction_id: params.transactionId || undefined },
+    }),
+  ]);
 
   // Expire any other pending subscriptions for the same user (stale checkout attempts)
   const stalePending = await prisma.userSubscription.findMany({

@@ -37,7 +37,7 @@ subscriptionsRestRouter.get("/status", requireAuth, async (req: AuthenticatedReq
     const sub = await prisma.userSubscription.findFirst({
       where: {
         user_id: req.auth.userId!,
-        status: "active",
+        status: { in: ["active", "cancelled"] },
         OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
       },
       include: { plan: { select: { name: true, features: true } } },
@@ -113,7 +113,7 @@ subscriptionsRestRouter.get("/active", requireAuth, async (req: AuthenticatedReq
     const sub = await prisma.userSubscription.findFirst({
       where: {
         user_id: req.auth.userId!,
-        status: "active",
+        status: { in: ["active", "cancelled"] },
         OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
       },
       include: { plan: { select: { name: true, description: true, features: true, duration_days: true } } },
@@ -181,18 +181,21 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
       return;
     }
 
-    // Block if user already has an active subscription
+    // Block if user already has an active or cancelled-but-valid subscription
     const existingActive = await prisma.userSubscription.findFirst({
       where: {
         user_id: userId,
-        status: "active",
+        status: { in: ["active", "cancelled"] },
         OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
       },
-      select: { id: true, end_date: true },
+      select: { id: true, end_date: true, status: true },
     });
     if (existingActive) {
+      const isCancelled = existingActive.status === "cancelled";
       res.status(409).json({
-        error: "You already have an active subscription. Cancel your current subscription before subscribing to a new plan.",
+        error: isCancelled
+          ? "You have a cancelled subscription that is still valid. You can re-subscribe after it expires."
+          : "You already have an active subscription. Cancel your current subscription before subscribing to a new plan.",
         subscription_id: existingActive.id,
         end_date: existingActive.end_date,
       });
@@ -209,10 +212,17 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
       });
       if (coupon) {
         const now = new Date();
+        const userUsageCount = coupon.per_user_limit
+          ? await prisma.couponUsage.count({ where: { coupon_id: coupon.id, user_id: userId } })
+          : 0;
+        const appliesToSub = !coupon.applies_to || coupon.applies_to === "all" || coupon.applies_to === "subscription";
         const valid =
+          appliesToSub &&
           (!coupon.start_date || coupon.start_date <= now) &&
           (!coupon.end_date || coupon.end_date >= now) &&
-          (!coupon.usage_limit || coupon.used_count < coupon.usage_limit);
+          (!coupon.usage_limit || coupon.used_count < coupon.usage_limit) &&
+          (!coupon.per_user_limit || userUsageCount < coupon.per_user_limit) &&
+          (!coupon.min_order_amount || plan.price >= coupon.min_order_amount);
         if (valid) {
           resolvedDiscount =
             coupon.discount_type === "percentage"

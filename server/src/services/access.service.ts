@@ -33,7 +33,7 @@ export const checkMultiBookAccess = async (
       ? prisma.userSubscription.findFirst({
           where: {
             user_id: userId,
-            status: "active",
+            status: { in: ["active", "cancelled"] },
             OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
           },
         })

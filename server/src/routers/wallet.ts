@@ -761,7 +761,7 @@ export const walletRouter = router({
 
   activeSubscription: protectedProcedure.query(({ ctx }) =>
     prisma.userSubscription.findFirst({
-      where: { user_id: ctx.userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
+      where: { user_id: ctx.userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
       include: { plan: { select: { name: true } } },
       orderBy: { created_at: "desc" },
     })
@@ -778,15 +778,17 @@ export const walletRouter = router({
       const plan = await prisma.subscriptionPlan.findUnique({ where: { id: input.planId } });
       if (!plan || !plan.is_active) throw new TRPCError({ code: "NOT_FOUND", message: "Plan not found or inactive" });
 
-      // Block if user already has an active subscription
+      // Block if user already has an active or cancelled-but-valid subscription
       const existingActive = await prisma.userSubscription.findFirst({
-        where: { user_id: userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
-        select: { id: true, end_date: true },
+        where: { user_id: userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
+        select: { id: true, end_date: true, status: true },
       });
       if (existingActive) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "You already have an active subscription. Cancel your current plan first.",
+          message: existingActive.status === "cancelled"
+            ? "You have a cancelled subscription that is still valid. You can re-subscribe after it expires."
+            : "You already have an active subscription. Cancel your current plan first.",
         });
       }
 
@@ -797,10 +799,17 @@ export const walletRouter = router({
         const coupon = await prisma.coupon.findFirst({ where: { code: input.couponCode.toUpperCase(), status: "active" } });
         if (coupon) {
           const now = new Date();
+          const userUsageCount = coupon.per_user_limit
+            ? await prisma.couponUsage.count({ where: { coupon_id: coupon.id, user_id: userId } })
+            : 0;
+          const appliesToSub = !coupon.applies_to || coupon.applies_to === "all" || coupon.applies_to === "subscription";
           const valid =
+            appliesToSub &&
             (!coupon.start_date || coupon.start_date <= now) &&
             (!coupon.end_date || coupon.end_date >= now) &&
-            (!coupon.usage_limit || coupon.used_count < coupon.usage_limit);
+            (!coupon.usage_limit || coupon.used_count < coupon.usage_limit) &&
+            (!coupon.per_user_limit || userUsageCount < coupon.per_user_limit) &&
+            (!coupon.min_order_amount || plan.price >= coupon.min_order_amount);
           if (valid) {
             resolvedDiscount = coupon.discount_type === "percentage"
               ? Math.min(plan.price, (plan.price * coupon.discount_value) / 100)
