@@ -77,7 +77,7 @@ export default function AdminBooks() {
   const [form, setForm] = useState({
     title: "", title_en: "", slug: "", description: "", description_bn: "",
     author_id: "", category_id: "", publisher_id: "", cover_url: "",
-    is_featured: false, is_bestseller: false, is_new: false, is_free: false,
+    is_featured: false, is_bestseller: false, is_new: false, is_free: false, subscriber_access: true,
     language: "bn", tags: "", published_date: "",
   });
 
@@ -95,6 +95,7 @@ export default function AdminBooks() {
   const [filterActive, setFilterActive] = useState("all");
   const upsertBookMutation = trpc.admin.upsertBook.useMutation();
   const setBookActiveMutation = trpc.admin.setBookActiveStatus.useMutation();
+  const setBookSubscriberAccessMutation = trpc.admin.setBookSubscriberAccess.useMutation();
   const deleteBookMutation = trpc.admin.deleteBookWithFormats.useMutation();
   const upsertFormatMutation = trpc.admin.upsertBookFormat.useMutation();
   const deleteFormatMutation = trpc.admin.deleteBookFormatCascade.useMutation();
@@ -464,7 +465,7 @@ export default function AdminBooks() {
     setForm({
       title: "", title_en: "", slug: "", description: "", description_bn: "",
       author_id: "", category_id: "", publisher_id: "", translator_id: "", cover_url: "",
-      is_featured: false, is_bestseller: false, is_new: false, is_free: false,
+      is_featured: false, is_bestseller: false, is_new: false, is_free: false, subscriber_access: true,
       language: "bn", tags: "", published_date: "",
     });
     setOpen(true);
@@ -481,6 +482,7 @@ export default function AdminBooks() {
       cover_url: book.cover_url || "",
       is_featured: book.is_featured || false, is_bestseller: book.is_bestseller || false,
       is_new: book.is_new || false, is_free: book.is_free || false,
+      subscriber_access: book.subscriber_access !== false,
       language: book.language || "bn", tags: (book.tags || []).join(", "),
       published_date: book.published_date ? new Date(book.published_date).toISOString().split("T")[0] : "",
     });
@@ -874,6 +876,7 @@ export default function AdminBooks() {
               <TableHead>Publisher</TableHead>
               <TableHead>Formats</TableHead>
               <TableHead>Featured</TableHead>
+              <TableHead>Subscriber</TableHead>
               <TableHead>Active</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -915,6 +918,23 @@ export default function AdminBooks() {
                 <TableCell>{b.is_featured ? "✓" : "—"}</TableCell>
                 <TableCell>
                   <Switch
+                    checked={b.subscriber_access !== false}
+                    onCheckedChange={(val) => {
+                      setBookSubscriberAccessMutation.mutate(
+                        { id: b.id, subscriber_access: val },
+                        {
+                          onSuccess: () => {
+                            setBooks((prev) => prev.map((bk) => bk.id === b.id ? { ...bk, subscriber_access: val } : bk));
+                            toast.success(val ? "Subscriber access enabled" : "Subscriber access disabled");
+                          },
+                          onError: () => toast.error("Failed to update subscriber access"),
+                        }
+                      );
+                    }}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Switch
                     checked={b.is_active !== false}
                     onCheckedChange={(val) => {
                       setBookActiveMutation.mutate(
@@ -938,10 +958,10 @@ export default function AdminBooks() {
               </TableRow>
             ))}
             {booksLoading && (
-              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></TableCell></TableRow>
             )}
             {!booksLoading && !filteredBooks.length && (
-              <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">{books.length ? "No books match the current filters" : "No books yet"}</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">{books.length ? "No books match the current filters" : "No books yet"}</TableCell></TableRow>
             )}
           </TableBody>
         </Table>
@@ -1062,13 +1082,21 @@ export default function AdminBooks() {
                 onChange={(e) => setForm({ ...form, published_date: e.target.value })}
               />
             </div>
-            <div className="col-span-2 flex gap-4 flex-wrap">
+            <div className="col-span-2 flex gap-4 flex-wrap items-center">
               {(["is_featured", "is_bestseller", "is_new", "is_free"] as const).map((key) => (
                 <label key={key} className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />
                   {key.replace("is_", "").replace("_", " ")}
                 </label>
               ))}
+              <label className="flex items-center gap-2 text-sm border-l pl-4 ml-2">
+                <input
+                  type="checkbox"
+                  checked={form.subscriber_access}
+                  onChange={(e) => setForm({ ...form, subscriber_access: e.target.checked })}
+                />
+                <span className="text-primary font-medium">Subscriber Access</span>
+              </label>
             </div>
           </div>
           <Button className="mt-4 w-full" onClick={save}>Save Book</Button>
