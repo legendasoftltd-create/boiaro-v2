@@ -773,8 +773,22 @@ export const walletRouter = router({
       couponCode: z.string().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId;
+
       const plan = await prisma.subscriptionPlan.findUnique({ where: { id: input.planId } });
-      if (!plan) throw new TRPCError({ code: "NOT_FOUND", message: "Plan not found" });
+      if (!plan || !plan.is_active) throw new TRPCError({ code: "NOT_FOUND", message: "Plan not found or inactive" });
+
+      // Block if user already has an active subscription
+      const existingActive = await prisma.userSubscription.findFirst({
+        where: { user_id: userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
+        select: { id: true, end_date: true },
+      });
+      if (existingActive) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "You already have an active subscription. Cancel your current plan first.",
+        });
+      }
 
       // Resolve coupon
       let resolvedDiscount = 0;
@@ -806,7 +820,7 @@ export const walletRouter = router({
 
         const sub = await prisma.userSubscription.create({
           data: {
-            user_id: ctx.userId,
+            user_id: userId,
             plan_id: input.planId,
             start_date: now,
             end_date: endDate,
@@ -819,19 +833,41 @@ export const walletRouter = router({
 
         if (resolvedCouponId) {
           await prisma.couponUsage.create({
-            data: { coupon_id: resolvedCouponId, user_id: ctx.userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
+            data: { coupon_id: resolvedCouponId, user_id: userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
           });
           await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { increment: 1 } } });
         }
 
-        return { requires_payment: false, subscription: sub };
+        return { requires_payment: false as const, subscription: sub };
       }
 
-      // Paid plan — create pending subscription, client must go to payment gateway
+      // Paid plan — initiate SSLCommerz and return gateway URL
+      const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
+      if (!gateway || !gateway.is_enabled) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Payment gateway is not configured. Contact admin." });
+      }
+
+      const gatewayConfig = gateway.config as Record<string, unknown>;
+      const getStr = (key: string) => {
+        const v = gatewayConfig[key];
+        return typeof v === "string" && v.trim() ? v.trim() : undefined;
+      };
+      const storeId = getStr("store_id") || process.env.SSLCOMMERZ_STORE_ID;
+      const storePassword = getStr("store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+
+      if (!storeId || !storePassword) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Payment gateway credentials are missing. Contact admin." });
+      }
+
+      const frontendBase = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+      const backendBase = (process.env.BACKEND_URL || process.env.PUBLIC_API_URL || `http://localhost:${process.env.PORT || "3001"}`).replace(/\/$/, "");
+      const mode = gateway.mode === "live" ? "live" : "test";
+
+      // Create pending subscription
       const sub = await prisma.userSubscription.create({
         data: {
-          user_id: ctx.userId,
-          plan_id: input.planId,
+          user_id: userId,
+          plan_id: plan.id,
           status: "pending",
           coupon_code: input.couponCode || null,
           discount_amount: resolvedDiscount || null,
@@ -839,13 +875,86 @@ export const walletRouter = router({
         },
       });
 
+      // Reserve coupon (rolled back if payment fails)
       if (resolvedCouponId) {
         await prisma.couponUsage.create({
-          data: { coupon_id: resolvedCouponId, user_id: ctx.userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
+          data: { coupon_id: resolvedCouponId, user_id: userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
         });
         await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { increment: 1 } } });
       }
 
-      return { requires_payment: true, subscription_id: sub.id, amount: amountDue };
+      const transactionId = `SUB-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+      await prisma.payment.create({
+        data: {
+          user_id: userId,
+          subscription_id: sub.id,
+          amount: amountDue,
+          method: "sslcommerz",
+          status: "pending",
+          transaction_id: transactionId,
+        },
+      });
+
+      const successUrl = `${backendBase}/api/v1/payments/sslcommerz/success?redirect=${encodeURIComponent(`${frontendBase}/payment/callback?status=success`)}`;
+      const failUrl    = `${backendBase}/api/v1/payments/sslcommerz/fail?redirect=${encodeURIComponent(`${frontendBase}/payment/callback?status=failed`)}`;
+      const cancelUrl  = `${backendBase}/api/v1/payments/sslcommerz/cancel?redirect=${encodeURIComponent(`${frontendBase}/payment/callback?status=cancelled`)}`;
+      const ipnUrl     = `${backendBase}/api/v1/payments/sslcommerz/ipn`;
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, profile: { select: { full_name: true, phone: true } } },
+      });
+
+      const sslPayload = new URLSearchParams({
+        store_id: storeId,
+        store_passwd: storePassword,
+        total_amount: String(amountDue),
+        currency: "BDT",
+        tran_id: transactionId,
+        success_url: successUrl,
+        fail_url: failUrl,
+        cancel_url: cancelUrl,
+        ipn_url: ipnUrl,
+        product_name: plan.name,
+        product_category: "Subscription",
+        product_profile: "general",
+        cus_name: user?.profile?.full_name || "Customer",
+        cus_email: user?.email || "customer@example.com",
+        cus_phone: user?.profile?.phone || "01700000000",
+        cus_add1: "Bangladesh",
+        cus_city: "Dhaka",
+        cus_country: "Bangladesh",
+        shipping_method: "NO",
+        num_of_item: "1",
+        emi_option: "0",
+      });
+
+      const sslBase = mode === "live"
+        ? "https://securepay.sslcommerz.com/gwprocess/v4/api.php"
+        : "https://sandbox.sslcommerz.com/gwprocess/v4/api.php";
+
+      const sslRes = await fetch(sslBase, { method: "POST", body: sslPayload });
+      const sslData = await sslRes.json() as Record<string, unknown>;
+
+      if (sslData.status !== "SUCCESS" || !sslData.GatewayPageURL) {
+        // Rollback coupon and mark failed
+        if (resolvedCouponId) {
+          await prisma.couponUsage.deleteMany({ where: { subscription_id: sub.id } });
+          await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { decrement: 1 } } });
+        }
+        await prisma.userSubscription.update({ where: { id: sub.id }, data: { status: "failed" } });
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: String(sslData.failedreason || sslData.message || "Failed to initiate payment. Please try again."),
+        });
+      }
+
+      return {
+        requires_payment: true as const,
+        gateway_url: sslData.GatewayPageURL as string,
+        subscription_id: sub.id,
+        transaction_id: transactionId,
+      };
     }),
 });

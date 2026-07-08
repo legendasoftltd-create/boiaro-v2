@@ -23,7 +23,14 @@ export default function Subscriptions() {
   const { data: plans = [] } = trpc.wallet.subscriptionPlans.useQuery();
   const { data: activeSub } = trpc.wallet.activeSubscription.useQuery(undefined, { enabled: !!user });
   const subscribeMutation = trpc.wallet.subscribe.useMutation({
-    onSuccess: () => { toast.success("Subscription activated!"); navigate("/dashboard"); },
+    onSuccess: (data) => {
+      if (data.requires_payment) {
+        window.location.href = data.gateway_url;
+      } else {
+        toast.success("Subscription activated!");
+        navigate("/dashboard");
+      }
+    },
     onError: (err) => toast.error(err.message || "Failed to subscribe"),
   });
   const validateCouponMutation = trpc.orders.validateCoupon.useMutation();

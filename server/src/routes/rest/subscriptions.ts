@@ -315,9 +315,9 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
     });
 
     // Initiate SSLCommerz
-    const successUrl = `${backendBase}/api/v1/payments/sslcommerz/success?redirect=${encodeURIComponent(`${frontendBase}/subscription/callback?status=success`)}`;
-    const failUrl    = `${backendBase}/api/v1/payments/sslcommerz/fail?redirect=${encodeURIComponent(`${frontendBase}/subscription/callback?status=failed`)}`;
-    const cancelUrl  = `${backendBase}/api/v1/payments/sslcommerz/cancel?redirect=${encodeURIComponent(`${frontendBase}/subscription/callback?status=cancelled`)}`;
+    const successUrl = `${backendBase}/api/v1/payments/sslcommerz/success?redirect=${encodeURIComponent(`${frontendBase}/payment/callback?status=success`)}`;
+    const failUrl    = `${backendBase}/api/v1/payments/sslcommerz/fail?redirect=${encodeURIComponent(`${frontendBase}/payment/callback?status=failed`)}`;
+    const cancelUrl  = `${backendBase}/api/v1/payments/sslcommerz/cancel?redirect=${encodeURIComponent(`${frontendBase}/payment/callback?status=cancelled`)}`;
     const ipnUrl     = `${backendBase}/api/v1/payments/sslcommerz/ipn`;
 
     const user = await prisma.user.findUnique({
