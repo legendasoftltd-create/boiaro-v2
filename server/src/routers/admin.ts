@@ -249,9 +249,16 @@ export const adminRouter = router({
 
   setBookSubscriberAccess: adminProcedure
     .input(z.object({ id: z.string(), subscriber_access: z.boolean() }))
-    .mutation(({ input }) =>
-      prisma.book.update({ where: { id: input.id }, data: { subscriber_access: input.subscriber_access } })
-    ),
+    .mutation(async ({ input }) => {
+      await prisma.$transaction([
+        prisma.book.update({ where: { id: input.id }, data: { subscriber_access: input.subscriber_access } }),
+        // Cascade to all ebook/audiobook formats so both gates are in sync
+        prisma.bookFormat.updateMany({
+          where: { book_id: input.id, format: { in: ["ebook", "audiobook"] } },
+          data: { subscriber_access: input.subscriber_access },
+        }),
+      ]);
+    }),
 
   upsertBook: adminProcedure
     .input(
