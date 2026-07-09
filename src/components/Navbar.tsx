@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useLocation } from "react-router-dom"
-import { Menu, X, Search, User, ShoppingBag, BookOpen, Headphones, Package, Layers, Radio, LayoutDashboard, LogOut } from "lucide-react"
+import { Menu, X, Search, User, ShoppingBag, BookOpen, Headphones, Package, Layers, Radio, LayoutDashboard, LogOut, Crown } from "lucide-react"
 import { useContentFilter, type ContentType } from "@/contexts/ContentFilterContext"
 import logoBoiaroFallback from "@/assets/logo_boiaro.png"
 import logoBoiaroShortFallback from "@/assets/logo_boiaro_short.png"
@@ -156,7 +156,9 @@ export function Navbar() {
               )}
 
               <div className="hidden md:flex items-center ml-1.5">
-                <Button className="btn-gold px-4 h-9 text-[13px] gap-2"><a href={playStoreUrl || "#"} target="_blank" rel="noopener noreferrer">Download App</a></Button>
+                <Button className="btn-gold px-4 h-9 text-[13px] gap-2" onClick={() => navigate("/subscriptions")}>
+                  <Crown className="w-3.5 h-3.5" /> Subscription
+                </Button>
               </div>
               <button onClick={() => setIsOpen(!isOpen)} className="lg:hidden p-2 text-foreground rounded-lg hover:bg-secondary/50 transition-colors ml-0.5" aria-label="Toggle menu">
                 {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -190,7 +192,9 @@ export function Navbar() {
                     <User className="w-4 h-4" /> Sign In
                   </Button>
                 )}
-                <Button className="btn-gold mt-2 w-full h-11">Download App</Button>
+                <Button className="btn-gold mt-2 w-full h-11 gap-2" onClick={() => { setIsOpen(false); navigate("/subscriptions"); }}>
+                  <Crown className="w-4 h-4" /> Subscription
+                </Button>
               </div>
             </div>
           )}
