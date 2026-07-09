@@ -622,11 +622,10 @@ export const walletRouter = router({
         },
       });
       if (subscription) {
-        const subFormats = new Set(["ebook", "audiobook"]);
-        const bookAllows = book?.subscriber_access === true;
+        // Format-level subscriber_access is the gate; book-level is a cascade shortcut only
         const formatAllows = bookFormat?.subscriber_access === true;
-        const formatEligible = subFormats.has(format);
-        if (bookAllows && formatAllows && formatEligible) {
+        const formatEligible = new Set(["ebook", "audiobook"]).has(format);
+        if (formatAllows && formatEligible) {
           return { hasFullAccess: true, method: "subscription" };
         }
       }

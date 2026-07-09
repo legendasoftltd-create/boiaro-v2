@@ -16,8 +16,6 @@ export const checkMultiBookAccess = async (
   // Subscription only unlocks ebook and audiobook formats
   const SUBSCRIBER_FORMATS = new Set(["ebook", "audiobook"]);
   const formatEligibleForSubscription = !normalizedFormat || SUBSCRIBER_FORMATS.has(normalizedFormat);
-  // Book-level master toggle — must be explicitly true
-  const bookAllowsSubscription = book.subscriber_access === true;
 
   // Parallel checks: purchase, subscription (+ format record for subscriber_access), coin unlock
   const [purchase, subscription, bookFormat, coinUnlock] = await Promise.all([
@@ -29,7 +27,9 @@ export const checkMultiBookAccess = async (
         ...(normalizedFormat ? { format: normalizedFormat } : {}),
       },
     }),
-    formatEligibleForSubscription && bookAllowsSubscription
+    // Fetch subscription whenever the format is eligible — format-level subscriber_access
+    // is the real gate (checked below). Book-level is only a cascade shortcut for admins.
+    formatEligibleForSubscription
       ? prisma.userSubscription.findFirst({
           where: {
             user_id: userId,
@@ -52,12 +52,11 @@ export const checkMultiBookAccess = async (
       : Promise.resolve(null),
   ]);
 
-  // Format-level subscriber_access check — must be explicitly true
+  // Format-level subscriber_access is the access gate
   const formatAllowsSubscription = bookFormat?.subscriber_access === true;
 
   const isFree = book.is_free;
   const hasPurchase = !!purchase;
-  // Subscription grants access only when both book and format have subscriber_access enabled
   const hasSubscription = !!subscription && formatAllowsSubscription;
   const hasCoinUnlock = !!coinUnlock;
 
@@ -97,7 +96,7 @@ export const checkMultiBookAccess = async (
     has_subscription: hasSubscription,
     has_purchase: hasPurchase,
     has_unlock: hasCoinUnlock,
-    subscriber_access: bookAllowsSubscription && (bookFormat ? formatAllowsSubscription : false),
+    subscriber_access: bookFormat ? formatAllowsSubscription : book.subscriber_access === true,
     preview_available,
     preview_percentage,
     preview_chapters,
