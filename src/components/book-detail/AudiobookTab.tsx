@@ -105,7 +105,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
 
   // ── Sync locked track IDs into AudioPlayerContext so auto-advance is blocked at source ──
   useEffect(() => {
-    if (!hasChapterPricing || hasFullUnlock) {
+    if (!hasChapterPricing || hasFullUnlock || access.hasFullAccess) {
       setLockedTrackIds(new Set())
       return
     }
@@ -123,7 +123,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   useEffect(() => {
     // Skip if the global preview-limit paywall is already showing its own unlock modal
     // for this same track — opening both stacks two identical full-screen overlays.
-    if (!isThisBookActive || hasFullUnlock || !hasChapterPricing || showPaywall) return
+    if (!isThisBookActive || hasFullUnlock || access.hasFullAccess || !hasChapterPricing || showPaywall) return
     const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
     const track = sourceTracks[currentTrackIndex]
     if (!track) return
@@ -226,7 +226,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     }
     // If currently paused on a locked chapter, show the unlock modal instead of resuming
     // (unless the global paywall is already covering the screen with the same modal)
-    if (!isPlaying && hasChapterPricing && !hasFullUnlock && !showPaywall) {
+    if (!isPlaying && hasChapterPricing && !hasFullUnlock && !access.hasFullAccess && !showPaywall) {
       const sourceTracks = audioTracks.length > 0 ? audioTracks : tracks
       const currentTrack = sourceTracks[currentTrackIndex] as AudioTrack & { chapterPrice?: number }
       if (currentTrack && !currentTrack.isPreview && (Number(currentTrack.chapterPrice) > 0 || Number((currentTrack as AudioTrack).chapterTakaPrice) > 0)
@@ -244,7 +244,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     // so the lock works even while coin settings are still loading or the
     // coin-earn system is disabled by admin.
     if (track && !track.isPreview && (Number(track.chapterPrice) > 0 || Number(track.chapterTakaPrice) > 0)) {
-      if (!hasFullUnlock && !unlockedChapterIds.has(track.id)) {
+      if (!hasFullUnlock && !access.hasFullAccess && !unlockedChapterIds.has(track.id)) {
         setLockedTrack(track as AudioTrack & { chapterPrice: number })
         return
       }
@@ -492,7 +492,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-[hsl(150,50%,15%)] text-[hsl(150,60%,55%)] border-0">
                           Free Preview
                         </Badge>
-                      ) : (track as any)?.chapterPrice ? (
+                      ) : (track as any)?.chapterPrice && !hasFullUnlock && !access.hasFullAccess ? (
                         <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-0">
                           {(track as any).chapterPrice} coins
                         </Badge>

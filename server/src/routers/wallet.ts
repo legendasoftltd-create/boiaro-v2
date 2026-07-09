@@ -592,11 +592,12 @@ export const walletRouter = router({
       // legitimately 0/null, so it can't be used to infer the whole format is free —
       // and per-chapter pricing always wins over the book-level is_free flag.
       const [book, bookFormat] = await Promise.all([
-        prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } }),
+        prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true, subscriber_access: true } }),
         prisma.bookFormat.findFirst({
           where: { book_id: bookId, format, submission_status: "approved" },
           select: {
             price: true,
+            subscriber_access: true,
             audiobook_tracks: format === "audiobook" ? { select: { chapter_price: true, chapter_taka_price: true } } : false,
           },
         }),
@@ -616,11 +617,19 @@ export const walletRouter = router({
       const subscription = await prisma.userSubscription.findFirst({
         where: {
           user_id: ctx.userId,
-          status: "active",
+          status: { in: ["active", "cancelled"] },
           OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
         },
       });
-      if (subscription) return { hasFullAccess: true, method: "subscription" };
+      if (subscription) {
+        const subFormats = new Set(["ebook", "audiobook"]);
+        const bookAllows = book?.subscriber_access === true;
+        const formatAllows = bookFormat?.subscriber_access === true;
+        const formatEligible = subFormats.has(format);
+        if (bookAllows && formatAllows && formatEligible) {
+          return { hasFullAccess: true, method: "subscription" };
+        }
+      }
 
       const purchase = await prisma.userPurchase.findFirst({
         where: { user_id: ctx.userId, book_id: bookId, format, status: "active" },
