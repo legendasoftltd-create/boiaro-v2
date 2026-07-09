@@ -1,216 +1,558 @@
 {
   "info": {
-    "name": "BoiAro — Subscriptions API",
-    "description": "Full subscription lifecycle for mobile apps.\n\n**Base URL (production):** `https://boiaro.com`\n**Auth:** Pass `Authorization: Bearer {{access_token}}` on all protected endpoints.\n\n---\n\n## Subscription Flow\n\n```\n1. GET  /plans              → list available plans\n2. POST /subscribe          → create pending sub + get SSLCommerz gateway_url\n3. ── user completes payment in WebView / browser ──\n4. SSLCommerz callback activates subscription automatically\n5. GET  /active             → confirm status is \"active\"\n```\n\n**Free / fully-discounted plans** skip the payment step and activate immediately.\n\n## Subscription statuses\n| status     | meaning |\n|------------|---------|\n| `pending`  | Created, awaiting payment |\n| `active`   | Payment confirmed, access granted |\n| `failed`   | Payment failed |\n| `cancelled`| Payment cancelled by user |\n| `expired`  | end_date passed (checked at query time) |",
+    "_postman_id": "boiaro-subscriptions-v1",
+    "name": "Boiaro — Subscription API",
+    "description": "# Boiaro Subscription API\n\nAll endpoints for managing subscription plans, initiating payments, and checking user subscription state in the Boiaro mobile app.\n\n## Base URL\n```\nhttps://boiaro.com/api/v1\n```\n\n## Authentication\nProtected endpoints require a Bearer token:\n```\nAuthorization: Bearer {{token}}\n```\nSet the `token` collection variable after signing in.\n\n## Collection Variables\n\n| Variable | Description |\n|---|---|\n| `baseUrl` | API base URL — `https://boiaro.com/api/v1` |\n| `token` | Bearer access token from login |\n| `plan_id` | Set after calling GET Plans |\n| `subscription_id` | Set after calling POST Subscribe |\n\n## Payment Gateway\nSubscription payments use **SSLCommerz** only. After calling `POST /subscribe` for a paid plan, open the `gateway_url` in a WebView and intercept the redirect:\n\n| Outcome | Redirect URL |\n|---|---|\n| Success | `https://boiaro.com/payment/callback?status=success&subscription_id=...` |\n| Failure | `https://boiaro.com/payment/callback?status=failed` |\n| Cancelled | `https://boiaro.com/payment/callback?status=cancelled` |",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl",       "value": "https://boiaro.com", "type": "string" },
-    { "key": "access_token",  "value": "", "type": "string" },
-    { "key": "plan_id",       "value": "", "type": "string" },
-    { "key": "subscription_id", "value": "", "type": "string" }
+    {
+      "key": "baseUrl",
+      "value": "https://boiaro.com/api/v1",
+      "type": "string",
+      "description": "API base URL"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string",
+      "description": "Bearer access token — set after login"
+    },
+    {
+      "key": "plan_id",
+      "value": "",
+      "type": "string",
+      "description": "Subscription plan ID — set from GET /plans response"
+    },
+    {
+      "key": "subscription_id",
+      "value": "",
+      "type": "string",
+      "description": "Active subscription ID — set from POST /subscribe response"
+    }
   ],
-  "auth": {
-    "type": "bearer",
-    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
-  },
   "item": [
-
     {
       "name": "Plans",
       "item": [
         {
           "name": "Get All Plans",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.plans && res.plans.length > 0) {",
+                  "    pm.collectionVariables.set('plan_id', res.plans[0].id);",
+                  "    console.log('plan_id set to:', res.plans[0].id);",
+                  "}",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has plans array', () => {",
+                  "    pm.expect(res).to.have.property('plans');",
+                  "    pm.expect(res.plans).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
-            "auth": { "type": "noauth" },
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/subscriptions/plans",
+              "raw": "{{baseUrl}}/subscriptions/plans",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "subscriptions", "plans"]
+              "path": ["subscriptions", "plans"]
             },
-            "description": "Returns all active subscription plans. Public — no auth required.\n\n**Response fields per plan:**\n```\nid             String\nname           String   — e.g. \"Monthly Premium\"\ndescription    String?\nprice          Float    — amount in BDT\nduration_days  Int      — validity period\nfeatures       Json?    — array of feature strings\nis_featured    Boolean\nsort_order     Int\n```"
+            "description": "Returns all active subscription plans sorted by display order.\n\n**Auth:** Not required — public endpoint.\n\n**Use this to:** Populate the plan selection screen in the app.\n\n**Auto-save:** The test script automatically saves `plans[0].id` to the `plan_id` collection variable.\n\n## Response Fields\n\n| Field | Type | Description |\n|---|---|---|\n| `id` | string | Plan ID to pass to POST /subscribe |\n| `name` | string | Display name |\n| `description` | string | Short description |\n| `price` | number | Price in BDT (0 = free) |\n| `duration_days` | integer | Subscription length in days |\n| `features` | object | Key-value feature flags |\n| `is_featured` | boolean | Highlight this plan in the UI |\n| `sort_order` | integer | Display order (ascending) |"
           },
           "response": [
             {
-              "name": "Success",
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/subscriptions/plans",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["subscriptions", "plans"]
+                }
+              },
               "status": "OK",
               "code": 200,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"plans\": [\n    {\n      \"id\": \"plan-abc\",\n      \"name\": \"Monthly Premium\",\n      \"description\": \"Unlimited AI Voice & audiobooks for 30 days\",\n      \"price\": 149,\n      \"duration_days\": 30,\n      \"features\": [\"Unlimited AI Voice\", \"All Audiobooks\", \"Offline Reading\"],\n      \"is_active\": true,\n      \"is_featured\": true,\n      \"sort_order\": 1\n    },\n    {\n      \"id\": \"plan-xyz\",\n      \"name\": \"Annual Premium\",\n      \"description\": \"Best value — 12 months access\",\n      \"price\": 999,\n      \"duration_days\": 365,\n      \"features\": [\"Everything in Monthly\", \"Priority Support\"],\n      \"is_active\": true,\n      \"is_featured\": false,\n      \"sort_order\": 2\n    }\n  ]\n}"
+              "body": "{\n  \"plans\": [\n    {\n      \"id\": \"plan_abc123\",\n      \"name\": \"Premium Monthly\",\n      \"description\": \"Unlimited ebooks and audiobooks\",\n      \"price\": 199,\n      \"duration_days\": 30,\n      \"features\": {\n        \"audiobooks\": true,\n        \"ebooks\": true\n      },\n      \"is_active\": true,\n      \"is_featured\": true,\n      \"sort_order\": 1\n    },\n    {\n      \"id\": \"plan_def456\",\n      \"name\": \"Premium Yearly\",\n      \"description\": \"Best value — 2 months free\",\n      \"price\": 1990,\n      \"duration_days\": 365,\n      \"features\": {\n        \"audiobooks\": true,\n        \"ebooks\": true\n      },\n      \"is_active\": true,\n      \"is_featured\": false,\n      \"sort_order\": 2\n    }\n  ]\n}"
             }
           ]
         }
       ]
     },
-
     {
-      "name": "Subscribe",
+      "name": "Status & Detail",
       "item": [
         {
-          "name": "Subscribe to Plan (Paid)",
+          "name": "Get Subscription Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has is_subscribed field', () => {",
+                  "    pm.expect(res).to.have.property('is_subscribed');",
+                  "    pm.expect(res.is_subscribed).to.be.a('boolean');",
+                  "});",
+                  "",
+                  "if (res.is_subscribed) {",
+                  "    console.log('Subscribed to:', res.plan_name, '— days remaining:', res.days_remaining);",
+                  "} else {",
+                  "    console.log('User is not subscribed');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/subscriptions/subscribe",
+              "raw": "{{baseUrl}}/subscriptions/status",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "subscriptions", "subscribe"]
+              "path": ["subscriptions", "status"]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"plan_id\": \"{{plan_id}}\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "description": "Initiates subscription purchase for a paid plan.\n\nCreates a `pending` subscription and returns an SSLCommerz `gateway_url`. Open this URL in a WebView or browser for the user to complete payment. SSLCommerz will redirect back automatically on success/fail/cancel.\n\n**Body fields:**\n```\nplan_id          String   required\ncoupon_code      String?  optional — apply discount coupon\npayment_method   String?  default: \"sslcommerz\"\n```\n\n**Response:**\n```\nrequires_payment  Boolean   — true for paid plans\ngateway_url       String    — open this URL for payment\nsubscription_id   String    — track status with GET /active\ntransaction_id    String    — SSLCommerz transaction reference\n```\n\n**After payment:** poll `GET /active` — status becomes `active` once SSLCommerz confirms payment."
+            "description": "Lightweight check of the user's current subscription state.\n\n**Auth:** Required — Bearer token.\n\n**Use this to:** UI gates, banner visibility, upgrade prompts. Faster than fetching the full subscription object — call this on app launch or screen focus.\n\n## Response Fields\n\n| Field | Type | Description |\n|---|---|---|\n| `is_subscribed` | boolean | `true` if user has a valid active or cancelled-but-not-expired subscription |\n| `status` | string\\|null | `\"active\"`, `\"cancelled\"`, or `null` |\n| `plan_name` | string\\|null | Name of the current plan |\n| `plan_features` | object\\|null | Feature flags object from the plan |\n| `end_date` | ISO string\\|null | When access expires |\n| `days_remaining` | integer\\|null | Days left (0 = expires today) |\n\n> **Note:** A cancelled subscription still returns `is_subscribed: true` until `end_date` passes. The user retains full access during this period."
           },
           "response": [
             {
-              "name": "Paid Plan — Payment Required",
-              "status": "Created",
-              "code": 201,
+              "name": "200 — Subscribed",
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+                "url": { "raw": "{{baseUrl}}/subscriptions/status", "host": ["{{baseUrl}}"], "path": ["subscriptions", "status"] }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"requires_payment\": true,\n  \"gateway_url\": \"https://sandbox.sslcommerz.com/EasyCheckOut/testcdef...\",\n  \"subscription_id\": \"sub-uuid-here\",\n  \"transaction_id\": \"SUB-1716400000000-XYZ\"\n}"
+              "body": "{\n  \"is_subscribed\": true,\n  \"status\": \"active\",\n  \"plan_name\": \"Premium Monthly\",\n  \"plan_features\": {\n    \"audiobooks\": true,\n    \"ebooks\": true\n  },\n  \"end_date\": \"2026-08-09T00:00:00.000Z\",\n  \"days_remaining\": 31\n}"
             },
             {
-              "name": "Gateway Not Configured",
-              "status": "Bad Request",
-              "code": 400,
+              "name": "200 — Not Subscribed",
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+                "url": { "raw": "{{baseUrl}}/subscriptions/status", "host": ["{{baseUrl}}"], "path": ["subscriptions", "status"] }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{ \"error\": \"Payment gateway is not configured. Contact admin.\" }"
+              "body": "{\n  \"is_subscribed\": false,\n  \"status\": null,\n  \"plan_name\": null,\n  \"plan_features\": null,\n  \"end_date\": null,\n  \"days_remaining\": null\n}"
             }
           ]
         },
-        {
-          "name": "Subscribe to Plan (Free / 100% Coupon)",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/subscriptions/subscribe",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "subscriptions", "subscribe"]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"plan_id\": \"{{plan_id}}\",\n  \"coupon_code\": \"FREE100\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "description": "When the plan price is 0, or a coupon brings it to 0, the subscription is activated immediately — no payment step needed.\n\n**Response:**\n```\nrequires_payment  Boolean   — false\nsubscription      Object    — { id, status: \"active\", end_date }\n```"
-          },
-          "response": [
-            {
-              "name": "Free / Fully Discounted — Activated Immediately",
-              "status": "Created",
-              "code": 201,
-              "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"requires_payment\": false,\n  \"subscription\": {\n    \"id\": \"sub-uuid-here\",\n    \"status\": \"active\",\n    \"end_date\": \"2026-06-23T10:00:00.000Z\"\n  }\n}"
-            }
-          ]
-        }
-      ]
-    },
-
-    {
-      "name": "Status",
-      "item": [
         {
           "name": "Get Active Subscription",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Has subscription field', () => {",
+                  "    pm.expect(res).to.have.property('subscription');",
+                  "});",
+                  "",
+                  "if (res.subscription) {",
+                  "    pm.collectionVariables.set('subscription_id', res.subscription.id);",
+                  "    console.log('subscription_id set to:', res.subscription.id);",
+                  "    console.log('Status:', res.subscription.status, '| Ends:', res.subscription.end_date);",
+                  "} else {",
+                  "    console.log('No active subscription found');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/subscriptions/active",
+              "raw": "{{baseUrl}}/subscriptions/active",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "subscriptions", "active"]
+              "path": ["subscriptions", "active"]
             },
-            "description": "Returns the current user's active subscription, or `null` if none.\n\nPoll this after payment redirect to confirm activation.\n\n**Response:**\n```\nsubscription  Object | null\n  id              String\n  plan_id         String\n  status          String   — \"active\"\n  start_date      DateTime\n  end_date        DateTime\n  amount_paid     Float\n  coupon_code     String?\n  discount_amount Float?\n  subscription_plans:\n    name          String\n    description   String?\n    features      Json?\n    duration_days Int\n```"
+            "description": "Returns the full current subscription object including plan details.\n\n**Auth:** Required — Bearer token.\n\n**Use this to:** Subscription detail / account screen. Returns `null` inside the `subscription` field when there is no active subscription.\n\n**Auto-save:** The test script saves `subscription.id` to the `subscription_id` collection variable.\n\n## Response Fields\n\n| Field | Type | Description |\n|---|---|---|\n| `subscription.id` | string | Subscription ID |\n| `subscription.plan_id` | string | Reference to the plan |\n| `subscription.status` | string | `\"active\"` or `\"cancelled\"` |\n| `subscription.start_date` | ISO string | When subscription started |\n| `subscription.end_date` | ISO string | When access expires |\n| `subscription.amount_paid` | number | Amount paid in BDT |\n| `subscription.coupon_code` | string\\|null | Coupon used, if any |\n| `subscription.discount_amount` | number\\|null | Discount applied in BDT |\n| `subscription.plan` | object | Nested plan detail |"
           },
           "response": [
             {
-              "name": "Active Subscription Exists",
+              "name": "200 — Active Subscription",
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+                "url": { "raw": "{{baseUrl}}/subscriptions/active", "host": ["{{baseUrl}}"], "path": ["subscriptions", "active"] }
+              },
               "status": "OK",
               "code": 200,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"subscription\": {\n    \"id\": \"sub-uuid-here\",\n    \"plan_id\": \"plan-abc\",\n    \"status\": \"active\",\n    \"start_date\": \"2026-05-23T10:00:00.000Z\",\n    \"end_date\": \"2026-06-23T10:00:00.000Z\",\n    \"amount_paid\": 149,\n    \"coupon_code\": null,\n    \"discount_amount\": null,\n    \"subscription_plans\": {\n      \"name\": \"Monthly Premium\",\n      \"description\": \"Unlimited AI Voice & audiobooks for 30 days\",\n      \"features\": [\"Unlimited AI Voice\", \"All Audiobooks\"],\n      \"duration_days\": 30\n    }\n  }\n}"
+              "body": "{\n  \"subscription\": {\n    \"id\": \"sub_xyz789\",\n    \"plan_id\": \"plan_abc123\",\n    \"status\": \"active\",\n    \"start_date\": \"2026-07-09T00:00:00.000Z\",\n    \"end_date\": \"2026-08-09T00:00:00.000Z\",\n    \"amount_paid\": 199,\n    \"coupon_code\": null,\n    \"discount_amount\": null,\n    \"plan\": {\n      \"name\": \"Premium Monthly\",\n      \"description\": \"Unlimited ebooks and audiobooks\",\n      \"features\": {\n        \"audiobooks\": true,\n        \"ebooks\": true\n      },\n      \"duration_days\": 30\n    }\n  }\n}"
             },
             {
-              "name": "No Active Subscription",
+              "name": "200 — No Subscription",
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+                "url": { "raw": "{{baseUrl}}/subscriptions/active", "host": ["{{baseUrl}}"], "path": ["subscriptions", "active"] }
+              },
               "status": "OK",
               "code": 200,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{ \"subscription\": null }"
+              "body": "{\n  \"subscription\": null\n}"
             }
           ]
         },
         {
-          "name": "Get All My Subscriptions",
+          "name": "Get Subscription History",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Pagination fields present', () => {",
+                  "    pm.expect(res).to.have.property('total');",
+                  "    pm.expect(res).to.have.property('has_more');",
+                  "    pm.expect(res).to.have.property('subscriptions');",
+                  "});",
+                  "",
+                  "console.log('Total subscriptions:', res.total, '| Has more:', res.has_more);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
             "method": "GET",
-            "header": [],
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/subscriptions/my",
+              "raw": "{{baseUrl}}/subscriptions/my?limit=10&offset=0",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "subscriptions", "my"]
+              "path": ["subscriptions", "my"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Records per page — max 50, default 10"
+                },
+                {
+                  "key": "offset",
+                  "value": "0",
+                  "description": "Records to skip for pagination"
+                }
+              ]
             },
-            "description": "Returns all subscriptions for the current user (all statuses — pending, active, failed, cancelled).\n\nUseful for showing subscription history."
+            "description": "Paginated history of all the user's subscriptions — current and past.\n\n**Auth:** Required — Bearer token.\n\n**Use this to:** Billing History screen.\n\n## Query Parameters\n\n| Param | Type | Default | Max | Description |\n|---|---|---|---|---|\n| `limit` | integer | 10 | 50 | Records per page |\n| `offset` | integer | 0 | — | Records to skip |\n\n## Pagination Pattern\n```\nPage 1: limit=10&offset=0\nPage 2: limit=10&offset=10\nPage 3: limit=10&offset=20\n```\nLoad the next page when `has_more` is `true`."
           },
           "response": [
             {
-              "name": "Success",
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+                "url": { "raw": "{{baseUrl}}/subscriptions/my?limit=10&offset=0", "host": ["{{baseUrl}}"], "path": ["subscriptions", "my"], "query": [{ "key": "limit", "value": "10" }, { "key": "offset", "value": "0" }] }
+              },
               "status": "OK",
               "code": 200,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"subscriptions\": [\n    {\n      \"id\": \"sub-uuid-here\",\n      \"plan_id\": \"plan-abc\",\n      \"status\": \"active\",\n      \"start_date\": \"2026-05-23T10:00:00.000Z\",\n      \"end_date\": \"2026-06-23T10:00:00.000Z\",\n      \"amount_paid\": 149,\n      \"coupon_code\": null,\n      \"discount_amount\": null,\n      \"subscription_plans\": {\n        \"name\": \"Monthly Premium\",\n        \"description\": \"Unlimited AI Voice & audiobooks for 30 days\",\n        \"features\": [\"Unlimited AI Voice\", \"All Audiobooks\"]\n      }\n    }\n  ]\n}"
+              "body": "{\n  \"subscriptions\": [\n    {\n      \"id\": \"sub_xyz789\",\n      \"plan_id\": \"plan_abc123\",\n      \"status\": \"active\",\n      \"start_date\": \"2026-07-09T00:00:00.000Z\",\n      \"end_date\": \"2026-08-09T00:00:00.000Z\",\n      \"amount_paid\": 199,\n      \"coupon_code\": null,\n      \"discount_amount\": null,\n      \"created_at\": \"2026-07-09T10:30:00.000Z\",\n      \"subscription_plans\": {\n        \"name\": \"Premium Monthly\",\n        \"description\": \"Unlimited ebooks and audiobooks\",\n        \"features\": { \"audiobooks\": true, \"ebooks\": true }\n      }\n    }\n  ],\n  \"total\": 1,\n  \"limit\": 10,\n  \"offset\": 0,\n  \"has_more\": false\n}"
             }
           ]
         }
       ]
     },
-
     {
-      "name": "TTS Access Check",
+      "name": "Subscribe & Cancel",
       "item": [
         {
-          "name": "Check TTS Access for Book",
+          "name": "Subscribe — Paid Plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "if (res.requires_payment) {",
+                  "    pm.collectionVariables.set('subscription_id', res.subscription_id);",
+                  "    console.log('subscription_id set to:', res.subscription_id);",
+                  "    console.log('Open in WebView:', res.gateway_url);",
+                  "    pm.test('Has gateway_url', () => pm.expect(res.gateway_url).to.be.a('string'));",
+                  "} else {",
+                  "    pm.collectionVariables.set('subscription_id', res.subscription.id);",
+                  "    console.log('Free plan — activated immediately. ID:', res.subscription.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/api/v1/tts/access/:bookId",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "tts", "access", ":bookId"],
-              "variable": [{ "key": "bookId", "value": "{{book_id}}", "description": "Book ID to check TTS access for" }]
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan_id\": \"{{plan_id}}\",\n  \"payment_method\": \"sslcommerz\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             },
-            "description": "Check whether the current user has access to Premium AI Voice for a specific book.\n\nGrants access when any of these conditions are true:\n- `voice_access_type` is `free`\n- User has a `ContentUnlock` record (paid with coins)\n- User has a paid ebook order for this book\n- User has an **active subscription**\n\n**Response fields:**\n```\npremium_voice_enabled  Boolean  — false = feature not enabled for this book\nunlocked               Boolean  — true = user has access\naccess_type            String   — \"free\" | \"paid\" | \"subscription\"\ncoin_price             Int      — coins needed to unlock (0 if free)\nwallet_balance         Int      — user's current coin balance\nmessage                String?  — reason if unlocked is false\n```"
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/subscribe",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "subscribe"]
+            },
+            "description": "Initiates a subscription for the authenticated user.\n\n**Auth:** Required — Bearer token.\n\n**Auto-save:** Test script saves `subscription_id` from the response automatically.\n\n## Request Body\n\n| Field | Type | Required | Description |\n|---|---|---|---|\n| `plan_id` | string | ✅ Yes | Plan ID from `GET /plans` |\n| `coupon_code` | string | No | Discount coupon code |\n| `payment_method` | string | No | Only `\"sslcommerz\"` supported. Default: `\"sslcommerz\"` |\n\n## Response — Paid Plan (requires WebView)\n\n```json\n{\n  \"requires_payment\": true,\n  \"gateway_url\": \"https://securepay.sslcommerz.com/...\",\n  \"subscription_id\": \"sub_xyz789\",\n  \"transaction_id\": \"SUB-1720512345-ABCDE\"\n}\n```\n\nOpen `gateway_url` in a WebView. Intercept navigation to detect outcome:\n\n| Outcome | URL contains |\n|---|---|\n| ✅ Success | `status=success&subscription_id=...` |\n| ❌ Failed | `status=failed` |\n| ⏮ Cancelled | `status=cancelled` |\n\n## Response — Free Plan (activated immediately)\n\n```json\n{\n  \"requires_payment\": false,\n  \"subscription\": {\n    \"id\": \"sub_xyz789\",\n    \"status\": \"active\",\n    \"end_date\": \"2026-08-09T00:00:00.000Z\"\n  }\n}\n```\n\n## Error Responses\n\n**409 — Already subscribed:**\n```json\n{\n  \"error\": \"You already have an active subscription...\",\n  \"subscription_id\": \"sub_xyz789\",\n  \"end_date\": \"2026-08-09T00:00:00.000Z\"\n}\n```\n**409 — Cancelled but still valid:**\n```json\n{\n  \"error\": \"You have a cancelled subscription that is still valid. You can re-subscribe after it expires.\",\n  \"subscription_id\": \"sub_xyz789\",\n  \"end_date\": \"2026-08-09T00:00:00.000Z\"\n}\n```"
           },
           "response": [
             {
-              "name": "Access Granted (Subscription)",
-              "status": "OK",
-              "code": 200,
+              "name": "201 — Paid Plan (open WebView)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" }],
+                "body": { "mode": "raw", "raw": "{\n  \"plan_id\": \"{{plan_id}}\",\n  \"payment_method\": \"sslcommerz\"\n}" },
+                "url": { "raw": "{{baseUrl}}/subscriptions/subscribe", "host": ["{{baseUrl}}"], "path": ["subscriptions", "subscribe"] }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": true,\n  \"unlocked\": true,\n  \"access_type\": \"subscription\",\n  \"coin_price\": 20,\n  \"wallet_balance\": 150\n}"
+              "body": "{\n  \"requires_payment\": true,\n  \"gateway_url\": \"https://securepay.sslcommerz.com/gwprocess/v4/...\",\n  \"subscription_id\": \"sub_xyz789\",\n  \"transaction_id\": \"SUB-1720512345-ABCDE\"\n}"
             },
             {
-              "name": "Access Denied — Coin Unlock Required",
-              "status": "OK",
-              "code": 200,
+              "name": "201 — Free Plan (activated)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" }],
+                "body": { "mode": "raw", "raw": "{\n  \"plan_id\": \"{{plan_id}}\",\n  \"payment_method\": \"sslcommerz\"\n}" },
+                "url": { "raw": "{{baseUrl}}/subscriptions/subscribe", "host": ["{{baseUrl}}"], "path": ["subscriptions", "subscribe"] }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": true,\n  \"unlocked\": false,\n  \"access_type\": \"paid\",\n  \"coin_price\": 20,\n  \"wallet_balance\": 50,\n  \"message\": \"Purchase required — unlock with coins to use AI Voice\"\n}"
+              "body": "{\n  \"requires_payment\": false,\n  \"subscription\": {\n    \"id\": \"sub_xyz789\",\n    \"status\": \"active\",\n    \"end_date\": \"2026-08-09T00:00:00.000Z\"\n  }\n}"
             },
             {
-              "name": "Premium Voice Not Enabled",
+              "name": "409 — Already Subscribed",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" }],
+                "body": { "mode": "raw", "raw": "{\n  \"plan_id\": \"{{plan_id}}\",\n  \"payment_method\": \"sslcommerz\"\n}" },
+                "url": { "raw": "{{baseUrl}}/subscriptions/subscribe", "host": ["{{baseUrl}}"], "path": ["subscriptions", "subscribe"] }
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"You already have an active subscription. Cancel your current subscription before subscribing to a new plan.\",\n  \"subscription_id\": \"sub_xyz789\",\n  \"end_date\": \"2026-08-09T00:00:00.000Z\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Subscribe — With Coupon",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    if (res.requires_payment) {",
+                  "        pm.collectionVariables.set('subscription_id', res.subscription_id);",
+                  "        console.log('Coupon applied — open WebView:', res.gateway_url);",
+                  "    } else {",
+                  "        pm.collectionVariables.set('subscription_id', res.subscription.id);",
+                  "        console.log('Coupon made it free — activated immediately');",
+                  "    }",
+                  "    pm.test('Status 201', () => pm.response.to.have.status(201));",
+                  "} else {",
+                  "    console.log('Error:', res.error);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan_id\": \"{{plan_id}}\",\n  \"coupon_code\": \"SAVE20\",\n  \"payment_method\": \"sslcommerz\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/subscribe",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "subscribe"]
+            },
+            "description": "Same as Subscribe — Paid Plan but includes a coupon code.\n\nIf the coupon brings the price to **0** the subscription is activated immediately (`requires_payment: false`) with no WebView needed.\n\nIf the coupon provides a partial discount the response still has `requires_payment: true` and shows the discounted amount in the SSLCommerz gateway."
+          },
+          "response": [
+            {
+              "name": "201 — Discount applied (still paid)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }, { "key": "Content-Type", "value": "application/json", "type": "text" }],
+                "body": { "mode": "raw", "raw": "{\n  \"plan_id\": \"{{plan_id}}\",\n  \"coupon_code\": \"SAVE20\",\n  \"payment_method\": \"sslcommerz\"\n}" },
+                "url": { "raw": "{{baseUrl}}/subscriptions/subscribe", "host": ["{{baseUrl}}"], "path": ["subscriptions", "subscribe"] }
+              },
+              "status": "Created",
+              "code": 201,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"requires_payment\": true,\n  \"gateway_url\": \"https://securepay.sslcommerz.com/gwprocess/v4/...\",\n  \"subscription_id\": \"sub_xyz789\",\n  \"transaction_id\": \"SUB-1720512345-ABCDE\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cancel Subscription",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "",
+                  "if (pm.response.code === 200 && res.success) {",
+                  "    pm.test('Cancelled successfully', () => pm.expect(res.success).to.be.true);",
+                  "    console.log('Subscription cancelled. Access until:', res.end_date);",
+                  "} else if (pm.response.code === 404) {",
+                  "    console.log('No active subscription to cancel');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/cancel",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "cancel"]
+            },
+            "description": "Cancels the user's current active subscription.\n\n**Auth:** Required — Bearer token.\n\n**No request body needed.**\n\n## Behaviour\n\n- Status is set to `\"cancelled\"` **immediately**\n- User **retains full access** until `end_date`\n- `GET /status` will still return `is_subscribed: true` until expiry\n- User **cannot re-subscribe** until the current subscription expires\n\n## Error Responses\n\n**404 — No active subscription:**\n```json\n{ \"error\": \"No active subscription to cancel\" }\n```"
+          },
+          "response": [
+            {
+              "name": "200 — Cancelled",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+                "url": { "raw": "{{baseUrl}}/subscriptions/cancel", "host": ["{{baseUrl}}"], "path": ["subscriptions", "cancel"] }
+              },
               "status": "OK",
               "code": 200,
+              "_postman_previewlanguage": "json",
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"success\": true,\n  \"premium_voice_enabled\": false,\n  \"unlocked\": false,\n  \"access_type\": null,\n  \"coin_price\": null\n}"
+              "body": "{\n  \"success\": true,\n  \"message\": \"Subscription cancelled. You retain access until the end of the billing period.\",\n  \"subscription_id\": \"sub_xyz789\",\n  \"end_date\": \"2026-08-09T00:00:00.000Z\"\n}"
+            },
+            {
+              "name": "404 — No Active Subscription",
+              "originalRequest": {
+                "method": "POST",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}", "type": "text" }],
+                "url": { "raw": "{{baseUrl}}/subscriptions/cancel", "host": ["{{baseUrl}}"], "path": ["subscriptions", "cancel"] }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"error\": \"No active subscription to cancel\"\n}"
             }
           ]
         }
       ]
     }
-
   ]
 }
