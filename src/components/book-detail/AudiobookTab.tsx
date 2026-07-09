@@ -27,6 +27,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
     goToTrack, openFullPlayer, progressPercentage, isLoading, error, currentTime, duration, formatTime,
     setPreviewLimitSeconds, setHasFullAccess, isPreviewMode, showPaywall, setShowPaywall,
     setAccessLoading, seekTo, pause, setLockedTrackIds, setAppPromptLocked,
+    appPromptLocked, setFreePlayThreshold,
   } = useAudioPlayer()
 
   const { user } = useAuth()
@@ -144,66 +145,55 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const playStoreUrl = getSetting("app_android_url") || getSetting("google_play_url")
   const brandName    = getSetting("brand_name", "BoiAro")
 
-  // Once locked, content cannot be played until the user downloads the app.
-  // Uses localStorage, NOT sessionStorage: clicking the Play Store/App Store
-  // link backgrounds the page to open an external app, and mobile browsers/
-  // WebViews frequently reclaim that page process while backgrounded —
-  // sessionStorage can be wiped on return, silently unlocking playback again.
-  // localStorage is disk-backed and survives that round trip.
-  const [contentLocked, setContentLocked] = useState(() =>
-    Boolean(isFree && localStorage.getItem(`app_prompt_locked_audio_${book.id}`))
-  )
-  // Ref so the cleanup closure sees the current value without re-registering the effect
-  const contentLockedRef = useRef(contentLocked)
-  useEffect(() => { contentLockedRef.current = contentLocked }, [contentLocked])
-  const playedSecondsRef = useRef(0)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Locks content until the user downloads the app. localStorage-backed for persistence
+  // across tab closes and iOS Safari bfcache restores.
+  const [contentLocked, setContentLocked] = useState(() => {
+    let locked = false
+    try { locked = Boolean(isFree && localStorage.getItem(`app_prompt_locked_audio_${book.id}`)) } catch {}
+    return locked
+  })
 
-  // Re-check lock from storage when bookId changes (component reuse)
+  // Re-check storage when bookId changes (component reuse across books)
   useEffect(() => {
-    if (isFree && localStorage.getItem(`app_prompt_locked_audio_${book.id}`)) {
-      setContentLocked(true)
-    }
+    let locked = false
+    try { locked = isFree && !!localStorage.getItem(`app_prompt_locked_audio_${book.id}`) } catch {}
+    if (locked) setContentLocked(true)
   }, [book.id, isFree])
 
-  // Pause audio when content is locked
+  // Sync contentLocked → appPromptLocked: ensures the global gate and all player
+  // controls are blocked when this page's overlay is showing (e.g. on initial mount
+  // after a bfcache restore or when the book was locked in a previous session).
   useEffect(() => {
-    if (contentLocked && isThisBookActive && isPlaying) {
-      togglePlay()
+    if (isFree && contentLocked && isThisBookActive) setAppPromptLocked(true)
+  }, [isFree, contentLocked, isThisBookActive, setAppPromptLocked])
+
+  // Sync appPromptLocked → contentLocked: when AudioPlayerContext fires the lock
+  // (position-based, or from the mini-player on a different page), show the local overlay.
+  useEffect(() => {
+    if (appPromptLocked && isThisBookActive && isFree && !contentLocked) {
+      setContentLocked(true)
     }
-  }, [contentLocked]) // intentionally minimal — only fire on lock state change
+  }, [appPromptLocked, isThisBookActive, isFree, contentLocked])
 
-  /**
-   * CRITICAL: Sync the lock into AudioPlayerContext so every play control —
-   * MiniPlayer, FullPlayer, Media Session/OS controls — refuses to resume
-   * playback, not just the in-page Listen button. The cleanup guard ensures
-   * the lock persists in AudioPlayerContext when the user navigates away
-   * from the book page while the content is locked.
-   */
+  // Register the free-play threshold in AudioPlayerContext so enforcement survives navigation.
+  // AudioPlayerContext checks currentTime on every timeupdate event — even when AudiobookTab
+  // is unmounted and the user is listening via the mini-player on a different route.
   useEffect(() => {
-    setAppPromptLocked(isThisBookActive && contentLocked)
-    return () => { if (isThisBookActive && !contentLockedRef.current) setAppPromptLocked(false) }
-  }, [isThisBookActive, contentLocked, setAppPromptLocked])
-
-  useEffect(() => {
-    const storageKey = `app_prompt_audio_${book.id}`
-    if (!promptEnabled || !isFree || contentLocked || localStorage.getItem(storageKey)) return
-
-    if (isThisBookActive && isPlaying) {
-      timerRef.current = setInterval(() => {
-        playedSecondsRef.current += 1
-        if (playedSecondsRef.current >= FREE_PLAY_THRESHOLD_SECONDS) {
-          localStorage.setItem(storageKey, "1")
-          localStorage.setItem(`app_prompt_locked_audio_${book.id}`, "1")
-          setContentLocked(true)
-          clearInterval(timerRef.current!)
-        }
-      }, 1000)
-    } else {
-      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (!isFree || !promptEnabled || contentLocked || !isThisBookActive) {
+      setFreePlayThreshold(null)
+      return
     }
-    return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } }
-  }, [promptEnabled, isFree, isThisBookActive, isPlaying, contentLocked, book.id])
+    let alreadyTriggered = false
+    try { alreadyTriggered = !!localStorage.getItem(`app_prompt_audio_${book.id}`) } catch {}
+    if (alreadyTriggered) { setFreePlayThreshold(null); return }
+    setFreePlayThreshold(FREE_PLAY_THRESHOLD_SECONDS)
+    return () => setFreePlayThreshold(null)
+  }, [isFree, promptEnabled, contentLocked, isThisBookActive, FREE_PLAY_THRESHOLD_SECONDS, book.id, setFreePlayThreshold])
+
+  // Pause audio when this page's overlay activates
+  useEffect(() => {
+    if (contentLocked && isThisBookActive && isPlaying) togglePlay()
+  }, [contentLocked]) // fire only on lock state change
 
   const displayTracks = isThisBookActive ? tracks : audioTracks
   const realTrackCount = displayTracks.length

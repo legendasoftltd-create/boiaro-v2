@@ -123,11 +123,12 @@ export default function EbookReader() {
   const playStoreUrl = getSetting("app_android_url") || getSetting("google_play_url");
   const brandName    = getSetting("brand_name", "BoiAro");
 
-  // Restore lock from localStorage on mount / bookId change
+  // Restore lock from localStorage on mount / bookId change (try-catch for Safari private mode)
   useEffect(() => {
-    if (isFreeBook && bookId && localStorage.getItem(`app_prompt_locked_ebook_${bookId}`)) {
-      setContentLocked(true);
-    }
+    if (!isFreeBook || !bookId) return
+    let locked = false
+    try { locked = !!localStorage.getItem(`app_prompt_locked_ebook_${bookId}`) } catch {}
+    if (locked) setContentLocked(true)
   }, [bookId, isFreeBook]);
 
   // ── CRITICAL GATE: Preview/paywall enforcement ──
@@ -685,9 +686,11 @@ export default function EbookReader() {
       : percentage >= promptThresholdValue
     if (!reached) return
     const key = `app_prompt_ebook_${bookId}`
-    if (localStorage.getItem(key)) return
-    localStorage.setItem(key, "1")
-    localStorage.setItem(`app_prompt_locked_ebook_${bookId}`, "1")
+    let alreadyFired = false
+    try { alreadyFired = !!localStorage.getItem(key) } catch {}
+    if (alreadyFired) return
+    try { localStorage.setItem(key, "1") } catch {}
+    try { localStorage.setItem(`app_prompt_locked_ebook_${bookId}`, "1") } catch {}
     setContentLocked(true)
   }, [promptEnabled, isFreeBook, percentage, currentPage, promptThresholdType, promptThresholdValue, bookId, contentLocked])
 
@@ -727,6 +730,21 @@ export default function EbookReader() {
     [tocItems, access, showPaywall, shouldEnforcePreviewLimit, tts.isPlaying, tts.isPaused, tts.mode, handleManualPageTtsRestart]
   );
 
+  // ──────── Navigation helpers ────────
+  // Returns true (and fires the lock) if the target page would cross the free-book threshold.
+  const checkAndFireEbookGate = (targetPage: number): boolean => {
+    if (!promptEnabled || !isFreeBook || contentLocked || !bookId) return false
+    const targetPct = totalPages > 0 ? Math.round((targetPage / totalPages) * 100) : 0
+    const reached = promptThresholdType === "page"
+      ? targetPage >= promptThresholdValue
+      : targetPct >= promptThresholdValue
+    if (!reached) return false
+    try { localStorage.setItem(`app_prompt_ebook_${bookId}`, "1") } catch {}
+    try { localStorage.setItem(`app_prompt_locked_ebook_${bookId}`, "1") } catch {}
+    setContentLocked(true)
+    return true
+  }
+
   // ──────── Navigation handlers ────────
   const goToPage = (page: number) => {
     const p = Math.max(1, Math.min(page, totalPages || 9999));
@@ -734,6 +752,7 @@ export default function EbookReader() {
       setShowPaywall(true);
       return;
     }
+    if (checkAndFireEbookGate(p)) return;
     setCurrentPage(p);
     if (totalPages > 0) setPercentage(Math.round((p / totalPages) * 100));
     resetControlsTimer();
@@ -759,6 +778,7 @@ export default function EbookReader() {
         setShowPaywall(true);
         return;
       }
+      if (checkAndFireEbookGate(nextPage)) return;
       epubRef.current?.nextPage();
     } else {
       goToPage(nextPage);

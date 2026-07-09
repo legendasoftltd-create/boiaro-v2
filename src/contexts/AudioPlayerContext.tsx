@@ -77,6 +77,12 @@ interface AudioPlayerContextType extends PlayerState {
    */
   appPromptLocked: boolean
   setAppPromptLocked: (val: boolean) => void
+  /**
+   * Set the free-play threshold in seconds for the current book.
+   * AudioPlayerContext enforces this across navigation (timer no longer lives in AudiobookTab).
+   * Pass null to clear (paid book, or book already locked).
+   */
+  setFreePlayThreshold: (seconds: number | null) => void
   /** Register IDs of tracks that must not auto-play without explicit unlock */
   setLockedTrackIds: (ids: Set<string>) => void
   /** Check synchronously whether a track ID is chapter-locked (reads ref, no re-render) */
@@ -112,6 +118,13 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
    */
   const [accessLoading, setAccessLoading] = useState(true)
   const [appPromptLocked, setAppPromptLocked] = useState(false)
+  // Free-book play threshold — set by AudiobookTab for free books with the prompt enabled.
+  // Survives route changes because AudioPlayerContext is mounted at the app root, not per-route.
+  const [freePlayThreshold, setFreePlayThresholdState] = useState<number | null>(null)
+  const freePlayThresholdRef = useRef<number | null>(null)
+  freePlayThresholdRef.current = freePlayThreshold
+  const setFreePlayThreshold = useCallback((s: number | null) => setFreePlayThresholdState(s), [])
+
   const hasFullAccessRef = useRef(hasFullAccess)
   hasFullAccessRef.current = hasFullAccess
   const previewLimitSecondsRef = useRef(previewLimitSeconds)
@@ -294,6 +307,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         return
       }
 
+      // FREE-BOOK GATE: lock when position reaches the admin-configured threshold.
+      // Running here (not in AudiobookTab) means it fires even after the user navigates
+      // away from the book page and uses the mini-player.
+      const freeThresh = freePlayThresholdRef.current
+      if (freeThresh !== null && !appPromptLockedRef.current && currentSec >= freeThresh) {
+        const bid = stateRef.current.book?.id
+        try { if (bid) localStorage.setItem(`app_prompt_audio_${bid}`, "1") } catch {}
+        try { if (bid) localStorage.setItem(`app_prompt_locked_audio_${bid}`, "1") } catch {}
+        audio.pause()
+        setAppPromptLocked(true)
+        setFreePlayThresholdState(null)
+        setState((prev) => ({ ...prev, isPlaying: false }))
+        return
+      }
+
       setState((prev) => ({
         ...prev,
         currentTime: currentSec,
@@ -336,6 +364,21 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     })
 
     audio.addEventListener("play", () => {
+      // BFCACHE / SAFARI GUARD: iOS Safari restores the page from cache on back-navigation,
+      // resetting React state to its pre-lock snapshot (appPromptLocked = false).
+      // Check localStorage as the persistent source of truth on every play event.
+      {
+        const bid = stateRef.current.book?.id
+        let storageLocked = false
+        try { storageLocked = !!bid && !!localStorage.getItem(`app_prompt_locked_audio_${bid}`) } catch {}
+        if (storageLocked) {
+          if (!appPromptLockedRef.current) setAppPromptLocked(true)
+          audio.pause()
+          setState((prev) => ({ ...prev, isPlaying: false }))
+          return
+        }
+      }
+
       // CRITICAL: If paywall is active or we're past the preview limit, immediately re-pause.
       // This prevents any code path (Media Session, OS controls, etc.) from bypassing the paywall.
       if (!accessLoadingRef.current && !hasFullAccessRef.current && previewLimitSecondsRef.current > 0) {
@@ -694,6 +737,17 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     // Session/OS seek controls call this directly, bypassing any UI disabled
     // attribute on the seek bar/skip buttons.
     if (appPromptLockedRef.current) return
+    // Block seeking PAST the free-play threshold — fires the lock immediately
+    // so fast-forwarding cannot bypass the "download app" gate.
+    const freeThresh = freePlayThresholdRef.current
+    if (freeThresh !== null && time >= freeThresh) {
+      const bid = stateRef.current.book?.id
+      try { if (bid) localStorage.setItem(`app_prompt_audio_${bid}`, "1") } catch {}
+      try { if (bid) localStorage.setItem(`app_prompt_locked_audio_${bid}`, "1") } catch {}
+      setAppPromptLocked(true)
+      setFreePlayThresholdState(null)
+      return
+    }
     const audio = audioRef.current
     if (audio && audio.src) {
       audio.currentTime = time
@@ -757,6 +811,25 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       seekTo(Math.max(0, audio.currentTime - 10))
     }
   }, [seekTo])
+
+  // bfcache restore: iOS Safari unfreezes the page when user presses Back, resetting
+  // React state. Re-apply the lock from localStorage so the gate survives back-navigation.
+  useEffect(() => {
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return
+      const bid = stateRef.current.book?.id
+      if (!bid) return
+      let storageLocked = false
+      try { storageLocked = !!localStorage.getItem(`app_prompt_locked_audio_${bid}`) } catch {}
+      if (storageLocked && !appPromptLockedRef.current) {
+        setAppPromptLocked(true)
+        audioRef.current?.pause()
+        setState((prev) => ({ ...prev, isPlaying: false }))
+      }
+    }
+    window.addEventListener("pageshow", handlePageShow)
+    return () => window.removeEventListener("pageshow", handlePageShow)
+  }, [])
 
   const openFullPlayer = useCallback(() => setState((p) => ({ ...p, isFullPlayerOpen: true })), [])
   const closeFullPlayer = useCallback(() => setState((p) => ({ ...p, isFullPlayerOpen: false })), [])
@@ -854,6 +927,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setAccessLoading,
         appPromptLocked,
         setAppPromptLocked,
+        setFreePlayThreshold,
         setLockedTrackIds,
         isTrackLocked,
       }}

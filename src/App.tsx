@@ -15,6 +15,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 const MiniPlayer = lazy(() => import("@/components/audio-player/MiniPlayer").then(m => ({ default: m.MiniPlayer })));
 const FullPlayer = lazy(() => import("@/components/audio-player/FullPlayer").then(m => ({ default: m.FullPlayer })));
 const GlobalAudiobookPaywall = lazy(() => import("@/components/audio-player/GlobalAudiobookPaywall").then(m => ({ default: m.GlobalAudiobookPaywall })));
+const AppDownloadGate = lazy(() => import("@/components/AppDownloadGate").then(m => ({ default: m.AppDownloadGate })));
 const CartDrawer = lazy(() => import("@/components/cart/CartDrawer").then(m => ({ default: m.CartDrawer })));
 const RoleApplicationSubmitter = lazy(() => import("@/components/RoleApplicationSubmitter").then(m => ({ default: m.RoleApplicationSubmitter })));
 const PresenceTracker = lazy(() => import("@/components/PresenceTracker").then(m => ({ default: m.PresenceTracker })));
@@ -209,6 +210,7 @@ const App = () => {
         <AuthProvider>
           <CartProvider>
             <AudioPlayerProvider>
+              <Suspense fallback={null}><AppDownloadGate /></Suspense>
               <Suspense fallback={null}><RoleApplicationSubmitter /></Suspense>
               <Suspense fallback={null}><PresenceTracker /></Suspense>
               <Suspense fallback={null}><PushNotificationManager /></Suspense>
