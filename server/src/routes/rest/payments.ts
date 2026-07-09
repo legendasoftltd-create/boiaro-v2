@@ -56,6 +56,22 @@ async function deleteCancelledOrder(orderId: string) {
 }
 
 async function finalizePaidOrder(params: { orderId: string; paymentMethod: string; transactionId?: string }) {
+  // Atomic status flip: only one concurrent caller can move from pending/awaiting_payment → confirmed.
+  // This is the primary guard against IPN + redirect race conditions creating duplicate earnings.
+  const updated = await prisma.order.updateMany({
+    where: { id: params.orderId, status: { in: ["pending", "awaiting_payment"] } },
+    data: { status: "confirmed" },
+  });
+  // If no rows were updated, another request already finalized this order — skip all side effects.
+  if (updated.count === 0) {
+    // Still update payment record (idempotent) but skip earnings/unlock to avoid duplicates.
+    await prisma.payment.updateMany({
+      where: { order_id: params.orderId },
+      data: { status: "paid", transaction_id: params.transactionId || undefined },
+    });
+    return true;
+  }
+
   const order = await prisma.order.findUnique({
     where: { id: params.orderId },
     include: { items: true },
@@ -124,13 +140,6 @@ async function finalizePaidOrder(params: { orderId: string; paymentMethod: strin
 
   }
 
-  if (["pending", "awaiting_payment"].includes(order.status || "")) {
-    await prisma.order.update({
-      where: { id: params.orderId },
-      data: { status: "confirmed" },
-    });
-  }
-
   const orderUser = await prisma.user.findUnique({ where: { id: order.user_id }, select: { email: true } });
   if (orderUser?.email) {
     const itemLines = order.items
@@ -194,6 +203,7 @@ async function finalizeChapterPurchase(params: { purchaseId: string; transaction
   if (!purchase || purchase.payment_status === "paid") return false;
 
   const txnId = params.transactionId || purchase.transaction_id;
+  const chapterFormat = `audiobook_chapter_${purchase.track_id}`;
 
   await prisma.$transaction(async (tx: any) => {
     await tx.chapterPurchase.update({
@@ -205,13 +215,13 @@ async function finalizeChapterPurchase(params: { purchaseId: string; transaction
         user_id_book_id_format: {
           user_id: purchase.user_id,
           book_id: purchase.book_id,
-          format: `audiobook_chapter_${purchase.track_id}`,
+          format: chapterFormat,
         },
       },
       create: {
         user_id: purchase.user_id,
         book_id: purchase.book_id,
-        format: `audiobook_chapter_${purchase.track_id}`,
+        format: chapterFormat,
         status: "active",
         unlock_method: "purchase",
       },
@@ -230,6 +240,29 @@ async function finalizeChapterPurchase(params: { purchaseId: string; transaction
       },
     });
   });
+
+  // Calculate contributor earnings for the chapter purchase.
+  // Done outside the transaction so the ContentUnlock row is visible to the query.
+  const price = Number(purchase.price || 0);
+  if (price > 0) {
+    const unlock = await prisma.contentUnlock.findFirst({
+      where: { user_id: purchase.user_id, book_id: purchase.book_id, format: chapterFormat },
+      select: { id: true },
+    });
+    // Guard: skip if earnings already exist for this unlock (concurrent IPN + redirect scenario)
+    const alreadyEarned = unlock
+      ? await prisma.contributorEarning.findFirst({ where: { content_unlock_id: unlock.id }, select: { id: true } })
+      : null;
+    if (!alreadyEarned) {
+      await calculateEarnings({
+        bookId: purchase.book_id,
+        format: "audiobook",
+        saleAmount: price,
+        contentUnlockId: unlock?.id ?? null,
+      });
+    }
+  }
+
   return true;
 }
 

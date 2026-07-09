@@ -1050,6 +1050,14 @@ export const adminRouter = router({
         }
       }
 
+      // Reverse contributor earnings when cancelling a previously-confirmed order
+      if (input.status === "cancelled" && order.status === "confirmed") {
+        await prisma.contributorEarning.updateMany({
+          where: { order_id: input.orderId, status: { not: "reversed" } },
+          data: { status: "reversed" },
+        });
+      }
+
       return prisma.$transaction([
         prisma.order.update({ where: { id: input.orderId }, data: { status: input.status } }),
         prisma.orderStatusHistory.create({
@@ -5029,6 +5037,7 @@ export const adminRouter = router({
         orderBy: [{ entry_date: "desc" }, { created_at: "desc" }],
       }),
       prisma.contributorEarning.findMany({
+        where: { status: { not: "reversed" } },
         select: {
           book_id: true,
           format: true,
@@ -5094,6 +5103,7 @@ export const adminRouter = router({
       }),
       prisma.accountingLedger.findMany({ orderBy: [{ entry_date: "desc" }, { created_at: "desc" }] }),
       prisma.contributorEarning.findMany({
+        where: { status: { not: "reversed" } },
         select: { book_id: true, format: true, role: true, earned_amount: true, sale_amount: true, status: true, created_at: true },
       }),
       prisma.profile.findMany({ select: { id: true, created_at: true } }),
@@ -5369,8 +5379,9 @@ export const adminRouter = router({
       cod_payment_status: order.cod_payment_status,
     }));
     const verifiedOrderIds = new Set(verifiedOrders.map((o) => o.id));
-    // Only count earnings from orders that have actually been paid/verified
-    const verifiedEarnings = activeEarnings.filter((e) => e.order_id && verifiedOrderIds.has(e.order_id));
+    // Include: (a) order-backed earnings from verified/paid orders, and
+    //         (b) coin-unlock earnings that have no order_id (always created at unlock time, inherently verified).
+    const verifiedEarnings = activeEarnings.filter((e) => !e.order_id || verifiedOrderIds.has(e.order_id));
     const totalSales = verifiedOrders.reduce((sum, order) => {
       const itemTotal = order.items.reduce((itemSum, item) => itemSum + orderItemSaleAmount(item), 0);
       return sum + (itemTotal > 0 ? itemTotal : orderSellableAmount(order));

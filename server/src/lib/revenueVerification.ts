@@ -5,8 +5,12 @@
 
 const EXCLUDED_STATUSES = new Set(["cancelled", "returned", "pending"]);
 
-/** Non-COD: money received (excludes `confirmed` / in-flight until paid lifecycle). */
-const MONEY_RECEIVED_STATUSES = new Set(["paid", "completed", "access_granted", "delivered"]);
+/**
+ * Non-COD: statuses that indicate money was actually received.
+ * "confirmed" is set by finalizePaidOrder (SSLCommerz/bKash callback) and by
+ * placeOrder for demo/mobile/wallet — in every path it means payment succeeded.
+ */
+const MONEY_RECEIVED_STATUSES = new Set(["confirmed", "paid", "completed", "access_granted", "delivered"]);
 
 const COD_SETTLED_STATUSES = new Set(["settled_to_merchant", "paid"]);
 
