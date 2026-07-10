@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Ticket, Plus, Pencil, Trash2, Search, X } from "lucide-react";
 
@@ -51,6 +52,7 @@ const APPLIES_TO_LABELS: Record<string, string> = {
 
 export default function AdminCoupons() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Coupon | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -141,9 +143,11 @@ export default function AdminCoupons() {
     }
   };
 
-  const remove = async (c: Coupon) => {
-    if (!confirm(`Delete coupon "${c.code}"?`)) return;
-    deleteMutation.mutate({ id: c.id });
+  const remove = (c: Coupon) => {
+    openConfirm({
+      message: `Are you sure you want to delete coupon "${c.code}"?`,
+      onConfirm: () => deleteMutation.mutate({ id: c.id }),
+    });
   };
 
   const toggleStatus = async (c: Coupon) => {
@@ -364,6 +368,7 @@ export default function AdminCoupons() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Shield, Users, ShieldCheck, Search, User } from "lucide-react";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
@@ -49,6 +50,7 @@ function emptyMatrix(): PermMatrix {
 
 export default function AdminRoles() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [tab, setTab] = useState("roles");
 
   // Role form state
@@ -200,9 +202,11 @@ export default function AdminRoles() {
   };
 
   const handleDeleteRole = (r: Role) => {
-    if (!confirm(`Delete role "${r.label}"?`)) return;
-    deleteRoleMutation.mutate({ id: r.id }, {
-      onSuccess: () => log({ module: "roles", action: `Role deleted: ${r.label}`, actionType: "delete", targetType: "admin_role", targetId: r.id, riskLevel: "critical" }),
+    openConfirm({
+      message: `Are you sure you want to delete the role "${r.label}"?`,
+      onConfirm: () => deleteRoleMutation.mutate({ id: r.id }, {
+        onSuccess: () => log({ module: "roles", action: `Role deleted: ${r.label}`, actionType: "delete", targetType: "admin_role", targetId: r.id, riskLevel: "critical" }),
+      }),
     });
   };
 
@@ -491,6 +495,7 @@ export default function AdminRoles() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

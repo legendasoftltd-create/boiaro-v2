@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Mail, Plus, Search, Edit, Eye, Trash2, FileText, ShoppingCart, CreditCard, Users, Key, Crown, Wallet } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -37,6 +38,7 @@ const TYPE_LABELS: Record<string, { label: string; icon: any }> = {
 
 export default function AdminEmailTemplates() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -81,11 +83,15 @@ export default function AdminEmailTemplates() {
     fetchTemplates();
   };
 
-  const deleteTemplate = async (id: string) => {
-    if (!confirm("Delete this template?")) return;
-    await utils.admin.deleteEmailTemplate.fetch({ id });
-    toast.success("Template deleted");
-    fetchTemplates();
+  const deleteTemplate = (id: string) => {
+    openConfirm({
+      message: "Are you sure you want to delete this email template?",
+      onConfirm: async () => {
+        await utils.admin.deleteEmailTemplate.fetch({ id });
+        toast.success("Template deleted");
+        fetchTemplates();
+      },
+    });
   };
 
   const toggleStatus = async (t: EmailTemplate) => {
@@ -264,6 +270,7 @@ export default function AdminEmailTemplates() {
           )}
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

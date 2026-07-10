@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Search, Trash2, BookOpen } from "lucide-react";
 
@@ -19,6 +20,7 @@ const emptyForm = {
 
 export default function AdminBlog() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [editId, setEditId] = useState<string | undefined>(undefined);
@@ -127,7 +129,7 @@ export default function AdminBlog() {
                 <TableCell className="text-muted-foreground text-xs">{p.publish_date ? new Date(p.publish_date).toLocaleDateString() : "—"}</TableCell>
                 <TableCell className="flex gap-1">
                   <Button size="icon" variant="ghost" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" className="text-destructive" onClick={() => { if (confirm("Delete this article?")) deleteMutation.mutate({ id: p.id }); }}><Trash2 className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className="text-destructive" onClick={() => openConfirm({ message: "Are you sure you want to delete this article?", onConfirm: () => deleteMutation.mutate({ id: p.id }) })}><Trash2 className="h-4 w-4" /></Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -184,6 +186,7 @@ export default function AdminBlog() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

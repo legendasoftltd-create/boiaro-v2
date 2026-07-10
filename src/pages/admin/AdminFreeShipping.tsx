@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Gift, Plus, Pencil, Trash2 } from "lucide-react";
 
@@ -15,6 +16,7 @@ const emptyForm = { name: "", is_active: false, min_order_value: 500, start_date
 
 export default function AdminFreeShipping() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [editId, setEditId] = useState<string | undefined>(undefined);
   const [form, setForm] = useState(emptyForm);
   const [showDialog, setShowDialog] = useState(false);
@@ -104,7 +106,7 @@ export default function AdminFreeShipping() {
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
                     <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="w-4 h-4" /></Button>
-                    <Button size="icon" variant="ghost" className="text-destructive" onClick={() => { if (confirm(`Delete "${c.name}"?`)) deleteMutation.mutate({ id: c.id }); }}><Trash2 className="w-4 h-4" /></Button>
+                    <Button size="icon" variant="ghost" className="text-destructive" onClick={() => openConfirm({ message: `Are you sure you want to delete "${c.name}"?`, onConfirm: () => deleteMutation.mutate({ id: c.id }) })}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -146,6 +148,7 @@ export default function AdminFreeShipping() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

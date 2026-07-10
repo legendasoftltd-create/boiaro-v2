@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle, Sparkles, Mic, Download, Lock, Unlock } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { BookContributors } from "@/components/admin/BookContributors";
 import { BookRevenueSplit } from "@/components/admin/BookRevenueSplit";
@@ -30,6 +31,7 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/
 export default function AdminBooks() {
   const location = useLocation();
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [books, setBooks] = useState<any[]>([]);
   const [bookFormats, setBookFormats] = useState<Record<string, any[]>>({});
   const [bookContribCounts, setBookContribCounts] = useState<Record<string, number>>({});
@@ -527,16 +529,20 @@ export default function AdminBooks() {
     load();
   };
 
-  const deleteBook = async (id: string) => {
-    if (!confirm("Delete this book and all its formats?")) return;
-    try {
-      await deleteBookMutation.mutateAsync({ id });
-      await log({ module: "books", action: "Book deleted", actionType: "delete", targetType: "book", targetId: id, details: `Deleted book: ${id}`, riskLevel: "high" });
-      toast.success("Deleted");
-      load();
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to delete book");
-    }
+  const deleteBook = (id: string) => {
+    openConfirm({
+      message: "Are you sure you want to delete this book and all its formats?",
+      onConfirm: async () => {
+        try {
+          await deleteBookMutation.mutateAsync({ id });
+          await log({ module: "books", action: "Book deleted", actionType: "delete", targetType: "book", targetId: id, details: `Deleted book: ${id}`, riskLevel: "high" });
+          toast.success("Deleted");
+          load();
+        } catch (error: any) {
+          toast.error(error?.message || "Failed to delete book");
+        }
+      },
+    });
   };
 
   const openFormats = async (bookId: string) => {
@@ -2042,6 +2048,7 @@ export default function AdminBooks() {
           )}
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

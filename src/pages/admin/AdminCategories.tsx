@@ -7,6 +7,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Upload, X, ImageIcon, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { toMediaUrl } from "@/lib/mediaUrl";
 
@@ -120,6 +121,7 @@ function CategoryIconUpload({ value, onChange }: { value: string; onChange: (url
 
 export default function AdminCategories() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [open, setOpen] = useState(false);
   const [edit, setEdit] = useState<any>(null);
   const [form, setForm] = useState({
@@ -163,7 +165,12 @@ export default function AdminCategories() {
     else createMutation.mutate(payload);
   };
 
-  const remove = (id: string) => { if (!confirm("Delete this category?")) return; deleteMutation.mutate({ id }); };
+  const remove = (id: string) => {
+    openConfirm({
+      message: "Are you sure you want to delete this category?",
+      onConfirm: () => deleteMutation.mutate({ id }),
+    });
+  };
 
   const toggleStatus = (c: any) => {
     const newStatus = c.status === "active" ? "inactive" : "active";
@@ -283,6 +290,7 @@ export default function AdminCategories() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

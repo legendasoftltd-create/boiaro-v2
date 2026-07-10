@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Crown, Plus, Pencil, Trash2, Star, Search } from "lucide-react";
 
@@ -42,6 +43,7 @@ const emptyForm = {
 
 export default function AdminSubscriptionPlans() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Plan | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -119,9 +121,11 @@ export default function AdminSubscriptionPlans() {
     }
   };
 
-  const remove = async (p: Plan) => {
-    if (!confirm(`Delete "${p.name}"?`)) return;
-    deleteMutation.mutate({ id: p.id });
+  const remove = (p: Plan) => {
+    openConfirm({
+      message: `Are you sure you want to delete the plan "${p.name}"?`,
+      onConfirm: () => deleteMutation.mutate({ id: p.id }),
+    });
   };
 
   const toggleStatus = async (p: Plan) => {
@@ -254,6 +258,7 @@ export default function AdminSubscriptionPlans() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

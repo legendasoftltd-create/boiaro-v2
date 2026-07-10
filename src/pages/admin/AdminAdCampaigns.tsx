@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Megaphone, Plus, Search, Trash2 } from "lucide-react";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 
 interface Campaign {
@@ -26,6 +27,7 @@ interface Campaign {
 
 export default function AdminAdCampaigns() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<Partial<Campaign>>({});
@@ -65,8 +67,11 @@ export default function AdminAdCampaigns() {
     });
   };
 
-  const del = async (id: string) => {
-    deleteMutation.mutate({ id });
+  const del = (id: string) => {
+    openConfirm({
+      message: "Are you sure you want to delete this campaign?",
+      onConfirm: () => deleteMutation.mutate({ id }),
+    });
   };
 
   const filtered = useMemo(
@@ -155,6 +160,7 @@ export default function AdminAdCampaigns() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

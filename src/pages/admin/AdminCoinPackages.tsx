@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Coins, Plus, Pencil, Trash2, Save, TrendingUp } from "lucide-react";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 
 interface CoinPackage {
@@ -24,6 +25,7 @@ interface CoinPackage {
 
 export default function AdminCoinPackages() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [open, setOpen] = useState(false);
   const [editPkg, setEditPkg] = useState<CoinPackage | null>(null);
   const [form, setForm] = useState({ name: "", coins: "", price: "", bonus_coins: "0", sort_order: "0", is_featured: false });
@@ -101,9 +103,11 @@ export default function AdminCoinPackages() {
     });
   };
 
-  const deletePkg = async (id: string) => {
-    if (!confirm("Delete this package?")) return;
-    deleteMutation.mutate({ id });
+  const deletePkg = (id: string) => {
+    openConfirm({
+      message: "Are you sure you want to delete this package?",
+      onConfirm: () => deleteMutation.mutate({ id }),
+    });
   };
 
   return (
@@ -305,6 +309,7 @@ export default function AdminCoinPackages() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

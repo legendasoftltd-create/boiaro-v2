@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Truck, Package, Plus, Pencil, Trash2 } from "lucide-react";
 
@@ -19,6 +20,7 @@ const emptyForm = {
 
 export default function AdminShippingMethods() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [editId, setEditId] = useState<string | undefined>(undefined);
   const [form, setForm] = useState(emptyForm);
   const [showDialog, setShowDialog] = useState(false);
@@ -111,7 +113,7 @@ export default function AdminShippingMethods() {
                 <TableCell className="text-right">
                   <div className="flex gap-1 justify-end">
                     <Button size="icon" variant="ghost" onClick={() => openEdit(m)}><Pencil className="w-4 h-4" /></Button>
-                    <Button size="icon" variant="ghost" className="text-destructive" onClick={() => { if (confirm(`Delete "${m.name}"?`)) deleteMutation.mutate({ id: m.id }); }}><Trash2 className="w-4 h-4" /></Button>
+                    <Button size="icon" variant="ghost" className="text-destructive" onClick={() => openConfirm({ message: `Are you sure you want to delete "${m.name}"?`, onConfirm: () => deleteMutation.mutate({ id: m.id }) })}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -163,6 +165,7 @@ export default function AdminShippingMethods() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ImageIcon, Plus, Search, Trash2, Eye, MousePointerClick } from "lucide-react";
 import { SiteImageUpload } from "@/components/admin/SiteImageUpload";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 
 interface AdBanner {
@@ -34,6 +35,7 @@ const PLACEMENTS = [
 
 export default function AdminAdBanners() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState<Partial<AdBanner>>({});
@@ -83,8 +85,11 @@ export default function AdminAdBanners() {
     });
   };
 
-  const deleteBanner = async (id: string) => {
-    deleteMutation.mutate({ id });
+  const deleteBanner = (id: string) => {
+    openConfirm({
+      message: "Are you sure you want to delete this ad banner?",
+      onConfirm: () => deleteMutation.mutate({ id }),
+    });
   };
 
   const filtered = useMemo(() => banners.filter(b =>
@@ -215,6 +220,7 @@ export default function AdminAdBanners() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

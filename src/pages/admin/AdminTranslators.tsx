@@ -18,6 +18,7 @@ import { DeactivateModal } from "@/components/admin/DeactivateModal";
 import { CreatorAccountFields } from "@/components/admin/CreatorAccountFields";
 import { CreatorAccountCard } from "@/components/admin/CreatorAccountCard";
 import { useCreatorAccount } from "@/hooks/useCreatorAccount";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 
 const EMPTY_FORM = { name: "", name_en: "", bio: "", genre: "", avatar_url: "", is_featured: false, is_trending: false, priority: 0, phone: "" };
@@ -30,6 +31,7 @@ export default function AdminTranslators() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deactivateTarget, setDeactivateTarget] = useState<any>(null);
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
 
   const [createAccount, setCreateAccount] = useState(false);
   const [accEmail, setAccEmail] = useState("");
@@ -74,10 +76,13 @@ export default function AdminTranslators() {
     setOpen(false);
   };
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete?")) return;
-    await deleteMutation.mutateAsync({ id });
-    toast.success("Deleted");
+  const remove = (id: string) => {
+    openConfirm({
+      onConfirm: async () => {
+        await deleteMutation.mutateAsync({ id });
+        toast.success("Deleted");
+      },
+    });
   };
 
   const handleToggle = async (a: any) => {
@@ -101,12 +106,19 @@ export default function AdminTranslators() {
     setSelected(next);
   };
 
-  const bulkSetStatus = async (status: string) => {
+  const bulkSetStatus = (status: string) => {
     const ids = Array.from(selected);
-    if (!ids.length || !confirm(`${status === "active" ? "Activate" : "Deactivate"} ${ids.length} translator(s)?`)) return;
-    for (const id of ids) await updateMutation.mutateAsync({ id, status });
-    setSelected(new Set());
-    toast.success(`${ids.length} translator(s) ${status === "active" ? "activated" : "deactivated"}`);
+    if (!ids.length) return;
+    openConfirm({
+      title: status === "active" ? "Activate Translators" : "Deactivate Translators",
+      message: `${status === "active" ? "Activate" : "Deactivate"} ${ids.length} translator(s)?`,
+      confirmLabel: status === "active" ? "Activate" : "Deactivate",
+      onConfirm: async () => {
+        for (const id of ids) await updateMutation.mutateAsync({ id, status });
+        setSelected(new Set());
+        toast.success(`${ids.length} translator(s) ${status === "active" ? "activated" : "deactivated"}`);
+      },
+    });
   };
 
   const saving = createMutation.isPending || updateMutation.isPending || accountSaving;
@@ -209,6 +221,7 @@ export default function AdminTranslators() {
       </Dialog>
 
       <DeactivateModal open={!!deactivateTarget} onOpenChange={(o) => { if (!o) setDeactivateTarget(null); }} itemName={deactivateTarget?.name || "Translator"} onConfirm={() => deactivateTarget && deactivateItem(deactivateTarget)} />
+      {confirmDialog}
     </div>
   );
 }

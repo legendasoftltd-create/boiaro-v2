@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Image } from "lucide-react";
 import { SiteImageUpload } from "@/components/admin/SiteImageUpload";
@@ -14,6 +15,7 @@ const emptyForm = { title: "", subtitle: "", cta_text: "", cta_link: "", image_u
 
 export default function AdminBanners() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const [editId, setEditId] = useState<string | undefined>(undefined);
   const [isOpen, setIsOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -71,7 +73,7 @@ export default function AdminBanners() {
                 <TableCell><Badge variant={b.is_active ? "default" : "secondary"}>{b.is_active ? "Active" : "Inactive"}</Badge></TableCell>
                 <TableCell className="flex gap-1">
                   <Button size="icon" variant="ghost" onClick={() => openEdit(b)}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="icon" variant="ghost" className="text-destructive" onClick={() => { if (confirm("Delete?")) deleteMutation.mutate({ id: b.id }); }}><Trash2 className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="ghost" className="text-destructive" onClick={() => openConfirm({ message: "Are you sure you want to delete this banner?", onConfirm: () => deleteMutation.mutate({ id: b.id }) })}><Trash2 className="h-4 w-4" /></Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -100,6 +102,7 @@ export default function AdminBanners() {
           </div>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

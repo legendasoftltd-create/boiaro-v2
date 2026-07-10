@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Send, MessageSquare, History, Users, AlertTriangle, CheckCircle, XCircle, Loader2, Settings, Plus, Pencil, Trash2, Star } from "lucide-react";
 import { format } from "date-fns";
@@ -40,6 +41,7 @@ const emptySidForm = (): SidFormData => ({
 
 export default function AdminSms() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
   const [recipientGroup, setRecipientGroup] = useState<RecipientGroup>("custom");
@@ -397,7 +399,7 @@ export default function AdminSms() {
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={() => { if (confirm(`Delete SID "${s.label}"?`)) deleteSidMutation.mutate({ id: s.id }); }}
+                            onClick={() => openConfirm({ message: `Are you sure you want to delete SID "${s.label}"?`, onConfirm: () => deleteSidMutation.mutate({ id: s.id }) })}
                             disabled={deleteSidMutation.isPending}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
@@ -453,6 +455,7 @@ export default function AdminSms() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </div>
   );
 }

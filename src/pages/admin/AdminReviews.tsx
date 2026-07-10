@@ -5,10 +5,12 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Trash2, Star, Eye, EyeOff } from "lucide-react";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 
 export default function AdminReviews() {
   const utils = trpc.useUtils();
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
   const { data: reviews = [] } = trpc.admin.listReviews.useQuery({});
   const approveMutation = trpc.admin.approveReview.useMutation({
     onSuccess: () => utils.admin.listReviews.invalidate(),
@@ -19,10 +21,16 @@ export default function AdminReviews() {
     onError: (err) => toast.error(err.message),
   });
 
-  const remove = async (id: string) => {
-    if (!confirm("Hide this review?")) return;
-    await rejectMutation.mutateAsync({ id });
-    toast.success("Review hidden");
+  const remove = (id: string) => {
+    openConfirm({
+      title: "Hide Review",
+      message: "Are you sure you want to hide this review?",
+      confirmLabel: "Hide",
+      onConfirm: async () => {
+        await rejectMutation.mutateAsync({ id });
+        toast.success("Review hidden");
+      },
+    });
   };
 
   const toggleStatus = async (r: any) => {
@@ -90,6 +98,7 @@ export default function AdminReviews() {
           </TableBody>
         </Table>
       </div>
+      {confirmDialog}
     </div>
   );
 }
