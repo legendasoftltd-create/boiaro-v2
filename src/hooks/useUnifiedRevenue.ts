@@ -1,38 +1,30 @@
 /**
  * Unified Revenue Logic — Single Source of Truth
- * 
+ * Keep in sync with server/src/lib/revenueVerification.ts
+ *
  * REVENUE INCLUSION RULES (money actually received):
  * ─────────────────────────
- * 1. ONLINE PAYMENTS:
- *    → Count as revenue ONLY when payment_status = 'paid'
- *      OR order status IN ('paid', 'completed')
- *    → "confirmed", "delivered" alone do NOT count
+ * 1. ONLINE/SSLCommerz/bKash PAYMENTS:
+ *    → "confirmed" = set by finalizePaidOrder callback (payment received) ✓
+ *    → "access_granted" = manually granted after out-of-band payment ✓
+ *    → "paid", "completed", "delivered" also count ✓
+ *    → "awaiting_payment", "processing", "in_transit" = NOT yet received ✗
  *
  * 2. COD (Cash on Delivery):
- *    → NEVER count confirmed/processing/delivered as revenue
  *    → Count ONLY when cod_payment_status IN ('settled_to_merchant', 'paid')
+ *    → "confirmed"/"delivered" alone don't mean cash received for COD ✗
  *
  * 3. EXCLUDED statuses: pending, cancelled, returned
- *    Once online payment is confirmed, order counts through entire lifecycle
- *    (paid → confirmed → processing → shipped → delivered → completed)
  *
- * 4. Net revenue = total_amount (discount already deducted at order creation)
- * 
- * PROFIT RULES (Hardcopy / inventory_resale):
- * ─────────────────────────
- * profit = total_amount - (unit_cost × qty) - packaging_cost - fulfillment_cost
- * 
- * DATE FILTER PERIODS:
- * ─────────────────────
- * today, this_month, last_month, this_year, all
- * 
- * USED BY: AdminDashboard, AdminAnalytics, AdminFinancialReports, InvestorReport
+ * 4. Net revenue = total_amount − shipping_cost
  */
 
 export type RevenuePeriod = "today" | "this_month" | "last_month" | "this_year" | "all";
 
-/** Order statuses that definitively mean money was received (non-COD) */
-const MONEY_RECEIVED_STATUSES = ["paid", "completed", "access_granted", "delivered"];
+/** Order statuses that definitively mean money was received (non-COD).
+ *  "confirmed" is set exclusively by finalizePaidOrder (SSLCommerz/bKash callback)
+ *  and placeOrder→shouldFulfill — in every path it means payment succeeded. */
+const MONEY_RECEIVED_STATUSES = ["confirmed", "paid", "completed", "access_granted", "delivered"];
 
 /** COD-specific payment statuses that mean merchant got the money */
 const COD_SETTLED_STATUSES = ["settled_to_merchant", "paid"];
@@ -103,10 +95,10 @@ export function isVerifiedRevenueOrder(order: RevenueOrder, log = false): boolea
     return settled || exclude(`cod_not_settled (cod_status=${order.cod_payment_status})`);
   }
 
-  // Online/demo payments: count if order status confirms money received
+  // Online/SSLCommerz/bKash/demo: count if order status confirms money received
   if (MONEY_RECEIVED_STATUSES.includes(order.status)) return true;
 
-  // Everything else (confirmed, processing, in_transit, etc.) = no revenue
+  // Everything else (awaiting_payment, processing, in_transit, etc.) = not yet received
   return exclude(`status_not_paid (status=${order.status})`);
 }
 
@@ -259,4 +251,4 @@ export function detectDuplicateLedgerEntries(ledger: any[]): any[] {
 /**
  * Revenue explanation for UI tooltips
  */
-export const REVENUE_TOOLTIP = "Revenue = only orders where payment is confirmed (payments.status='paid'). Online: order status 'paid'/'access_granted'/'completed'. COD: only when settled to merchant. Excludes pending, processing, demo.";
+export const REVENUE_TOOLTIP = "Revenue = verified paid orders only. Online/SSLCommerz/bKash: status 'confirmed'/'paid'/'completed'/'access_granted'/'delivered'. COD: only when settled to merchant. Excludes pending, awaiting_payment, cancelled.";
