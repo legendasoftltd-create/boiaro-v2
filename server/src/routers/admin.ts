@@ -6271,11 +6271,13 @@ export const adminRouter = router({
       verifiedOrders.map((o) => o.user_id).filter((id): id is string => Boolean(id))
     );
     const activeEarnings = earnings.filter((e) => e.status !== "reversed");
-    const writerEarnings = activeEarnings.filter(e => e.role === "writer").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
-    const narratorEarnings = activeEarnings.filter(e => e.role === "narrator").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
-    const publisherEarnings = activeEarnings.filter(e => e.role === "publisher").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
+    // Verified earnings: from verified orders OR coin-unlock (null order_id, inherently paid)
+    const verifiedEarnings = activeEarnings.filter((e) => !e.order_id || verifiedOrderIds.has(e.order_id));
+    const writerEarnings = verifiedEarnings.filter(e => e.role === "writer").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
+    const narratorEarnings = verifiedEarnings.filter(e => e.role === "narrator").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
+    const publisherEarnings = verifiedEarnings.filter(e => e.role === "publisher").reduce((s, e) => s + Number(e.earned_amount || 0), 0);
     const uniqueOrderSales = new Map<string, number>();
-    activeEarnings.forEach(e => { if (e.order_id && !uniqueOrderSales.has(e.order_id)) uniqueOrderSales.set(e.order_id, Number(e.sale_amount || 0)); });
+    verifiedEarnings.forEach(e => { if (e.order_id && !uniqueOrderSales.has(e.order_id)) uniqueOrderSales.set(e.order_id, Number(e.sale_amount || 0)); });
     const totalSaleAmount = Array.from(uniqueOrderSales.values()).reduce((s, v) => s + v, 0);
     const platformEarnings = Math.max(0, totalSaleAmount - writerEarnings - narratorEarnings - publisherEarnings);
 
@@ -6345,7 +6347,12 @@ export const adminRouter = router({
 
     const codOrders = orders.filter((o) => o.payment_method === "cod");
     const codPending = codOrders
-      .filter((o) => ["cod_pending_collection", "unpaid"].includes(o.cod_payment_status || ""))
+      .filter((o) => {
+        if (["cancelled", "returned"].includes(o.status || "")) return false;
+        const cs = o.cod_payment_status || "";
+        // null/empty = freshly placed, not yet collected; also explicit pending statuses
+        return !cs || cs === "cod_pending_collection" || cs === "unpaid";
+      })
       .reduce((s, o) => s + Number(o.total_amount || 0), 0);
     const codCollected = codOrders
       .filter((o) => o.cod_payment_status === "collected_by_courier")
@@ -6355,7 +6362,8 @@ export const adminRouter = router({
       .reduce((s, o) => s + Number(o.total_amount || 0), 0);
 
     const verifiedSellableTotal = verifiedOrders.reduce((s, o) => s + sellableAmount(o), 0);
-    const creatorPayoutsTotal = activeEarnings
+    // Only subtract creator payouts from verified revenue sources (same filter as verifiedEarnings)
+    const creatorPayoutsTotal = verifiedEarnings
       .filter((e) => e.role !== "platform")
       .reduce((s, e) => s + Number(e.earned_amount || 0), 0);
     const realNetProfit = verifiedSellableTotal - creatorPayoutsTotal - totalExpense;
