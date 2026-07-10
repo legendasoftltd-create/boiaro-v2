@@ -4920,6 +4920,39 @@ export const adminRouter = router({
       return { fixes };
     }),
 
+  // Bulk-sync: create missing AccountingLedger income entries for ALL verified orders in one call
+  syncLedgerFromOrders: adminProcedure.mutation(async ({ ctx }) => {
+    const [orders, ledger] = await Promise.all([
+      prisma.order.findMany({
+        select: { id: true, order_number: true, total_amount: true, shipping_cost: true, status: true, payment_method: true, cod_payment_status: true, created_at: true },
+      }),
+      prisma.accountingLedger.findMany({
+        where: { type: "income", category: "book_sale", amount: { gt: 0 } },
+        select: { order_id: true },
+      }),
+    ]);
+    const existingOrderIds = new Set(ledger.map((e) => e.order_id).filter(Boolean));
+    const missing = orders.filter((o) => isVerifiedRevenueOrder(o) && !existingOrderIds.has(o.id));
+    if (missing.length === 0) return { created: 0, skipped: 0 };
+
+    await prisma.accountingLedger.createMany({
+      data: missing.map((o) => ({
+        type: "income" as const,
+        category: "book_sale",
+        amount: Math.max(0, Number(o.total_amount || 0) - Number(o.shipping_cost || 0)),
+        entry_date: o.created_at,
+        order_id: o.id,
+        reference_type: "order",
+        reference_id: o.id,
+        description: `Ledger sync: order ${o.order_number || o.id.slice(0, 8)}`,
+        source: "system",
+        created_by: ctx.userId,
+      })),
+      skipDuplicates: true,
+    });
+    return { created: missing.length, skipped: 0 };
+  }),
+
   revenueConsistencyCheck: adminProcedure.query(async () => {
     const [orders, ledger] = await Promise.all([
       prisma.order.findMany({

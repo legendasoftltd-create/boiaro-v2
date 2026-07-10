@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, TrendingUp, TrendingDown, Wallet, Undo2 } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, Wallet, Undo2, RefreshCw } from "lucide-react";
 import { AdminSearchBar } from "@/components/admin/AdminSearchBar";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -28,6 +28,7 @@ export default function AdminAccounting() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [reversingId, setReversingId] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [form, setForm] = useState({
     type: "expense" as "income" | "expense",
     category: "other",
@@ -76,6 +77,21 @@ export default function AdminAccounting() {
     setOpen(false);
     setForm({ type: "expense", category: "other", description: "", amount: "", entry_date: new Date().toISOString().split("T")[0] });
     load();
+  };
+
+  const syncMutation = trpc.admin.syncLedgerFromOrders.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Ledger synced — ${result.created} new entries created`);
+      load();
+      setSyncing(false);
+    },
+    onError: () => { toast.error("Sync failed"); setSyncing(false); },
+  });
+
+  const syncLedger = () => {
+    if (!confirm("This will create ledger income entries for all verified orders that are missing one. Continue?")) return;
+    setSyncing(true);
+    syncMutation.mutate();
   };
 
   const reverseEntry = async (entry: any) => {
@@ -135,7 +151,13 @@ export default function AdminAccounting() {
           <h1 className="text-2xl font-bold">Accounting Ledger</h1>
           <p className="text-sm text-muted-foreground">Single source of truth — synced across all reports</p>
         </div>
-        <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-2" />Add Entry</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={syncLedger} disabled={syncing}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing..." : "Sync Orders → Ledger"}
+          </Button>
+          <Button onClick={() => setOpen(true)}><Plus className="h-4 w-4 mr-2" />Add Entry</Button>
+        </div>
       </div>
 
       {/* Summary Cards */}
