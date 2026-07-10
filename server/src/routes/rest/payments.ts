@@ -88,6 +88,29 @@ async function finalizePaidOrder(params: { orderId: string; paymentMethod: strin
 
   await calculateOrderEarnings(order.id);
 
+  // Create accounting ledger income entry (idempotent — skips if already exists)
+  const sellableAmount = Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
+  if (sellableAmount > 0) {
+    const existingLedger = await prisma.accountingLedger.findFirst({
+      where: { order_id: order.id, type: "income", category: "book_sale" },
+    });
+    if (!existingLedger) {
+      await prisma.accountingLedger.create({
+        data: {
+          type: "income",
+          category: "book_sale",
+          amount: sellableAmount,
+          entry_date: new Date(),
+          order_id: order.id,
+          reference_type: "order",
+          reference_id: order.id,
+          description: `Order payment - ${(order as any).order_number || order.id.slice(0, 8).toUpperCase()}`,
+          source: params.paymentMethod,
+        },
+      });
+    }
+  }
+
   for (const item of order.items) {
     if (!item.book_id || item.format === "hardcopy") continue;
     const existingPurchase = await prisma.userPurchase.findFirst({

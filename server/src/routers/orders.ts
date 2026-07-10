@@ -430,6 +430,29 @@ export const ordersRouter = router({
             data: { status: "paid", transaction_id: `${input.paymentMethod.toUpperCase()}-${Date.now()}` },
           });
         }
+
+        // Create accounting ledger income entry for immediately-fulfilled orders (idempotent)
+        const orderSellable = Math.max(0, Number(order.total_amount || 0) - Number(input.shippingCost || 0));
+        if (orderSellable > 0) {
+          const existingLedger = await prisma.accountingLedger.findFirst({
+            where: { order_id: order.id, type: "income", category: "book_sale" },
+          });
+          if (!existingLedger) {
+            await prisma.accountingLedger.create({
+              data: {
+                type: "income",
+                category: "book_sale",
+                amount: orderSellable,
+                entry_date: new Date(),
+                order_id: order.id,
+                reference_type: "order",
+                reference_id: order.id,
+                description: `Order payment - ${order.order_number}`,
+                source: input.paymentMethod,
+              },
+            });
+          }
+        }
       }
 
       // Record coupon usage
