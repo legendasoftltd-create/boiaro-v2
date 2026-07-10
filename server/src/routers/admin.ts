@@ -4961,7 +4961,7 @@ export const adminRouter = router({
     start.setHours(0, 0, 0, 0);
     const startDay = start.toISOString().slice(0, 10);
 
-    const [newUsersCount, weekOrders, weekLedger, topBooks, consumption, alerts] = await Promise.all([
+    const [newUsersCount, weekOrders, weekLedger, topBooks, consumption, alerts, weekSubRevAgg] = await Promise.all([
       prisma.profile.count({ where: { created_at: { gte: start } } }),
       prisma.order.findMany({
         where: {
@@ -4974,6 +4974,7 @@ export const adminRouter = router({
       prisma.book.findMany({ select: { title: true, total_reads: true }, orderBy: { total_reads: "desc" }, take: 5 }),
       prisma.contentConsumptionTime.findMany({ where: { created_at: { gte: start } }, select: { format: true, seconds: true } }),
       prisma.systemLog.findMany({ where: { created_at: { gte: start }, level: { in: ["warn", "error", "critical"] } }, select: { level: true, metadata: true } }),
+      prisma.payment.aggregate({ where: { subscription_id: { not: null }, status: "paid", created_at: { gte: start } }, _sum: { amount: true } }),
     ]);
 
     const income = weekLedger.filter((e) => e.type === "income").reduce((s, e) => s + Number(e.amount || 0), 0);
@@ -4987,10 +4988,11 @@ export const adminRouter = router({
     });
 
     const weekOrdersVerified = weekOrders.filter((o) => isVerifiedRevenueOrder(o));
+    const weekSubRevenue = Number(weekSubRevAgg._sum.amount ?? 0);
     return {
       newUsers: newUsersCount,
       totalOrders: weekOrdersVerified.length,
-      totalRevenue: weekOrdersVerified.reduce((s, o) => s + Math.max(0, Number(o.total_amount || 0) - Number(o.shipping_cost || 0)), 0),
+      totalRevenue: weekOrdersVerified.reduce((s, o) => s + Math.max(0, Number(o.total_amount || 0) - Number(o.shipping_cost || 0)), 0) + weekSubRevenue,
       income,
       expense,
       netProfit: income - expense,
@@ -5349,7 +5351,7 @@ export const adminRouter = router({
   }),
 
   revenueStats: adminProcedure.query(async () => {
-    const [earnings, withdrawals, orders] = await Promise.all([
+    const [earnings, withdrawals, orders, subRevenueAgg] = await Promise.all([
       prisma.contributorEarning.findMany({
         select: {
           role: true,
@@ -5371,6 +5373,7 @@ export const adminRouter = router({
           items: { select: { price: true, quantity: true } },
         },
       }),
+      prisma.payment.aggregate({ where: { subscription_id: { not: null }, status: "paid" }, _sum: { amount: true } }),
     ]);
     const activeEarnings = earnings.filter((e) => e.status !== "reversed");
     const verifiedOrders = orders.filter((order) => isVerifiedRevenueOrder({
@@ -5386,8 +5389,11 @@ export const adminRouter = router({
       const itemTotal = order.items.reduce((itemSum, item) => itemSum + orderItemSaleAmount(item), 0);
       return sum + (itemTotal > 0 ? itemTotal : orderSellableAmount(order));
     }, 0);
+    const subscriptionRevenue = Number(subRevenueAgg._sum.amount ?? 0);
     return {
-      totalSales,
+      totalSales: totalSales + subscriptionRevenue,
+      bookSales: totalSales,
+      subscriptionRevenue,
       platformEarnings: verifiedEarnings.filter(e => e.role === "platform").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
       writerPayouts: verifiedEarnings.filter(e => e.role === "writer").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
       publisherPayouts: verifiedEarnings.filter(e => e.role === "publisher").reduce((s, e) => s + Number(e.earned_amount || 0), 0),
@@ -6177,6 +6183,7 @@ export const adminRouter = router({
       ledgerAll, todayLedger, recentLedger,
       coinTxns, earnings, hardcopyFormats,
       orderItems, topRated, bookFormatsAll, onlineNow, readingNow, listeningNow,
+      subRevenueAgg,
     ] = await Promise.all([
       prisma.book.count(),
       prisma.bookFormat.groupBy({ by: ["format"], _count: { id: true } }),
@@ -6227,7 +6234,10 @@ export const adminRouter = router({
       prisma.userPresence.count({ where: { last_seen: { gte: fiveMinAgo } } }),
       prisma.userPresence.count({ where: { last_seen: { gte: fiveMinAgo }, activity_type: "reading" } }),
       prisma.userPresence.count({ where: { last_seen: { gte: fiveMinAgo }, activity_type: "listening" } }),
+      prisma.payment.aggregate({ where: { subscription_id: { not: null }, status: "paid" }, _sum: { amount: true } }),
     ]);
+
+    const subscriptionRevenue = Number(subRevenueAgg._sum.amount ?? 0);
 
     const bookIdsForTitles = [...new Set(orderItems.map((i) => i.book_id).filter(Boolean) as string[])];
     const booksById =
@@ -6366,7 +6376,8 @@ export const adminRouter = router({
     const creatorPayoutsTotal = verifiedEarnings
       .filter((e) => e.role !== "platform")
       .reduce((s, e) => s + Number(e.earned_amount || 0), 0);
-    const realNetProfit = verifiedSellableTotal - creatorPayoutsTotal - totalExpense;
+    // subscriptionRevenue is pure platform income (no creator split), include in gross revenue and net profit
+    const realNetProfit = verifiedSellableTotal + subscriptionRevenue - creatorPayoutsTotal - totalExpense;
     const ledgerOrderIds = new Set(ledgerAll.map((entry) => entry.order_id).filter(Boolean));
     const recentLedgerRows = [
       ...recentLedger.map((r) => ({
@@ -6399,7 +6410,8 @@ export const adminRouter = router({
       totalNarrators: narratorCount,
       totalUsers: profileCount,
       totalOrders: orders.filter((o) => !["cancelled", "returned"].includes(o.status)).length,
-      totalRevenue: verifiedSellableTotal,
+      totalRevenue: verifiedSellableTotal + subscriptionRevenue,
+      subscriptionRevenue,
       totalIncome, totalExpense, netProfit: totalIncome - totalExpense,
       todayIncome, todayExpense, todayProfit: todayIncome - todayExpense,
       recentLedger: recentLedgerRows,

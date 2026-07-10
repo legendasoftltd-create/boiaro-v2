@@ -288,6 +288,23 @@ async function finalizeSubscriptionPayment(params: { subscriptionId: string; pay
     }),
   ]);
 
+  // Record subscription revenue in the accounting ledger so it appears in financial reports
+  const amtPaid = Number(sub.amount_paid ?? 0);
+  if (amtPaid > 0) {
+    await prisma.accountingLedger.create({
+      data: {
+        type: "income",
+        category: "subscription",
+        amount: amtPaid,
+        entry_date: now,
+        reference_type: "subscription",
+        reference_id: params.subscriptionId,
+        description: `Subscription - ${sub.plan.name}`,
+        source: params.paymentMethod || "sslcommerz",
+      },
+    });
+  }
+
   // Expire any other pending subscriptions for the same user (stale checkout attempts)
   const stalePending = await prisma.userSubscription.findMany({
     where: { user_id: sub.user_id, status: "pending", id: { not: params.subscriptionId } },
