@@ -1,25 +1,36 @@
+import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { useAuthors } from "@/hooks/useBooks";
 import { Link } from "react-router-dom";
-import { BookOpen, Users, Sparkles } from "lucide-react";
+import { BookOpen, Users, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+
+const PAGE_SIZE = 24;
 
 const AuthorsPage = () => {
-  const authors = useAuthors();
+  const [page, setPage] = useState(0);
+  const { authors, total } = useAuthors({ page, pageSize: PAGE_SIZE });
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <main className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 lg:px-8 pt-20 pb-10">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-primary" />
+        <div className="flex items-center justify-between gap-3 mb-8">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-2xl md:text-3xl font-serif font-bold text-foreground">All Authors</h1>
+              <p className="text-sm text-muted-foreground">Browse all {total} authors on the platform</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl md:text-3xl font-serif font-bold text-foreground">All Authors</h1>
-            <p className="text-sm text-muted-foreground">Browse all authors on the platform</p>
-          </div>
+          {totalPages > 1 && (
+            <span className="text-sm text-muted-foreground hidden sm:block">Page {page + 1} of {totalPages}</span>
+          )}
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
           {authors.map((author) => (
@@ -39,6 +50,27 @@ const AuthorsPage = () => {
             </Link>
           ))}
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-3 mt-10">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setPage((p) => p - 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              disabled={page === 0}
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">{page + 1} / {totalPages}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setPage((p) => p + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+              disabled={page >= totalPages - 1}
+            >
+              Next<ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        )}
       </div>
       <Footer />
     </main>

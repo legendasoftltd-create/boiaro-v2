@@ -112,9 +112,10 @@ function CategorySectionRow({ section }: CategorySectionProps) {
 }
 
 export function CategorySections() {
-  const { data: sections } = trpc.books.homepageCategorySections.useQuery()
+  const { data: result } = trpc.books.homepageCategorySections.useQuery()
+  const sections = result?.data ?? []
 
-  if (!sections || sections.length === 0) return null
+  if (sections.length === 0) return null
 
   return (
     <>

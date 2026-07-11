@@ -1,16 +1,25 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Badge } from "@/components/ui/badge";
-import { BookOpen, CheckCircle, Star } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { BookOpen, CheckCircle, Star, ChevronLeft, ChevronRight } from "lucide-react";
 import { FollowButton } from "@/components/FollowButton";
 import { trpc } from "@/lib/trpc";
 import { toMediaUrl } from "@/lib/mediaUrl";
 import { stripHtml } from "@/lib/stripHtml";
 
+const PAGE_SIZE = 20;
+
 const PublisherProfile = () => {
   const { id } = useParams<{ id: string }>();
-  const { data: publisher, isLoading } = trpc.books.publisherById.useQuery({ id: id! }, { enabled: !!id });
+  const [page, setPage] = useState(0);
+
+  const { data: publisher, isLoading } = trpc.books.publisherById.useQuery(
+    { id: id!, page, pageSize: PAGE_SIZE },
+    { enabled: !!id, keepPreviousData: true }
+  );
 
   if (isLoading) return (
     <main className="min-h-screen bg-background">
@@ -27,7 +36,9 @@ const PublisherProfile = () => {
     </main>
   );
 
-  const books = publisher.books || [];
+  const books = publisher.books ?? [];
+  const total = publisher.total ?? 0;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <main className="min-h-screen bg-background">
@@ -51,16 +62,23 @@ const PublisherProfile = () => {
             {publisher.description && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{stripHtml(publisher.description)}</p>}
             <div className="flex items-center gap-4 mt-4 justify-center md:justify-start">
               <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                <BookOpen className="w-4 h-4" />{books.length} books
+                <BookOpen className="w-4 h-4" />{total} books
               </span>
               <FollowButton profileId={publisher.id} profileType="publisher" />
             </div>
           </div>
         </div>
 
-        {books.length > 0 && (
+        {total > 0 && (
           <div>
-            <h2 className="text-lg font-semibold mb-4 text-foreground">Books by {publisher.name}</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-foreground">Books by {publisher.name}</h2>
+              {totalPages > 1 && (
+                <span className="text-sm text-muted-foreground">
+                  Page {page + 1} of {totalPages}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {books.map((book) => (
                 <Link
@@ -91,6 +109,28 @@ const PublisherProfile = () => {
                 </Link>
               ))}
             </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-3 mt-8">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setPage((p) => p - 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                  disabled={page === 0}
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" />Previous
+                </Button>
+                <span className="text-sm text-muted-foreground">{page + 1} / {totalPages}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setPage((p) => p + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                  disabled={page >= totalPages - 1}
+                >
+                  Next<ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

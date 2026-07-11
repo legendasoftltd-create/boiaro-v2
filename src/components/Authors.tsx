@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, BookOpen, Sparkles, Users } from "lucide-rea
 import { useAuthors } from "@/hooks/useBooks"
 
 export function Authors() {
-  const authors = useAuthors()
+  const { authors } = useAuthors()
   const scrollRef = useRef<HTMLDivElement>(null)
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {

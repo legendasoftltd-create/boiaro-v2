@@ -232,12 +232,13 @@ export function useBrowseBooks(filters: BrowseFilters) {
   };
 }
 
-export function useAuthors() {
-  const { data: authors = [] } = trpc.books.authors.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-  });
+export function useAuthors(opts?: { page?: number; pageSize?: number }) {
+  const { data } = trpc.books.authors.useQuery(
+    opts ? { page: opts.page ?? 0, pageSize: opts.pageSize ?? 500 } : undefined,
+    { staleTime: 5 * 60 * 1000 }
+  );
 
-  return authors.map((a: any) => ({
+  const items = (data?.data ?? []).map((a: any) => ({
     id: a.id,
     name: a.name,
     nameEn: a.name_en || "",
@@ -248,6 +249,8 @@ export function useAuthors() {
     followers: String(a.followers || 0),
     isFeatured: a.is_featured || false,
   }));
+
+  return { authors: items, total: data?.total ?? 0 };
 }
 
 export function useNarrators() {
@@ -270,12 +273,13 @@ export function useNarrators() {
   }));
 }
 
-export function useTranslators() {
-  const { data: translators = [] } = trpc.books.translators.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-  });
+export function useTranslators(opts?: { page?: number; pageSize?: number }) {
+  const { data } = trpc.books.translators.useQuery(
+    opts ? { page: opts.page ?? 0, pageSize: opts.pageSize ?? 500 } : undefined,
+    { staleTime: 5 * 60 * 1000 }
+  );
 
-  return translators.map((t: any) => ({
+  const items = (data?.data ?? []).map((t: any) => ({
     id: t.id,
     name: t.name,
     nameEn: t.name_en || "",
@@ -286,6 +290,8 @@ export function useTranslators() {
     followers: String(t.followers || 0),
     isFeatured: t.is_featured || false,
   }));
+
+  return { translators: items, total: data?.total ?? 0 };
 }
 
 export function useCategories() {

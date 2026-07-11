@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, BookOpen, Languages, Users } from "lucide-re
 import { useTranslators } from "@/hooks/useBooks"
 
 export function Translators() {
-  const translators = useTranslators()
+  const { translators } = useTranslators()
   const scrollRef = useRef<HTMLDivElement>(null)
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {

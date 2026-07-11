@@ -374,83 +374,112 @@ export const booksRouter = router({
     }),
 
   authorById: publicProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string(), page: z.number().min(0).default(0), pageSize: z.number().min(1).max(100).default(20) }))
     .query(async ({ input }) => {
-      const [author, books] = await Promise.all([
-        prisma.author.findUnique({ where: { id: input.id } }),
+      const { id, page, pageSize } = input;
+      const bookWhere = { author_id: id, submission_status: "approved", is_active: true };
+      const [author, books, total] = await Promise.all([
+        prisma.author.findUnique({ where: { id } }),
         prisma.book.findMany({
-          where: { author_id: input.id, submission_status: "approved", is_active: true },
+          where: bookWhere,
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
           orderBy: { published_date: "desc" },
+          skip: page * pageSize,
+          take: pageSize,
         }),
+        prisma.book.count({ where: bookWhere }),
       ]);
       if (!author) return null;
-      return { ...author, books };
+      return { ...author, books, total, page, pageSize };
     }),
 
   translatorById: publicProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string(), page: z.number().min(0).default(0), pageSize: z.number().min(1).max(100).default(20) }))
     .query(async ({ input }) => {
-      const [translator, books] = await Promise.all([
-        prisma.translator.findUnique({ where: { id: input.id } }),
+      const { id, page, pageSize } = input;
+      const bookWhere = { translator_id: id, submission_status: "approved", is_active: true };
+      const [translator, books, total] = await Promise.all([
+        prisma.translator.findUnique({ where: { id } }),
         prisma.book.findMany({
-          where: { translator_id: input.id, submission_status: "approved", is_active: true },
+          where: bookWhere,
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
           orderBy: { published_date: "desc" },
+          skip: page * pageSize,
+          take: pageSize,
         }),
+        prisma.book.count({ where: bookWhere }),
       ]);
       if (!translator) return null;
-      return { ...translator, books };
+      return { ...translator, books, total, page, pageSize };
     }),
 
   publisherById: publicProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: z.string(), page: z.number().min(0).default(0), pageSize: z.number().min(1).max(100).default(20) }))
     .query(async ({ input }) => {
-      const [publisher, books] = await Promise.all([
-        prisma.publisher.findUnique({ where: { id: input.id } }),
+      const { id, page, pageSize } = input;
+      const bookWhere = { publisher_id: id, submission_status: "approved", is_active: true };
+      const [publisher, books, total] = await Promise.all([
+        prisma.publisher.findUnique({ where: { id } }),
         prisma.book.findMany({
-          where: { publisher_id: input.id, submission_status: "approved", is_active: true },
+          where: bookWhere,
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
           orderBy: { published_date: "desc" },
+          skip: page * pageSize,
+          take: pageSize,
         }),
+        prisma.book.count({ where: bookWhere }),
       ]);
       if (!publisher) return null;
-      return { ...publisher, books };
+      return { ...publisher, books, total, page, pageSize };
     }),
 
-  authors: publicProcedure.query(async () => {
-    const [authors, bookCounts] = await Promise.all([
-      prisma.author.findMany({
-        where: { status: "active" },
-        orderBy: [{ priority: "desc" }, { name: "asc" }],
-      }),
-      prisma.book.groupBy({
-        by: ["author_id"],
-        where: { submission_status: "approved", is_active: true, author_id: { not: null } },
-        _count: { author_id: true },
-      }),
-    ]);
-    const countMap: Record<string, number> = {};
-    bookCounts.forEach((r) => { if (r.author_id) countMap[r.author_id] = r._count.author_id; });
-    return authors.map((a) => ({ ...a, booksCount: countMap[a.id] || 0, followers: 0 }));
-  }),
+  authors: publicProcedure
+    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500) }).optional())
+    .query(async ({ input }) => {
+      const page = input?.page ?? 0;
+      const pageSize = input?.pageSize ?? 500;
+      const [authors, total, bookCounts] = await Promise.all([
+        prisma.author.findMany({
+          where: { status: "active" },
+          orderBy: [{ priority: "desc" }, { name: "asc" }],
+          skip: page * pageSize,
+          take: pageSize,
+        }),
+        prisma.author.count({ where: { status: "active" } }),
+        prisma.book.groupBy({
+          by: ["author_id"],
+          where: { submission_status: "approved", is_active: true, author_id: { not: null } },
+          _count: { author_id: true },
+        }),
+      ]);
+      const countMap: Record<string, number> = {};
+      bookCounts.forEach((r) => { if (r.author_id) countMap[r.author_id] = r._count.author_id; });
+      return { data: authors.map((a) => ({ ...a, booksCount: countMap[a.id] || 0, followers: 0 })), total, page, pageSize };
+    }),
 
-  translators: publicProcedure.query(async () => {
-    const [translators, bookCounts] = await Promise.all([
-      prisma.translator.findMany({
-        where: { status: "active" },
-        orderBy: [{ priority: "desc" }, { name: "asc" }],
-      }),
-      prisma.book.groupBy({
-        by: ["translator_id"],
-        where: { submission_status: "approved", is_active: true, translator_id: { not: null } },
-        _count: { translator_id: true },
-      }),
-    ]);
-    const countMap: Record<string, number> = {};
-    bookCounts.forEach((r) => { if (r.translator_id) countMap[r.translator_id] = r._count.translator_id; });
-    return translators.map((t) => ({ ...t, booksCount: countMap[t.id] || 0, followers: 0 }));
-  }),
+  translators: publicProcedure
+    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500) }).optional())
+    .query(async ({ input }) => {
+      const page = input?.page ?? 0;
+      const pageSize = input?.pageSize ?? 500;
+      const [translators, total, bookCounts] = await Promise.all([
+        prisma.translator.findMany({
+          where: { status: "active" },
+          orderBy: [{ priority: "desc" }, { name: "asc" }],
+          skip: page * pageSize,
+          take: pageSize,
+        }),
+        prisma.translator.count({ where: { status: "active" } }),
+        prisma.book.groupBy({
+          by: ["translator_id"],
+          where: { submission_status: "approved", is_active: true, translator_id: { not: null } },
+          _count: { translator_id: true },
+        }),
+      ]);
+      const countMap: Record<string, number> = {};
+      bookCounts.forEach((r) => { if (r.translator_id) countMap[r.translator_id] = r._count.translator_id; });
+      return { data: translators.map((t) => ({ ...t, booksCount: countMap[t.id] || 0, followers: 0 })), total, page, pageSize };
+    }),
 
   voices: publicProcedure.query(() =>
     prisma.voice.findMany({
@@ -473,30 +502,39 @@ export const booksRouter = router({
     })
   ),
 
-  homepageCategorySections: publicProcedure.query(async () => {
-    const sections = await prisma.homepageCategorySection.findMany({
-      orderBy: { sort_order: "asc" },
-      include: { category: { select: { id: true, name: true, name_bn: true, slug: true } } },
-    });
+  homepageCategorySections: publicProcedure
+    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(50).default(50) }).optional())
+    .query(async ({ input }) => {
+      const page = input?.page ?? 0;
+      const pageSize = input?.pageSize ?? 50;
+      const [sections, total] = await Promise.all([
+        prisma.homepageCategorySection.findMany({
+          orderBy: { sort_order: "asc" },
+          skip: page * pageSize,
+          take: pageSize,
+          include: { category: { select: { id: true, name: true, name_bn: true, slug: true } } },
+        }),
+        prisma.homepageCategorySection.count(),
+      ]);
 
-    const results = await Promise.all(
-      sections.map(async (sec) => {
-        const books = await prisma.book.findMany({
-          where: { category_id: sec.category_id, submission_status: "approved", is_active: true },
-          take: sec.book_limit,
-          orderBy: { created_at: "desc" },
-          select: {
-            id: true, title: true, cover_url: true, slug: true,
-            formats: { select: { format: true, price: true } },
-            author: { select: { id: true, name: true } },
-            translator: { select: { id: true, name: true } },
-          },
-        });
-        return { ...sec, books };
-      })
-    );
-    return results;
-  }),
+      const data = await Promise.all(
+        sections.map(async (sec) => {
+          const books = await prisma.book.findMany({
+            where: { category_id: sec.category_id, submission_status: "approved", is_active: true },
+            take: sec.book_limit,
+            orderBy: { created_at: "desc" },
+            select: {
+              id: true, title: true, cover_url: true, slug: true,
+              formats: { select: { format: true, price: true } },
+              author: { select: { id: true, name: true } },
+              translator: { select: { id: true, name: true } },
+            },
+          });
+          return { ...sec, books };
+        })
+      );
+      return { data, total, page, pageSize };
+    }),
 
   siteSettings: publicProcedure.query(() =>
     prisma.siteSetting.findMany({ orderBy: { key: "asc" } })
