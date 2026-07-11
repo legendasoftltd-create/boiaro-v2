@@ -379,7 +379,7 @@ export const booksRouter = router({
       const [author, books] = await Promise.all([
         prisma.author.findUnique({ where: { id: input.id } }),
         prisma.book.findMany({
-          where: { author_id: input.id, submission_status: "approved" },
+          where: { author_id: input.id, submission_status: "approved", is_active: true },
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
           orderBy: { published_date: "desc" },
         }),
@@ -394,7 +394,7 @@ export const booksRouter = router({
       const [translator, books] = await Promise.all([
         prisma.translator.findUnique({ where: { id: input.id } }),
         prisma.book.findMany({
-          where: { translator_id: input.id, submission_status: "approved" },
+          where: { translator_id: input.id, submission_status: "approved", is_active: true },
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
           orderBy: { published_date: "desc" },
         }),
@@ -409,7 +409,7 @@ export const booksRouter = router({
       const [publisher, books] = await Promise.all([
         prisma.publisher.findUnique({ where: { id: input.id } }),
         prisma.book.findMany({
-          where: { publisher_id: input.id, submission_status: "approved" },
+          where: { publisher_id: input.id, submission_status: "approved", is_active: true },
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
           orderBy: { published_date: "desc" },
         }),
@@ -426,7 +426,7 @@ export const booksRouter = router({
       }),
       prisma.book.groupBy({
         by: ["author_id"],
-        where: { submission_status: "approved", author_id: { not: null } },
+        where: { submission_status: "approved", is_active: true, author_id: { not: null } },
         _count: { author_id: true },
       }),
     ]);
@@ -443,7 +443,7 @@ export const booksRouter = router({
       }),
       prisma.book.groupBy({
         by: ["translator_id"],
-        where: { submission_status: "approved", translator_id: { not: null } },
+        where: { submission_status: "approved", is_active: true, translator_id: { not: null } },
         _count: { translator_id: true },
       }),
     ]);
@@ -482,7 +482,7 @@ export const booksRouter = router({
     const results = await Promise.all(
       sections.map(async (sec) => {
         const books = await prisma.book.findMany({
-          where: { category_id: sec.category_id, submission_status: "approved" },
+          where: { category_id: sec.category_id, submission_status: "approved", is_active: true },
           take: sec.book_limit,
           orderBy: { created_at: "desc" },
           select: {
