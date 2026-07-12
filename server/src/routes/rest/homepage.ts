@@ -52,7 +52,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "newReleases") {
-    const where = { submission_status: "approved" } as const;
+    const where = { submission_status: "approved", is_new: true } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { created_at: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),

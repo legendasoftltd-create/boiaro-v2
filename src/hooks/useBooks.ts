@@ -153,9 +153,16 @@ export function useBooks() {
     { staleTime: 5 * 60 * 1000 }
   );
 
+  // Fetched directly (not derived from the capped 100-book `list` above) so books marked
+  // "new" that fall outside the most-recently-created 100 still show up here.
+  const { data: newReleasesData } = trpc.books.list.useQuery(
+    { isNew: true, limit: 20 },
+    { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
+  );
+
   const books = useMemo(() => (data?.books || []).map(trpcBookToMasterBook), [data]);
 
-  const newReleases = useMemo(() => books.filter((b) => b.isNew), [books]);
+  const newReleases = useMemo(() => (newReleasesData?.books || []).map(trpcBookToMasterBook), [newReleasesData]);
   const featured = useMemo(() => books.filter((b) => b.isFeatured), [books]);
 
   const trending = useMemo(() => {

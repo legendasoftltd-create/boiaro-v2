@@ -291,6 +291,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const filteredTopMostRead = filterBooksByType(topTenMostRead).slice(0, takeLimit);
     const filteredSlider = filterBooksByType(slider).slice(0, takeLimit);
     const filteredFreeBooks = filterBooksByType(allBooks.filter(b => b.is_free === true)).slice(0, takeLimit);
+    const newReleaseBooks = allBooks.filter(b => b.is_new === true);
 
     const normalizedTypeIsAudiobook = normalizedType === "audiobook";
     const normalizedTypeIsEbook = normalizedType === "ebook";
@@ -327,9 +328,9 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         allTranslators: allTranslators.slice(0, takeLimit).map(resolveUrls),
         "countsValue": { counts, totalNarrators },
         "NewReleases": {
-            "all": filterBooksByType(allBooks).slice(0, takeLimit),
-            "ebooks": filterBooksByType(allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "ebook"))).slice(0, takeLimit),
-            "audiobooks": filterBooksByType(allBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "audiobook"))).slice(0, takeLimit),
+            "all": filterBooksByType(newReleaseBooks).slice(0, takeLimit),
+            "ebooks": filterBooksByType(newReleaseBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "ebook"))).slice(0, takeLimit),
+            "audiobooks": filterBooksByType(newReleaseBooks.filter(b => b.formats.some(f => f.format.toLowerCase() === "audiobook"))).slice(0, takeLimit),
         },
         "FreeBooks": filteredFreeBooks,
     }

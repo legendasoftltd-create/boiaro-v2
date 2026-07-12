@@ -8,6 +8,7 @@ export const bookListSchema = z.object({
   isFeatured: z.coerce.boolean().optional(),
   isBestseller: z.coerce.boolean().optional(),
   isFree: z.coerce.boolean().optional(),
+  isNew: z.coerce.boolean().optional(),
   language: z.string().optional(),
   author: z.string().optional(),
   publisher: z.string().optional(),
