@@ -95,7 +95,7 @@ LazySection.displayName = "LazySection"
 
 const Index = () => {
   const { books } = useBooks()
-  const popularAudiobooks = usePopularAudiobooks(books)
+  const popularAudiobooks = usePopularAudiobooks()
   const { data: sections } = useHomepageSections()
 
   const orderedKeys = useMemo(() => {

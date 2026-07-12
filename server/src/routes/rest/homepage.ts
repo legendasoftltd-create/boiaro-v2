@@ -52,7 +52,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "newReleases") {
-    const where = { submission_status: "approved", is_new: true } as const;
+    const where = { submission_status: "approved", is_new: true, is_active: true } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { created_at: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -61,7 +61,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "popularBooks") {
-    const where = { submission_status: "approved", total_reads: { not: null } } as const;
+    const where = { submission_status: "approved", is_active: true, total_reads: { not: null } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -70,7 +70,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "popularAudiobooks") {
-    const where = { submission_status: "approved", formats: { some: { format: "audiobook", is_available: true } } } as const;
+    const where = { submission_status: "approved", is_active: true, formats: { some: { format: "audiobook", is_available: true, submission_status: "approved" } } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -79,7 +79,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "popularHardCopies") {
-    const where = { submission_status: "approved", formats: { some: { format: "hardcopy" as const, is_available: true } } } as const;
+    const where = { submission_status: "approved", is_active: true, formats: { some: { format: "hardcopy" as const, is_available: true, submission_status: "approved" } } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -88,7 +88,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "popularEbooks") {
-    const where = { submission_status: "approved", formats: { some: { format: "ebook", is_available: true } } } as const;
+    const where = { submission_status: "approved", is_active: true, formats: { some: { format: "ebook", is_available: true, submission_status: "approved" } } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -97,7 +97,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "editorsPick") {
-    const where = { submission_status: "approved", is_featured: true } as const;
+    const where = { submission_status: "approved", is_active: true, is_featured: true } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { created_at: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -106,7 +106,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "freeBooks") {
-    const where = { submission_status: "approved", is_free: true } as const;
+    const where = { submission_status: "approved", is_active: true, is_free: true } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -125,7 +125,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
 
   if (section === "becauseYouRead") {
     // Returns popular books ordered by read count (personalization not yet available via REST)
-    const where = { submission_status: "approved", total_reads: { not: null } } as const;
+    const where = { submission_status: "approved", is_active: true, total_reads: { not: null } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),

@@ -2,6 +2,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import type { MasterBook } from "@/lib/types";
 import { toMediaUrl } from "@/lib/mediaUrl";
+import { trpcBookToMasterBook } from "@/hooks/useBooks";
 
 export function useRecentlyViewed() {
   const { user } = useAuth();
@@ -44,12 +45,13 @@ export function useNewReleases(allBooks: MasterBook[]) {
   return allBooks.filter((b) => b.isNew).slice(0, 10);
 }
 
-export function usePopularAudiobooks(allBooks: MasterBook[]) {
-  return allBooks
-    .filter((b) => b.formats.audiobook?.available)
-    .sort((a, b) =>
-      parseInt(String(b.totalReads).replace(/K/g, "000")) -
-      parseInt(String(a.totalReads).replace(/K/g, "000"))
-    )
-    .slice(0, 10);
+// Queried directly (popularity-sorted, full catalog) rather than filtered out of a
+// capped book list, so this matches the mobile REST popularAudiobooks section instead of
+// silently dropping older popular audiobooks that fall outside a recency-capped window.
+export function usePopularAudiobooks() {
+  const { data } = trpc.books.browseBooks.useQuery(
+    { format: "audiobook", sort: "popular", pageSize: 10 },
+    { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
+  );
+  return (data?.books || []).map(trpcBookToMasterBook);
 }

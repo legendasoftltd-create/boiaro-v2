@@ -160,6 +160,22 @@ export function useBooks() {
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 
+  // Same reasoning as trending/newReleases above: queried directly (popularity-sorted,
+  // full catalog) rather than filtered out of the capped `list`, so these match the
+  // equivalent mobile REST sections instead of silently dropping older popular/free books.
+  const { data: audiobooksData } = trpc.books.browseBooks.useQuery(
+    { format: "audiobook", sort: "popular", pageSize: 10 },
+    { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
+  );
+  const { data: hardcopiesData } = trpc.books.browseBooks.useQuery(
+    { format: "hardcopy", sort: "popular", pageSize: 10 },
+    { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
+  );
+  const { data: freeBooksData } = trpc.books.browseBooks.useQuery(
+    { filter: "free", sort: "popular", pageSize: 10 },
+    { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
+  );
+
   const books = useMemo(() => (data?.books || []).map(trpcBookToMasterBook), [data]);
 
   const newReleases = useMemo(() => (newReleasesData?.books || []).map(trpcBookToMasterBook), [newReleasesData]);
@@ -174,9 +190,9 @@ export function useBooks() {
       .slice(0, 8);
   }, [books, trendingData]);
 
-  const audiobooks = useMemo(() => books.filter((b) => b.formats.audiobook?.available).slice(0, 8), [books]);
-  const hardcopies = useMemo(() => books.filter((b) => b.formats.hardcopy?.available).slice(0, 8), [books]);
-  const freeBooks = useMemo(() => books.filter((b) => b.isFree), [books]);
+  const audiobooks = useMemo(() => (audiobooksData?.books || []).map(trpcBookToMasterBook), [audiobooksData]);
+  const hardcopies = useMemo(() => (hardcopiesData?.books || []).map(trpcBookToMasterBook), [hardcopiesData]);
+  const freeBooks = useMemo(() => (freeBooksData?.books || []).map(trpcBookToMasterBook), [freeBooksData]);
   const editorsPick = featured[0] || books[0] || null;
 
   return { books, loading, newReleases, featured, trending, audiobooks, hardcopies, freeBooks, editorsPick };

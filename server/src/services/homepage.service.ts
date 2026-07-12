@@ -123,31 +123,48 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const topTenMostRead = topTenMostReadRaw.map(resolveBookUrls);
 
 
-    const allAudiobooks = allBooks.filter(book =>
-        book.formats?.some(f => f.format.toLowerCase() === "audiobook")
-    );
+    const bookListInclude = {
+        author: { select: { id: true, name: true, avatar_url: true } },
+        translator: { select: { id: true, name: true, avatar_url: true } },
+        category: { select: { id: true, name: true, slug: true } },
+        formats: { where: { is_available: true }, select: { format: true, price: true, in_stock: true } },
+    } as const;
 
-    const allHardCopies = allBooks.filter(book =>
-        book.formats?.some(f => f.format.toLowerCase().includes("hard"))
-    );
-
-    const allEbooks = allBooks.filter(book =>
-        book.formats?.some(f => f.format.toLowerCase() === "ebook")
-    );
-
-    // popular audio books
-    const popularAudiobooks = [...allAudiobooks]
-        .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
-        .slice(0, takeLimit);
-
-    // popular hard copy 
-    const popularHardCopies = [...allHardCopies]
-        .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
-        .slice(0, takeLimit);
-
-    const popularEbooks = [...allEbooks]
-        .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
-        .slice(0, takeLimit);
+    // Popular/free lists below are queried directly against the full catalog (sorted by
+    // total_reads, or filtered by is_free) instead of derived from allBooks (capped at the
+    // 200 most-recently-created books). Deriving from allBooks silently dropped older
+    // popular/free books and made this snapshot disagree with the equivalent paginated
+    // REST sections (popularAudiobooks, popularHardCopies, popularEbooks, freeBooks) and
+    // with the website, which already query the full catalog directly.
+    //
+    // The per-format `submission_status: "approved"` check (in addition to is_available)
+    // matches every other book/format query in the codebase (browseBooks, getBookById,
+    // getBookBySlug) — a format can be is_available but still pending its own approval,
+    // and without this check a book could show as a "popular audiobook" here while its
+    // audiobook isn't actually live/approved yet on the book's own page or on the website.
+    const [popularAudiobooksRaw, popularHardCopiesRaw, popularEbooksRaw] = await Promise.all([
+        prisma.book.findMany({
+            where: { submission_status: "approved", is_active: true, formats: { some: { format: "audiobook", is_available: true, submission_status: "approved" } } },
+            orderBy: { total_reads: "desc" },
+            take: takeLimit,
+            include: bookListInclude,
+        }),
+        prisma.book.findMany({
+            where: { submission_status: "approved", is_active: true, formats: { some: { format: "hardcopy", is_available: true, submission_status: "approved" } } },
+            orderBy: { total_reads: "desc" },
+            take: takeLimit,
+            include: bookListInclude,
+        }),
+        prisma.book.findMany({
+            where: { submission_status: "approved", is_active: true, formats: { some: { format: "ebook", is_available: true, submission_status: "approved" } } },
+            orderBy: { total_reads: "desc" },
+            take: takeLimit,
+            include: bookListInclude,
+        }),
+    ]);
+    const popularAudiobooks = popularAudiobooksRaw.map(resolveBookUrls);
+    const popularHardCopies = popularHardCopiesRaw.map(resolveBookUrls);
+    const popularEbooks = popularEbooksRaw.map(resolveBookUrls);
 
     // Mirrors trpc.books.trending exactly (same activity log, same 7-day window, same
     // scoring) so the REST homepage API and the website's "Trending Now" section never
@@ -221,10 +238,13 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     });
 
 
-    const popularBooks = filterBooksByType([...allBooks]
-        .filter((book) => book.total_reads !== null)
-        .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
-        .slice(0, takeLimit));
+    const popularBooksRaw = await prisma.book.findMany({
+        where: { submission_status: "approved", is_active: true, total_reads: { not: null } },
+        orderBy: { total_reads: "desc" },
+        take: takeLimit,
+        include: bookListInclude,
+    });
+    const popularBooks = filterBooksByType(popularBooksRaw.map(resolveBookUrls));
 
     const BecauseYouRead = filterBooksByType(popularBooks).slice(0, takeLimit);
 
@@ -305,7 +325,13 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const filteredTrendingNow = filterBooksByType(trendingNow).slice(0, takeLimit);
     const filteredTopMostRead = filterBooksByType(topTenMostRead).slice(0, takeLimit);
     const filteredSlider = filterBooksByType(slider).slice(0, takeLimit);
-    const filteredFreeBooks = filterBooksByType(allBooks.filter(b => b.is_free === true)).slice(0, takeLimit);
+    const freeBooksRaw = await prisma.book.findMany({
+        where: { submission_status: "approved", is_active: true, is_free: true },
+        orderBy: { total_reads: "desc" },
+        take: takeLimit,
+        include: bookListInclude,
+    });
+    const filteredFreeBooks = filterBooksByType(freeBooksRaw.map(resolveBookUrls)).slice(0, takeLimit);
     const newReleaseBooks = allBooks.filter(b => b.is_new === true);
 
     const normalizedTypeIsAudiobook = normalizedType === "audiobook";
