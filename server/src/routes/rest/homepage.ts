@@ -115,7 +115,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "topMostRead") {
-    const where = { submission_status: "approved" } as const;
+    const where = { submission_status: "approved", is_active: true } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),

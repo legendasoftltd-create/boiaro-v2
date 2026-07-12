@@ -103,9 +103,24 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         ],
     });
 
-    const topTenMostRead = [...allBooks]
-        .sort((a, b) => (b.total_reads || 0) - (a.total_reads || 0))
-        .slice(0, takeLimit);
+    // Queried directly sorted by total_reads across the whole catalog — deriving this
+    // from allBooks (capped at the 200 most-recently-created) silently excluded older
+    // high-read books, causing this section to disagree with the website's Top10MostRead.
+    const topTenMostReadRaw = await prisma.book.findMany({
+        where: { submission_status: "approved", is_active: true },
+        orderBy: { total_reads: "desc" },
+        take: takeLimit,
+        include: {
+            author: { select: { id: true, name: true, avatar_url: true } },
+            translator: { select: { id: true, name: true, avatar_url: true } },
+            category: { select: { id: true, name: true, slug: true } },
+            formats: {
+                where: { is_available: true },
+                select: { format: true, price: true, in_stock: true }
+            }
+        }
+    });
+    const topTenMostRead = topTenMostReadRaw.map(resolveBookUrls);
 
 
     const allAudiobooks = allBooks.filter(book =>
