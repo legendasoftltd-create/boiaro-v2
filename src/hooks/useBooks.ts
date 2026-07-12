@@ -148,13 +148,13 @@ export function useBooks() {
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 
-  const { data: trendingIds = [] } = trpc.books.trending.useQuery(
+  // Fetched directly by id (not derived from the capped 100-book `list` above) so a
+  // genuinely trending older book, or one marked "new" outside the most-recently-created
+  // 100, still shows up here — mirrors the REST homepage API's trendingNow/NewReleases.
+  const { data: trendingData } = trpc.books.trending.useQuery(
     { periodDays: 7 },
     { staleTime: 5 * 60 * 1000 }
   );
-
-  // Fetched directly (not derived from the capped 100-book `list` above) so books marked
-  // "new" that fall outside the most-recently-created 100 still show up here.
   const { data: newReleasesData } = trpc.books.list.useQuery(
     { isNew: true, limit: 20 },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
@@ -166,16 +166,13 @@ export function useBooks() {
   const featured = useMemo(() => books.filter((b) => b.isFeatured), [books]);
 
   const trending = useMemo(() => {
-    if (trendingIds.length > 0) {
-      const idOrder = new Map(trendingIds.map((id: string, i: number) => [id, i]));
-      return books
-        .filter((b) => idOrder.has(b.id))
-        .sort((a, b) => (idOrder.get(a.id) ?? 99) - (idOrder.get(b.id) ?? 99));
+    if (trendingData && trendingData.length > 0) {
+      return trendingData.map(trpcBookToMasterBook);
     }
     return [...books]
       .sort((a, b) => parseInt(String(b.totalReads)) - parseInt(String(a.totalReads)))
       .slice(0, 8);
-  }, [books, trendingIds]);
+  }, [books, trendingData]);
 
   const audiobooks = useMemo(() => books.filter((b) => b.formats.audiobook?.available).slice(0, 8), [books]);
   const hardcopies = useMemo(() => books.filter((b) => b.formats.hardcopy?.available).slice(0, 8), [books]);

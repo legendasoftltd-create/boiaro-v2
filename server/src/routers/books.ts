@@ -100,8 +100,12 @@ export const booksRouter = router({
       return { books: booksWithNarrators.map(resolveBookUrls), total };
     }),
 
+  // Full book records for the current trending IDs. Looked up by id directly
+  // (like homepage.service.ts's trendingNow) rather than filtered out of the
+  // capped `list` query, since a genuinely trending older book can otherwise
+  // fall outside that recency window and silently vanish from the section.
   trending: publicProcedure
-    .input(z.object({ periodDays: z.number().default(7) }))
+    .input(z.object({ periodDays: z.number().default(7), limit: z.number().min(1).max(50).default(10) }))
     .query(async ({ input }) => {
       const since = new Date(Date.now() - input.periodDays * 24 * 60 * 60 * 1000);
       const activityData = await prisma.userActivityLog.findMany({
@@ -118,10 +122,47 @@ export const booksRouter = router({
         if (row.book_id) scores[row.book_id] = (scores[row.book_id] || 0) + 1;
       });
 
-      return Object.entries(scores)
+      const trendingIds = Object.entries(scores)
         .sort(([, a], [, b]) => b - a)
-        .slice(0, 10)
+        .slice(0, input.limit)
         .map(([id]) => id);
+
+      if (trendingIds.length === 0) return [];
+
+      const books = await prisma.book.findMany({
+        where: { id: { in: trendingIds }, submission_status: "approved", is_active: true },
+        include: {
+          author: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, genre: true, is_featured: true } },
+          translator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, genre: true, is_featured: true } },
+          publisher: { select: { id: true, name: true, name_en: true, logo_url: true, description: true, is_verified: true } },
+          category: { select: { id: true, name: true, name_bn: true, slug: true, icon: true, color: true } },
+          formats: {
+            where: { submission_status: "approved", is_available: true },
+            include: {
+              narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true, user_id: true } },
+            },
+          },
+        },
+      });
+
+      const allNarratorIds = [...new Set(books.flatMap((b) => b.formats.flatMap((f: any) => f.narrator_ids || [])))];
+      const narratorRows = allNarratorIds.length > 0
+        ? await prisma.narrator.findMany({
+            where: { id: { in: allNarratorIds } },
+            select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true, user_id: true },
+          })
+        : [];
+      const narratorById = new Map(narratorRows.map((n) => [n.id, n]));
+      const booksWithNarrators = books.map((b) => ({
+        ...b,
+        formats: b.formats.map((f: any) => ({
+          ...f,
+          narrators: (f.narrator_ids || []).map((nid: string) => narratorById.get(nid)).filter(Boolean),
+        })),
+      }));
+
+      const bookMap = new Map(booksWithNarrators.map((b) => [b.id, b]));
+      return trendingIds.map((id) => bookMap.get(id)).filter(Boolean).map(resolveBookUrls);
     }),
 
   byId: publicProcedure

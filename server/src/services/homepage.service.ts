@@ -160,7 +160,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const missingTrendingIds = trendingBookIds.filter((id) => !trendingBooksMap.has(id));
     if (missingTrendingIds.length > 0) {
         const extraBooks = await prisma.book.findMany({
-            where: { id: { in: missingTrendingIds }, submission_status: "approved" },
+            where: { id: { in: missingTrendingIds }, submission_status: "approved", is_active: true },
             include: {
                 author: { select: { id: true, name: true, avatar_url: true } },
                 translator: { select: { id: true, name: true, avatar_url: true } },
@@ -173,7 +173,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
 
     const trendingNow = trendingBookIds
         .map((id) => trendingBooksMap.get(id))
-        .filter(Boolean);
+        .filter((b) => b && b.is_active !== false);
 
     const getByFormat = (list, formatName) => {
         return list.filter(book =>

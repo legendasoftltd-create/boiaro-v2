@@ -43,7 +43,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
     const total = allTrendingIds.length;
     const pageIds = allTrendingIds.slice(offset, offset + limit);
     const books = await prisma.book.findMany({
-      where: { id: { in: pageIds }, submission_status: "approved" },
+      where: { id: { in: pageIds }, submission_status: "approved", is_active: true },
       select: bookSelect,
     });
     const bookMap = new Map(books.map((b) => [b.id, b]));
