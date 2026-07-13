@@ -566,7 +566,7 @@ export const walletRouter = router({
         const subscription = await prisma.userSubscription.findFirst({
           where: {
             user_id: ctx.userId,
-            status: "active",
+            status: { in: ["active", "cancelled"] },
             OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
           },
         });
@@ -726,7 +726,7 @@ export const walletRouter = router({
       const sub = await prisma.userSubscription.findFirst({
         where: {
           user_id: ctx.userId,
-          status: "active",
+          status: { in: ["active", "cancelled"] },
           OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
         },
       });
@@ -746,7 +746,7 @@ export const walletRouter = router({
       const subscription = await prisma.userSubscription.findFirst({
         where: {
           user_id: ctx.userId,
-          status: "active",
+          status: { in: ["active", "cancelled"] },
           OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
         },
       });
@@ -985,4 +985,25 @@ export const walletRouter = router({
         transaction_id: transactionId,
       };
     }),
+
+  // Mirrors REST POST /subscriptions/cancel — the web app had no way to cancel a
+  // subscription at all (mobile already could via that REST endpoint).
+  cancelSubscription: protectedProcedure.mutation(async ({ ctx }) => {
+    const sub = await prisma.userSubscription.findFirst({
+      where: {
+        user_id: ctx.userId,
+        status: "active",
+        OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+      },
+      orderBy: { created_at: "desc" },
+    });
+    if (!sub) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "No active subscription to cancel" });
+    }
+    await prisma.userSubscription.update({
+      where: { id: sub.id },
+      data: { status: "cancelled" },
+    });
+    return { success: true, subscription_id: sub.id, end_date: sub.end_date };
+  }),
 });

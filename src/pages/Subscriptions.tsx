@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Crown, Check, Star, Ticket } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 
 export default function Subscriptions() {
   const { user } = useAuth();
@@ -19,7 +20,9 @@ export default function Subscriptions() {
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponApplied, setCouponApplied] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string>("");
+  const { dialog: confirmDialog, openConfirm } = useConfirmDialog();
 
+  const utils = trpc.useUtils();
   const { data: plans = [] } = trpc.wallet.subscriptionPlans.useQuery();
   const { data: activeSub } = trpc.wallet.activeSubscription.useQuery(undefined, { enabled: !!user });
   const subscribeMutation = trpc.wallet.subscribe.useMutation({
@@ -33,7 +36,23 @@ export default function Subscriptions() {
     },
     onError: (err) => toast.error(err.message || "Failed to subscribe"),
   });
+  const cancelSubscriptionMutation = trpc.wallet.cancelSubscription.useMutation({
+    onSuccess: () => {
+      toast.success("Subscription cancelled. You'll retain access until the end of your billing period.");
+      utils.wallet.activeSubscription.invalidate();
+    },
+    onError: (err) => toast.error(err.message || "Failed to cancel subscription"),
+  });
   const validateCouponMutation = trpc.orders.validateCoupon.useMutation();
+
+  const confirmCancelSubscription = () => {
+    openConfirm({
+      title: "Cancel Subscription?",
+      message: "You'll keep access until the end of your current billing period, but it won't renew.",
+      confirmLabel: "Cancel Subscription",
+      onConfirm: () => cancelSubscriptionMutation.mutate(),
+    });
+  };
 
   const applyCoupon = async () => {
     if (!couponCode.trim() || !selectedPlan) { toast.error("Select a plan first"); return; }
@@ -92,14 +111,28 @@ export default function Subscriptions() {
                   <p className="text-xs text-amber-500 mt-1">You may re-subscribe after your current period ends.</p>
                 )}
               </div>
-              {(activeSub as any).status === "cancelled" ? (
-                <Badge className="bg-amber-500/20 text-amber-400">Cancelled</Badge>
-              ) : (
-                <Badge className="bg-emerald-500/20 text-emerald-400">Active</Badge>
-              )}
+              <div className="flex items-center gap-3">
+                {(activeSub as any).status === "cancelled" ? (
+                  <Badge className="bg-amber-500/20 text-amber-400">Cancelled</Badge>
+                ) : (
+                  <>
+                    <Badge className="bg-emerald-500/20 text-emerald-400">Active</Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                      disabled={cancelSubscriptionMutation.isPending}
+                      onClick={confirmCancelSubscription}
+                    >
+                      Cancel Subscription
+                    </Button>
+                  </>
+                )}
+              </div>
             </CardContent>
           </Card>
         )}
+        {confirmDialog}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           {(plans as any[]).map((plan: any) => {

@@ -58,7 +58,7 @@ export const contentRouter = router({
 
       if (!hasWholeBookAccess) {
         const sub = await prisma.userSubscription.findFirst({
-          where: { user_id: ctx.userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
+          where: { user_id: ctx.userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
         });
         hasWholeBookAccess = Boolean(sub);
         if (!hasWholeBookAccess) {
@@ -150,7 +150,7 @@ export const contentRouter = router({
             where: { user_id: ctx.userId, book_id: bookId, format: "audiobook", status: "active" },
           }),
           prisma.userSubscription.findFirst({
-            where: { user_id: ctx.userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
+            where: { user_id: ctx.userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
           }),
           prisma.userPurchase.findFirst({
             where: { user_id: ctx.userId, book_id: bookId, format: "audiobook", status: "active" },
@@ -220,7 +220,7 @@ export const contentRouter = router({
       });
       if (!hasAccess) {
         const sub = await prisma.userSubscription.findFirst({
-          where: { user_id: ctx.userId, status: "active", OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
+          where: { user_id: ctx.userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
         });
         if (!sub) {
           const purchase = await prisma.userPurchase.findFirst({
