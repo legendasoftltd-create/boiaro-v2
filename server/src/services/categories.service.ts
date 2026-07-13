@@ -30,7 +30,7 @@ const CATEGORY_SELECT = {
   is_featured: true,
   is_trending: true,
   priority: true,
-  _count: { select: { books: { where: { submission_status: "approved" as const } } } },
+  _count: { select: { books: { where: { submission_status: "approved" as const, is_active: true } } } },
 };
 
 export const getAllCategories = async () => {

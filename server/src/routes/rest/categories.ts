@@ -61,8 +61,9 @@ categoriesRestRouter.get("/:id/books", async (req, res) => {
 
     const where = {
       submission_status: "approved",
+      is_active: true,
       category_id: category.id,
-      ...(format && { formats: { some: { format, is_available: true } } }),
+      ...(format && { formats: { some: { format, is_available: true, submission_status: "approved" } } }),
     };
 
     const [books, total] = await Promise.all([

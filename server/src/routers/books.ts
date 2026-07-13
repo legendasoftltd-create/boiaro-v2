@@ -337,7 +337,7 @@ export const booksRouter = router({
 
   userBookmarks: protectedProcedure.query(({ ctx }) =>
     prisma.bookmark.findMany({
-      where: { user_id: ctx.userId },
+      where: { user_id: ctx.userId, book: { submission_status: "approved", is_active: true } },
       include: {
         book: {
           include: {
@@ -634,7 +634,7 @@ export const booksRouter = router({
       const bookIds = logs.map((l) => l.book_id!);
       if (!bookIds.length) return [];
       return prisma.book.findMany({
-        where: { id: { in: bookIds } },
+        where: { id: { in: bookIds }, submission_status: "approved", is_active: true },
         include: {
           author: { select: { id: true, name: true, name_en: true } },
           translator: { select: { id: true, name: true, name_en: true } },
@@ -648,7 +648,7 @@ export const booksRouter = router({
     .query(async ({ input }) => {
       if (!input.bookId) {
         return prisma.book.findMany({
-          where: { submission_status: "approved" },
+          where: { submission_status: "approved", is_active: true },
           take: 10,
           orderBy: { total_reads: "desc" },
           include: {
@@ -667,6 +667,7 @@ export const booksRouter = router({
         where: {
           id: { not: input.bookId },
           submission_status: "approved",
+          is_active: true,
           OR: [
             { category_id: book.category_id ?? undefined },
             { author_id: book.author_id ?? undefined },
@@ -806,7 +807,7 @@ export const booksRouter = router({
           contributors: true,
         },
       });
-      if (!book || book.submission_status !== "approved") throw new TRPCError({ code: "NOT_FOUND" });
+      if (!book || book.submission_status !== "approved" || !book.is_active) throw new TRPCError({ code: "NOT_FOUND" });
 
       // Resolve all admin-selected narrators (BookFormat.narrator_ids) into full Narrator rows,
       // attached per-format as `narrators` — ordered, with the legacy single `narrator` first.

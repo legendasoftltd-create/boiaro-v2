@@ -36,7 +36,7 @@ categorySectionsRestRouter.get("/", async (_req, res) => {
     const results = await Promise.all(
       sections.map(async (sec) => {
         const books = await prisma.book.findMany({
-          where: { category_id: sec.category_id, submission_status: "approved" },
+          where: { category_id: sec.category_id, submission_status: "approved", is_active: true },
           take: sec.book_limit,
           orderBy: { created_at: "desc" },
           select: {
@@ -118,7 +118,7 @@ categorySectionsRestRouter.get("/:id/books", async (req, res) => {
       return;
     }
 
-    const where = { category_id: section.category_id, submission_status: "approved" };
+    const where = { category_id: section.category_id, submission_status: "approved", is_active: true };
     const [books, total] = await Promise.all([
       prisma.book.findMany({
         where,

@@ -64,7 +64,7 @@ export const getPublisherById = async (id: string, userId?: string | null) => {
       },
     }),
     prisma.follow.count({ where: { followee_id: id } }),
-    prisma.book.count({ where: { publisher_id: id } }),
+    prisma.book.count({ where: { publisher_id: id, submission_status: "approved", is_active: true } }),
     userId
       ? prisma.follow.findFirst({ where: { follower_id: userId, followee_id: id }, select: { id: true } })
       : Promise.resolve(null),

@@ -486,7 +486,7 @@ export async function removeBookBookmark(userId: string, bookId: string) {
 }
 
 export async function getUserBookmarks(userId: string, limit = 20, offset = 0) {
-  const where = { user_id: userId };
+  const where = { user_id: userId, book: { submission_status: "approved", is_active: true } };
   const [bookmarks, total] = await Promise.all([
     prisma.bookmark.findMany({
       where,

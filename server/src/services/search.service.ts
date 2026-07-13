@@ -4,6 +4,7 @@ import { resolveFileUrl } from "../lib/mediaUrl.js";
 export const searchBooks = async (q: string, limit = 20, offset = 0) => {
   const where = {
     submission_status: "approved",
+    is_active: true,
     OR: [
       { title: { contains: q, mode: "insensitive" as const } },
       { title_en: { contains: q, mode: "insensitive" as const } },

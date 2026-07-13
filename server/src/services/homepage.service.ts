@@ -17,7 +17,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const normalizedType = normalizeFormatType(type);
 
     const rawBooks = await prisma.book.findMany({
-        where: { submission_status: "approved" },
+        where: { submission_status: "approved", is_active: true },
         orderBy: { created_at: "desc" },
         take: 200,
         include: {

@@ -104,19 +104,21 @@ libraryRestRouter.get("/continue-reading", requireAuth, async (req: Authenticate
     ]);
     const bookIds = progressList.map((p) => p.book_id);
     const books = await prisma.book.findMany({
-      where: { id: { in: bookIds } },
+      where: { id: { in: bookIds }, submission_status: "approved", is_active: true },
       select: bookSummarySelect,
     });
     const bookMap = new Map(books.map((b) => [b.id, { ...b, cover_url: resolveFileUrl(b.cover_url) }]));
     res.json({
-      items: progressList.map((p) => ({
-        book_id: p.book_id,
-        current_page: p.current_page ?? 0,
-        total_pages: p.total_pages ?? 0,
-        percentage: Math.round(p.percentage ?? 0),
-        last_read_at: p.last_read_at,
-        books: bookMap.get(p.book_id) ?? null,
-      })),
+      items: progressList
+        .filter((p) => bookMap.has(p.book_id))
+        .map((p) => ({
+          book_id: p.book_id,
+          current_page: p.current_page ?? 0,
+          total_pages: p.total_pages ?? 0,
+          percentage: Math.round(p.percentage ?? 0),
+          last_read_at: p.last_read_at,
+          books: bookMap.get(p.book_id) ?? null,
+        })),
       total,
       limit,
       offset,
@@ -139,19 +141,21 @@ libraryRestRouter.get("/continue-listening", requireAuth, async (req: Authentica
     ]);
     const bookIds = progressList.map((p) => p.book_id);
     const books = await prisma.book.findMany({
-      where: { id: { in: bookIds } },
+      where: { id: { in: bookIds }, submission_status: "approved", is_active: true },
       select: bookSummarySelect,
     });
     const bookMap = new Map(books.map((b) => [b.id, { ...b, cover_url: resolveFileUrl(b.cover_url) }]));
     res.json({
-      items: progressList.map((p) => ({
-        book_id: p.book_id,
-        current_track: p.current_track ?? 1,
-        position_seconds: Math.round(p.current_position ?? 0),
-        percentage: Math.round(p.percentage ?? 0),
-        last_listened_at: p.last_listened_at,
-        books: bookMap.get(p.book_id) ?? null,
-      })),
+      items: progressList
+        .filter((p) => bookMap.has(p.book_id))
+        .map((p) => ({
+          book_id: p.book_id,
+          current_track: p.current_track ?? 1,
+          position_seconds: Math.round(p.current_position ?? 0),
+          percentage: Math.round(p.percentage ?? 0),
+          last_listened_at: p.last_listened_at,
+          books: bookMap.get(p.book_id) ?? null,
+        })),
       total,
       limit,
       offset,
