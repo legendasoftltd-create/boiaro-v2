@@ -143,14 +143,20 @@ export default function Subscriptions() {
                   <Button
                     className="w-full"
                     variant={plan.is_featured ? "default" : "outline"}
-                    disabled={subscribeMutation.isPending || !!activeSub}
+                    disabled={
+                      subscribeMutation.isPending ||
+                      activeSub?.plan_id === plan.id ||
+                      (activeSub as any)?.status === "cancelled"
+                    }
                     onClick={(e) => { e.stopPropagation(); subscribe(plan.id); }}
                   >
                     {activeSub?.plan_id === plan.id
                       ? ((activeSub as any).status === "cancelled" ? "Cancelled" : "Current Plan")
-                      : activeSub
+                      : (activeSub as any)?.status === "cancelled"
                         ? "Unavailable"
-                        : "Subscribe"}
+                        : activeSub
+                          ? "Switch Plan"
+                          : "Subscribe"}
                   </Button>
                 </CardContent>
               </Card>

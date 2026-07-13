@@ -328,6 +328,13 @@ async function finalizeSubscriptionPayment(params: { subscriptionId: string; pay
     });
   }
 
+  // Supersede any other still-active subscription for this user (a plan switch/upgrade) —
+  // this newly-paid one becomes the current plan, the old one is superseded effective now.
+  await prisma.userSubscription.updateMany({
+    where: { user_id: sub.user_id, status: "active", id: { not: params.subscriptionId } },
+    data: { status: "replaced", end_date: now },
+  });
+
   // Expire any other pending subscriptions for the same user (stale checkout attempts)
   const stalePending = await prisma.userSubscription.findMany({
     where: { user_id: sub.user_id, status: "pending", id: { not: params.subscriptionId } },
@@ -725,9 +732,16 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
             where: { subscription_id: subscriptionId },
             data: { status: status === "cancelled" ? "cancelled" : "failed" },
           }),
+          // Always "failed" here, never "cancelled" — this subscription was still "pending"
+          // (never activated). "cancelled" is a distinct, user-facing status reserved for a
+          // subscription that WAS active and was deliberately cancelled via /subscriptions/cancel
+          // (which retains access until end_date). Setting it here on a payment that was merely
+          // abandoned/failed at the gateway — with no end_date ever set — permanently blocked the
+          // user from ever subscribing again, since the "still valid" check treats a null end_date
+          // as never expiring.
           prisma.userSubscription.update({
             where: { id: subscriptionId },
-            data: { status: status === "cancelled" ? "cancelled" : "failed" },
+            data: { status: "failed" },
           }),
         ]);
       } else if (coinPurchaseId) {

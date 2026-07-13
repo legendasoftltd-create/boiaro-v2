@@ -786,19 +786,23 @@ export const walletRouter = router({
       const plan = await prisma.subscriptionPlan.findUnique({ where: { id: input.planId } });
       if (!plan || !plan.is_active) throw new TRPCError({ code: "NOT_FOUND", message: "Plan not found or inactive" });
 
-      // Block if user already has an active or cancelled-but-valid subscription
+      // Block if user already has a cancelled-but-valid (grace period) subscription, or an
+      // active subscription to this exact plan. An active subscription to a *different* plan
+      // is allowed through — that's a plan switch/upgrade, superseded once payment completes
+      // (see finalizeSubscriptionPayment / the free-plan branch below).
       const existingActive = await prisma.userSubscription.findFirst({
         where: { user_id: userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
-        select: { id: true, end_date: true, status: true },
+        select: { id: true, end_date: true, status: true, plan_id: true },
       });
-      if (existingActive) {
+      if (existingActive && (existingActive.status === "cancelled" || existingActive.plan_id === input.planId)) {
         throw new TRPCError({
           code: "CONFLICT",
           message: existingActive.status === "cancelled"
             ? "You have a cancelled subscription that is still valid. You can re-subscribe after it expires."
-            : "You already have an active subscription. Cancel your current plan first.",
+            : "You already have an active subscription to this plan.",
         });
       }
+      const isPlanSwitch = !!existingActive;
 
       // Resolve coupon
       let resolvedDiscount = 0;
@@ -853,6 +857,13 @@ export const walletRouter = router({
             data: { coupon_id: resolvedCouponId, user_id: userId, subscription_id: sub.id, discount_amount: resolvedDiscount },
           });
           await prisma.coupon.update({ where: { id: resolvedCouponId }, data: { used_count: { increment: 1 } } });
+        }
+
+        if (isPlanSwitch && existingActive) {
+          await prisma.userSubscription.update({
+            where: { id: existingActive.id },
+            data: { status: "replaced", end_date: now },
+          });
         }
 
         return { requires_payment: false as const, subscription: sub };
