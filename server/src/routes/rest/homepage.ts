@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
 import { getHomepageData } from "../../services/homepage.service.js";
+import { getBecauseYouReadRecommendations } from "../../services/books.service.js";
 import { prisma } from "../../lib/prisma.js";
 import { resolveBookUrls } from "../../lib/mediaUrl.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
@@ -30,7 +31,7 @@ const bookSelect = {
   formats: { where: { is_available: true }, select: { format: true, price: true, in_stock: true } },
 } as const;
 
-async function getPaginatedSection(section: string, limit: number, offset: number) {
+async function getPaginatedSection(section: string, limit: number, offset: number, userId?: string) {
   if (section === "trendingNow") {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const activity = await prisma.userActivityLog.findMany({
@@ -124,13 +125,17 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "becauseYouRead") {
-    // Returns popular books ordered by read count (personalization not yet available via REST)
-    const where = { submission_status: "approved", is_active: true, total_reads: { not: null } } as const;
-    const [books, total] = await Promise.all([
-      prisma.book.findMany({ where, orderBy: { total_reads: "desc" }, skip: offset, take: limit, select: bookSelect }),
-      prisma.book.count({ where }),
-    ]);
-    return { data: books.map(resolveBookUrls), total, limit, offset, has_more: offset + limit < total };
+    // Real personalization (reading/listening progress + book-view history), shared with the
+    // web tRPC procedure. Never shown to guests — an unauthenticated request just gets an
+    // empty page rather than an error, so the mobile app's existing empty-state handling
+    // (already required for e.g. a logged-in user with no history) covers this too.
+    if (!userId) {
+      return { data: [], total: 0, limit, offset, has_more: false };
+    }
+    const result = await getBecauseYouReadRecommendations(userId, Math.min(offset + limit, 30));
+    const total = result.books.length;
+    const page = result.books.slice(offset, offset + limit);
+    return { data: page, total, limit, offset, has_more: offset + limit < total };
   }
 
   return null;
@@ -162,7 +167,7 @@ homepageRestRouter.get("/:section", async (req: AuthenticatedRequest, res) => {
     // For book-list sections: direct paginated DB query
     if (PAGINATED_SECTIONS.has(section)) {
       const { limit, offset } = parsePaginationQuery(req.query);
-      const result = await getPaginatedSection(section, limit, offset);
+      const result = await getPaginatedSection(section, limit, offset, req.auth?.userId);
       if (!result) return res.status(404).json({ error: "Section not found" });
       return res.json({ section, ...result });
     }

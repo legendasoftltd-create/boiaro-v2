@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { resolveBookUrls, resolveUrls } from "../lib/mediaUrl.js";
+import { getBecauseYouReadRecommendations } from "./books.service.js";
 
 const normalizeFormatType = (type?: string) => {
     if (!type) return null;
@@ -246,7 +247,14 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     });
     const popularBooks = filterBooksByType(popularBooksRaw.map(resolveBookUrls));
 
-    const BecauseYouRead = filterBooksByType(popularBooks).slice(0, takeLimit);
+    // Real personalization (reading/listening progress + book-view history), shared with the
+    // web tRPC procedure — never a generic popular-books stand-in, and never shown to guests.
+    // Response shape stays a plain Book[] (unchanged from before) since the published mobile
+    // app already expects that shape for this field.
+    const becauseYouReadResult = userId
+        ? await getBecauseYouReadRecommendations(userId, takeLimit)
+        : { sourceBook: null, books: [] as any[] };
+    const BecauseYouRead = filterBooksByType(becauseYouReadResult.books).slice(0, takeLimit);
 
     const editorsPick = filterBooksByType(allBooks.filter(book => book.is_featured)).slice(0, takeLimit);
 

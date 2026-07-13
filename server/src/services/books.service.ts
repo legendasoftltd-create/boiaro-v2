@@ -519,3 +519,121 @@ export async function getUserBookmarks(userId: string, limit = 20, offset = 0) {
     has_more: offset + limit < total,
   };
 }
+
+// Real "Because You Read" personalization, shared by the web tRPC procedure and both
+// mobile REST surfaces (homepage snapshot + paginated section) so all three agree.
+// Source signal is the user's actual reading/listening progress and book-view activity —
+// NOT a generic popular-books list (which is what this section silently fell back to
+// everywhere before, even for guests). Returns an empty result (section hidden) when the
+// user has no history, or when fewer than 3 related books can be found — a single or pair
+// of recommendations isn't a usable carousel.
+export async function getBecauseYouReadRecommendations(userId: string, limit = 10) {
+  const [readingRows, listeningRows, viewRows] = await Promise.all([
+    prisma.readingProgress.findMany({
+      where: { user_id: userId },
+      orderBy: { updated_at: "desc" },
+      take: 10,
+      select: { book_id: true, updated_at: true },
+    }),
+    prisma.listeningProgress.findMany({
+      where: { user_id: userId },
+      orderBy: { updated_at: "desc" },
+      take: 10,
+      select: { book_id: true, updated_at: true },
+    }),
+    prisma.userActivityLog.findMany({
+      where: { user_id: userId, action: "book_view", book_id: { not: null } },
+      orderBy: { created_at: "desc" },
+      take: 20,
+      select: { book_id: true, created_at: true },
+    }),
+  ]);
+
+  const merged = [
+    ...readingRows.map((r) => ({ book_id: r.book_id, at: r.updated_at })),
+    ...listeningRows.map((r) => ({ book_id: r.book_id, at: r.updated_at })),
+    ...viewRows.map((r) => ({ book_id: r.book_id as string, at: r.created_at })),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime());
+
+  const seen = new Set<string>();
+  const sourceBookIds: string[] = [];
+  for (const row of merged) {
+    if (!seen.has(row.book_id)) {
+      seen.add(row.book_id);
+      sourceBookIds.push(row.book_id);
+    }
+    if (sourceBookIds.length >= 8) break;
+  }
+
+  if (sourceBookIds.length === 0) {
+    return { sourceBook: null, books: [] as any[] };
+  }
+
+  const sourceBooks = await prisma.book.findMany({
+    where: { id: { in: sourceBookIds } },
+    select: { id: true, title: true, category_id: true, author_id: true },
+  });
+  if (sourceBooks.length === 0) {
+    return { sourceBook: null, books: [] as any[] };
+  }
+
+  const categoryIds = [...new Set(sourceBooks.map((b) => b.category_id).filter(Boolean))] as string[];
+  const authorIds = [...new Set(sourceBooks.map((b) => b.author_id).filter(Boolean))] as string[];
+  if (categoryIds.length === 0 && authorIds.length === 0) {
+    return { sourceBook: null, books: [] as any[] };
+  }
+
+  const candidates = await prisma.book.findMany({
+    where: {
+      id: { notIn: sourceBookIds },
+      submission_status: "approved",
+      is_active: true,
+      OR: [
+        ...(categoryIds.length > 0 ? [{ category_id: { in: categoryIds } }] : []),
+        ...(authorIds.length > 0 ? [{ author_id: { in: authorIds } }] : []),
+      ],
+    },
+    take: limit,
+    orderBy: { total_reads: "desc" },
+    include: {
+      author: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, genre: true, is_featured: true } },
+      translator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, genre: true, is_featured: true } },
+      publisher: { select: { id: true, name: true, name_en: true, logo_url: true, description: true, is_verified: true } },
+      category: { select: { id: true, name: true, name_bn: true, slug: true, icon: true, color: true } },
+      formats: {
+        where: { submission_status: "approved", is_available: true },
+        include: {
+          narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true, user_id: true } },
+        },
+      },
+    },
+  });
+
+  // Fewer than 3 usable recommendations isn't a meaningful carousel — hide the section.
+  if (candidates.length < 3) {
+    return { sourceBook: null, books: [] as any[] };
+  }
+
+  const allNarratorIds = [...new Set(candidates.flatMap((b) => b.formats.flatMap((f: any) => f.narrator_ids || [])))];
+  const narratorRows = allNarratorIds.length > 0
+    ? await prisma.narrator.findMany({
+        where: { id: { in: allNarratorIds } },
+        select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true, user_id: true },
+      })
+    : [];
+  const narratorById = new Map(narratorRows.map((n) => [n.id, n]));
+  const booksWithNarrators = candidates.map((b) => ({
+    ...b,
+    formats: b.formats.map((f: any) => ({
+      ...f,
+      narrators: (f.narrator_ids || []).map((nid: string) => narratorById.get(nid)).filter(Boolean),
+    })),
+  }));
+
+  const primarySource = sourceBooks.find((b) => b.id === sourceBookIds[0]) ?? sourceBooks[0];
+
+  return {
+    sourceBook: { id: primarySource.id, title: primarySource.title },
+    books: booksWithNarrators.map(resolveBookUrls),
+  };
+}

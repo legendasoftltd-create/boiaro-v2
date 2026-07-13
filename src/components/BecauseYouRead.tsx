@@ -3,24 +3,22 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, BookMarked } from "lucide-react";
 import { BookCard } from "./BookCard";
 import { useBecauseYouRead } from "@/hooks/useRecommendations";
-import type { MasterBook } from "@/lib/types";
 import { useContentFilter } from "@/contexts/ContentFilterContext";
 import { filterBooks } from "@/hooks/useBookFilter";
 
-interface Props {
-  allBooks: MasterBook[];
-}
-
-export function BecauseYouRead({ allBooks }: Props) {
+export function BecauseYouRead() {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { sourceBook, recommendations } = useBecauseYouRead(allBooks);
+  const { sourceBook, recommendations, loading } = useBecauseYouRead();
   const { globalFilter } = useContentFilter();
   const filtered = filterBooks(recommendations, globalFilter);
 
   const scroll = (d: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: d === "left" ? -320 : 320, behavior: "smooth" });
 
-  if (!sourceBook || filtered.length === 0) return null;
+  // Never render with fewer than 3 books — a single-book "carousel" isn't useful, and the
+  // backend already only returns data when it found at least 3 (this also covers the case
+  // where the active format filter trims a valid 3+ set below that threshold).
+  if (loading || !sourceBook || filtered.length < 3) return null;
 
   return (
     <section className="section-container">

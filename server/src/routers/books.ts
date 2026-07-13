@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { bookByIdSchema, bookListSchema } from "../schemas/books.js";
-import { getBookById, listBooks } from "../services/books.service.js";
+import { getBookById, listBooks, getBecauseYouReadRecommendations } from "../services/books.service.js";
 import { resolveBookUrls } from "../lib/mediaUrl.js";
 
 export const booksRouter = router({
@@ -682,6 +682,12 @@ export const booksRouter = router({
         },
       });
     }),
+
+  // "Because You Read" — a genuinely personalized recommendation, not the generic
+  // popular-books list `recommendations` (above) falls back to without a bookId.
+  // protectedProcedure so a logged-out user can never trigger or see it; the frontend
+  // additionally gates the query itself behind `enabled: !!user` for belt-and-suspenders.
+  becauseYouRead: protectedProcedure.query(({ ctx }) => getBecauseYouReadRecommendations(ctx.userId)),
 
   comments: publicProcedure
     .input(z.object({ bookId: z.string(), userId: z.string().optional() }))

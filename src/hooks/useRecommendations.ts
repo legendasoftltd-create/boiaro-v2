@@ -26,19 +26,22 @@ export function useRecentlyViewed() {
   return { books, loading: query.isLoading };
 }
 
-export function useBecauseYouRead(allBooks: MasterBook[]) {
-  const query = trpc.books.recommendations.useQuery();
-  const recBooks = (query.data as any[]) || [];
+// Genuinely personalized — built server-side from the user's actual reading/listening
+// progress and book-view history, never a generic popular-books stand-in. Gated to
+// logged-in users only (query disabled for guests) and only returns data when the
+// backend found at least 3 real related books; otherwise the section should hide.
+export function useBecauseYouRead() {
+  const { user } = useAuth();
+  const query = trpc.books.becauseYouRead.useQuery(undefined, {
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+  const data = query.data as { sourceBook: { id: string; title: string } | null; books: any[] } | undefined;
 
-  const sourceBook = recBooks.length > 0
-    ? { title: recBooks[0]?.title || "", categoryId: recBooks[0]?.category_id || "", authorId: recBooks[0]?.author_id || "" }
-    : null;
+  const sourceBook = data?.sourceBook ?? null;
+  const recommendations = (data?.books || []).map(trpcBookToMasterBook);
 
-  const recommendations = recBooks
-    .map((b: any) => allBooks.find((ab) => ab.id === b.id))
-    .filter(Boolean) as MasterBook[];
-
-  return { sourceBook, recommendations };
+  return { sourceBook, recommendations, loading: query.isLoading };
 }
 
 export function useNewReleases(allBooks: MasterBook[]) {

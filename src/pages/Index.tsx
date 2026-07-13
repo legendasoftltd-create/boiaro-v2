@@ -39,7 +39,7 @@ const SECTION_REGISTRY: Record<string, (props: { books: any[]; popularAudiobooks
   continue_listening: () => <ContinueListening />,
   recently_viewed: () => <RecentlyViewed />,
   recommended_for_you: () => <RecommendedForYou />,
-  because_you_read: ({ books }) => <BecauseYouRead allBooks={books} />,
+  because_you_read: () => <BecauseYouRead />,
   featured_books: () => <FeaturedBooks />,
   trending_books: () => <TrendingBooks />,
   top_10_most_read: () => <Top10MostRead />,
