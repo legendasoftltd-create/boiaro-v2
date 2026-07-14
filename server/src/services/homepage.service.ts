@@ -143,22 +143,25 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     // getBookBySlug) — a format can be is_available but still pending its own approval,
     // and without this check a book could show as a "popular audiobook" here while its
     // audiobook isn't actually live/approved yet on the book's own page or on the website.
+    // total_reads has many ties; add `id: asc` as a tiebreaker so this agrees with
+    // the web tRPC equivalent (books.browseBooks sort=popular) at the tie boundary
+    // instead of each platform's DB scan silently picking a different subset.
     const [popularAudiobooksRaw, popularHardCopiesRaw, popularEbooksRaw] = await Promise.all([
         prisma.book.findMany({
             where: { submission_status: "approved", is_active: true, formats: { some: { format: "audiobook", is_available: true, submission_status: "approved" } } },
-            orderBy: { total_reads: "desc" },
+            orderBy: [{ total_reads: "desc" }, { id: "asc" }],
             take: takeLimit,
             include: bookListInclude,
         }),
         prisma.book.findMany({
             where: { submission_status: "approved", is_active: true, formats: { some: { format: "hardcopy", is_available: true, submission_status: "approved" } } },
-            orderBy: { total_reads: "desc" },
+            orderBy: [{ total_reads: "desc" }, { id: "asc" }],
             take: takeLimit,
             include: bookListInclude,
         }),
         prisma.book.findMany({
             where: { submission_status: "approved", is_active: true, formats: { some: { format: "ebook", is_available: true, submission_status: "approved" } } },
-            orderBy: { total_reads: "desc" },
+            orderBy: [{ total_reads: "desc" }, { id: "asc" }],
             take: takeLimit,
             include: bookListInclude,
         }),
@@ -241,7 +244,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
 
     const popularBooksRaw = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true, total_reads: { not: null } },
-        orderBy: { total_reads: "desc" },
+        orderBy: [{ total_reads: "desc" }, { id: "asc" }],
         take: takeLimit,
         include: bookListInclude,
     });
@@ -335,7 +338,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const filteredSlider = filterBooksByType(slider).slice(0, takeLimit);
     const freeBooksRaw = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true, is_free: true },
-        orderBy: { total_reads: "desc" },
+        orderBy: [{ total_reads: "desc" }, { id: "asc" }],
         take: takeLimit,
         include: bookListInclude,
     });

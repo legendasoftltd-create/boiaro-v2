@@ -53,10 +53,17 @@ export const booksRouter = router({
         }),
       };
 
+      // "popular" needs a tiebreaker: total_reads has many ties (lots of 0/1/2-read
+      // books), and without a secondary key the tied rows' relative order is
+      // whatever the DB's scan happens to produce — which can differ from the
+      // equivalent mobile REST queries even though they select the same rows,
+      // making the two platforms' "Popular"/"Free Books" lists disagree right at
+      // the tie boundary. `id: asc` is an arbitrary but stable choice, applied
+      // identically on the mobile side (homepage.service.ts / rest/homepage.ts).
       const orderBy: any =
         sort === "newest" ? { published_date: "desc" }
         : sort === "rating" ? { rating: "desc" }
-        : sort === "popular" ? { total_reads: "desc" }
+        : sort === "popular" ? [{ total_reads: "desc" }, { id: "asc" }]
         : { created_at: "desc" };
 
       const [books, total] = await Promise.all([
