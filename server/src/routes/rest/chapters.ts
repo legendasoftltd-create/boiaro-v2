@@ -43,6 +43,7 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
         id: true,
         price: true,
         coin_price: true,
+        subscriber_access: true,
         book: { select: { is_free: true } },
       },
     });
@@ -79,8 +80,9 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
       (bookFormat.book?.is_free === true || ((bookFormat.price ?? 0) === 0 && (bookFormat.coin_price ?? 0) === 0));
 
     let unlockedTrackIds = new Set<string>();
+    let hasSubscriptionAccess = false;
     if (userId) {
-      const [perChapterUnlocks, fullUnlock] = await Promise.all([
+      const [perChapterUnlocks, fullUnlock, subscription] = await Promise.all([
         prisma.contentUnlock.findMany({
           where: { user_id: userId, book_id: bookId, status: "active" },
           select: { format: true },
@@ -88,9 +90,18 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
         prisma.contentUnlock.findFirst({
           where: { user_id: userId, book_id: bookId, format: "audiobook", status: "active" },
         }),
+        prisma.userSubscription.findFirst({
+          where: {
+            user_id: userId,
+            status: { in: ["active", "cancelled"] },
+            OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+          },
+        }),
       ]);
 
-      if (fullUnlock) {
+      hasSubscriptionAccess = Boolean(subscription) && bookFormat.subscriber_access === true;
+
+      if (fullUnlock || hasSubscriptionAccess) {
         tracks.forEach(t => unlockedTrackIds.add(t.id));
       } else {
         perChapterUnlocks.forEach(u => {

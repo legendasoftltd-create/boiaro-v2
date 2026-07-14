@@ -107,7 +107,7 @@ contentRestRouter.get("/secure-audio/:trackId", async (req: AuthenticatedRequest
         audio_url: true,
         is_preview: true,
         chapter_price: true,
-        book_format: { select: { id: true, book_id: true, coin_price: true } },
+        book_format: { select: { id: true, book_id: true, coin_price: true, subscriber_access: true } },
       },
     });
     if (!track?.audio_url) {
@@ -144,7 +144,20 @@ contentRestRouter.get("/secure-audio/:trackId", async (req: AuthenticatedRequest
         ? await prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } })
         : null;
 
-      if (!fullUnlock && !chapterUnlock && !Boolean(book?.is_free)) {
+      // Active subscribers get access when the audiobook format is subscriber-accessible,
+      // regardless of per-chapter pricing (same gate as wallet.checkAccess / content.getSignedUrl).
+      const subscription = !fullUnlock && !chapterUnlock
+        ? await prisma.userSubscription.findFirst({
+            where: {
+              user_id: userId,
+              status: { in: ["active", "cancelled"] },
+              OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+            },
+          })
+        : null;
+      const hasSubscriptionAccess = Boolean(subscription) && track.book_format.subscriber_access === true;
+
+      if (!fullUnlock && !chapterUnlock && !hasSubscriptionAccess && !Boolean(book?.is_free)) {
         res.status(403).json({ error: "Chapter not unlocked" });
         return;
       }
