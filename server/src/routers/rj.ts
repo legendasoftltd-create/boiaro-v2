@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 
@@ -71,8 +72,12 @@ export const rjRouter = router({
         showTitle: z.string().optional(),
         stationId: z.string().optional(),
       }))
-      .mutation(({ ctx, input }) =>
-        prisma.liveSession.create({
+      .mutation(async ({ ctx, input }) => {
+        const profile = await prisma.rjProfile.findUnique({ where: { user_id: ctx.userId } });
+        if (!profile || !profile.is_approved) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Only approved RJs can start a live session" });
+        }
+        return prisma.liveSession.create({
           data: {
             rj_user_id: ctx.userId,
             station_id: input.stationId ?? null,
@@ -81,17 +86,22 @@ export const rjRouter = router({
             status: "live",
             started_at: new Date(),
           },
-        })
-      ),
+        });
+      }),
 
     end: protectedProcedure
       .input(z.object({ sessionId: z.string() }))
-      .mutation(({ input }) =>
-        prisma.liveSession.update({
+      .mutation(async ({ ctx, input }) => {
+        const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+        if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+        if (session.rj_user_id !== ctx.userId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "You can only end your own live session" });
+        }
+        return prisma.liveSession.update({
           where: { id: input.sessionId },
           data: { status: "ended", ended_at: new Date() },
-        })
-      ),
+        });
+      }),
   }),
 
   profiles: publicProcedure.query(() =>

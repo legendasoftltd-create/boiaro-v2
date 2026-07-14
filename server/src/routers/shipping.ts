@@ -1,7 +1,16 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
+import { TRPCError } from "@trpc/server";
+import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import * as redx from "../services/redx.service.js";
+
+const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const role = await prisma.userRole.findFirst({
+    where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } },
+  });
+  if (!role) throw new TRPCError({ code: "FORBIDDEN" });
+  return next({ ctx });
+});
 
 export const shippingRouter = router({
   methods: publicProcedure
@@ -64,7 +73,7 @@ export const shippingRouter = router({
       .input(z.object({ tracking_id: z.string() }))
       .query(({ input }) => redx.getParcelInfo(input.tracking_id)),
 
-    createParcel: publicProcedure
+    createParcel: adminProcedure
       .input(
         z.object({
           customer_name: z.string(),
@@ -102,7 +111,7 @@ export const shippingRouter = router({
         })
       ),
 
-    cancelParcel: publicProcedure
+    cancelParcel: adminProcedure
       .input(z.object({ tracking_id: z.string(), reason: z.string().optional() }))
       .mutation(({ input }) => redx.cancelParcel(input.tracking_id, input.reason)),
 
@@ -112,7 +121,7 @@ export const shippingRouter = router({
       .input(z.object({ id: z.number().int() }))
       .query(({ input }) => redx.getPickupStore(input.id)),
 
-    createPickupStore: publicProcedure
+    createPickupStore: adminProcedure
       .input(
         z.object({
           name: z.string(),

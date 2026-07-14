@@ -32,6 +32,7 @@ export const MODULE_MAP: Record<string, string> = {
 
   // Users & Roles
   "/admin/users":               "users",
+  "/admin/user":                "users",
   "/admin/applications":        "users",
   "/admin/creator-permissions": "users",
   "/admin/roles":               "roles",
@@ -89,6 +90,7 @@ export const MODULE_MAP: Record<string, string> = {
 
   // Support
   "/admin/tickets":             "support",
+  "/admin/ticket":              "support",
 };
 
 export function useAdminPermissions() {

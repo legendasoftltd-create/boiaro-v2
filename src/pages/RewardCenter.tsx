@@ -20,7 +20,6 @@ export default function RewardCenter() {
   const { data: settings } = trpc.wallet.coinSettings.useQuery(undefined, { enabled: !!user });
   const { data: adStatus, refetch: refetchAdStatus } = trpc.gamification.adRewardStatus.useQuery(undefined, { enabled: !!user });
   const claimAdRewardMutation = trpc.gamification.claimAdReward.useMutation();
-  const adjustCoinsMutation = trpc.wallet.adjustCoins.useMutation();
 
   const coinsPerAd = settings?.coinAdReward ?? 5;
   const maxPerDay = adStatus?.dailyLimit ?? 10;
@@ -59,16 +58,13 @@ export default function RewardCenter() {
     if (!result?.success) {
       if (result?.reason === "daily_limit_reached") {
         toast.error("আজকের সীমা শেষ। আগামীকাল আবার চেষ্টা করুন!");
+      } else if (result?.reason === "cooldown") {
+        toast.error("কিছুক্ষণ অপেক্ষা করুন");
       } else {
-        await adjustCoinsMutation.mutateAsync({
-          amount: coinsPerAd,
-          type: "earn",
-          description: "বিজ্ঞাপন থেকে কয়েন অর্জন",
-          source: "ad_reward",
-        }).catch(() => toast.error("কয়েন যোগ ব্যর্থ"));
+        toast.error("কয়েন যোগ ব্যর্থ");
       }
     } else {
-      toast.success(`🎉 ${coinsPerAd} কয়েন যোগ হয়েছে!`);
+      toast.success(`🎉 ${result.reward} কয়েন যোগ হয়েছে!`);
     }
     refetch();
     refetchAdStatus();

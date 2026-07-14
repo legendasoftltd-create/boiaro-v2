@@ -4481,6 +4481,18 @@ export const adminRouter = router({
       `).catch(() => []),
     ]);
 
+    // pg_stat_user_tables.n_live_tup, pg_stat_user_indexes.idx_scan/idx_tup_read, and
+    // pg_database_size(...) are all Postgres `bigint` — node-postgres returns those as
+    // native JS BigInt, which JSON.stringify (and superjson) can't serialize. Coerce to
+    // Number before returning; row counts/byte sizes here are well under MAX_SAFE_INTEGER.
+    const tableStats = tableStatsRaw.map((t) => ({ ...t, estimated_rows: Number(t.estimated_rows ?? 0) }));
+    const indexUsage = indexUsageRaw.map((i) => ({
+      ...i,
+      idx_scan: Number(i.idx_scan ?? 0),
+      idx_tup_read: Number(i.idx_tup_read ?? 0),
+    }));
+    const dbSize = sizeRaw?.[0] ? { ...sizeRaw[0], size_bytes: Number(sizeRaw[0].size_bytes ?? 0) } : null;
+
     const activeConnections = connectionsRaw.filter((c) => c.state === "active").length;
     const currentUsed = connectionsRaw.length;
     const maxConnections = 90;
@@ -4520,14 +4532,14 @@ export const adminRouter = router({
           }, {} as Record<string, number>)
         ).map(([state, count]) => ({ state, count })),
       },
-      tables: tableStatsRaw,
-      index_usage: indexUsageRaw,
+      tables: tableStats,
+      index_usage: indexUsage,
       cache: {
         ratio: cacheRatio,
         blocks_hit: cacheHit,
         blocks_read: cacheRead,
       },
-      db_size: sizeRaw?.[0] ?? null,
+      db_size: dbSize,
       locks: locksRaw,
       timestamp: nowIso,
     };

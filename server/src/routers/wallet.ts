@@ -395,6 +395,39 @@ export const walletRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { amount, type, description, referenceId, source } = input;
 
+      // This endpoint is called directly by the client for self-service wallet changes
+      // (spending coins to unlock content, small ad/streak bonuses). It must not become a
+      // "credit myself any amount" hole: `spend` may only debit the caller's own balance,
+      // and any type that credits the caller (`earn`/`bonus`/`refund`) must be capped and
+      // deduplicated via a required referenceId so a client can't replay the same request
+      // (or call with an arbitrary amount) to mint unlimited coins. Server-verified rewards
+      // with larger/dynamic amounts (e.g. ad rewards) are granted by their own dedicated,
+      // fully server-computed endpoints — see gamification.claimAdReward.
+      const MAX_CLIENT_CREDIT_PER_CALL = 100;
+      if (type === "spend") {
+        if (amount >= 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Spend adjustments must be a negative amount" });
+        }
+      } else {
+        if (amount <= 0) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Credit adjustments must be a positive amount" });
+        }
+        if (amount > MAX_CLIENT_CREDIT_PER_CALL) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Amount exceeds the allowed limit for this reward type" });
+        }
+        if (!referenceId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "referenceId is required for coin credits" });
+        }
+        const existing = await prisma.coinTransaction.findFirst({
+          where: { user_id: ctx.userId, reference_id: referenceId, source: source ?? null },
+        });
+        if (existing) {
+          // Already credited for this reference — return current state, do not re-credit.
+          const wallet = await prisma.userCoin.findUnique({ where: { user_id: ctx.userId } });
+          if (wallet) return wallet;
+        }
+      }
+
       return prisma.$transaction(async (tx: any) => {
         await tx.coinTransaction.create({
           data: {
