@@ -57,7 +57,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
                 priority: "desc",
             },
             {
-                created_at: "desc",
+                name: "asc",
             },
         ],
     });
