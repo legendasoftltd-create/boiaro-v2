@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getAuthUserFromAuthorizationHeader } from "../../lib/auth.js";
 import { prisma } from "../../lib/prisma.js";
+import { isS3Url, createPresignedGetUrl } from "../../lib/s3.js";
 
 export const ebookPreviewRouter = Router();
 
@@ -49,8 +50,11 @@ ebookPreviewRouter.get("/", async (req, res) => {
       return;
     }
 
-    // Fetch the file from its origin (S3 or local server)
-    const upstream = await fetch(targetUrl);
+    // Ebook files live in a private S3 path (only covers/images/avatars/audio/TTS
+    // are public-read) — the raw URL 403s, so presign it first, same as every
+    // other reader-facing download path. Local/CDN URLs are fetched as-is.
+    const fetchUrl = isS3Url(targetUrl) ? await createPresignedGetUrl(targetUrl, 300) : targetUrl;
+    const upstream = await fetch(fetchUrl);
     if (!upstream.ok) {
       res.status(upstream.status).json({ error: "Failed to fetch file" });
       return;
