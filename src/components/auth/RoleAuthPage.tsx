@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast"
 import logoBoiaro from "@/assets/logo_boiaro.png"
 import type { LucideIcon } from "lucide-react"
 import { trpc } from "@/lib/trpc"
+import type { DeviceSessionSummary, SignInResult } from "@/contexts/AuthContext"
 
 export type AuthRoleConfig = {
   roleKey: string
@@ -50,6 +51,10 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
   const [phone, setPhone] = useState("")
   const [otp, setOtp] = useState("")
   const [otpCountdown, setOtpCountdown] = useState(0)
+  const [deviceLimitState, setDeviceLimitState] = useState<{
+    devices: DeviceSessionSummary[]
+    retry: (revokeDeviceId: string) => Promise<SignInResult>
+  } | null>(null)
   const [searchParams] = useSearchParams()
   const refCode = searchParams.get("ref") || ""
   const { signIn, signInWithGoogle, signInWithFacebook, signInWithPhone, signUp, user } = useAuth()
@@ -115,12 +120,40 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
     e.preventDefault()
     setIsLoading(true)
     setStatusMessage("")
-    const { error } = await signIn(email, password)
-    if (error) {
+    const result = await signIn(email, password)
+    if (result.deviceLimitReached && result.devices) {
       setIsLoading(false)
-      toast({ title: "Login failed", description: error.message, variant: "destructive" })
+      setDeviceLimitState({ devices: result.devices, retry: (revokeDeviceId) => signIn(email, password, revokeDeviceId) })
       return
     }
+    if (result.error) {
+      setIsLoading(false)
+      toast({ title: "Login failed", description: result.error.message, variant: "destructive" })
+      return
+    }
+    resolveRedirect()
+    setIsLoading(false)
+  }
+
+  const handleRemoveDeviceAndRetry = async (deviceId: string) => {
+    if (!deviceLimitState) return
+    setIsLoading(true)
+    const result = await deviceLimitState.retry(deviceId)
+    if (result.deviceLimitReached && result.devices) {
+      // Removing that one device wasn't enough to get under the limit — refresh
+      // the list from this response so it reflects the device that was actually
+      // removed, instead of leaving the stale pre-retry list on screen.
+      setIsLoading(false)
+      setDeviceLimitState({ devices: result.devices, retry: deviceLimitState.retry })
+      toast({ title: "Still over your device limit", description: "Remove another device to continue.", variant: "destructive" })
+      return
+    }
+    if (result.error) {
+      setIsLoading(false)
+      toast({ title: "Sign in failed", description: result.error.message, variant: "destructive" })
+      return
+    }
+    setDeviceLimitState(null)
     resolveRedirect()
     setIsLoading(false)
   }
@@ -166,10 +199,17 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
   const handleVerifyPhoneOtp = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    const { error } = await signInWithPhone(phone.trim(), otp.trim())
-    if (error) {
+    const trimmedPhone = phone.trim()
+    const trimmedOtp = otp.trim()
+    const result = await signInWithPhone(trimmedPhone, trimmedOtp)
+    if (result.deviceLimitReached && result.devices) {
       setIsLoading(false)
-      toast({ title: "Verification failed", description: error.message, variant: "destructive" })
+      setDeviceLimitState({ devices: result.devices, retry: (revokeDeviceId) => signInWithPhone(trimmedPhone, trimmedOtp, revokeDeviceId) })
+      return
+    }
+    if (result.error) {
+      setIsLoading(false)
+      toast({ title: "Verification failed", description: result.error.message, variant: "destructive" })
       return
     }
     resolveRedirect()
@@ -224,7 +264,37 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </div>
             )}
 
-            {mode === "login" && (
+            {deviceLimitState && (
+              <div className="space-y-3">
+                <p className="text-[13px] text-muted-foreground">
+                  You've reached the device limit for your plan. Remove one of these devices to sign in here.
+                </p>
+                <div className="space-y-2">
+                  {deviceLimitState.devices.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-secondary/40 border border-border/30">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-medium truncate">{d.device_name || "Unknown device"}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {d.platform || "unknown"} • last active {new Date(d.last_active_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm" variant="outline" className="shrink-0 text-[12px] h-8"
+                        disabled={isLoading}
+                        onClick={() => handleRemoveDeviceAndRetry(d.id)}
+                      >
+                        Remove &amp; sign in
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <button type="button" onClick={() => setDeviceLimitState(null)} className="text-[12px] text-primary hover:underline">
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {!deviceLimitState && mode === "login" && (
               <form onSubmit={handleLogin} className="space-y-3.5">
                 <div className="space-y-1.5">
                   <Label className="text-[13px]">Email</Label>
@@ -262,7 +332,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </form>
             )}
 
-            {mode === "forgot" && (
+            {!deviceLimitState && mode === "forgot" && (
               <form onSubmit={handleForgotPassword} className="space-y-3.5">
                 <p className="text-[13px] text-muted-foreground">Enter your email and we'll send you a password reset link.</p>
                 <div className="space-y-1.5">
@@ -284,7 +354,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </form>
             )}
 
-            {mode === "link-sent" && (
+            {!deviceLimitState && mode === "link-sent" && (
               <div className="space-y-4 text-center py-1">
                 <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
                   <svg className="w-7 h-7 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -309,7 +379,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </div>
             )}
 
-            {mode === "signup" && config.showSignup && (
+            {!deviceLimitState && mode === "signup" && config.showSignup && (
               <form onSubmit={handleSignup} className="space-y-3.5">
                 <div className="space-y-1.5">
                   <Label className="text-[13px]">Display Name</Label>
@@ -342,7 +412,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
             )}
 
             {/* Phone number entry */}
-            {mode === "phone-enter" && (
+            {!deviceLimitState && mode === "phone-enter" && (
               <form onSubmit={handleSendPhoneOtp} className="space-y-3.5">
                 <div className="flex items-center gap-2 mb-1">
                   <button type="button" onClick={() => setMode("login")}
@@ -368,7 +438,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
             )}
 
             {/* OTP verification */}
-            {mode === "phone-otp" && (
+            {!deviceLimitState && mode === "phone-otp" && (
               <form onSubmit={handleVerifyPhoneOtp} className="space-y-3.5">
                 <div className="flex items-center gap-2 mb-1">
                   <button type="button" onClick={() => setMode("phone-enter")}
@@ -407,7 +477,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </form>
             )}
 
-            {(config.showGoogle || config.showFacebook || showPhoneOption) && mode === "login" && (
+            {!deviceLimitState && (config.showGoogle || config.showFacebook || showPhoneOption) && mode === "login" && (
               <>
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border/30" /></div>
@@ -428,10 +498,16 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
                           toast({ title: "Google login failed", description: oauth.error?.message || "Unable to authorize with Google.", variant: "destructive" })
                           return
                         }
-                        const { error } = await signInWithGoogle(oauth.data.accessToken)
-                        if (error) {
+                        const oauthToken = oauth.data.accessToken
+                        const result = await signInWithGoogle(oauthToken)
+                        if (result.deviceLimitReached && result.devices) {
                           setIsLoading(false)
-                          toast({ title: "Google login failed", description: error.message, variant: "destructive" })
+                          setDeviceLimitState({ devices: result.devices, retry: (revokeDeviceId) => signInWithGoogle(oauthToken, revokeDeviceId) })
+                          return
+                        }
+                        if (result.error) {
+                          setIsLoading(false)
+                          toast({ title: "Google login failed", description: result.error.message, variant: "destructive" })
                           return
                         }
                         resolveRedirect()
@@ -458,10 +534,16 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
                           toast({ title: "Facebook login failed", description: oauth.error?.message || "Unable to authorize with Facebook.", variant: "destructive" })
                           return
                         }
-                        const { error } = await signInWithFacebook(oauth.data.accessToken)
-                        if (error) {
+                        const oauthToken = oauth.data.accessToken
+                        const result = await signInWithFacebook(oauthToken)
+                        if (result.deviceLimitReached && result.devices) {
                           setIsLoading(false)
-                          toast({ title: "Facebook login failed", description: error.message, variant: "destructive" })
+                          setDeviceLimitState({ devices: result.devices, retry: (revokeDeviceId) => signInWithFacebook(oauthToken, revokeDeviceId) })
+                          return
+                        }
+                        if (result.error) {
+                          setIsLoading(false)
+                          toast({ title: "Facebook login failed", description: result.error.message, variant: "destructive" })
                           return
                         }
                         resolveRedirect()
@@ -486,7 +568,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </>
             )}
 
-            {config.showApply && mode === "login" && (
+            {!deviceLimitState && config.showApply && mode === "login" && (
               <div className="bg-secondary/30 rounded-xl p-3 text-center">
                 <p className="text-[12px] text-muted-foreground mb-2">{config.applyMessage || "Don't have access yet?"}</p>
                 <Button variant="outline" size="sm" className="text-[12px] h-8 border-border/30"
@@ -496,7 +578,7 @@ export function RoleAuthPage({ config }: { config: AuthRoleConfig }) {
               </div>
             )}
 
-            {config.showSignup && mode !== "forgot" && mode !== "link-sent" && mode !== "phone-enter" && mode !== "phone-otp" && (
+            {!deviceLimitState && config.showSignup && mode !== "forgot" && mode !== "link-sent" && mode !== "phone-enter" && mode !== "phone-otp" && (
               <p className="text-center text-[12px] text-muted-foreground">
                 {mode === "login" ? (
                   <>Don't have an account?{" "}

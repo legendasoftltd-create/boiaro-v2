@@ -102,6 +102,7 @@ export function AdBannerBlock({ placementKey, device = "all", noContainer = fals
   const { config } = useAdConfig();
   const { data: allBanners = [], isLoading: bannersLoading } = trpc.books.activeAdBanners.useQuery();
   const { data: placements = [], isLoading: placementsLoading } = trpc.books.activePlacements.useQuery();
+  const { data: subscriptionStatus } = trpc.wallet.hasSubscription.useQuery({}, { enabled: !!user });
   const recordImpression = trpc.books.recordAdImpression.useMutation();
   const recordClick = trpc.books.recordAdClick.useMutation();
 
@@ -116,8 +117,9 @@ export function AdBannerBlock({ placementKey, device = "all", noContainer = fals
 
   if (!placementEnabled || !deviceMatch) return null;
 
-  // Hide for premium users if setting is on
-  if (config.systemEnabled && config.premiumHideAds && (user as any)?.subscription_status === "premium") return null;
+  // Hide for any active subscriber if setting is on. "Ad-free" applies to every
+  // paid plan (Plus and Premium alike), never a specific plan name.
+  if (config.systemEnabled && config.premiumHideAds && subscriptionStatus?.hasSub) return null;
 
   // Collect image banners for this placement
   const banners = (allBanners as any[]).filter((b: any) => b.placement_key === placementKey);

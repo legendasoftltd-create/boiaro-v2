@@ -110,6 +110,7 @@ export default function AdminBooks() {
   const createLedgerEntryMutation = trpc.admin.createAccountingLedgerEntry.useMutation();
   const savePremiumVoiceMutation = trpc.admin.savePremiumVoiceSettings.useMutation();
   const getDownloadUrlMutation = trpc.admin.getBookDownloadUrl.useMutation();
+  const { data: subscriptionPlans = [] } = trpc.admin.listSubscriptionPlans.useQuery();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const handleDownload = async (opts: { bookFormatId?: string; trackId?: string; label: string }) => {
@@ -696,6 +697,15 @@ export default function AdminBooks() {
     delete payload.narrators;
     delete payload.publishers;
     delete payload.unit_cost_manual;
+    delete payload.included_plans;
+    delete payload.early_access;
+    // Hardcopy can never carry subscription access — enforced server-side too,
+    // but keep the payload consistent so the UI never round-trips a stale value.
+    if (payload.format === "hardcopy") {
+      payload.subscriber_access = false;
+      payload.included_plan_ids = [];
+      payload.early_access_overrides = [];
+    }
 
     // Auto-set payout_model based on format
     if (!payload.payout_model) {
@@ -1335,6 +1345,158 @@ export default function AdminBooks() {
                         {(formatForm.subscriber_access ?? true) ? "Enabled" : "Disabled"}
                       </span>
                     </div>
+                  )}
+                  {formatForm.format !== "hardcopy" && (
+                    <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                      <Label htmlFor="format-purchase-allowed" className="text-sm font-medium flex-1">Purchase Allowed</Label>
+                      <button
+                        id="format-purchase-allowed"
+                        type="button"
+                        onClick={() => setFormatForm({ ...formatForm, purchase_allowed: !(formatForm.purchase_allowed ?? true) })}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${(formatForm.purchase_allowed ?? true) ? "bg-green-500" : "bg-muted-foreground/30"}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${(formatForm.purchase_allowed ?? true) ? "translate-x-5" : ""}`} />
+                      </button>
+                      <span className={`text-xs font-medium ${(formatForm.purchase_allowed ?? true) ? "text-green-500" : "text-muted-foreground"}`}>
+                        {(formatForm.purchase_allowed ?? true) ? "Allowed" : "Blocked"}
+                      </span>
+                    </div>
+                  )}
+                  {formatForm.format !== "hardcopy" && (
+                    <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                      <Label htmlFor="format-free-access" className="text-sm font-medium flex-1">
+                        Free Access
+                        <span className="block text-[10px] font-normal text-muted-foreground">Everyone gets this format for free, regardless of price</span>
+                      </Label>
+                      <button
+                        id="format-free-access"
+                        type="button"
+                        onClick={() => setFormatForm({ ...formatForm, free_access: !(formatForm.free_access ?? false) })}
+                        className={`relative w-10 h-5 rounded-full transition-colors ${(formatForm.free_access ?? false) ? "bg-green-500" : "bg-muted-foreground/30"}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform ${(formatForm.free_access ?? false) ? "translate-x-5" : ""}`} />
+                      </button>
+                      <span className={`text-xs font-medium ${(formatForm.free_access ?? false) ? "text-green-500" : "text-muted-foreground"}`}>
+                        {(formatForm.free_access ?? false) ? "Free" : "Paid"}
+                      </span>
+                    </div>
+                  )}
+                  {formatForm.format !== "hardcopy" && (
+                    <>
+                      <div>
+                        <Label>Subscription Delay</Label>
+                        <Select
+                          value={formatForm.subscription_delay_days === null ? "never" : String(formatForm.subscription_delay_days ?? 0)}
+                          onValueChange={(v) => setFormatForm({ ...formatForm, subscription_delay_days: v === "never" ? null : Number(v) })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">Immediately</SelectItem>
+                            <SelectItem value="30">30 days after release</SelectItem>
+                            <SelectItem value="60">60 days after release</SelectItem>
+                            <SelectItem value="90">90 days after release</SelectItem>
+                            <SelectItem value="180">180 days after release</SelectItem>
+                            <SelectItem value="never">Never</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Rights Status</Label>
+                        <Select
+                          value={formatForm.rights_status || "active"}
+                          onValueChange={(v) => setFormatForm({ ...formatForm, rights_status: v })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="expired">Expired</SelectItem>
+                            <SelectItem value="suspended">Suspended</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>License Start Date</Label>
+                        <Input
+                          type="date"
+                          value={formatForm.license_start_date ? String(formatForm.license_start_date).slice(0, 10) : ""}
+                          onChange={(e) => setFormatForm({ ...formatForm, license_start_date: e.target.value || null })}
+                        />
+                      </div>
+                      <div>
+                        <Label>License End Date</Label>
+                        <Input
+                          type="date"
+                          value={formatForm.license_end_date ? String(formatForm.license_end_date).slice(0, 10) : ""}
+                          onChange={(e) => setFormatForm({ ...formatForm, license_end_date: e.target.value || null })}
+                        />
+                      </div>
+                      <div className="col-span-2 p-3 rounded-lg bg-muted/50 border border-border">
+                        <Label className="text-sm font-medium">Included Plans</Label>
+                        <p className="text-[10px] text-muted-foreground mb-2">Leave empty to allow all active plans. Select specific plans to restrict this format to only those plans.</p>
+                        <div className="flex flex-wrap gap-2">
+                          {(subscriptionPlans as any[]).map((plan) => {
+                            const currentIds: string[] = formatForm.included_plan_ids ?? ((formatForm.included_plans as any[])?.map((p) => p.plan_id) ?? []);
+                            const checked = currentIds.includes(plan.id);
+                            return (
+                              <label key={plan.id} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded border border-border cursor-pointer">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(v) => {
+                                    const next = v ? [...currentIds, plan.id] : currentIds.filter((id) => id !== plan.id);
+                                    setFormatForm({ ...formatForm, included_plan_ids: next });
+                                  }}
+                                />
+                                {plan.name}
+                              </label>
+                            );
+                          })}
+                          {subscriptionPlans.length === 0 && (
+                            <p className="text-xs text-muted-foreground">No subscription plans created yet.</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="col-span-2 p-3 rounded-lg bg-muted/50 border border-border">
+                        <Label className="text-sm font-medium">Early Access Overrides</Label>
+                        <p className="text-[10px] text-muted-foreground mb-2">Give specific plans earlier (or later/never) subscription access than the Subscription Delay above. Independent of Included Plans.</p>
+                        <div className="space-y-2">
+                          {(subscriptionPlans as any[]).map((plan) => {
+                            const currentOverrides: { plan_id: string; delay_override_days: number | null }[] =
+                              formatForm.early_access_overrides ?? ((formatForm.early_access as any[])?.map((e) => ({ plan_id: e.plan_id, delay_override_days: e.delay_override_days })) ?? []);
+                            const existing = currentOverrides.find((o) => o.plan_id === plan.id);
+                            const value = !existing ? "default" : existing.delay_override_days === null ? "never" : String(existing.delay_override_days);
+                            return (
+                              <div key={plan.id} className="flex items-center gap-3">
+                                <span className="text-xs flex-1">{plan.name}</span>
+                                <Select
+                                  value={value}
+                                  onValueChange={(v) => {
+                                    const withoutThisPlan = currentOverrides.filter((o) => o.plan_id !== plan.id);
+                                    const next = v === "default"
+                                      ? withoutThisPlan
+                                      : [...withoutThisPlan, { plan_id: plan.id, delay_override_days: v === "never" ? null : Number(v) }];
+                                    setFormatForm({ ...formatForm, early_access_overrides: next });
+                                  }}
+                                >
+                                  <SelectTrigger className="w-48 h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="default">Use format default</SelectItem>
+                                    <SelectItem value="0">Immediately</SelectItem>
+                                    <SelectItem value="30">30 days after release</SelectItem>
+                                    <SelectItem value="60">60 days after release</SelectItem>
+                                    <SelectItem value="90">90 days after release</SelectItem>
+                                    <SelectItem value="180">180 days after release</SelectItem>
+                                    <SelectItem value="never">Never</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            );
+                          })}
+                          {subscriptionPlans.length === 0 && (
+                            <p className="text-xs text-muted-foreground">No subscription plans created yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    </>
                   )}
                   {/* Format-level Publisher */}
                   <div className="col-span-2">

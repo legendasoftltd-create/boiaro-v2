@@ -4,6 +4,7 @@ import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveUrls, resolveFileUrl } from "../lib/mediaUrl.js";
 import { maybeRecordListen } from "../lib/listenTracking.js";
+import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 
 export const profilesRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
@@ -295,17 +296,19 @@ export const profilesRouter = router({
       description: z.string().min(1),
       category: z.string().optional(),
     }))
-    .mutation(({ ctx, input }) =>
-      prisma.supportTicket.create({
+    .mutation(async ({ ctx, input }) => {
+      const subscription = await getActiveSubscriptionPlanOverrides(ctx.userId);
+      return prisma.supportTicket.create({
         data: {
           user_id: ctx.userId,
           subject: input.subject,
           description: input.description,
           category: input.category || "general",
           status: "open",
+          ...(subscription?.support_priority ? { priority: subscription.support_priority } : {}),
         },
-      })
-    ),
+      });
+    }),
 
   myTickets: protectedProcedure.query(async ({ ctx }) => {
     const tickets = await prisma.supportTicket.findMany({

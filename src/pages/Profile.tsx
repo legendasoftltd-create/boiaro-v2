@@ -13,7 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import {
   BookOpen, Headphones, ShoppingBag, Bookmark, Settings, LogOut,
-  Play, Eye, Trash2, BookCopy, Clock, Phone, Camera, Loader2,
+  Play, Eye, Trash2, BookCopy, Clock, Phone, Camera, Loader2, Smartphone,
 } from "lucide-react"
 import { useNavigate, Link } from "react-router-dom"
 import { useToast } from "@/hooks/use-toast"
@@ -46,9 +46,14 @@ export default function Profile() {
   const { data: listening = [], isLoading: listeningLoading } = trpc.profiles.listeningProgress.useQuery(undefined, { enabled: !!user })
   const { data: bookmarks = [], isLoading: bookmarksLoading } = trpc.books.userBookmarks.useQuery(undefined, { enabled: !!user })
   const { data: orders = [], isLoading: ordersLoading } = trpc.profiles.userOrders.useQuery(undefined, { enabled: !!user })
+  const { data: devices = [], isLoading: devicesLoading } = trpc.devices.myDevices.useQuery(undefined, { enabled: !!user })
 
   const bookmarkMutation = trpc.books.bookmark.useMutation({
     onSuccess: () => utils.books.userBookmarks.invalidate(),
+  })
+  const revokeDeviceMutation = trpc.devices.revoke.useMutation({
+    onSuccess: () => utils.devices.myDevices.invalidate(),
+    onError: (e) => toast({ title: "Failed to log out device", description: e.message, variant: "destructive" }),
   })
 
   if (!user) {
@@ -251,6 +256,7 @@ export default function Profile() {
               <TabsTrigger value="listening" className="gap-1.5 text-[13px]"><Headphones className="w-3.5 h-3.5" /> Listening</TabsTrigger>
               <TabsTrigger value="bookmarks" className="gap-1.5 text-[13px]"><Bookmark className="w-3.5 h-3.5" /> Bookmarks</TabsTrigger>
               <TabsTrigger value="orders" className="gap-1.5 text-[13px]"><ShoppingBag className="w-3.5 h-3.5" /> Orders</TabsTrigger>
+              <TabsTrigger value="devices" className="gap-1.5 text-[13px]"><Smartphone className="w-3.5 h-3.5" /> Devices</TabsTrigger>
               <TabsTrigger value="settings" className="gap-1.5 text-[13px]"><Settings className="w-3.5 h-3.5" /> Settings</TabsTrigger>
             </TabsList>
 
@@ -347,6 +353,39 @@ export default function Profile() {
                   ) : (
                     <EmptyState icon={ShoppingBag} text="No orders yet." />
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="devices">
+              <Card className="border-border/30 bg-card/60">
+                <CardHeader className="pb-3"><CardTitle className="text-base">Devices</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  {devicesLoading ? (
+                    <p className="text-[13px] text-muted-foreground">Loading devices...</p>
+                  ) : devices.length === 0 ? (
+                    <p className="text-[13px] text-muted-foreground">No devices on record yet.</p>
+                  ) : (
+                    devices.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-secondary/40 border border-border/30">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium truncate">{d.device_name || "Unknown device"}</p>
+                          <p className="text-[12px] text-muted-foreground">
+                            {d.platform || "unknown"} • last active {new Date(d.last_active_at).toLocaleString()}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm" variant="outline"
+                          className="shrink-0 gap-1.5 text-destructive border-destructive/20 hover:bg-destructive/10 text-[12px] rounded-lg"
+                          disabled={revokeDeviceMutation.isPending}
+                          onClick={() => revokeDeviceMutation.mutate({ id: d.id })}
+                        >
+                          <LogOut className="w-3.5 h-3.5" /> Log out
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                  <p className="text-[11px] text-muted-foreground">Logging out a device frees up a slot if your plan limits concurrent devices — it does not sign that device out immediately.</p>
                 </CardContent>
               </Card>
             </TabsContent>

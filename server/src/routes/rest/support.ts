@@ -4,6 +4,7 @@ import { sendHttpError } from "../../lib/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
+import { getActiveSubscriptionPlanOverrides } from "../../services/bookAccess.service.js";
 
 export const supportRestRouter = Router();
 
@@ -19,6 +20,7 @@ const createTicketSchema = z.object({
 supportRestRouter.post("/tickets", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const input = createTicketSchema.parse(req.body);
+    const subscription = await getActiveSubscriptionPlanOverrides(req.auth.userId!);
     const ticket = await prisma.supportTicket.create({
       data: {
         user_id: req.auth.userId!,
@@ -26,6 +28,7 @@ supportRestRouter.post("/tickets", requireAuth, async (req: AuthenticatedRequest
         description: input.description,
         category: input.category || "general",
         status: "open",
+        ...(subscription?.support_priority ? { priority: subscription.support_priority } : {}),
       },
     });
     res.json({ ...ticket, ticket_number: ticketNumber(ticket.id) });

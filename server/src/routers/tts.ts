@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { uploadWithFallback } from "../lib/s3.js";
+import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import crypto from "crypto";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -84,14 +85,9 @@ export async function checkTtsAccess(
   if (paidEbookOrder) return { allowed: true, access_type: "coin_unlock" };
 
   // Subscription grants access for both "subscription" and "paid" access types
-  const subscription = await prisma.userSubscription.findFirst({
-    where: {
-      user_id: userId,
-      status: { in: ["active", "cancelled"] },
-      OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
-    },
-  });
-  if (subscription) return { allowed: true, access_type: "subscription" };
+  // — but only if the subscriber's plan actually includes Premium TTS.
+  const subscription = await getActiveSubscriptionPlanOverrides(userId);
+  if (subscription?.premium_tts_included) return { allowed: true, access_type: "subscription" };
 
   // Denied — tell the client what they need
   const coinPrice = book.voice_coin_price ?? 0;

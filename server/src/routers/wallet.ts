@@ -4,6 +4,7 @@ import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
+import { checkBookFormatAccess } from "../services/bookAccess.service.js";
 
 export const walletRouter = router({
   coinPackages: publicProcedure.query(() =>
@@ -618,57 +619,8 @@ export const walletRouter = router({
   checkAccess: protectedProcedure
     .input(z.object({ bookId: z.string(), format: z.enum(["ebook", "audiobook"]) }))
     .query(async ({ ctx, input }) => {
-      const { bookId, format } = input;
-
-      // Free content: book flagged as free, or the format has no price.
-      // For audiobooks using per-chapter pricing, the format-level price is
-      // legitimately 0/null, so it can't be used to infer the whole format is free —
-      // and per-chapter pricing always wins over the book-level is_free flag.
-      const [book, bookFormat] = await Promise.all([
-        prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true, subscriber_access: true } }),
-        prisma.bookFormat.findFirst({
-          where: { book_id: bookId, format, submission_status: "approved" },
-          select: {
-            price: true,
-            subscriber_access: true,
-            audiobook_tracks: format === "audiobook" ? { select: { chapter_price: true, chapter_taka_price: true } } : false,
-          },
-        }),
-      ]);
-      const hasChapterPricing = (bookFormat as any)?.audiobook_tracks?.some(
-        (t: any) => Number(t.chapter_price ?? 0) > 0 || Number(t.chapter_taka_price ?? 0) > 0
-      );
-      if (!hasChapterPricing && (Boolean(book?.is_free) || Number(bookFormat?.price ?? 0) <= 0)) {
-        return { hasFullAccess: true, method: "free" };
-      }
-
-      const coinUnlock = await prisma.contentUnlock.findFirst({
-        where: { user_id: ctx.userId, book_id: bookId, format, status: "active" },
-      });
-      if (coinUnlock) return { hasFullAccess: true, method: "coin" };
-
-      const subscription = await prisma.userSubscription.findFirst({
-        where: {
-          user_id: ctx.userId,
-          status: { in: ["active", "cancelled"] },
-          OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
-        },
-      });
-      if (subscription) {
-        // Format-level subscriber_access is the gate; book-level is a cascade shortcut only
-        const formatAllows = bookFormat?.subscriber_access === true;
-        const formatEligible = new Set(["ebook", "audiobook"]).has(format);
-        if (formatAllows && formatEligible) {
-          return { hasFullAccess: true, method: "subscription" };
-        }
-      }
-
-      const purchase = await prisma.userPurchase.findFirst({
-        where: { user_id: ctx.userId, book_id: bookId, format, status: "active" },
-      });
-      if (purchase) return { hasFullAccess: true, method: "purchase" };
-
-      return { hasFullAccess: false, method: "none" };
+      const result = await checkBookFormatAccess(ctx.userId, input.bookId, input.format);
+      return { hasFullAccess: result.hasAccess, method: result.method };
     }),
 
   coinSettings: protectedProcedure.query(async () => {
@@ -769,28 +721,8 @@ export const walletRouter = router({
   checkHybridAccess: protectedProcedure
     .input(z.object({ bookId: z.string(), format: z.enum(["ebook", "audiobook"]) }))
     .query(async ({ ctx, input }) => {
-      const { bookId, format } = input;
-
-      const coinUnlock = await prisma.contentUnlock.findFirst({
-        where: { user_id: ctx.userId, book_id: bookId, format, status: "active" },
-      });
-      if (coinUnlock) return { granted: true, method: "coin" };
-
-      const subscription = await prisma.userSubscription.findFirst({
-        where: {
-          user_id: ctx.userId,
-          status: { in: ["active", "cancelled"] },
-          OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
-        },
-      });
-      if (subscription) return { granted: true, method: "subscription" };
-
-      const purchase = await prisma.userPurchase.findFirst({
-        where: { user_id: ctx.userId, book_id: bookId, format, status: "active" },
-      });
-      if (purchase) return { granted: true, method: "purchase" };
-
-      return { granted: false, method: "none" };
+      const result = await checkBookFormatAccess(ctx.userId, input.bookId, input.format);
+      return { granted: result.hasAccess, method: result.method };
     }),
 
   subscriptionPlans: publicProcedure.query(() =>

@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Mic2, Plus, Loader2, Pencil, Image, Music, Send, Link2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,6 +23,7 @@ const MAX_COVER_SIZE = 5 * 1024 * 1024;
 const emptyForm = () => ({
   title: "", title_en: "", description: "", category_id: "", cover_url: "",
   language: "bn", price: "", duration: "", audio_quality: "standard",
+  subscriber_access: false,
 });
 
 export default function NarratorAudiobooks() {
@@ -66,7 +68,7 @@ export default function NarratorAudiobooks() {
   const openEdit = (book: any) => {
     setEditBook(book); setAttachedBook(null); setMode("create");
     const fmt = (book.formats || []).find((f: any) => f.format === "audiobook");
-    setForm({ ...emptyForm(), title: book.title || "", description: book.description || "", cover_url: book.cover_url || "", price: fmt?.price?.toString() || "", duration: fmt?.duration || "", audio_quality: fmt?.audio_quality || "standard" });
+    setForm({ ...emptyForm(), title: book.title || "", description: book.description || "", cover_url: book.cover_url || "", price: fmt?.price?.toString() || "", duration: fmt?.duration || "", audio_quality: fmt?.audio_quality || "standard", subscriber_access: fmt?.subscriber_access === true });
     setOpen(true);
   };
 
@@ -122,6 +124,7 @@ export default function NarratorAudiobooks() {
         price: form.price ? Number(form.price) : 0,
         duration: form.duration || undefined,
         audioQuality: (form.audio_quality || "standard") as "standard" | "hd",
+        subscriberAccess: form.subscriber_access,
       });
     } else {
       submitMutation.mutate({
@@ -131,6 +134,7 @@ export default function NarratorAudiobooks() {
         price: form.price ? Number(form.price) : 0,
         duration: form.duration || undefined,
         audioQuality: (form.audio_quality || "standard") as "standard" | "hd",
+        subscriberAccess: form.subscriber_access,
       });
     }
   };
@@ -307,13 +311,20 @@ export default function NarratorAudiobooks() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="col-span-2 flex items-center justify-between gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <Label htmlFor="attach-subscriber-access" className="text-sm font-medium">
+                    Allow subscribers to listen to this for free with their subscription
+                    <span className="block text-[10px] font-normal text-muted-foreground">Turning this off makes this audiobook Buy-only immediately</span>
+                  </Label>
+                  <Switch id="attach-subscriber-access" checked={form.subscriber_access} onCheckedChange={(v) => setForm(f => ({ ...f, subscriber_access: v }))} />
+                </div>
               </div>
               {attachedBook && form.price && Number(form.price) > 0 && (
                 <VendorEarningsPreview bookId={attachedBook.id} format="audiobook" basePrice={Number(form.price)} role="narrator" />
               )}
               <Button className="w-full" onClick={() => {
                 if (!attachedBook) return;
-                attachMutation.mutate({ bookId: attachedBook.id, format: "audiobook", role: "narrator", price: form.price ? Number(form.price) : 0, duration: form.duration || undefined, audioQuality: (form.audio_quality || "standard") as "standard" | "hd" });
+                attachMutation.mutate({ bookId: attachedBook.id, format: "audiobook", role: "narrator", price: form.price ? Number(form.price) : 0, duration: form.duration || undefined, audioQuality: (form.audio_quality || "standard") as "standard" | "hd", subscriberAccess: form.subscriber_access });
               }} disabled={isPending}>
                 {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Attaching...</> : "Attach & Submit for Review"}
               </Button>
@@ -362,6 +373,13 @@ export default function NarratorAudiobooks() {
                       <SelectItem value="hd">HD</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="col-span-2 flex items-center justify-between gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <Label htmlFor="create-subscriber-access" className="text-sm font-medium">
+                    Allow subscribers to listen to this for free with their subscription
+                    <span className="block text-[10px] font-normal text-muted-foreground">Turning this off makes this audiobook Buy-only immediately</span>
+                  </Label>
+                  <Switch id="create-subscriber-access" checked={form.subscriber_access} onCheckedChange={(v) => setForm(f => ({ ...f, subscriber_access: v }))} />
                 </div>
               </div>
               {editBook && form.price && Number(form.price) > 0 && (

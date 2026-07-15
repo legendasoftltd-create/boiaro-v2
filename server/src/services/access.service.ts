@@ -1,4 +1,7 @@
 import { prisma } from "../lib/prisma.js";
+import { checkBookFormatAccess, BookFormatKind } from "./bookAccess.service.js";
+
+const SUBSCRIBER_FORMATS = new Set(["ebook", "audiobook"]);
 
 export const checkMultiBookAccess = async (
   userId: string,
@@ -13,12 +16,33 @@ export const checkMultiBookAccess = async (
 
   const normalizedFormat = Array.isArray(format) ? format[0] : format;
 
-  // Subscription only unlocks ebook and audiobook formats
-  const SUBSCRIBER_FORMATS = new Set(["ebook", "audiobook"]);
-  const formatEligibleForSubscription = !normalizedFormat || SUBSCRIBER_FORMATS.has(normalizedFormat);
+  // A specific, eligible format is the well-defined case — delegate fully to the
+  // consolidated per-format access engine (subscription is never global; it's
+  // gated by this exact format's subscriber_access/delay/license/included plans).
+  if (normalizedFormat && SUBSCRIBER_FORMATS.has(normalizedFormat)) {
+    const access = await checkBookFormatAccess(userId, bookId, normalizedFormat as BookFormatKind);
+    const preview_available =
+      access.previewPercentage > 0 || access.previewChapters > 0 || access.isFree;
 
-  // Parallel checks: purchase, subscription (+ format record for subscriber_access), coin unlock
-  const [purchase, subscription, bookFormat, coinUnlock] = await Promise.all([
+    return {
+      has_access: access.hasAccess,
+      access_method: access.method,
+      is_free: access.isFree,
+      has_subscription: access.method === "subscription",
+      has_purchase: access.method === "purchase",
+      has_unlock: access.method === "coin",
+      subscriber_access: access.subscribable,
+      preview_available,
+      preview_percentage: access.previewPercentage,
+      preview_chapters: access.previewChapters,
+    };
+  }
+
+  // No format specified (or hardcopy/unrecognized) — fall back to a whole-book,
+  // format-agnostic check: purchase and free-book status only. Subscription is
+  // deliberately NOT granted here since it can never be evaluated without a
+  // concrete format to gate against.
+  const [purchase, coinUnlock] = await Promise.all([
     prisma.userPurchase.findFirst({
       where: {
         user_id: userId,
@@ -27,24 +51,6 @@ export const checkMultiBookAccess = async (
         ...(normalizedFormat ? { format: normalizedFormat } : {}),
       },
     }),
-    // Fetch subscription whenever the format is eligible — format-level subscriber_access
-    // is the real gate (checked below). Book-level is only a cascade shortcut for admins.
-    formatEligibleForSubscription
-      ? prisma.userSubscription.findFirst({
-          where: {
-            user_id: userId,
-            status: { in: ["active", "cancelled"] },
-            OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
-          },
-        })
-      : Promise.resolve(null),
-    // Fetch format record to check format-level subscriber_access and preview settings
-    normalizedFormat
-      ? prisma.bookFormat.findFirst({
-          where: { book_id: bookId, format: normalizedFormat as any },
-          select: { preview_percentage: true, preview_chapters: true, subscriber_access: true },
-        })
-      : Promise.resolve(null),
     normalizedFormat
       ? prisma.contentUnlock.findFirst({
           where: { user_id: userId, book_id: bookId, format: normalizedFormat, status: "active" },
@@ -52,12 +58,8 @@ export const checkMultiBookAccess = async (
       : Promise.resolve(null),
   ]);
 
-  // Format-level subscriber_access is the access gate
-  const formatAllowsSubscription = bookFormat?.subscriber_access === true;
-
   const isFree = book.is_free;
   const hasPurchase = !!purchase;
-  const hasSubscription = !!subscription && formatAllowsSubscription;
   const hasCoinUnlock = !!coinUnlock;
 
   let has_access = false;
@@ -72,34 +74,19 @@ export const checkMultiBookAccess = async (
   } else if (hasPurchase) {
     has_access = true;
     access_method = "purchase";
-  } else if (hasSubscription) {
-    has_access = true;
-    access_method = "subscription";
   }
-
-  // Preview info — reuse already-fetched bookFormat record
-  let preview_percentage = 0;
-  let preview_chapters = 0;
-  let preview_available = false;
-
-  if (bookFormat && (normalizedFormat === "ebook" || normalizedFormat === "audiobook")) {
-    preview_percentage = bookFormat.preview_percentage ?? 0;
-    preview_chapters = bookFormat.preview_chapters ?? 0;
-    preview_available = preview_percentage > 0 || preview_chapters > 0 || !!isFree;
-  }
-
 
   return {
     has_access,
     access_method,
     is_free: isFree,
-    has_subscription: hasSubscription,
+    has_subscription: false,
     has_purchase: hasPurchase,
     has_unlock: hasCoinUnlock,
-    subscriber_access: bookFormat ? formatAllowsSubscription : book.subscriber_access === true,
-    preview_available,
-    preview_percentage,
-    preview_chapters,
+    subscriber_access: book.subscriber_access === true,
+    preview_available: !!isFree,
+    preview_percentage: 0,
+    preview_chapters: 0,
   };
 };
 

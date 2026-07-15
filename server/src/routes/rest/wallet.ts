@@ -4,6 +4,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings } from "../../lib/earnings.js";
+import { checkBookFormatAccess } from "../../services/bookAccess.service.js";
 
 export const walletRestRouter = Router();
 
@@ -179,37 +180,38 @@ walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, 
         res.status(400).json({ error: "Invalid chapter format" });
         return;
       }
-      const [track, book] = await Promise.all([
+      const [track, access] = await Promise.all([
         prisma.audiobookTrack.findUnique({
           where: { id: trackId },
           select: { is_preview: true, chapter_price: true, book_format: { select: { id: true, book_id: true, coin_price: true } } },
         }),
-        prisma.book.findUnique({ where: { id: book_id }, select: { is_free: true } }),
+        checkBookFormatAccess(req.auth.userId!, book_id, "audiobook"),
       ]);
       if (!track || track.book_format.book_id !== book_id) {
         res.status(404).json({ error: "Chapter not found" });
         return;
       }
-      const hasChapterPrice = Number(track.chapter_price ?? 0) > 0;
-      if (track.is_preview || (!hasChapterPrice && Boolean(book?.is_free))) {
+      // Free preview chapter, or the user already has whole-format access
+      // (free/purchased/subscribed) — no coin unlock needed either way.
+      if (track.is_preview || access.hasAccess) {
         res.status(400).json({ error: "Chapter is free — no coin unlock needed" });
         return;
       }
       coin_cost = Math.round(track.chapter_price ?? track.book_format.coin_price ?? 0);
       bookFormatId = track.book_format.id;
     } else {
-      const [bookFormat, book] = await Promise.all([
+      const [bookFormat, access] = await Promise.all([
         prisma.bookFormat.findFirst({
           where: { book_id, format },
           select: { id: true, coin_price: true, price: true },
         }),
-        prisma.book.findUnique({ where: { id: book_id }, select: { is_free: true } }),
+        checkBookFormatAccess(req.auth.userId!, book_id, format as "ebook" | "audiobook" | "hardcopy"),
       ]);
       if (!bookFormat) {
         res.status(404).json({ error: "Book format not found" });
         return;
       }
-      if (Boolean(book?.is_free) || (bookFormat.coin_price ?? 0) === 0) {
+      if (access.hasAccess) {
         res.status(400).json({ error: "Content is free — no coin unlock needed" });
         return;
       }

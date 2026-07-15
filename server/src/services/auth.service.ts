@@ -3,8 +3,18 @@ import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 import { signTokens, verifyRefreshToken } from "../lib/auth.js";
 import { resolveUrls } from "../lib/mediaUrl.js";
+import { resolveDeviceSessionOnLogin, touchOrCreateDeviceSessionOnRefresh } from "./deviceSession.service.js";
+import type { DeviceLoginParams, DeviceSessionInfo } from "./deviceSession.service.js";
 import type { signInSchema } from "../schemas/auth.js";
 import type { z } from "zod";
+
+export function deviceLimitError(limit: number, devices: DeviceSessionInfo[]): TRPCError {
+  return new TRPCError({
+    code: "FORBIDDEN",
+    message: "Device limit reached for your plan. Remove a device to continue.",
+    cause: { type: "DEVICE_LIMIT_REACHED", limit, devices },
+  });
+}
 
 // Completes a pending referral and grants coins to both parties.
 // Called on first signIn so coins are only granted to users who actually log in.
@@ -81,6 +91,9 @@ export async function signInUser(input: z.infer<typeof signInSchema>) {
   // Complete any pending referral on first login (deferred from signup to prevent abuse)
   completePendingReferral(user.id).catch(() => {});
 
+  const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+  if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
+
   const { accessToken, refreshToken } = signTokens(user.id, user.email);
 
   return {
@@ -113,11 +126,13 @@ export async function getMe(userId: string) {
   };
 }
 
-export function refreshAuthTokens(refreshToken: string) {
+export async function refreshAuthTokens(refreshToken: string, deviceParams: DeviceLoginParams = {}) {
   try {
     const payload = verifyRefreshToken(refreshToken);
+    await touchOrCreateDeviceSessionOnRefresh(payload.sub, deviceParams);
     return signTokens(payload.sub, payload.email);
-  } catch {
+  } catch (err) {
+    if (err instanceof TRPCError) throw err;
     throw new TRPCError({
       code: "UNAUTHORIZED",
       message: "Invalid refresh token",

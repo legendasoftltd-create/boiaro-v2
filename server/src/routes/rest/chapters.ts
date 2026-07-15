@@ -7,6 +7,7 @@ import { calculateEarnings } from "../../lib/earnings.js";
 import { s3Configured, createPresignedGetUrl, isS3Url } from "../../lib/s3.js";
 import { resolveFileUrl } from "../../lib/mediaUrl.js";
 import { verifyRevenueCatTransaction } from "../../lib/revenuecat.js";
+import { checkBookFormatAccess } from "../../services/bookAccess.service.js";
 
 const AUDIO_URL_TTL = 3600; // 1 hour
 
@@ -39,13 +40,7 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
 
     const bookFormat = await prisma.bookFormat.findFirst({
       where: { book_id: bookId, format: "audiobook" },
-      select: {
-        id: true,
-        price: true,
-        coin_price: true,
-        subscriber_access: true,
-        book: { select: { is_free: true } },
-      },
+      select: { id: true, price: true, coin_price: true },
     });
     if (!bookFormat) {
       res.status(404).json({ error: "Audiobook format not found for this book" });
@@ -71,39 +66,21 @@ chaptersRestRouter.get("/books/:bookId/chapters", async (req: AuthenticatedReque
     // Infer per-chapter pricing from whether tracks have an individual coin OR taka price
     const hasPerChapterPricing = tracks.some(t => (t.chapter_price ?? 0) > 0 || (t.chapter_taka_price ?? 0) > 0);
 
-    // A book is entirely free if it's not using per-chapter pricing AND either the
-    // is_free flag is set, or the whole-book price is 0 taka AND 0 coins (or null).
-    // Explicit per-chapter pricing always wins over the book-level is_free flag —
-    // otherwise a book-level toggle silently unlocks chapters an admin priced individually.
-    const isEntirelyFree =
-      !hasPerChapterPricing &&
-      (bookFormat.book?.is_free === true || ((bookFormat.price ?? 0) === 0 && (bookFormat.coin_price ?? 0) === 0));
+    // Whole-format entitlement (free / coin unlock / purchase / active subscription),
+    // per the consolidated access engine — subscription is gated by this format's
+    // own subscriber_access, delay, license window and included plans.
+    const access = await checkBookFormatAccess(userId, bookId, "audiobook");
+    const isEntirelyFree = access.hasAccess && access.method === "free";
 
     let unlockedTrackIds = new Set<string>();
-    let hasSubscriptionAccess = false;
     if (userId) {
-      const [perChapterUnlocks, fullUnlock, subscription] = await Promise.all([
-        prisma.contentUnlock.findMany({
-          where: { user_id: userId, book_id: bookId, status: "active" },
-          select: { format: true },
-        }),
-        prisma.contentUnlock.findFirst({
-          where: { user_id: userId, book_id: bookId, format: "audiobook", status: "active" },
-        }),
-        prisma.userSubscription.findFirst({
-          where: {
-            user_id: userId,
-            status: { in: ["active", "cancelled"] },
-            OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
-          },
-        }),
-      ]);
-
-      hasSubscriptionAccess = Boolean(subscription) && bookFormat.subscriber_access === true;
-
-      if (fullUnlock || hasSubscriptionAccess) {
+      if (access.hasAccess) {
         tracks.forEach(t => unlockedTrackIds.add(t.id));
       } else {
+        const perChapterUnlocks = await prisma.contentUnlock.findMany({
+          where: { user_id: userId, book_id: bookId, status: "active" },
+          select: { format: true },
+        });
         perChapterUnlocks.forEach(u => {
           if (u.format.startsWith("audiobook_chapter_")) {
             unlockedTrackIds.add(u.format.replace("audiobook_chapter_", ""));

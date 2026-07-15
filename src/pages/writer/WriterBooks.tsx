@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { BookOpen, Plus, Loader2, Pencil, Image, Link2, Layers, Lock, Upload, Check } from "lucide-react";
 import { toast } from "sonner";
 import { EbookChapterManager } from "@/components/writer/EbookChapterManager";
@@ -23,6 +24,7 @@ const MAX_COVER_SIZE = 5 * 1024 * 1024;
 const emptyForm = () => ({
   title: "", title_en: "", description: "", category_id: "", cover_url: "",
   language: "bn", tags: "", price: "", pages: "", chapters_count: "", file_url: "", file_size: "",
+  subscriber_access: false,
 });
 
 async function uploadEbookFile(file: File): Promise<string> {
@@ -45,7 +47,7 @@ async function uploadEbookFile(file: File): Promise<string> {
 type BookWithFormats = {
   id: string; title: string; cover_url: string | null; submission_status: string;
   description: string | null; category: { name: string; name_bn: string | null } | null;
-  formats: Array<{ id: string; format: string; price: number | null; chapters_count: number | null; file_url: string | null; file_size: string | null }>;
+  formats: Array<{ id: string; format: string; price: number | null; chapters_count: number | null; file_url: string | null; file_size: string | null; subscriber_access: boolean | null }>;
 };
 
 export default function WriterBooks() {
@@ -108,7 +110,7 @@ export default function WriterBooks() {
   const openEdit = (book: BookWithFormats) => {
     setEditBook(book); setAttachedBook(null); setMode("create");
     const fmt = book.formats.find(f => f.format === "ebook");
-    setForm({ ...emptyForm(), title: book.title, description: book.description || "", cover_url: book.cover_url || "", price: fmt?.price?.toString() || "", file_url: fmt?.file_url || "", file_size: fmt?.file_size || "", chapters_count: fmt?.chapters_count?.toString() || "" });
+    setForm({ ...emptyForm(), title: book.title, description: book.description || "", cover_url: book.cover_url || "", price: fmt?.price?.toString() || "", file_url: fmt?.file_url || "", file_size: fmt?.file_size || "", chapters_count: fmt?.chapters_count?.toString() || "", subscriber_access: fmt?.subscriber_access === true });
     setOpen(true);
   };
 
@@ -166,6 +168,7 @@ export default function WriterBooks() {
         pages: form.pages ? Number(form.pages) : undefined,
         chaptersCount: form.chapters_count ? Number(form.chapters_count) : undefined,
         fileUrl: form.file_url || undefined, fileSize: form.file_size || undefined,
+        subscriberAccess: form.subscriber_access,
       });
     } else {
       submitMutation.mutate({
@@ -176,6 +179,7 @@ export default function WriterBooks() {
         pages: form.pages ? Number(form.pages) : undefined,
         chaptersCount: form.chapters_count ? Number(form.chapters_count) : undefined,
         fileUrl: form.file_url || undefined, fileSize: form.file_size || undefined,
+        subscriberAccess: form.subscriber_access,
       });
     }
   };
@@ -225,6 +229,13 @@ export default function WriterBooks() {
       <div className="grid grid-cols-2 gap-4">
         <div><Label>Original Price (৳)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} /></div>
         <div><Label>Pages</Label><Input type="number" value={form.pages} onChange={e => setForm(f => ({ ...f, pages: e.target.value }))} /></div>
+        <div className="col-span-2 flex items-center justify-between gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+          <Label htmlFor="attach-subscriber-access" className="text-sm font-medium">
+            Allow subscribers to read this for free with their subscription
+            <span className="block text-[10px] font-normal text-muted-foreground">Turning this off makes this eBook Buy-only immediately</span>
+          </Label>
+          <Switch id="attach-subscriber-access" checked={form.subscriber_access} onCheckedChange={(v) => setForm(f => ({ ...f, subscriber_access: v }))} />
+        </div>
         <div className="col-span-2">
           <p className="text-xs text-muted-foreground">File upload available in Phase 5 (storage provider configuration pending)</p>
         </div>
@@ -234,7 +245,7 @@ export default function WriterBooks() {
       )}
       <Button className="w-full" onClick={() => {
         if (!attachedBook) return;
-        attachMutation.mutate({ bookId: attachedBook.id, format: "ebook", role: "writer", price: form.price ? Number(form.price) : 0, pages: form.pages ? Number(form.pages) : undefined });
+        attachMutation.mutate({ bookId: attachedBook.id, format: "ebook", role: "writer", price: form.price ? Number(form.price) : 0, pages: form.pages ? Number(form.pages) : undefined, subscriberAccess: form.subscriber_access });
       }} disabled={isPending}>
         {isPending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Attaching...</> : "Attach & Submit for Review"}
       </Button>
@@ -291,6 +302,13 @@ export default function WriterBooks() {
             <input ref={ebookFileRef} type="file" accept=".epub,.pdf,application/epub+zip,application/pdf" className="hidden" onChange={handleEbookUpload} />
           </div>
           <p className="text-[11px] text-muted-foreground mt-1">EPUB or PDF · max 500 MB. You can also add per-chapter files later via the Chapters button.</p>
+        </div>
+        <div className="col-span-2 flex items-center justify-between gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+          <Label htmlFor="create-subscriber-access" className="text-sm font-medium">
+            Allow subscribers to read this for free with their subscription
+            <span className="block text-[10px] font-normal text-muted-foreground">Turning this off makes this eBook Buy-only immediately</span>
+          </Label>
+          <Switch id="create-subscriber-access" checked={form.subscriber_access} onCheckedChange={(v) => setForm(f => ({ ...f, subscriber_access: v }))} />
         </div>
       </div>
       {editBook && form.price && Number(form.price) > 0 && (

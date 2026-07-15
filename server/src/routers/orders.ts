@@ -28,12 +28,13 @@ function resolveRedirectUrl(urlOrPath: string | undefined, baseOrigin: string, d
 
 export const ordersRouter = router({
   myOrders: protectedProcedure
-    .input(z.object({ limit: z.number().default(20), cursor: z.string().optional() }))
+    .input(z.object({ limit: z.number().default(20), cursor: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
+      const limit = input?.limit ?? 20;
       const orders = await prisma.order.findMany({
         where: { user_id: ctx.userId },
-        take: input.limit + 1,
-        cursor: input.cursor ? { id: input.cursor } : undefined,
+        take: limit + 1,
+        cursor: input?.cursor ? { id: input.cursor } : undefined,
         orderBy: { created_at: "desc" },
         include: {
           items: {
@@ -48,7 +49,7 @@ export const ordersRouter = router({
       });
 
       let nextCursor: string | undefined;
-      if (orders.length > input.limit) {
+      if (orders.length > limit) {
         nextCursor = orders.pop()!.id;
       }
       return { orders, nextCursor };

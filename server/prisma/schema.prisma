@@ -390,6 +390,12 @@ model BookFormat {
   is_available                Boolean?       @default(true)
   isbn                        String?
   subscriber_access           Boolean?       @default(false)
+  purchase_allowed            Boolean?       @default(true)
+  free_access                 Boolean?       @default(false)
+  subscription_delay_days     Int?           @default(0)
+  license_start_date          DateTime?
+  license_end_date            DateTime?
+  rights_status               String         @default("active")
   narrator_id                 String?
   narrator_ids                String[]       @default([])
   original_price              Float?
@@ -415,9 +421,38 @@ model BookFormat {
   audiobook_tracks AudiobookTrack[]
   ebook_chapters  EbookChapter[]
   order_items     OrderItem[]
+  included_plans  BookFormatSubscriptionPlan[]
+  early_access    BookFormatEarlyAccess[]
 
   @@unique([book_id, format])
   @@map("book_formats")
+}
+
+model BookFormatSubscriptionPlan {
+  id             String   @id @default(uuid())
+  book_format_id String
+  plan_id        String
+  created_at     DateTime @default(now())
+
+  book_format BookFormat       @relation(fields: [book_format_id], references: [id], onDelete: Cascade)
+  plan        SubscriptionPlan @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+
+  @@unique([book_format_id, plan_id])
+  @@map("book_format_subscription_plans")
+}
+
+model BookFormatEarlyAccess {
+  id                  String   @id @default(uuid())
+  book_format_id      String
+  plan_id             String
+  delay_override_days Int?
+  created_at          DateTime @default(now())
+
+  book_format BookFormat       @relation(fields: [book_format_id], references: [id], onDelete: Cascade)
+  plan        SubscriptionPlan @relation(fields: [plan_id], references: [id], onDelete: Cascade)
+
+  @@unique([book_format_id, plan_id])
+  @@map("book_format_early_access")
 }
 
 model BookRead {
@@ -1088,6 +1123,20 @@ model DevicePushToken {
   @@map("device_push_tokens")
 }
 
+model DeviceSession {
+  id             String   @id @default(uuid())
+  user_id        String
+  device_id      String
+  device_name    String?
+  platform       String?
+  last_active_at DateTime @default(now())
+  created_at     DateTime @default(now())
+
+  @@unique([user_id, device_id])
+  @@index([user_id])
+  @@map("device_sessions")
+}
+
 model OrderItem {
   id                  String         @id @default(uuid())
   book_id             String?
@@ -1528,19 +1577,24 @@ model PhoneOtp {
 }
 
 model SubscriptionPlan {
-  id            String   @id @default(uuid())
-  created_at    DateTime @default(now())
-  description   String?
-  duration_days Int      @default(30)
-  features      String[]
-  is_active     Boolean  @default(true)
-  is_featured   Boolean  @default(false)
-  name          String
-  price         Float
-  sort_order    Int      @default(0)
-  updated_at    DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  created_at           DateTime @default(now())
+  description          String?
+  device_limit         Int?
+  duration_days        Int      @default(30)
+  features             String[]
+  is_active            Boolean  @default(true)
+  is_featured          Boolean  @default(false)
+  name                 String
+  premium_tts_included Boolean  @default(true)
+  price                Float
+  sort_order           Int      @default(0)
+  support_priority     String?
+  updated_at           DateTime @updatedAt
 
-  subscriptions UserSubscription[]
+  subscriptions       UserSubscription[]
+  included_in_formats BookFormatSubscriptionPlan[]
+  early_access_formats BookFormatEarlyAccess[]
 
   @@map("subscription_plans")
 }

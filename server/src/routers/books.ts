@@ -901,7 +901,7 @@ export const booksRouter = router({
       const relevantFormat = formatByRole[input.role];
       const bookInclude = {
         category: { select: { name: true, name_bn: true } },
-        formats: { select: { id: true, format: true, price: true, duration: true, audio_quality: true, stock_count: true, binding: true, in_stock: true, chapters_count: true, file_url: true, file_size: true, submitted_by: true, submission_status: true } },
+        formats: { select: { id: true, format: true, price: true, duration: true, audio_quality: true, stock_count: true, binding: true, in_stock: true, chapters_count: true, file_url: true, file_size: true, submitted_by: true, submission_status: true, subscriber_access: true } },
       };
 
       // Path 1: books submitted by this user with the relevant format
@@ -1006,6 +1006,7 @@ export const booksRouter = router({
       weight: z.string().optional(),
       dimensions: z.string().optional(),
       deliveryDays: z.number().int().optional(),
+      subscriberAccess: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const slug = input.title.toLowerCase()
@@ -1045,6 +1046,9 @@ export const booksRouter = router({
           delivery_days: input.deliveryDays ?? null,
           submission_status: input.asDraft ? "draft" : "pending",
           submitted_by: ctx.userId,
+          // Hardcopy can never carry subscription access — enforced here too,
+          // not just in the admin panel.
+          subscriber_access: input.format === "hardcopy" ? false : (input.subscriberAccess ?? false),
         },
       });
       await prisma.bookContributor.create({
@@ -1078,6 +1082,7 @@ export const booksRouter = router({
       weight: z.string().optional(),
       dimensions: z.string().optional(),
       deliveryDays: z.number().int().optional(),
+      subscriberAccess: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const book = await prisma.book.findUnique({ where: { id: input.bookId } });
@@ -1105,6 +1110,9 @@ export const booksRouter = router({
         in_stock: input.stockCount ? input.stockCount > 0 : true,
         binding: input.binding ?? null, weight: input.weight ?? null,
         dimensions: input.dimensions ?? null, delivery_days: input.deliveryDays ?? null,
+        // Hardcopy can never carry subscription access — enforced here too,
+        // not just in the admin panel.
+        subscriber_access: input.format === "hardcopy" ? false : (input.subscriberAccess ?? false),
       };
       if (input.formatId) {
         await prisma.bookFormat.update({ where: { id: input.formatId }, data: formatData });
@@ -1146,6 +1154,7 @@ export const booksRouter = router({
       weight: z.string().optional(),
       dimensions: z.string().optional(),
       deliveryDays: z.number().int().optional(),
+      subscriberAccess: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const existing = await prisma.bookFormat.findFirst({
@@ -1164,6 +1173,9 @@ export const booksRouter = router({
           binding: input.binding ?? null, weight: input.weight ?? null,
           dimensions: input.dimensions ?? null, delivery_days: input.deliveryDays ?? null,
           submission_status: "pending", submitted_by: ctx.userId,
+          // Hardcopy can never carry subscription access — enforced here too,
+          // not just in the admin panel.
+          subscriber_access: input.format === "hardcopy" ? false : (input.subscriberAccess ?? false),
         },
       });
       await prisma.bookContributor.create({

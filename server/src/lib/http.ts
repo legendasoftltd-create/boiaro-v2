@@ -23,10 +23,12 @@ export function sendHttpError(res: Response, error: unknown) {
   }
 
   if (error instanceof TRPCError) {
+    const cause = error.cause as { type?: string; limit?: number; devices?: unknown } | undefined;
     res.status(trpcStatusMap[error.code] ?? 500).json({
       success: false,
-      error: error.code,
+      error: cause?.type ?? error.code,
       message: error.message,
+      ...(cause?.type === "DEVICE_LIMIT_REACHED" ? { limit: cause.limit, devices: cause.devices } : {}),
     });
     return;
   }

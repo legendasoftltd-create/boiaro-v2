@@ -2,6 +2,20 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { trpc } from "@/lib/trpc"
 import { setSentryUser } from "@/lib/sentry"
 import { useQueryClient } from "@tanstack/react-query"
+import { getOrCreateDeviceId, getDeviceDisplayInfo } from "@/lib/deviceId"
+
+export interface DeviceSessionSummary {
+  id: string
+  device_name: string | null
+  platform: string | null
+  last_active_at: string
+}
+
+export interface SignInResult {
+  error: Error | null
+  deviceLimitReached?: boolean
+  devices?: DeviceSessionSummary[]
+}
 
 export interface AuthUser {
   id: string
@@ -27,10 +41,10 @@ interface AuthContextType {
   profile: Profile | null
   loading: boolean
   signUp: (email: string, password: string, displayName?: string) => Promise<{ error: Error | null }>
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>
-  signInWithGoogle: (accessToken: string) => Promise<{ error: Error | null }>
-  signInWithFacebook: (accessToken: string) => Promise<{ error: Error | null }>
-  signInWithPhone: (phone: string, otp: string) => Promise<{ error: Error | null }>
+  signIn: (email: string, password: string, revokeDeviceId?: string) => Promise<SignInResult>
+  signInWithGoogle: (accessToken: string, revokeDeviceId?: string) => Promise<SignInResult>
+  signInWithFacebook: (accessToken: string, revokeDeviceId?: string) => Promise<SignInResult>
+  signInWithPhone: (phone: string, otp: string, revokeDeviceId?: string) => Promise<SignInResult>
   signOut: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<void>
   setProfileAvatar: (url: string) => void
@@ -83,9 +97,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { loadUser() }, [loadUser])
 
-  const signIn = async (email: string, password: string) => {
+  // Reads the device-limit-reached payload off a tRPC error, if present.
+  const deviceLimitFromError = (err: any): { deviceLimitReached: boolean; devices?: DeviceSessionSummary[] } => {
+    const data = err?.data
+    if (data?.appErrorCode === "DEVICE_LIMIT_REACHED") {
+      return { deviceLimitReached: true, devices: data.devices }
+    }
+    return { deviceLimitReached: false }
+  }
+
+  const signIn = async (email: string, password: string, revokeDeviceId?: string): Promise<SignInResult> => {
     try {
-      const result = await signInMutation.mutateAsync({ email, password })
+      const deviceId = await getOrCreateDeviceId()
+      const { deviceName, platform } = await getDeviceDisplayInfo()
+      const result = await signInMutation.mutateAsync({ email, password, deviceId, deviceName, platform, revokeDeviceId })
       localStorage.setItem("access_token", result.accessToken)
       localStorage.setItem("refresh_token", result.refreshToken)
       const u = { id: result.user.id, email: result.user.email, roles: result.user.roles }
@@ -98,13 +123,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       return { error: null }
     } catch (err: any) {
-      return { error: new Error(err?.message || "Login failed") }
+      return { error: new Error(err?.message || "Login failed"), ...deviceLimitFromError(err) }
     }
   }
 
-  const signInWithGoogle = async (accessToken: string) => {
+  const signInWithGoogle = async (accessToken: string, revokeDeviceId?: string): Promise<SignInResult> => {
     try {
-      const result = await signInWithGoogleMutation.mutateAsync({ accessToken })
+      const deviceId = await getOrCreateDeviceId()
+      const { deviceName, platform } = await getDeviceDisplayInfo()
+      const result = await signInWithGoogleMutation.mutateAsync({ accessToken, deviceId, deviceName, platform, revokeDeviceId })
       localStorage.setItem("access_token", result.accessToken)
       localStorage.setItem("refresh_token", result.refreshToken)
       const u = { id: result.user.id, email: result.user.email, roles: result.user.roles }
@@ -113,13 +140,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSentryUser({ id: u.id, email: u.email })
       return { error: null }
     } catch (err: any) {
-      return { error: new Error(err?.message || "Google login failed") }
+      return { error: new Error(err?.message || "Google login failed"), ...deviceLimitFromError(err) }
     }
   }
 
-  const signInWithFacebook = async (accessToken: string) => {
+  const signInWithFacebook = async (accessToken: string, revokeDeviceId?: string): Promise<SignInResult> => {
     try {
-      const result = await signInWithFacebookMutation.mutateAsync({ accessToken })
+      const deviceId = await getOrCreateDeviceId()
+      const { deviceName, platform } = await getDeviceDisplayInfo()
+      const result = await signInWithFacebookMutation.mutateAsync({ accessToken, deviceId, deviceName, platform, revokeDeviceId })
       localStorage.setItem("access_token", result.accessToken)
       localStorage.setItem("refresh_token", result.refreshToken)
       const u = { id: result.user.id, email: result.user.email, roles: result.user.roles }
@@ -128,13 +157,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSentryUser({ id: u.id, email: u.email })
       return { error: null }
     } catch (err: any) {
-      return { error: new Error(err?.message || "Facebook login failed") }
+      return { error: new Error(err?.message || "Facebook login failed"), ...deviceLimitFromError(err) }
     }
   }
 
-  const signInWithPhone = async (phone: string, otp: string) => {
+  const signInWithPhone = async (phone: string, otp: string, revokeDeviceId?: string): Promise<SignInResult> => {
     try {
-      const result = await verifyPhoneOtpMutation.mutateAsync({ phone, otp })
+      const deviceId = await getOrCreateDeviceId()
+      const { deviceName, platform } = await getDeviceDisplayInfo()
+      const result = await verifyPhoneOtpMutation.mutateAsync({ phone, otp, deviceId, deviceName, platform, revokeDeviceId })
       localStorage.setItem("access_token", result.accessToken)
       localStorage.setItem("refresh_token", result.refreshToken)
       const u = { id: result.user.id, email: result.user.email, roles: result.user.roles }
@@ -143,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSentryUser({ id: u.id, email: u.email })
       return { error: null }
     } catch (err: any) {
-      return { error: new Error(err?.message || "Phone login failed") }
+      return { error: new Error(err?.message || "Phone login failed"), ...deviceLimitFromError(err) }
     }
   }
 

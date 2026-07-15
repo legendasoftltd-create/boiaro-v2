@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,6 +26,9 @@ interface Plan {
   is_active: boolean;
   sort_order: number;
   is_featured: boolean;
+  device_limit: number | null;
+  premium_tts_included: boolean;
+  support_priority: "low" | "medium" | "high" | "urgent" | null;
 }
 
 const defaultBenefits = [
@@ -39,6 +43,8 @@ const defaultBenefits = [
 const emptyForm = {
   name: "", description: "", price: 0, duration_days: 30,
   sort_order: 0, is_featured: false, is_active: true, features: [] as string[],
+  device_limit: null as number | null,
+  premium_tts_included: true, support_priority: null as "low" | "medium" | "high" | "urgent" | null,
 };
 
 export default function AdminSubscriptionPlans() {
@@ -91,6 +97,9 @@ export default function AdminSubscriptionPlans() {
       is_featured: p.is_featured,
       is_active: p.is_active,
       features: Array.isArray(p.features) ? p.features : [],
+      device_limit: p.device_limit,
+      premium_tts_included: p.premium_tts_included,
+      support_priority: p.support_priority,
     });
     setShowDialog(true);
   };
@@ -113,6 +122,9 @@ export default function AdminSubscriptionPlans() {
       is_featured: form.is_featured,
       is_active: form.is_active,
       features: form.features,
+      device_limit: form.device_limit === null ? null : Number(form.device_limit),
+      premium_tts_included: form.premium_tts_included,
+      support_priority: form.support_priority,
     };
     if (editing) {
       updateMutation.mutate({ id: editing.id, ...payload });
@@ -139,6 +151,9 @@ export default function AdminSubscriptionPlans() {
       is_featured: p.is_featured,
       is_active: !p.is_active,
       features: p.features || [],
+      device_limit: p.device_limit,
+      premium_tts_included: p.premium_tts_included,
+      support_priority: p.support_priority,
     });
   };
 
@@ -185,6 +200,7 @@ export default function AdminSubscriptionPlans() {
               <TableHead>Plan</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Price</TableHead>
+              <TableHead>Devices</TableHead>
               <TableHead>Features</TableHead>
               <TableHead>Featured</TableHead>
               <TableHead>Status</TableHead>
@@ -202,6 +218,7 @@ export default function AdminSubscriptionPlans() {
                 </TableCell>
                 <TableCell className="text-sm">{p.duration_days} days</TableCell>
                 <TableCell className="font-semibold">৳{p.price}</TableCell>
+                <TableCell className="text-sm">{p.device_limit ?? "∞"}</TableCell>
                 <TableCell className="text-sm">{p.features?.length || 0}</TableCell>
                 <TableCell>{p.is_featured && <Star className="w-4 h-4 text-amber-400 fill-amber-400" />}</TableCell>
                 <TableCell><Switch checked={p.is_active} onCheckedChange={() => toggleStatus(p)} /></TableCell>
@@ -213,7 +230,7 @@ export default function AdminSubscriptionPlans() {
                 </TableCell>
               </TableRow>
             ))}
-            {!filtered.length && <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No plans</TableCell></TableRow>}
+            {!filtered.length && <TableRow><TableCell colSpan={9} className="text-center text-muted-foreground py-8">No plans</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>
@@ -231,6 +248,18 @@ export default function AdminSubscriptionPlans() {
               <div><Label className="text-sm mb-1.5">Price (৳)</Label><Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))} className="bg-secondary" /></div>
               <div><Label className="text-sm mb-1.5">Sort Order</Label><Input type="number" value={form.sort_order} onChange={e => setForm(f => ({ ...f, sort_order: Number(e.target.value) }))} className="bg-secondary" /></div>
             </div>
+            <div>
+              <Label className="text-sm mb-1.5">Device Limit</Label>
+              <Input
+                type="number"
+                min={1}
+                placeholder="Unlimited"
+                value={form.device_limit ?? ""}
+                onChange={e => setForm(f => ({ ...f, device_limit: e.target.value === "" ? null : Number(e.target.value) }))}
+                className="bg-secondary"
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Max concurrent devices for subscribers on this plan. Leave empty for unlimited.</p>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-end gap-2 pb-1">
                 <Switch checked={form.is_featured} onCheckedChange={v => setForm(f => ({ ...f, is_featured: v }))} />
@@ -239,6 +268,28 @@ export default function AdminSubscriptionPlans() {
               <div className="flex items-end gap-2 pb-1">
                 <Switch checked={form.is_active} onCheckedChange={v => setForm(f => ({ ...f, is_active: v }))} />
                 <Label className="text-sm">Active</Label>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-end gap-2 pb-1">
+                <Switch checked={form.premium_tts_included} onCheckedChange={v => setForm(f => ({ ...f, premium_tts_included: v }))} />
+                <Label className="text-sm">Premium TTS Included</Label>
+              </div>
+              <div>
+                <Label className="text-sm mb-1.5">Support Priority Override</Label>
+                <Select
+                  value={form.support_priority ?? "none"}
+                  onValueChange={v => setForm(f => ({ ...f, support_priority: v === "none" ? null : (v as "low" | "medium" | "high" | "urgent") }))}
+                >
+                  <SelectTrigger className="bg-secondary"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (default)</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div>

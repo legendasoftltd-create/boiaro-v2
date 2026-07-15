@@ -4,6 +4,7 @@ import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { isS3Url, createPresignedGetUrl } from "../lib/s3.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
+import { checkBookFormatAccess } from "../services/bookAccess.service.js";
 
 async function toServeUrl(url: string | null | undefined): Promise<string | null> {
   if (!url) return null;
@@ -27,75 +28,45 @@ export const contentRouter = router({
     }))
     .query(async ({ ctx, input }) => {
       const { bookId, contentType, trackNumber } = input;
-      const book = await prisma.book.findUnique({
-        where: { id: bookId },
-        select: { is_free: true },
-      });
       const formatRecord = await prisma.bookFormat.findFirst({
         where: { book_id: bookId, format: contentType, submission_status: "approved" },
-        select: {
-          price: true,
-          file_url: true,
-          preview_percentage: true,
-          audiobook_tracks: contentType === "audiobook" ? { select: { chapter_price: true, chapter_taka_price: true } } : false,
-        },
-      });
-      // Per-chapter pricing always wins over the book-level is_free flag / format price.
-      const hasChapterPricing = (formatRecord as any)?.audiobook_tracks?.some(
-        (t: any) => Number(t.chapter_price ?? 0) > 0 || Number(t.chapter_taka_price ?? 0) > 0
-      );
-      const isFreeContent = !hasChapterPricing && (Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0);
-
-      // Check access: coin unlock, purchase, or subscription
-      const coinUnlock = isFreeContent ? null : await prisma.contentUnlock.findFirst({
-        where: { user_id: ctx.userId, book_id: bookId, format: contentType, status: "active" },
+        select: { file_url: true, preview_percentage: true },
       });
 
       // hasWholeBookAccess tracks real entitlement to the FULL file — distinct
       // from merely being allowed to view a preview track/clip below.
-      let hasWholeBookAccess = isFreeContent || Boolean(coinUnlock);
+      const access = await checkBookFormatAccess(ctx.userId, bookId, contentType);
+      let hasWholeBookAccess = access.hasAccess;
       let hasDirectChapterUnlock = false;
 
       if (!hasWholeBookAccess) {
-        const sub = await prisma.userSubscription.findFirst({
-          where: { user_id: ctx.userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
-        });
-        hasWholeBookAccess = Boolean(sub);
-        if (!hasWholeBookAccess) {
-          const purchase = await prisma.userPurchase.findFirst({
-            where: { user_id: ctx.userId, book_id: bookId, format: contentType, status: "active" },
+        // Check chapter-level unlock for audiobooks
+        if (contentType === "audiobook" && trackNumber !== undefined) {
+          const track = await prisma.audiobookTrack.findFirst({
+            where: { book_format: { book_id: bookId }, track_number: trackNumber },
           });
-          hasWholeBookAccess = Boolean(purchase);
-          if (!hasWholeBookAccess) {
-            // Check chapter-level unlock for audiobooks
-            if (contentType === "audiobook" && trackNumber !== undefined) {
-              const track = await prisma.audiobookTrack.findFirst({
-                where: { book_format: { book_id: bookId }, track_number: trackNumber },
-              });
-              if (!track?.is_preview) {
-                const chapterUnlock = await prisma.contentUnlock.findFirst({
-                  where: {
-                    user_id: ctx.userId,
-                    book_id: bookId,
-                    format: `audiobook_chapter_${track?.id}`,
-                    status: "active",
-                  },
-                });
-                if (!chapterUnlock) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-                hasDirectChapterUnlock = true;
-              }
-            } else if (contentType === "ebook") {
-              // Allow the URL to be returned for preview if preview_percentage > 0.
-              // The client-side useEbookAccess hook enforces the page limit.
-              const previewPct = Number(formatRecord?.preview_percentage ?? 0);
-              if (previewPct <= 0) {
-                throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-              }
-              // previewPct > 0 → fall through and return the URL so the reader can show the preview
-            } else {
-              throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-            }
+          if (!track?.is_preview) {
+            const chapterUnlock = await prisma.contentUnlock.findFirst({
+              where: {
+                user_id: ctx.userId,
+                book_id: bookId,
+                format: `audiobook_chapter_${track?.id}`,
+                status: "active",
+              },
+            });
+            if (!chapterUnlock) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+            hasDirectChapterUnlock = true;
           }
+        } else if (contentType === "ebook") {
+          // Allow the URL to be returned for preview if preview_percentage > 0.
+          // The client-side useEbookAccess hook enforces the page limit.
+          const previewPct = Number(formatRecord?.preview_percentage ?? 0);
+          if (previewPct <= 0) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+          }
+          // previewPct > 0 → fall through and return the URL so the reader can show the preview
+        } else {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
         }
       }
 
@@ -125,39 +96,18 @@ export const contentRouter = router({
     .input(z.object({ bookId: z.string() }))
     .query(async ({ ctx, input }) => {
       const { bookId } = input;
-      const [book, formatRecord, tracks] = await Promise.all([
-        prisma.book.findUnique({ where: { id: bookId }, select: { is_free: true } }),
-        prisma.bookFormat.findFirst({
-          where: { book_id: bookId, format: "audiobook", submission_status: "approved" },
-          select: { price: true },
-        }),
+      const [access, tracks] = await Promise.all([
+        checkBookFormatAccess(ctx.userId, bookId, "audiobook"),
         prisma.audiobookTrack.findMany({
           where: { book_format: { book_id: bookId }, status: "active" },
           orderBy: { track_number: "asc" },
         }),
       ]);
 
-      // Per-chapter pricing always wins over the book-level is_free flag / format price.
-      const hasChapterPricing = tracks.some((t) => Number(t.chapter_price ?? 0) > 0 || Number(t.chapter_taka_price ?? 0) > 0);
-      const isFreeContent = !hasChapterPricing && (Boolean(book?.is_free) || Number(formatRecord?.price ?? 0) <= 0);
-
-      // Whole-book entitlement: full coin unlock, active subscription, or active purchase.
-      // (Per-chapter coin unlocks are checked individually below, same as getSignedUrl.)
-      let hasWholeBookAccess = isFreeContent;
-      if (!hasWholeBookAccess) {
-        const [fullUnlock, sub, purchase] = await Promise.all([
-          prisma.contentUnlock.findFirst({
-            where: { user_id: ctx.userId, book_id: bookId, format: "audiobook", status: "active" },
-          }),
-          prisma.userSubscription.findFirst({
-            where: { user_id: ctx.userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
-          }),
-          prisma.userPurchase.findFirst({
-            where: { user_id: ctx.userId, book_id: bookId, format: "audiobook", status: "active" },
-          }),
-        ]);
-        hasWholeBookAccess = Boolean(fullUnlock || sub || purchase);
-      }
+      // Whole-book entitlement: free/coin unlock/purchase/subscription, per
+      // the consolidated access engine. (Per-chapter coin unlocks are checked
+      // individually below, same as getSignedUrl.)
+      const hasWholeBookAccess = access.hasAccess;
 
       let unlockedChapterIds = new Set<string>();
       if (!hasWholeBookAccess) {
@@ -204,30 +154,15 @@ export const contentRouter = router({
   ebookContent: protectedProcedure
     .input(z.object({ bookId: z.string() }))
     .query(async ({ ctx, input }) => {
-      const book = await prisma.book.findUnique({
-        where: { id: input.bookId },
-        select: { is_free: true },
-      });
-      const ebookFormat = await prisma.bookFormat.findFirst({
-        where: { book_id: input.bookId, format: "ebook", submission_status: "approved" },
-        select: { file_url: true, preview_percentage: true, price: true },
-      });
-      const isFreeContent = Boolean(book?.is_free) || Number(ebookFormat?.price ?? 0) <= 0;
-
-      // Verify access
-      const hasAccess = isFreeContent ? true : await prisma.contentUnlock.findFirst({
-        where: { user_id: ctx.userId, book_id: input.bookId, format: "ebook", status: "active" },
-      });
-      if (!hasAccess) {
-        const sub = await prisma.userSubscription.findFirst({
-          where: { user_id: ctx.userId, status: { in: ["active", "cancelled"] }, OR: [{ end_date: null }, { end_date: { gte: new Date() } }] },
-        });
-        if (!sub) {
-          const purchase = await prisma.userPurchase.findFirst({
-            where: { user_id: ctx.userId, book_id: input.bookId, format: "ebook", status: "active" },
-          });
-          if (!purchase) throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-        }
+      const [access, ebookFormat] = await Promise.all([
+        checkBookFormatAccess(ctx.userId, input.bookId, "ebook"),
+        prisma.bookFormat.findFirst({
+          where: { book_id: input.bookId, format: "ebook", submission_status: "approved" },
+          select: { file_url: true, preview_percentage: true },
+        }),
+      ]);
+      if (!access.hasAccess) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
 
       return { file_url: await toServeUrl(ebookFormat?.file_url), preview_percentage: ebookFormat?.preview_percentage ?? null };

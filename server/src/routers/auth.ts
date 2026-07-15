@@ -5,12 +5,14 @@ import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { signTokens } from "../lib/auth.js";
-import { refreshTokenSchema, signInSchema } from "../schemas/auth.js";
+import { deviceInfoSchema, refreshTokenSchema, signInSchema } from "../schemas/auth.js";
 import {
+  deviceLimitError,
   getMe,
   refreshAuthTokens,
   signInUser,
 } from "../services/auth.service.js";
+import { resolveDeviceSessionOnLogin } from "../services/deviceSession.service.js";
 import { sendNotificationEmail } from "../lib/mailer.js";
 import { sendOtpSms, normalizeBdPhone } from "../lib/sms.js";
 import { verifyAppleIdToken, findOrCreateAppleUser } from "../lib/appleAuth.js";
@@ -97,7 +99,7 @@ export const authRouter = router({
         // Accept id_token (preferred) or access_token (legacy)
         idToken: z.string().min(1).optional(),
         accessToken: z.string().min(1).optional(),
-      }).refine((d) => d.idToken || d.accessToken, {
+      }).merge(deviceInfoSchema).refine((d) => d.idToken || d.accessToken, {
         message: "Either idToken or accessToken is required",
       })
     )
@@ -219,6 +221,9 @@ export const authRouter = router({
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
 
+      const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+      if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
+
       const { accessToken, refreshToken } = signTokens(user.id, user.email);
       return {
         accessToken,
@@ -233,7 +238,7 @@ export const authRouter = router({
     }),
 
   signInWithFacebook: publicProcedure
-    .input(z.object({ accessToken: z.string().min(1) }))
+    .input(z.object({ accessToken: z.string().min(1) }).merge(deviceInfoSchema))
     .mutation(async ({ input }) => {
       const appId = process.env.FACEBOOK_APP_ID;
       const appSecret = process.env.FACEBOOK_APP_SECRET;
@@ -282,6 +287,9 @@ export const authRouter = router({
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
 
+      const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+      if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
+
       const { accessToken, refreshToken } = signTokens(user.id, user.email);
       return {
         accessToken,
@@ -297,7 +305,7 @@ export const authRouter = router({
         firstname: z.string().optional(),
         lastname: z.string().optional(),
         username: z.string().optional(),
-      })
+      }).merge(deviceInfoSchema)
     )
     .mutation(async ({ input }) => {
       const identity = await verifyAppleIdToken(input.idToken);
@@ -311,6 +319,9 @@ export const authRouter = router({
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
 
+      const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+      if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
+
       const { accessToken, refreshToken } = signTokens(user.id, user.email);
       return {
         accessToken,
@@ -321,7 +332,7 @@ export const authRouter = router({
 
   refresh: publicProcedure
     .input(refreshTokenSchema)
-    .mutation(async ({ input }) => refreshAuthTokens(input.refreshToken)),
+    .mutation(async ({ input }) => refreshAuthTokens(input.refreshToken, input)),
 
   me: protectedProcedure.query(async ({ ctx }) => getMe(ctx.userId!)),
 
@@ -417,7 +428,7 @@ export const authRouter = router({
     }),
 
   verifyPhoneOtp: publicProcedure
-    .input(z.object({ phone: z.string().min(6), otp: z.string().length(6) }))
+    .input(z.object({ phone: z.string().min(6), otp: z.string().length(6) }).merge(deviceInfoSchema))
     .mutation(async ({ input }) => {
       const phone = normalizeBdPhone(input.phone);
 
@@ -477,6 +488,9 @@ export const authRouter = router({
           user = { id: newUser.id, email: newUser.email, roles: newUser.roles, profile: newUser.profile };
         }
       }
+
+      const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+      if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
 
       const { accessToken, refreshToken } = signTokens(user.id, user.email);
       return {

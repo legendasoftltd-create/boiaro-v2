@@ -184,6 +184,15 @@ export const adminRouter = router({
           isbn: true,
           created_at: true,
           updated_at: true,
+          subscriber_access: true,
+          purchase_allowed: true,
+          free_access: true,
+          subscription_delay_days: true,
+          license_start_date: true,
+          license_end_date: true,
+          rights_status: true,
+          included_plans: { select: { plan_id: true } },
+          early_access: { select: { plan_id: true, delay_override_days: true } },
           publisher: { select: { name: true } },
           narrator: { select: { name: true } },
         },
@@ -440,6 +449,14 @@ export const adminRouter = router({
         stock_count: z.number().int().nullable().optional(),
         is_available: z.boolean().nullable().optional(),
         subscriber_access: z.boolean().nullable().optional(),
+        purchase_allowed: z.boolean().nullable().optional(),
+        free_access: z.boolean().nullable().optional(),
+        subscription_delay_days: z.number().int().nullable().optional(),
+        license_start_date: z.string().nullable().optional(),
+        license_end_date: z.string().nullable().optional(),
+        rights_status: z.enum(["active", "expired", "suspended"]).optional(),
+        included_plan_ids: z.array(z.string()).optional(),
+        early_access_overrides: z.array(z.object({ plan_id: z.string(), delay_override_days: z.number().int().nullable() })).optional(),
         submission_status: z.string().nullable().optional(),
         printing_cost: z.number().nullable().optional(),
         unit_cost: z.number().nullable().optional(),
@@ -452,12 +469,56 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, included_plan_ids, early_access_overrides, ...data } = input;
       // narrator_id (single FK) stays in sync with the first entry of narrator_ids
       // so existing single-narrator displays across the app keep working.
       if (data.narrator_ids !== undefined) {
         (data as any).narrator_id = data.narrator_ids[0] ?? null;
       }
+      // Subscription access must always be per-format and can never apply to
+      // Hardcopy — reject rather than silently drop, so admins get clear feedback.
+      if (data.format === "hardcopy" && data.subscriber_access === true) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Hardcopy cannot have subscription access." });
+      }
+      if (data.license_start_date !== undefined) {
+        (data as any).license_start_date = data.license_start_date ? new Date(data.license_start_date) : null;
+      }
+      if (data.license_end_date !== undefined) {
+        (data as any).license_end_date = data.license_end_date ? new Date(data.license_end_date) : null;
+      }
+
+      const syncIncludedPlans = async (bookFormatId: string) => {
+        if (included_plan_ids === undefined) return;
+        await prisma.$transaction([
+          prisma.bookFormatSubscriptionPlan.deleteMany({ where: { book_format_id: bookFormatId } }),
+          ...(included_plan_ids.length > 0
+            ? [
+                prisma.bookFormatSubscriptionPlan.createMany({
+                  data: included_plan_ids.map((plan_id) => ({ book_format_id: bookFormatId, plan_id })),
+                }),
+              ]
+            : []),
+        ]);
+      };
+
+      const syncEarlyAccessOverrides = async (bookFormatId: string) => {
+        if (early_access_overrides === undefined) return;
+        await prisma.$transaction([
+          prisma.bookFormatEarlyAccess.deleteMany({ where: { book_format_id: bookFormatId } }),
+          ...(early_access_overrides.length > 0
+            ? [
+                prisma.bookFormatEarlyAccess.createMany({
+                  data: early_access_overrides.map(({ plan_id, delay_override_days }) => ({
+                    book_format_id: bookFormatId,
+                    plan_id,
+                    delay_override_days,
+                  })),
+                }),
+              ]
+            : []),
+        ]);
+      };
+
       if (id) {
         const updated = await prisma.bookFormat.update({
           where: { id },
@@ -466,6 +527,8 @@ export const adminRouter = router({
             ...(data.submission_status === "pending" ? { submitted_by: data.submitted_by ?? ctx.userId } : {}),
           } as any,
         });
+        await syncIncludedPlans(updated.id);
+        await syncEarlyAccessOverrides(updated.id);
         // The preview-clip cut point depends on duration × preview_chapters%.
         // If either changed, regenerate clips so they stay in sync — don't
         // block the admin response on ffmpeg/upload time.
@@ -489,6 +552,8 @@ export const adminRouter = router({
           submitted_by: data.submitted_by ?? ctx.userId,
         } as any,
       });
+      await syncIncludedPlans(fmt.id);
+      await syncEarlyAccessOverrides(fmt.id);
       // If format is approved, ensure the book is live too
       if (finalStatus === "approved") {
         await prisma.book.update({
@@ -3701,6 +3766,9 @@ export const adminRouter = router({
         is_featured: z.boolean().default(false),
         is_active: z.boolean().default(true),
         features: z.array(z.string()).default([]),
+        device_limit: z.number().int().positive().nullable().optional(),
+        premium_tts_included: z.boolean().default(true),
+        support_priority: z.enum(["low", "medium", "high", "urgent"]).nullable().optional(),
       })
     )
     .mutation(({ input }) =>
@@ -3714,6 +3782,9 @@ export const adminRouter = router({
           is_featured: input.is_featured,
           is_active: input.is_active,
           features: input.features,
+          device_limit: input.device_limit ?? null,
+          premium_tts_included: input.premium_tts_included,
+          support_priority: input.support_priority ?? null,
         },
       })
     ),
@@ -3730,6 +3801,9 @@ export const adminRouter = router({
         is_featured: z.boolean().default(false),
         is_active: z.boolean().default(true),
         features: z.array(z.string()).default([]),
+        device_limit: z.number().int().positive().nullable().optional(),
+        premium_tts_included: z.boolean().default(true),
+        support_priority: z.enum(["low", "medium", "high", "urgent"]).nullable().optional(),
       })
     )
     .mutation(({ input }) =>
@@ -3744,6 +3818,9 @@ export const adminRouter = router({
           is_featured: input.is_featured,
           is_active: input.is_active,
           features: input.features,
+          device_limit: input.device_limit ?? null,
+          premium_tts_included: input.premium_tts_included,
+          support_priority: input.support_priority ?? null,
         },
       })
     ),
