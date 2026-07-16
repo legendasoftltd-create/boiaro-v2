@@ -23,11 +23,17 @@ function HeroSlide({ book, isActive }: { book: MasterBook; isActive: boolean }) 
     >
       {/* Background image with gradient */}
       <div className="absolute inset-0">
+          {/* This full-bleed backdrop is the single largest element in the hero (viewport-width/height,
+              vs. the ~280px cover art below), so it's what browsers pick as the LCP candidate — but it was
+              hardcoded `loading="lazy"` even for the active, already-visible slide, which opted it out of
+              the preload scanner and directly caused a multi-second LCP delay in production. Matching the
+              cover art's isActive-based eager/high-priority loading here fixes that. */}
           <img
             src={book.cover}
             alt=""
-            loading="lazy"
-            decoding="async"
+            loading={isActive ? "eager" : "lazy"}
+            decoding={isActive ? "sync" : "async"}
+            {...{ fetchpriority: isActive ? "high" : "low" } as any}
             className="w-full h-full object-cover scale-110 opacity-20"
             style={{ filter: "blur(4px)" }}
           />
