@@ -21,22 +21,16 @@ function HeroSlide({ book, isActive }: { book: MasterBook; isActive: boolean }) 
         isActive ? "opacity-100 translate-x-0 z-10" : "opacity-0 translate-x-8 z-0 pointer-events-none"
       }`}
     >
-      {/* Background image with gradient */}
+      {/* Background: was a full-bleed, blurred, 20%-opacity photo of the cover — since it's the single
+          largest element in the hero (viewport-width/height, vs. the ~280px cover art below), it was
+          what browsers picked as the LCP candidate, and fetching the ~200KB+ original from S3 dominated
+          load time even with eager/high-priority loading. Replaced with a pure-CSS gradient using the
+          theme's primary color: zero network cost, so it can no longer be an LCP bottleneck at all. */}
       <div className="absolute inset-0">
-          {/* This full-bleed backdrop is the single largest element in the hero (viewport-width/height,
-              vs. the ~280px cover art below), so it's what browsers pick as the LCP candidate — but it was
-              hardcoded `loading="lazy"` even for the active, already-visible slide, which opted it out of
-              the preload scanner and directly caused a multi-second LCP delay in production. Matching the
-              cover art's isActive-based eager/high-priority loading here fixes that. */}
-          <img
-            src={book.cover}
-            alt=""
-            loading={isActive ? "eager" : "lazy"}
-            decoding={isActive ? "sync" : "async"}
-            {...{ fetchpriority: isActive ? "high" : "low" } as any}
-            className="w-full h-full object-cover scale-110 opacity-20"
-            style={{ filter: "blur(4px)" }}
-          />
+        <div
+          className="absolute inset-0"
+          style={{ background: "radial-gradient(ellipse 80% 60% at 80% 40%, hsl(var(--primary) / 0.12), transparent 70%)" }}
+        />
         <div className="absolute inset-0 bg-gradient-to-r from-background via-background/95 to-background/60" />
         <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-background/80" />
       </div>
