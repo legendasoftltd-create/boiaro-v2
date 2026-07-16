@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Loader2, AlertTriangle, Sparkles, Lock, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,12 @@ import { toast } from "sonner";
 import { PaywallModal } from "@/components/ebook-reader/PaywallModal";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 
-import { PdfRenderer } from "@/components/ebook-reader/PdfRenderer";
-import { EpubRenderer, type EpubRendererHandle } from "@/components/ebook-reader/EpubRenderer";
+// Lazy-loaded so a PDF book doesn't pay for epub.js's bundle and vice versa —
+// each renderer (and its underlying library, pdfjs-dist/epubjs) only loads
+// once we actually know which format this book is.
+const PdfRenderer = lazy(() => import("@/components/ebook-reader/PdfRenderer").then((m) => ({ default: m.PdfRenderer })));
+const EpubRenderer = lazy(() => import("@/components/ebook-reader/EpubRenderer").then((m) => ({ default: m.EpubRenderer })));
+import type { EpubRendererHandle } from "@/components/ebook-reader/EpubRenderer";
 import { ReaderTopBar } from "@/components/ebook-reader/ReaderTopBar";
 import { ReaderBottomBar } from "@/components/ebook-reader/ReaderBottomBar";
 import { ReaderSettingsSheet } from "@/components/ebook-reader/ReaderSettingsSheet";
@@ -42,6 +46,14 @@ function detectFileType(url: string, mimeType?: string): FileType {
   const lower = url.toLowerCase().split("?")[0];
   if (lower.endsWith(".epub")) return "epub";
   return "pdf";
+}
+
+function ReaderLoadingFallback({ isDarkMode }: { isDarkMode: boolean }) {
+  return (
+    <div className={`flex items-center justify-center py-24 ${isDarkMode ? "text-white/60" : "text-foreground/60"}`}>
+      <Loader2 className="w-6 h-6 animate-spin" />
+    </div>
+  );
 }
 
 export default function EbookReader() {
@@ -914,23 +926,25 @@ export default function EbookReader() {
 
         {fileType === "pdf" ? (
           <div className="max-w-5xl mx-auto px-2 sm:px-4">
-            <PdfRenderer
-              key={fileUrl ?? "pdf-loading"}
-              url={fileUrl}
-              currentPage={currentPage}
-              zoom={zoom}
-              onTotalPagesChange={(total) => {
-                setTotalPages(total);
-                // Use resumed currentPage if already loaded; don't clobber with page 1
-                const page = currentPage > 1 ? currentPage : 1;
-                setPercentage(Math.round((page / total) * 100));
-              }}
-              onPageChange={(p) => goToPage(p)}
-              onZoomChange={(z) => setZoom(z)}
-              onError={(err) => toast.error(err)}
-              isDarkMode={isDarkMode}
-              onTextExtracted={(text) => setPdfPageText(text)}
-            />
+            <Suspense fallback={<ReaderLoadingFallback isDarkMode={isDarkMode} />}>
+              <PdfRenderer
+                key={fileUrl ?? "pdf-loading"}
+                url={fileUrl}
+                currentPage={currentPage}
+                zoom={zoom}
+                onTotalPagesChange={(total) => {
+                  setTotalPages(total);
+                  // Use resumed currentPage if already loaded; don't clobber with page 1
+                  const page = currentPage > 1 ? currentPage : 1;
+                  setPercentage(Math.round((page / total) * 100));
+                }}
+                onPageChange={(p) => goToPage(p)}
+                onZoomChange={(z) => setZoom(z)}
+                onError={(err) => toast.error(err)}
+                isDarkMode={isDarkMode}
+                onTextExtracted={(text) => setPdfPageText(text)}
+              />
+            </Suspense>
           </div>
         ) : (
           <div className="flex justify-center px-4 md:px-8 lg:px-16">
@@ -950,18 +964,20 @@ export default function EbookReader() {
                   : "0 25px 50px -12px rgba(0,0,0,0.1)",
               }}
             >
-              <EpubRenderer
-                key={fileUrl ?? "epub-loading"}
-                ref={epubRef}
-                url={fileUrl}
-                fontSize={fontSize}
-                isDarkMode={isDarkMode}
-                initialCfi={epubCfi || undefined}
-                onTocLoaded={(toc) => setTocItems(toc)}
-                onLocationChange={handleEpubLocationChange}
-                onTotalPagesEstimated={(total) => setEpubPageTotal(total)}
-                onError={(err) => toast.error(err)}
-              />
+              <Suspense fallback={<ReaderLoadingFallback isDarkMode={isDarkMode} />}>
+                <EpubRenderer
+                  key={fileUrl ?? "epub-loading"}
+                  ref={epubRef}
+                  url={fileUrl}
+                  fontSize={fontSize}
+                  isDarkMode={isDarkMode}
+                  initialCfi={epubCfi || undefined}
+                  onTocLoaded={(toc) => setTocItems(toc)}
+                  onLocationChange={handleEpubLocationChange}
+                  onTotalPagesEstimated={(total) => setEpubPageTotal(total)}
+                  onError={(err) => toast.error(err)}
+                />
+              </Suspense>
 
               {/* Content blur overlay when paywall is active */}
               {showPaywall && (

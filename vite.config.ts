@@ -14,11 +14,18 @@ const CHUNK_MAP: Record<string, string[]> = {
     "@radix-ui/react-scroll-area",
     "@radix-ui/react-accordion",
   ],
-  charts: ["recharts"],
   sentry: ["@sentry/react"],
   query: ["@tanstack/react-query"],
-  epub: ["epubjs"],
-  pdf: ["pdfjs-dist"],
+  // `recharts`/`pdfjs-dist` are NOT given their own manual chunk (unlike the
+  // groups above) — they're each only reachable from one lazy route (Admin
+  // analytics pages, EbookReader). Forcing them into always-named top-level
+  // chunks made Rollup's automatic cross-chunk deduplication hoist shared
+  // runtime/helper code (used by every lazy() call in the app, not just these
+  // libraries) into those chunks too — so every page ended up eagerly
+  // fetching ~230KB of PDF/chart code it would never use. Leaving them
+  // unassigned lets Rollup's default splitting scope them to an
+  // automatically-shared chunk reachable only from the dynamic imports that
+  // actually need them, so they load on-demand instead of on every page.
 };
 
 function manualChunks(id: string): string | undefined {
@@ -74,6 +81,17 @@ export default defineConfig(() => ({
       output: {
         manualChunks,
       },
+    },
+    modulePreload: {
+      // Vite's default modulepreload injection treats `pdf`/`charts`/`epub` as
+      // "commonly shared" chunks and preloads them on every page's entry HTML,
+      // even though each is only reachable from one lazy route (EbookReader,
+      // Admin analytics pages) — nothing eagerly imports pdfjs-dist/recharts/
+      // epubjs. That added ~230KB of unnecessary preload weight to every page,
+      // including the homepage. Excluding them here lets React.lazy's own
+      // dynamic import fetch them on demand instead.
+      resolveDependencies: (_filename, deps) =>
+        deps.filter((dep) => !/\/(pdf|charts|epub)-[^/]+\.js$/.test(dep)),
     },
   },
 }));
