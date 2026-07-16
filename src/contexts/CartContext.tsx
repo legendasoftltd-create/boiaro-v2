@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import type { MasterBook, BookFormat } from "@/lib/types"
 
 export interface CartItem {
@@ -23,9 +23,31 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined)
 
+const CART_STORAGE_KEY = "boiaro_cart"
+
+function loadStoredCart(): CartItem[] {
+  if (typeof window === "undefined") return []
+  try {
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([])
+  const [items, setItems] = useState<CartItem[]>(loadStoredCart)
   const [isCartOpen, setIsCartOpen] = useState(false)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+    } catch {
+      // localStorage unavailable (private browsing, quota, etc.) — cart just won't persist
+    }
+  }, [items])
 
   const addToCart = (book: MasterBook, format: BookFormat, price: number, qty = 1) => {
     setItems((prev) => {

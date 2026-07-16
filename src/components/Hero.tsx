@@ -126,7 +126,10 @@ function HeroSlide({ book, isActive }: { book: MasterBook; isActive: boolean }) 
           <div className={`flex justify-center lg:justify-end transition-all duration-700 delay-200 ${isActive ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}>
             <div className="relative w-[120px] sm:w-[160px] md:w-[200px] lg:w-[240px] xl:w-[280px]">
               <div className="aspect-[2/3] rounded-xl lg:rounded-2xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-border/30">
-                <img src={book.cover} alt={book.title} className="w-full h-full object-cover" loading={isActive ? "eager" : "lazy"} decoding={isActive ? "sync" : "async"} fetchPriority={isActive ? "high" : "low"} sizes="(max-width: 640px) 120px, (max-width: 768px) 160px, (max-width: 1024px) 200px, 280px" />
+                {/* React 18's runtime doesn't special-case `fetchPriority` (that landed in React 19), so it must be
+                    passed as the literal lowercase DOM attribute to actually reach the browser — but @types/react
+                    only models the camelCase prop, hence the scoped `as any` here instead of on the whole element. */}
+                <img src={book.cover} alt={book.title} className="w-full h-full object-cover" loading={isActive ? "eager" : "lazy"} decoding={isActive ? "sync" : "async"} {...{ fetchpriority: isActive ? "high" : "low" } as any} sizes="(max-width: 640px) 120px, (max-width: 768px) 160px, (max-width: 1024px) 200px, 280px" />
               </div>
               {/* Format pills */}
               <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">

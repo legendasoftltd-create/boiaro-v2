@@ -193,7 +193,9 @@ export function BookDetailHero({ book, liveRating, liveReviewsCount, liveReads }
                 <Badge key={tag} variant="secondary" className="text-xs capitalize">{tag}</Badge>
               ))}
               <Badge variant="secondary" className="text-xs">{book.language}</Badge>
-              <Badge variant="secondary" className="text-xs">{book.publishedDate}</Badge>
+              {book.publishedDate && !Number.isNaN(new Date(book.publishedDate).getTime()) && (
+                <Badge variant="secondary" className="text-xs">{new Date(book.publishedDate).getFullYear()}</Badge>
+              )}
             </div>
 
             <div className="flex items-center justify-center lg:justify-start gap-3">

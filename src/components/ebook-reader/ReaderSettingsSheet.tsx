@@ -1,7 +1,7 @@
 import { Sun, Moon, Minus, Plus, Type, BookOpen, Sparkles, Play, Waves, Mic, Lock, Coins, Zap } from "lucide-react";
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -127,6 +127,7 @@ export function ReaderSettingsSheet({
               <BookOpen className="w-5 h-5 text-primary" />
               Reader Settings
             </SheetTitle>
+            <SheetDescription className="sr-only">Adjust reading theme, font size, ambient sound, and voice playback settings</SheetDescription>
           </SheetHeader>
         </div>
 
