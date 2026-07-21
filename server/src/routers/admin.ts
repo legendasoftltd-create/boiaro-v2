@@ -831,6 +831,7 @@ export const adminRouter = router({
           profile: {
             select: {
               display_name: true,
+              full_name: true,
               avatar_url: true,
               phone: true,
               is_active: true,
@@ -872,6 +873,28 @@ export const adminRouter = router({
       if (usersWithStats.length > input.limit) nextCursor = usersWithStats.pop()!.id;
       return { users: usersWithStats, nextCursor };
     }),
+
+  listContributorCandidates: adminProcedure.query(async () => {
+    const users = await prisma.user.findMany({
+      where: {
+        roles: {
+          some: {
+            role: { in: ["writer", "publisher", "narrator", "translator"] },
+          },
+        },
+      },
+      orderBy: { created_at: "desc" },
+      select: {
+        id: true,
+        email: true,
+        profile: {
+          select: { display_name: true, full_name: true, phone: true },
+        },
+        roles: true,
+      },
+    });
+    return { users };
+  }),
 
   getUserStats: adminProcedure.query(async () => {
     const [total, creators, verified, deleted] = await Promise.all([

@@ -27,7 +27,7 @@ export function BookContributors({ bookId }: BookContributorsProps) {
   const load = async () => {
     const [contributorsData, usersData] = await Promise.all([
       utils.admin.listBookContributors.fetch({ bookId }),
-      utils.admin.listUsers.fetch({ limit: 1000 }),
+      utils.admin.listContributorCandidates.fetch(),
     ]);
     setContributors(contributorsData || []);
 
@@ -35,10 +35,12 @@ export function BookContributors({ bookId }: BookContributorsProps) {
     (usersData?.users || []).forEach((u: any) => {
       const uid = u.id;
       const display_name = u.profile?.display_name || uid.slice(0, 8) + "...";
+      const full_name = u.profile?.full_name || "";
       const email = u.email || "";
+      const phone = u.profile?.phone || "";
       (u.roles || []).forEach((r: any) => {
         const role = r.role;
-        if (grouped[role]) grouped[role].push({ user_id: uid, display_name, email });
+        if (grouped[role]) grouped[role].push({ user_id: uid, display_name, full_name, email, phone });
       });
     });
     setRoleUsers(grouped);
@@ -139,12 +141,12 @@ export function BookContributors({ bookId }: BookContributorsProps) {
               options={(roleUsers[addRole] || []).map((u) => ({
                 id: u.user_id,
                 label: u.email ? `${u.display_name} (${u.email})` : u.display_name,
-                searchAlt: u.email || "",
+                searchAlt: [u.full_name, u.email, u.phone].filter(Boolean).join(" "),
               }))}
               value={addUserId}
               onChange={setAddUserId}
               placeholder="Select user"
-              searchPlaceholder="Search name or email..."
+              searchPlaceholder="Search name, email, or phone..."
               emptyText="No users with this role"
             />
           </div>
