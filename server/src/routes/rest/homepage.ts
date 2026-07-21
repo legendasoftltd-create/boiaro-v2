@@ -134,9 +134,12 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "topMostRead") {
+    // Deliberately exempt from admin `priority` — this section's whole point is genuine
+    // reader behavior, so a manually-boosted low-read book must never outrank a book
+    // real readers are actually reading (mirrors trpc.books.browseBooks sort=mostRead).
     const where = { submission_status: "approved", is_active: true } as const;
     const [books, total] = await Promise.all([
-      prisma.book.findMany({ where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }], skip: offset, take: limit, select: bookSelect }),
+      prisma.book.findMany({ where, orderBy: [{ total_reads: "desc" }, { id: "asc" }], skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
     ]);
     return { data: books.map(resolveBookUrls), total, limit, offset, has_more: offset + limit < total };

@@ -130,9 +130,13 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     // Queried directly sorted by total_reads across the whole catalog — deriving this
     // from allBooks (capped at the 200 most-recently-created) silently excluded older
     // high-read books, causing this section to disagree with the website's Top10MostRead.
+    // Deliberately exempt from admin `priority`: this section's whole point is genuine
+    // reader behavior, so a manually-boosted low-read book must never outrank a book
+    // real readers are actually reading (mirrors trpc.books.browseBooks sort=mostRead).
+    // `id: asc` tiebreaker matches every other total_reads-ranked section.
     const topTenMostReadRaw = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true, ...typeWhere },
-        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }],
+        orderBy: [{ total_reads: "desc" }, { id: "asc" }],
         take: takeLimit,
         include: {
             author: { select: { id: true, name: true, avatar_url: true } },

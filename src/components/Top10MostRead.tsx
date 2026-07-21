@@ -12,8 +12,10 @@ export function Top10MostRead() {
   // Queried directly sorted by total_reads across the whole catalog — the
   // generic homepage book list is capped at 100 most-recently-created books,
   // which silently excluded older high-read books from this "all-time" ranking.
+  // sort: "mostRead" (not "popular") deliberately skips the admin priority
+  // override — this section's whole point is genuine reader behavior.
   const { data } = trpc.books.browseBooks.useQuery(
-    { pageSize: 30, sort: "popular" },
+    { pageSize: 30, sort: "mostRead" },
     { staleTime: 5 * 60 * 1000 }
   )
   const books = (data?.books || []).map(trpcBookToMasterBook)

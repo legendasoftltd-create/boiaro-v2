@@ -21,7 +21,7 @@ export const booksRouter = router({
         categoryId: z.string().optional(),
         filter: z.enum(["free", "new", "bestseller", "trending"]).optional(),
         query: z.string().optional(),
-        sort: z.enum(["newest", "rating", "popular"]).optional(),
+        sort: z.enum(["newest", "rating", "popular", "mostRead"]).optional(),
       })
     )
     .query(async ({ input }) => {
@@ -61,13 +61,22 @@ export const booksRouter = router({
       // making the two platforms' "Popular"/"Free Books" lists disagree right at
       // the tie boundary. `id: asc` is an arbitrary but stable choice, applied
       // identically on the mobile side (homepage.service.ts / rest/homepage.ts).
-      // Admin-set `priority` (higher shows first) is the dominant sort key for every
-      // browse ordering; each sort's original key stays as the tiebreaker within a
-      // priority tier, preserving the pre-existing ranking among equal-priority books.
+      // Admin-set `priority` (ascending — 1 before 2 before 3 — with unset/null sorting
+      // last) is the dominant sort key for every browse ordering; each sort's original
+      // key stays as the tiebreaker within a priority tier, preserving the pre-existing
+      // ranking among equal-priority books.
+      //
+      // "mostRead" is the one deliberate exception: it backs the "Top 10 Most Read"
+      // section, whose entire point is to reflect genuine reader behavior, so it's
+      // exempt from priority — a manually-boosted book with few actual reads should
+      // never outrank a book real readers are actually reading. Kept as its own `sort`
+      // value (not reusing "popular") because "popular" is shared by Audiobooks/Hard
+      // Copies/Free Books, which the priority override should still apply to.
       const orderBy: any =
         sort === "newest" ? [{ priority: { sort: "asc", nulls: "last" } }, { published_date: "desc" }]
         : sort === "rating" ? [{ priority: { sort: "asc", nulls: "last" } }, { rating: "desc" }]
         : sort === "popular" ? [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }]
+        : sort === "mostRead" ? [{ total_reads: "desc" }, { id: "asc" }]
         : [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }];
 
       const [books, total] = await Promise.all([
