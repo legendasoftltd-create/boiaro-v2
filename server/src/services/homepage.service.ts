@@ -16,6 +16,24 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         ? Math.min(Math.floor(parsedLimit), 50)
         : 10;
     const normalizedType = normalizeFormatType(type);
+    // Applied at the DB query level (not after an already-capped `take`) so a `type`
+    // filter narrows the candidate pool before `takeLimit` truncates it — filtering
+    // post-hoc on an already-small `take: takeLimit` result silently starves the
+    // section down to however few of those already-picked rows happen to match.
+    const formatEnumByType: Record<string, "ebook" | "audiobook" | "hardcopy"> = {
+        ebook: "ebook",
+        audiobook: "audiobook",
+        hard: "hardcopy",
+    };
+    const typeWhere = normalizedType && formatEnumByType[normalizedType]
+        ? { formats: { some: { format: formatEnumByType[normalizedType], is_available: true, submission_status: "approved" } } }
+        : {};
+    const filterBooksByType = (list: any[]) => {
+        if (!normalizedType) return list;
+        return list.filter((book) =>
+            book.formats?.some((f: any) => f.format.toLowerCase().includes(normalizedType))
+        );
+    };
 
     const rawBooks = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true },
@@ -44,7 +62,12 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const narrators = await prisma.narrator.findMany({});
 
     const featured = allBooks.filter(b => b.is_featured);
-    const slider = (featured.length > 0 ? featured : allBooks).slice(0, 5);
+    // Filter by `type` before slicing to 5 — slicing first and filtering after (the old
+    // behavior, still used a few lines below for the `filteredSlider` field) can silently
+    // shrink this down to 0-1 items when the 5 most-featured/recent books happen not to
+    // have the requested format.
+    const typeFilteredFeatured = filterBooksByType(featured);
+    const slider = (typeFilteredFeatured.length > 0 ? typeFilteredFeatured : filterBooksByType(allBooks)).slice(0, 5);
 
     const totalNarrators = narrators.length;
 
@@ -108,7 +131,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     // from allBooks (capped at the 200 most-recently-created) silently excluded older
     // high-read books, causing this section to disagree with the website's Top10MostRead.
     const topTenMostReadRaw = await prisma.book.findMany({
-        where: { submission_status: "approved", is_active: true },
+        where: { submission_status: "approved", is_active: true, ...typeWhere },
         orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }],
         take: takeLimit,
         include: {
@@ -190,12 +213,16 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     // Admin-set `priority` dominates the ranking (ascending — 1 before 2 before 3 — with
     // unset/null priority sorting last); the activity score is the tiebreaker among
     // equal-priority books (the scoring itself is unchanged). Mirrors trpc.books.trending.
+    // The `type` filter is applied here, before ranking/slicing to `takeLimit` — filtering
+    // the final takeLimit-sized list afterward would silently starve the section down to
+    // however few of those already-picked candidates happen to have the requested format.
     const trendingCandidateIds = Object.keys(trendingScores);
     const trendingPriorityRows = trendingCandidateIds.length > 0
-        ? await prisma.book.findMany({ where: { id: { in: trendingCandidateIds } }, select: { id: true, priority: true } })
+        ? await prisma.book.findMany({ where: { id: { in: trendingCandidateIds }, ...typeWhere }, select: { id: true, priority: true } })
         : [];
     const trendingPriorityById = new Map(trendingPriorityRows.map((r) => [r.id, r.priority]));
-    const trendingBookIds = trendingCandidateIds
+    const trendingBookIds = trendingPriorityRows
+        .map((r) => r.id)
         .sort((a, b) => {
             const pa = trendingPriorityById.get(a) ?? Infinity;
             const pb = trendingPriorityById.get(b) ?? Infinity;
@@ -228,12 +255,6 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
             book.formats?.some(f => f.format.toLowerCase().includes(formatName.toLowerCase()))
         );
     };
-    const filterBooksByType = (list) => {
-        if (!normalizedType) return list;
-        return list.filter(book =>
-            book.formats?.some(f => f.format.toLowerCase().includes(normalizedType))
-        );
-    };
 
     const appDownload = await prisma.siteSetting.findMany({
         where: {
@@ -255,7 +276,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
 
 
     const popularBooksRaw = await prisma.book.findMany({
-        where: { submission_status: "approved", is_active: true, total_reads: { not: null } },
+        where: { submission_status: "approved", is_active: true, total_reads: { not: null }, ...typeWhere },
         orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }],
         take: takeLimit,
         include: bookListInclude,
@@ -349,7 +370,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const filteredTopMostRead = filterBooksByType(topTenMostRead).slice(0, takeLimit);
     const filteredSlider = filterBooksByType(slider).slice(0, takeLimit);
     const freeBooksRaw = await prisma.book.findMany({
-        where: { submission_status: "approved", is_active: true, is_free: true },
+        where: { submission_status: "approved", is_active: true, is_free: true, ...typeWhere },
         orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }],
         take: takeLimit,
         include: bookListInclude,
