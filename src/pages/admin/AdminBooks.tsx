@@ -78,9 +78,9 @@ export default function AdminBooks() {
   const singleTrackInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     title: "", title_en: "", slug: "", description: "", description_bn: "",
-    author_id: "", category_id: "", publisher_id: "", cover_url: "",
+    author_id: "", category_id: "", publisher_id: "", translator_id: "", cover_url: "",
     is_featured: false, is_bestseller: false, is_new: false, is_free: false, subscriber_access: false,
-    language: "bn", tags: "", published_date: "",
+    language: "bn", tags: "", published_date: "", priority: 0,
   });
 
   const [premiumVoice, setPremiumVoice] = useState({
@@ -469,7 +469,7 @@ export default function AdminBooks() {
       title: "", title_en: "", slug: "", description: "", description_bn: "",
       author_id: "", category_id: "", publisher_id: "", translator_id: "", cover_url: "",
       is_featured: false, is_bestseller: false, is_new: false, is_free: false, subscriber_access: false,
-      language: "bn", tags: "", published_date: "",
+      language: "bn", tags: "", published_date: "", priority: 0,
     });
     setOpen(true);
   };
@@ -488,6 +488,7 @@ export default function AdminBooks() {
       subscriber_access: book.subscriber_access === true,
       language: book.language || "bn", tags: (book.tags || []).join(", "),
       published_date: book.published_date ? new Date(book.published_date).toISOString().split("T")[0] : "",
+      priority: book.priority || 0,
     });
     setOpen(true);
   };
@@ -501,6 +502,7 @@ export default function AdminBooks() {
       translator_id: form.translator_id || null,
       tags: form.tags ? form.tags.split(",").map((t: string) => t.trim()).filter(Boolean) : null,
       published_date: form.published_date || null,
+      priority: Number(form.priority) || 0,
     };
     if (!payload.slug) {
       payload.slug = payload.title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u0980-\u09FF-]/g, "");
@@ -891,6 +893,7 @@ export default function AdminBooks() {
               <TableHead>Category</TableHead>
               <TableHead>Publisher</TableHead>
               <TableHead>Formats</TableHead>
+              <TableHead>Priority</TableHead>
               <TableHead>Featured</TableHead>
               <TableHead>Subscriber</TableHead>
               <TableHead>Active</TableHead>
@@ -931,6 +934,7 @@ export default function AdminBooks() {
                     )}
                   </div>
                 </TableCell>
+                <TableCell className="text-sm">{b.priority || 0}</TableCell>
                 <TableCell>{b.is_featured ? "✓" : "—"}</TableCell>
                 <TableCell>
                   <Switch
@@ -1097,6 +1101,15 @@ export default function AdminBooks() {
                 value={form.published_date}
                 onChange={(e) => setForm({ ...form, published_date: e.target.value })}
               />
+            </div>
+            <div>
+              <Label>Priority</Label>
+              <Input
+                type="number"
+                value={form.priority}
+                onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
+              />
+              <p className="text-[11px] text-muted-foreground mt-1">Higher priority shows first in listings. Default 0.</p>
             </div>
             <div className="col-span-2 flex gap-4 flex-wrap items-center">
               {(["is_featured", "is_bestseller", "is_new", "is_free"] as const).map((key) => (

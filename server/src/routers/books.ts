@@ -65,7 +65,7 @@ export const booksRouter = router({
         sort === "newest" ? { published_date: "desc" }
         : sort === "rating" ? { rating: "desc" }
         : sort === "popular" ? [{ total_reads: "desc" }, { id: "asc" }]
-        : { created_at: "desc" };
+        : [{ priority: "desc" }, { created_at: "desc" }];
 
       const [books, total] = await Promise.all([
         prisma.book.findMany({
@@ -571,7 +571,7 @@ export const booksRouter = router({
           const books = await prisma.book.findMany({
             where: { category_id: sec.category_id, submission_status: "approved", is_active: true },
             take: sec.book_limit,
-            orderBy: { created_at: "desc" },
+            orderBy: [{ priority: "desc" }, { created_at: "desc" }],
             select: {
               id: true, title: true, cover_url: true, slug: true,
               formats: { select: { format: true, price: true } },

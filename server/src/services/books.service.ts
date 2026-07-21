@@ -61,7 +61,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
         ],
       }),
     },
-    orderBy: { created_at: "desc" },
+    orderBy: [{ priority: "desc" }, { created_at: "desc" }],
     include: {
       author: {
         select: {

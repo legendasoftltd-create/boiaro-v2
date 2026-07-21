@@ -19,7 +19,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
 
     const rawBooks = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true },
-        orderBy: { created_at: "desc" },
+        orderBy: [{ priority: "desc" }, { created_at: "desc" }],
         take: 200,
         include: {
             author: { select: { id: true, name: true, avatar_url: true } },

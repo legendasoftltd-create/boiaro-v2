@@ -293,6 +293,7 @@ export const adminRouter = router({
         tags: z.array(z.string()).nullable().optional(),
         submission_status: z.string().optional().nullable(),
         published_date: z.string().optional().nullable(),
+        priority: z.number().int().optional(),
       })
     )
     .mutation(({ ctx, input }) => {

@@ -69,7 +69,7 @@ categoriesRestRouter.get("/:id/books", async (req, res) => {
     const [books, total] = await Promise.all([
       prisma.book.findMany({
         where,
-        orderBy: { created_at: "desc" },
+        orderBy: [{ priority: "desc" }, { created_at: "desc" }],
         skip: offset,
         take: limit,
         select: {
