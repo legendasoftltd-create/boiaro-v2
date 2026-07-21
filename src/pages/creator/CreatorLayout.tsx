@@ -22,7 +22,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { label: "Dashboard", path: "/creator", icon: LayoutDashboard, roles: ["writer", "publisher", "narrator", "translator"] },
-  { label: "My Books", path: "/creator/books", icon: BookOpen, roles: ["writer", "publisher"] },
+  { label: "My Books", path: "/creator/books", icon: BookOpen, roles: ["writer", "publisher", "translator"] },
   { label: "Audiobooks", path: "/creator/audiobooks", icon: Mic2, roles: ["narrator"] },
   { label: "Inventory", path: "/creator/inventory", icon: Package, roles: ["publisher"] },
   { label: "Earnings", path: "/creator/earnings", icon: DollarSign, roles: ["writer", "publisher", "narrator", "translator"] },

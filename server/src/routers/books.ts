@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { bookByIdSchema, bookListSchema } from "../schemas/books.js";
 import { getBookById, listBooks, getBecauseYouReadRecommendations } from "../services/books.service.js";
 import { resolveBookUrls } from "../lib/mediaUrl.js";
+import { getCreatorBookIds } from "../lib/creatorBooks.js";
 
 export const booksRouter = router({
   list: publicProcedure
@@ -892,94 +893,20 @@ export const booksRouter = router({
   myCreatorBooks: protectedProcedure
     .input(z.object({ role: z.enum(["writer", "narrator", "publisher", "translator"]) }))
     .query(async ({ ctx, input }) => {
-      const formatByRole: Record<string, string> = {
-        writer: "ebook",
-        narrator: "audiobook",
-        publisher: "hardcopy",
-        translator: "ebook",
-      };
-      const relevantFormat = formatByRole[input.role];
       const bookInclude = {
         category: { select: { name: true, name_bn: true } },
         formats: { select: { id: true, format: true, price: true, duration: true, audio_quality: true, stock_count: true, binding: true, in_stock: true, chapters_count: true, file_url: true, file_size: true, submitted_by: true, submission_status: true, subscriber_access: true } },
       };
 
-      // Path 1: books submitted by this user with the relevant format
-      const ownBooks = await prisma.book.findMany({
-        where: {
-          submitted_by: ctx.userId,
-          formats: { some: { format: relevantFormat as any } },
-        },
+      const ids = await getCreatorBookIds(ctx.userId, input.role);
+      if (ids.size === 0) return [];
+
+      const books = await prisma.book.findMany({
+        where: { id: { in: [...ids] } },
         include: bookInclude,
         orderBy: { created_at: "desc" },
       });
-
-      const ownIds = new Set(ownBooks.map(b => b.id));
-      const extraIds = new Set<string>();
-
-      // Path 2: books via BookContributor (admin-assigned role links)
-      const contribs = await prisma.bookContributor.findMany({
-        where: { user_id: ctx.userId, role: input.role },
-        select: { book_id: true },
-      });
-      contribs.forEach(c => { if (!ownIds.has(c.book_id)) extraIds.add(c.book_id); });
-
-      // Path 3: books via Narrator/Author/Publisher entity linked to this user_id
-      if (input.role === "narrator") {
-        const narrator = await prisma.narrator.findFirst({ where: { user_id: ctx.userId } });
-        if (narrator) {
-          const fmts = await prisma.bookFormat.findMany({
-            where: {
-              format: "audiobook" as any,
-              OR: [{ narrator_id: narrator.id }, { narrator_ids: { has: narrator.id } }],
-            },
-            select: { book_id: true },
-          });
-          fmts.forEach(f => { if (!ownIds.has(f.book_id)) extraIds.add(f.book_id); });
-        }
-      } else if (input.role === "writer") {
-        const author = await prisma.author.findFirst({ where: { user_id: ctx.userId } });
-        if (author) {
-          const bks = await prisma.book.findMany({
-            where: { author_id: author.id },
-            select: { id: true },
-          });
-          bks.forEach(b => { if (!ownIds.has(b.id)) extraIds.add(b.id); });
-        }
-      } else if (input.role === "translator") {
-        const translator = await prisma.translator.findFirst({ where: { user_id: ctx.userId } });
-        if (translator) {
-          const bks = await prisma.book.findMany({
-            where: { translator_id: translator.id },
-            select: { id: true },
-          });
-          bks.forEach(b => { if (!ownIds.has(b.id)) extraIds.add(b.id); });
-        }
-      } else if (input.role === "publisher") {
-        const publisher = await prisma.publisher.findFirst({ where: { user_id: ctx.userId } });
-        if (publisher) {
-          const bksByPub = await prisma.book.findMany({
-            where: { publisher_id: publisher.id },
-            select: { id: true },
-          });
-          bksByPub.forEach(b => { if (!ownIds.has(b.id)) extraIds.add(b.id); });
-          const fmtsByPub = await prisma.bookFormat.findMany({
-            where: { publisher_id: publisher.id },
-            select: { book_id: true },
-          });
-          fmtsByPub.forEach(f => { if (!ownIds.has(f.book_id)) extraIds.add(f.book_id); });
-        }
-      }
-
-      let extraBooks: typeof ownBooks = [];
-      const extraIdsArr = [...extraIds];
-      if (extraIdsArr.length > 0) {
-        extraBooks = await prisma.book.findMany({
-          where: { id: { in: extraIdsArr } },
-          include: bookInclude,
-        });
-      }
-      return [...ownBooks, ...extraBooks].map(resolveBookUrls);
+      return books.map(resolveBookUrls);
     }),
 
   submitBook: protectedProcedure

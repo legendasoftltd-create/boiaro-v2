@@ -16,7 +16,7 @@ import {
 import { toast } from "sonner";
 
 interface EarningsDashboardProps {
-  role: "writer" | "publisher" | "narrator";
+  role: "writer" | "publisher" | "narrator" | "translator";
 }
 
 export function EarningsDashboard({ role }: EarningsDashboardProps) {
@@ -87,6 +87,10 @@ export function EarningsDashboard({ role }: EarningsDashboardProps) {
       { label: "Audiobook Revenue", value: `৳${audioEarnings.toFixed(0)}`, icon: Headphones, color: "text-blue-400" },
       { label: "Hardcopy Revenue", value: `৳${hardcopyEarnings.toFixed(0)}`, icon: Package, color: "text-purple-400" },
     ];
+    if (role === "translator") return [
+      { label: "eBook Sales", value: ebookSales, icon: BookOpen, color: "text-primary" },
+      { label: "eBook Revenue", value: `৳${ebookEarnings.toFixed(0)}`, icon: DollarSign, color: "text-emerald-400" },
+    ];
     return [
       { label: "Audiobook Sales", value: audioSales, icon: Headphones, color: "text-blue-400" },
       { label: "Audiobook Revenue", value: `৳${audioEarnings.toFixed(0)}`, icon: DollarSign, color: "text-emerald-400" },
@@ -125,7 +129,7 @@ export function EarningsDashboard({ role }: EarningsDashboardProps) {
       </div>
 
       {/* Format-wise Stats */}
-      <div className={`grid grid-cols-1 sm:grid-cols-${role === "narrator" ? "2" : "3"} gap-4`}>
+      <div className={`grid grid-cols-1 sm:grid-cols-${role === "narrator" || role === "translator" ? "2" : "3"} gap-4`}>
         {roleStats().map(s => (
           <Card key={s.label} className="border-border/30 bg-card/60">
             <CardContent className="p-4 flex items-center gap-3">

@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { resolveUrls, resolveFileUrl } from "../lib/mediaUrl.js";
 import { maybeRecordListen } from "../lib/listenTracking.js";
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
+import { getCreatorBookIds } from "../lib/creatorBooks.js";
 
 export const profilesRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
@@ -380,18 +381,10 @@ export const profilesRouter = router({
     }),
 
   creatorStats: protectedProcedure
-    .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
+    .input(z.object({ role: z.enum(["writer", "narrator", "publisher", "translator"]) }))
     .query(async ({ ctx, input }) => {
-      const [contributors, submittedBooks, earnings, withdrawals] = await Promise.all([
-        prisma.bookContributor.findMany({
-          where: { user_id: ctx.userId, role: input.role },
-          select: { book_id: true },
-        }),
-        // Also count books the creator submitted directly (e.g. via creator portal)
-        prisma.book.findMany({
-          where: { submitted_by: ctx.userId },
-          select: { id: true },
-        }),
+      const [bookIds, earnings, withdrawals] = await Promise.all([
+        getCreatorBookIds(ctx.userId, input.role),
         prisma.contributorEarning.findMany({
           where: { user_id: ctx.userId, role: input.role },
           select: {
@@ -413,12 +406,7 @@ export const profilesRouter = router({
         prisma.withdrawalRequest.findMany({ where: { user_id: ctx.userId } }),
       ]);
 
-      // Merge both sources for total book count
-      const allBookIds = new Set([
-        ...contributors.map((c) => c.book_id),
-        ...submittedBooks.map((b) => b.id),
-      ]);
-      const bookCount = allBookIds.size;
+      const bookCount = bookIds.size;
 
       // Exclude reversed earnings from all totals
       const activeEarnings = earnings.filter(e => e.status !== "reversed");
@@ -480,7 +468,7 @@ export const profilesRouter = router({
   }),
 
   myEarnings: protectedProcedure
-    .input(z.object({ role: z.enum(["writer", "narrator", "publisher"]) }))
+    .input(z.object({ role: z.enum(["writer", "narrator", "publisher", "translator"]) }))
     .query(async ({ ctx, input }) => {
       const earnings = await prisma.contributorEarning.findMany({
         where: { user_id: ctx.userId, role: input.role },
@@ -522,7 +510,7 @@ export const profilesRouter = router({
       amount: z.number().positive(),
       method: z.enum(["bkash", "nagad", "bank"]),
       accountInfo: z.string().min(1),
-      role: z.enum(["writer", "narrator", "publisher"]),
+      role: z.enum(["writer", "narrator", "publisher", "translator"]),
     }))
     .mutation(async ({ ctx, input }) => {
       // Verify available balance before creating request
