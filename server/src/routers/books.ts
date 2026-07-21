@@ -571,10 +571,16 @@ export const booksRouter = router({
   ),
 
   homepageCategorySections: publicProcedure
-    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(50).default(50) }).optional())
+    .input(z.object({
+      page: z.number().min(0).default(0),
+      pageSize: z.number().min(1).max(50).default(50),
+      format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+      booksLimit: z.number().min(1).max(50).optional(),
+    }).optional())
     .query(async ({ input }) => {
       const page = input?.page ?? 0;
       const pageSize = input?.pageSize ?? 50;
+      const format = input?.format;
       const [sections, total] = await Promise.all([
         prisma.homepageCategorySection.findMany({
           orderBy: { sort_order: "asc" },
@@ -588,8 +594,16 @@ export const booksRouter = router({
       const data = await Promise.all(
         sections.map(async (sec) => {
           const books = await prisma.book.findMany({
-            where: { category_id: sec.category_id, submission_status: "approved", is_active: true },
-            take: sec.book_limit,
+            where: {
+              category_id: sec.category_id,
+              submission_status: "approved",
+              is_active: true,
+              // Applied before `take` (not filtered after) so a format filter narrows the
+              // candidate pool instead of shrinking an already-capped result — see the
+              // same caution documented in homepage.service.ts.
+              ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" } } } : {}),
+            },
+            take: input?.booksLimit ?? sec.book_limit,
             orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
             select: {
               id: true, title: true, cover_url: true, slug: true,

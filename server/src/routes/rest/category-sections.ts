@@ -2,7 +2,7 @@
  * REST Category Sections API
  * Base prefix: /api/v1/category-sections
  *
- *  GET  /          — list all active homepage category sections with preview books
+ *  GET  /          — paginated list of homepage category sections with preview books
  *  GET  /:id/books — paginated full book list for a specific category section
  */
 
@@ -13,31 +13,60 @@ import { resolveFileUrl, resolveBookUrls } from "../../lib/mediaUrl.js";
 
 export const categorySectionsRestRouter = Router();
 
+const VALID_FORMATS = ["ebook", "audiobook", "hardcopy"] as const;
+type BookFormat = typeof VALID_FORMATS[number];
+
+function parseFormat(raw: unknown): BookFormat | undefined {
+  return typeof raw === "string" && VALID_FORMATS.includes(raw as BookFormat) ? (raw as BookFormat) : undefined;
+}
+
 // GET /api/v1/category-sections
-categorySectionsRestRouter.get("/", async (_req, res) => {
+categorySectionsRestRouter.get("/", async (req, res) => {
   try {
-    const sections = await prisma.homepageCategorySection.findMany({
-      orderBy: { sort_order: "asc" },
-      include: {
-        category: {
-          select: {
-            id: true,
-            name: true,
-            name_bn: true,
-            name_en: true,
-            slug: true,
-            icon: true,
-            color: true,
+    const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 50);
+    const offset = Math.max(Number(req.query.offset ?? 0), 0);
+    const format = parseFormat(req.query.format);
+    // Optional override for how many preview books each section returns, independent of
+    // the per-section `book_limit` an admin configured — capped the same way `limit` is.
+    const rawBooksLimit = Number(req.query.books_limit);
+    const booksLimitOverride = Number.isFinite(rawBooksLimit) && rawBooksLimit > 0
+      ? Math.min(Math.floor(rawBooksLimit), 50)
+      : undefined;
+
+    const [sections, total] = await Promise.all([
+      prisma.homepageCategorySection.findMany({
+        orderBy: { sort_order: "asc" },
+        skip: offset,
+        take: limit,
+        include: {
+          category: {
+            select: {
+              id: true,
+              name: true,
+              name_bn: true,
+              name_en: true,
+              slug: true,
+              icon: true,
+              color: true,
+            },
           },
         },
-      },
-    });
+      }),
+      prisma.homepageCategorySection.count(),
+    ]);
 
     const results = await Promise.all(
       sections.map(async (sec) => {
         const books = await prisma.book.findMany({
-          where: { category_id: sec.category_id, submission_status: "approved", is_active: true },
-          take: sec.book_limit,
+          where: {
+            category_id: sec.category_id,
+            submission_status: "approved",
+            is_active: true,
+            // Applied before `take` (not filtered after) so a format filter narrows the
+            // candidate pool instead of shrinking an already-capped result.
+            ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" } } } : {}),
+          },
+          take: booksLimitOverride ?? sec.book_limit,
           orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
           select: {
             id: true,
@@ -96,7 +125,7 @@ categorySectionsRestRouter.get("/", async (_req, res) => {
       })
     );
 
-    res.json({ success: true, sections: results });
+    res.json({ success: true, sections: results, total, limit, offset, has_more: offset + limit < total });
   } catch (error) {
     sendHttpError(res, error);
   }
@@ -108,6 +137,7 @@ categorySectionsRestRouter.get("/:id/books", async (req, res) => {
     const id = String(req.params.id);
     const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 50);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
+    const format = parseFormat(req.query.format);
 
     const section = await prisma.homepageCategorySection.findUnique({
       where: { id },
@@ -118,7 +148,12 @@ categorySectionsRestRouter.get("/:id/books", async (req, res) => {
       return;
     }
 
-    const where = { category_id: section.category_id, submission_status: "approved", is_active: true };
+    const where = {
+      category_id: section.category_id,
+      submission_status: "approved",
+      is_active: true,
+      ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" } } } : {}),
+    };
     const [books, total] = await Promise.all([
       prisma.book.findMany({
         where,
