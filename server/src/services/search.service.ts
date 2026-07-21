@@ -16,7 +16,7 @@ export const searchBooks = async (q: string, limit = 20, offset = 0) => {
       where,
       take: limit,
       skip: offset,
-      orderBy: { total_reads: "desc" },
+      orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }],
       select: {
         id: true,
         title: true,

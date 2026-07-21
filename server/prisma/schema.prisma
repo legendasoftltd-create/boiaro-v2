@@ -509,7 +509,7 @@ model Book {
   is_new            Boolean? @default(false)
   is_premium        Boolean? @default(false)
   language          String?
-  priority          Int      @default(0)
+  priority          Int?
   published_date    DateTime?
   publisher_id      String?
   rating            Float?

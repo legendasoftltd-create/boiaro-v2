@@ -934,7 +934,7 @@ export default function AdminBooks() {
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-sm">{b.priority || 0}</TableCell>
+                <TableCell className="text-sm">{b.priority ?? "—"}</TableCell>
                 <TableCell>{b.is_featured ? "✓" : "—"}</TableCell>
                 <TableCell>
                   <Switch
@@ -1109,7 +1109,7 @@ export default function AdminBooks() {
                 value={form.priority}
                 onChange={(e) => setForm({ ...form, priority: Number(e.target.value) })}
               />
-              <p className="text-[11px] text-muted-foreground mt-1">Higher priority shows first in listings. Default 0.</p>
+              <p className="text-[11px] text-muted-foreground mt-1">Lower number shows first (1, 2, 3...). Leave 0/blank for no explicit priority — those books keep their normal order, after any prioritized book.</p>
             </div>
             <div className="col-span-2 flex gap-4 flex-wrap items-center">
               {(["is_featured", "is_bestseller", "is_new", "is_free"] as const).map((key) => (

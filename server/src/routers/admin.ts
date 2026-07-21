@@ -293,7 +293,7 @@ export const adminRouter = router({
         tags: z.array(z.string()).nullable().optional(),
         submission_status: z.string().optional().nullable(),
         published_date: z.string().optional().nullable(),
-        priority: z.number().int().optional(),
+        priority: z.number().int().optional().nullable(),
       })
     )
     .mutation(({ ctx, input }) => {
@@ -301,6 +301,9 @@ export const adminRouter = router({
       const normalizedTags =
         data.tags === undefined ? undefined : data.tags === null ? [] : data.tags;
       const parsedPublishedDate = published_date ? new Date(published_date) : null;
+      // 0 from the admin form means "no explicit priority set" — store as null so it
+      // sorts last (ascending, nulls-last) instead of first (which 0 would do).
+      if (data.priority === 0) data.priority = null;
 
       const relationData = {
         author: author_id ? { connect: { id: author_id } } : { disconnect: true },

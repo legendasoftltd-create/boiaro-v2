@@ -19,7 +19,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
 
     const rawBooks = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true },
-        orderBy: [{ priority: "desc" }, { created_at: "desc" }],
+        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
         take: 200,
         include: {
             author: { select: { id: true, name: true, avatar_url: true } },
@@ -109,7 +109,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     // high-read books, causing this section to disagree with the website's Top10MostRead.
     const topTenMostReadRaw = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true },
-        orderBy: { total_reads: "desc" },
+        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }],
         take: takeLimit,
         include: {
             author: { select: { id: true, name: true, avatar_url: true } },
@@ -149,19 +149,19 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const [popularAudiobooksRaw, popularHardCopiesRaw, popularEbooksRaw] = await Promise.all([
         prisma.book.findMany({
             where: { submission_status: "approved", is_active: true, formats: { some: { format: "audiobook", is_available: true, submission_status: "approved" } } },
-            orderBy: [{ total_reads: "desc" }, { id: "asc" }],
+            orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }],
             take: takeLimit,
             include: bookListInclude,
         }),
         prisma.book.findMany({
             where: { submission_status: "approved", is_active: true, formats: { some: { format: "hardcopy", is_available: true, submission_status: "approved" } } },
-            orderBy: [{ total_reads: "desc" }, { id: "asc" }],
+            orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }],
             take: takeLimit,
             include: bookListInclude,
         }),
         prisma.book.findMany({
             where: { submission_status: "approved", is_active: true, formats: { some: { format: "ebook", is_available: true, submission_status: "approved" } } },
-            orderBy: [{ total_reads: "desc" }, { id: "asc" }],
+            orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }],
             take: takeLimit,
             include: bookListInclude,
         }),
@@ -187,10 +187,22 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     trendingActivity.forEach((row) => {
         if (row.book_id) trendingScores[row.book_id] = (trendingScores[row.book_id] || 0) + 1;
     });
-    const trendingBookIds = Object.entries(trendingScores)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, takeLimit)
-        .map(([id]) => id);
+    // Admin-set `priority` dominates the ranking (ascending — 1 before 2 before 3 — with
+    // unset/null priority sorting last); the activity score is the tiebreaker among
+    // equal-priority books (the scoring itself is unchanged). Mirrors trpc.books.trending.
+    const trendingCandidateIds = Object.keys(trendingScores);
+    const trendingPriorityRows = trendingCandidateIds.length > 0
+        ? await prisma.book.findMany({ where: { id: { in: trendingCandidateIds } }, select: { id: true, priority: true } })
+        : [];
+    const trendingPriorityById = new Map(trendingPriorityRows.map((r) => [r.id, r.priority]));
+    const trendingBookIds = trendingCandidateIds
+        .sort((a, b) => {
+            const pa = trendingPriorityById.get(a) ?? Infinity;
+            const pb = trendingPriorityById.get(b) ?? Infinity;
+            if (pa !== pb) return pa - pb;
+            return trendingScores[b] - trendingScores[a];
+        })
+        .slice(0, takeLimit);
 
     const trendingBooksMap = new Map(allBooks.map((b) => [b.id, b]));
     const missingTrendingIds = trendingBookIds.filter((id) => !trendingBooksMap.has(id));
@@ -244,7 +256,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
 
     const popularBooksRaw = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true, total_reads: { not: null } },
-        orderBy: [{ total_reads: "desc" }, { id: "asc" }],
+        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }],
         take: takeLimit,
         include: bookListInclude,
     });
@@ -338,7 +350,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const filteredSlider = filterBooksByType(slider).slice(0, takeLimit);
     const freeBooksRaw = await prisma.book.findMany({
         where: { submission_status: "approved", is_active: true, is_free: true },
-        orderBy: [{ total_reads: "desc" }, { id: "asc" }],
+        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }],
         take: takeLimit,
         include: bookListInclude,
     });

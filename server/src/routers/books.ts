@@ -61,11 +61,14 @@ export const booksRouter = router({
       // making the two platforms' "Popular"/"Free Books" lists disagree right at
       // the tie boundary. `id: asc` is an arbitrary but stable choice, applied
       // identically on the mobile side (homepage.service.ts / rest/homepage.ts).
+      // Admin-set `priority` (higher shows first) is the dominant sort key for every
+      // browse ordering; each sort's original key stays as the tiebreaker within a
+      // priority tier, preserving the pre-existing ranking among equal-priority books.
       const orderBy: any =
-        sort === "newest" ? { published_date: "desc" }
-        : sort === "rating" ? { rating: "desc" }
-        : sort === "popular" ? [{ total_reads: "desc" }, { id: "asc" }]
-        : [{ priority: "desc" }, { created_at: "desc" }];
+        sort === "newest" ? [{ priority: { sort: "asc", nulls: "last" } }, { published_date: "desc" }]
+        : sort === "rating" ? [{ priority: { sort: "asc", nulls: "last" } }, { rating: "desc" }]
+        : sort === "popular" ? [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }]
+        : [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }];
 
       const [books, total] = await Promise.all([
         prisma.book.findMany({
@@ -130,10 +133,26 @@ export const booksRouter = router({
         if (row.book_id) scores[row.book_id] = (scores[row.book_id] || 0) + 1;
       });
 
-      const trendingIds = Object.entries(scores)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, input.limit)
-        .map(([id]) => id);
+      const candidateIds = Object.keys(scores);
+      if (candidateIds.length === 0) return [];
+
+      // Admin-set `priority` dominates the ranking (ascending — 1 before 2 before 3 —
+      // with unset/null priority sorting last); the computed activity score is the
+      // tiebreaker among equal-priority books (the scoring itself is unchanged).
+      const priorityRows = await prisma.book.findMany({
+        where: { id: { in: candidateIds } },
+        select: { id: true, priority: true },
+      });
+      const priorityById = new Map(priorityRows.map((r) => [r.id, r.priority]));
+
+      const trendingIds = candidateIds
+        .sort((a, b) => {
+          const pa = priorityById.get(a) ?? Infinity;
+          const pb = priorityById.get(b) ?? Infinity;
+          if (pa !== pb) return pa - pb;
+          return scores[b] - scores[a];
+        })
+        .slice(0, input.limit);
 
       if (trendingIds.length === 0) return [];
 
@@ -432,7 +451,7 @@ export const booksRouter = router({
         prisma.book.findMany({
           where: bookWhere,
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
-          orderBy: { published_date: "desc" },
+          orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { published_date: "desc" }],
           skip: page * pageSize,
           take: pageSize,
         }),
@@ -452,7 +471,7 @@ export const booksRouter = router({
         prisma.book.findMany({
           where: bookWhere,
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
-          orderBy: { published_date: "desc" },
+          orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { published_date: "desc" }],
           skip: page * pageSize,
           take: pageSize,
         }),
@@ -472,7 +491,7 @@ export const booksRouter = router({
         prisma.book.findMany({
           where: bookWhere,
           select: { id: true, title: true, title_en: true, slug: true, cover_url: true, rating: true, is_free: true },
-          orderBy: { published_date: "desc" },
+          orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { published_date: "desc" }],
           skip: page * pageSize,
           take: pageSize,
         }),
@@ -571,7 +590,7 @@ export const booksRouter = router({
           const books = await prisma.book.findMany({
             where: { category_id: sec.category_id, submission_status: "approved", is_active: true },
             take: sec.book_limit,
-            orderBy: [{ priority: "desc" }, { created_at: "desc" }],
+            orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
             select: {
               id: true, title: true, cover_url: true, slug: true,
               formats: { select: { format: true, price: true } },
@@ -682,7 +701,7 @@ export const booksRouter = router({
           ],
         },
         take: 10,
-        orderBy: { total_reads: "desc" },
+        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }],
         include: {
           author: { select: { id: true, name: true } },
           translator: { select: { id: true, name: true } },
@@ -881,6 +900,7 @@ export const booksRouter = router({
           author: { select: { name: true } },
           formats: { select: { format: true } },
         },
+        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
         take: 20,
       });
       return books.map(b => ({
@@ -1335,6 +1355,7 @@ export const booksRouter = router({
           ],
         },
         select: { id: true, title: true, title_en: true, cover_url: true, submission_status: true },
+        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
         take: 5,
       });
     }),
