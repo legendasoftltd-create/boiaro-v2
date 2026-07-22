@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react"
 import { BookCard } from "./BookCard"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
+import { useContentFilter } from "@/contexts/ContentFilterContext"
+import { toServerFormat } from "@/hooks/useBookFilter"
 
 interface CategorySectionProps {
   section: {
@@ -112,7 +114,8 @@ function CategorySectionRow({ section }: CategorySectionProps) {
 }
 
 export function CategorySections() {
-  const { data: result } = trpc.books.homepageCategorySections.useQuery()
+  const { globalFilter } = useContentFilter()
+  const { data: result } = trpc.books.homepageCategorySections.useQuery({ format: toServerFormat(globalFilter) })
   const sections = result?.data ?? []
 
   if (sections.length === 0) return null

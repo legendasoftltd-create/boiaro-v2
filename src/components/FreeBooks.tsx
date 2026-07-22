@@ -5,13 +5,13 @@ import { ChevronLeft, ChevronRight, Gift } from "lucide-react"
 import { BookCard } from "./BookCard"
 import { useBooks } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
-import { filterBooks } from "@/hooks/useBookFilter"
+import { toServerFormat } from "@/hooks/useBookFilter"
 
 export function FreeBooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { freeBooks } = useBooks()
   const { globalFilter } = useContentFilter()
-  const filtered = filterBooks(freeBooks, globalFilter)
+  const { freeBooks } = useBooks(toServerFormat(globalFilter))
+  const filtered = freeBooks
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
       scrollRef.current.scrollBy({ left: direction === "left" ? -320 : 320, behavior: "smooth" })

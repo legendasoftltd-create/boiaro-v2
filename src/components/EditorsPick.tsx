@@ -4,22 +4,18 @@ import { Button } from "@/components/ui/button"
 import { Play, BookOpen, Star, Clock, User, Package, Headphones } from "lucide-react"
 import { useBooks } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
+import { toServerFormat } from "@/hooks/useBookFilter"
 
 export function EditorsPick() {
   const navigate = useNavigate()
-  const { editorsPick: featuredBook } = useBooks()
   const { globalFilter } = useContentFilter()
+  const { editorsPick: featuredBook } = useBooks(toServerFormat(globalFilter))
 
   if (!featuredBook) return null
 
   const hasEbook = featuredBook.formats.ebook?.available
   const hasAudiobook = featuredBook.formats.audiobook?.available
   const hasHardcopy = featuredBook.formats.hardcopy?.available
-
-  // Hide if the book doesn't match the active filter
-  if (globalFilter === "ebook" && !hasEbook) return null
-  if (globalFilter === "audiobook" && !hasAudiobook) return null
-  if (globalFilter === "hardcopy" && !hasHardcopy) return null
 
   return (
     <section className="section-container">

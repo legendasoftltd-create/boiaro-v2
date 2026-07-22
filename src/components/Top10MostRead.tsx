@@ -3,7 +3,7 @@ import { Trophy, Star, BookOpen, Eye } from "lucide-react"
 import { trpc } from "@/lib/trpc"
 import { trpcBookToMasterBook } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
-import { filterBooks } from "@/hooks/useBookFilter"
+import { toServerFormat } from "@/hooks/useBookFilter"
 
 export function Top10MostRead() {
   const navigate = useNavigate()
@@ -15,12 +15,12 @@ export function Top10MostRead() {
   // sort: "mostRead" (not "popular") deliberately skips the admin priority
   // override — this section's whole point is genuine reader behavior.
   const { data } = trpc.books.browseBooks.useQuery(
-    { pageSize: 30, sort: "mostRead" },
+    { pageSize: 30, sort: "mostRead", format: toServerFormat(globalFilter) },
     { staleTime: 5 * 60 * 1000 }
   )
   const books = (data?.books || []).map(trpcBookToMasterBook)
 
-  const top10 = filterBooks(books, globalFilter).slice(0, 10)
+  const top10 = books.slice(0, 10)
 
   if (top10.length < 3) return null
 

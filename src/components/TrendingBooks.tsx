@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Flame } from "lucide-react"
 import { BookCard } from "./BookCard"
 import { ContentToggle } from "./ContentToggle"
 import { useBooks } from "@/hooks/useBooks"
-import { useBookFilter, filterBooks } from "@/hooks/useBookFilter"
+import { useBookFilter, toServerFormat } from "@/hooks/useBookFilter"
 
 type ContentType = "all" | "ebook" | "audiobook" | "hardcopy"
 
@@ -13,7 +13,7 @@ export function TrendingBooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [localContentType, setLocalContentType] = useState<ContentType>("all")
   const activeFilter = useBookFilter(localContentType)
-  const { trending } = useBooks()
+  const { trending } = useBooks(toServerFormat(activeFilter))
 
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
@@ -21,7 +21,7 @@ export function TrendingBooks() {
     }
   }
 
-  const filteredBooks = filterBooks(trending, activeFilter)
+  const filteredBooks = trending
 
   if (filteredBooks.length === 0) return null
 

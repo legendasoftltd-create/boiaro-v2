@@ -142,9 +142,16 @@ export function trpcBookToMasterBook(book: any): MasterBook {
   };
 }
 
-export function useBooks() {
+/**
+ * `format` narrows every list below server-side (not client-filtered afterward, which
+ * would silently shrink an already-capped batch down to whatever few items happen to
+ * match — the same undercounting bug fixed on the REST homepage endpoints). Pass the
+ * caller's own resolved filter (local `ContentToggle` state on desktop sections that
+ * have one, `globalFilter` otherwise) — omit it (or "all") for the unfiltered default.
+ */
+export function useBooks(format?: "ebook" | "audiobook" | "hardcopy") {
   const { data, isLoading: loading } = trpc.books.list.useQuery(
-    { limit: 100 },
+    { limit: 100, format },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 
@@ -152,17 +159,19 @@ export function useBooks() {
   // genuinely trending older book, or one marked "new" outside the most-recently-created
   // 100, still shows up here — mirrors the REST homepage API's trendingNow/NewReleases.
   const { data: trendingData } = trpc.books.trending.useQuery(
-    { periodDays: 7 },
+    { periodDays: 7, format },
     { staleTime: 5 * 60 * 1000 }
   );
   const { data: newReleasesData } = trpc.books.list.useQuery(
-    { isNew: true, limit: 20 },
+    { isNew: true, limit: 20, format },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 
   // Same reasoning as trending/newReleases above: queried directly (popularity-sorted,
   // full catalog) rather than filtered out of the capped `list`, so these match the
   // equivalent mobile REST sections instead of silently dropping older popular/free books.
+  // audiobooks/hardcopies are already locked to their one format below — `format` doesn't
+  // apply to them (a mismatched filter just means the whole section hides itself).
   const { data: audiobooksData } = trpc.books.browseBooks.useQuery(
     { format: "audiobook", sort: "popular", pageSize: 10 },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
@@ -172,7 +181,7 @@ export function useBooks() {
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
   const { data: freeBooksData } = trpc.books.browseBooks.useQuery(
-    { filter: "free", sort: "popular", pageSize: 10 },
+    { filter: "free", sort: "popular", pageSize: 10, format },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 

@@ -9,6 +9,7 @@ export const bookListSchema = z.object({
   isBestseller: z.coerce.boolean().optional(),
   isFree: z.coerce.boolean().optional(),
   isNew: z.coerce.boolean().optional(),
+  format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
   language: z.string().optional(),
   author: z.string().optional(),
   publisher: z.string().optional(),

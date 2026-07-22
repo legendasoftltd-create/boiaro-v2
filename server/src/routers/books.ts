@@ -125,7 +125,11 @@ export const booksRouter = router({
   // capped `list` query, since a genuinely trending older book can otherwise
   // fall outside that recency window and silently vanish from the section.
   trending: publicProcedure
-    .input(z.object({ periodDays: z.number().default(7), limit: z.number().min(1).max(50).default(10) }))
+    .input(z.object({
+      periodDays: z.number().default(7),
+      limit: z.number().min(1).max(50).default(10),
+      format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+    }))
     .query(async ({ input }) => {
       const since = new Date(Date.now() - input.periodDays * 24 * 60 * 60 * 1000);
       const activityData = await prisma.userActivityLog.findMany({
@@ -148,13 +152,24 @@ export const booksRouter = router({
       // Admin-set `priority` dominates the ranking (ascending — 1 before 2 before 3 —
       // with unset/null priority sorting last); the computed activity score is the
       // tiebreaker among equal-priority books (the scoring itself is unchanged).
+      // A `format` filter is applied here too — before ranking/slicing to `limit` —
+      // rather than filtering the final list afterward, which would silently starve
+      // the section down to however few of the already-picked candidates match.
       const priorityRows = await prisma.book.findMany({
-        where: { id: { in: candidateIds } },
+        where: {
+          id: { in: candidateIds },
+          ...(input.format ? { formats: { some: { format: input.format, is_available: true, submission_status: "approved" } } } : {}),
+        },
         select: { id: true, priority: true },
       });
       const priorityById = new Map(priorityRows.map((r) => [r.id, r.priority]));
 
-      const trendingIds = candidateIds
+      // Ranked/sliced from `priorityRows` (already format-filtered), not the original
+      // unfiltered `candidateIds` — slicing the unfiltered list first would let
+      // non-matching-format candidates occupy slots ahead of matching ones by chance,
+      // then get silently dropped at the final fetch below, shrinking the page.
+      const trendingIds = priorityRows
+        .map((r) => r.id)
         .sort((a, b) => {
           const pa = priorityById.get(a) ?? Infinity;
           const pb = priorityById.get(b) ?? Infinity;
@@ -694,11 +709,17 @@ export const booksRouter = router({
     }),
 
   recommendations: publicProcedure
-    .input(z.object({ bookId: z.string().optional() }).optional().default({}))
+    .input(z.object({
+      bookId: z.string().optional(),
+      format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+    }).optional().default({}))
     .query(async ({ input }) => {
+      const formatWhere = input.format
+        ? { formats: { some: { format: input.format, is_available: true, submission_status: "approved" as const } } }
+        : {};
       if (!input.bookId) {
         return prisma.book.findMany({
-          where: { submission_status: "approved", is_active: true },
+          where: { submission_status: "approved", is_active: true, ...formatWhere },
           take: 10,
           orderBy: { total_reads: "desc" },
           include: {
@@ -722,6 +743,7 @@ export const booksRouter = router({
             { category_id: book.category_id ?? undefined },
             { author_id: book.author_id ?? undefined },
           ],
+          ...formatWhere,
         },
         take: 10,
         orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }],
@@ -737,7 +759,9 @@ export const booksRouter = router({
   // popular-books list `recommendations` (above) falls back to without a bookId.
   // protectedProcedure so a logged-out user can never trigger or see it; the frontend
   // additionally gates the query itself behind `enabled: !!user` for belt-and-suspenders.
-  becauseYouRead: protectedProcedure.query(({ ctx }) => getBecauseYouReadRecommendations(ctx.userId)),
+  becauseYouRead: protectedProcedure
+    .input(z.object({ format: z.enum(["ebook", "audiobook", "hardcopy"]).optional() }).optional())
+    .query(({ ctx, input }) => getBecauseYouReadRecommendations(ctx.userId, 10, input?.format)),
 
   comments: publicProcedure
     .input(z.object({ bookId: z.string(), userId: z.string().optional() }))

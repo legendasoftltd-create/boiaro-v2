@@ -10,6 +10,14 @@ export const homepageRestRouter = Router();
 
 const ALLOWED_HOMEPAGE_TYPES = new Set(["ebook", "audiobook", "hardcopy", "hardcover"]);
 
+function normalizeHomepageType(rawType: string | undefined): "ebook" | "audiobook" | "hardcopy" | undefined {
+  if (!rawType) return undefined;
+  const value = rawType.toLowerCase();
+  if (value === "hardcopy" || value === "hardcover") return "hardcopy";
+  if (value === "ebook" || value === "audiobook") return value;
+  return undefined;
+}
+
 // Sections that support independent DB-level pagination
 const PAGINATED_SECTIONS = new Set([
   "trendingNow", "newReleases", "popularBooks",
@@ -31,7 +39,11 @@ const bookSelect = {
   formats: { where: { is_available: true }, select: { format: true, price: true, in_stock: true } },
 } as const;
 
-async function getPaginatedSection(section: string, limit: number, offset: number, userId?: string) {
+async function getPaginatedSection(section: string, limit: number, offset: number, userId?: string, format?: "ebook" | "audiobook" | "hardcopy") {
+  const formatWhere = format
+    ? { formats: { some: { format, is_available: true, submission_status: "approved" as const } } }
+    : {};
+
   if (section === "trendingNow") {
     const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const activity = await prisma.userActivityLog.findMany({
@@ -42,13 +54,18 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
     activity.forEach((r) => { if (r.book_id) scores[r.book_id] = (scores[r.book_id] || 0) + 1; });
     // Admin-set `priority` dominates the ranking (ascending — 1 before 2 before 3 —
     // with unset/null priority sorting last); the activity score is the tiebreaker
-    // among equal-priority books (the scoring itself is unchanged).
+    // among equal-priority books (the scoring itself is unchanged). The `format` filter
+    // is applied here too — before ranking/slicing — not on the final page afterward.
     const candidateIds = Object.keys(scores);
     const priorityRows = candidateIds.length > 0
-      ? await prisma.book.findMany({ where: { id: { in: candidateIds } }, select: { id: true, priority: true } })
+      ? await prisma.book.findMany({ where: { id: { in: candidateIds }, ...formatWhere }, select: { id: true, priority: true } })
       : [];
     const priorityById = new Map(priorityRows.map((r) => [r.id, r.priority]));
-    const allTrendingIds = candidateIds
+    // Ranked from `priorityRows` (already format-filtered), not the original unfiltered
+    // `candidateIds` — otherwise non-matching-format candidates would occupy pagination
+    // slots ahead of matching ones, then get silently dropped at the fetch below.
+    const allTrendingIds = priorityRows
+      .map((r) => r.id)
       .sort((a, b) => {
         const pa = priorityById.get(a) ?? Infinity;
         const pb = priorityById.get(b) ?? Infinity;
@@ -67,7 +84,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "newReleases") {
-    const where = { submission_status: "approved", is_new: true, is_active: true } as const;
+    const where = { submission_status: "approved", is_new: true, is_active: true, ...formatWhere };
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }], skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -76,7 +93,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "popularBooks") {
-    const where = { submission_status: "approved", is_active: true, total_reads: { not: null } } as const;
+    const where = { submission_status: "approved", is_active: true, total_reads: { not: null }, ...formatWhere };
     // `id: asc` tiebreaker: total_reads ties are common, and without a secondary
     // sort key skip/take pagination isn't stable across pages (a tied book can be
     // duplicated or skipped), and the order can disagree with the web tRPC
@@ -89,6 +106,10 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "popularAudiobooks") {
+    // Already a single-format section — a `format` filter for a different format has
+    // nothing to show here, matching how the non-paginated snapshot zeroes these out
+    // (homepage.service.ts's popularAudiobooks/popularHardCopies/popularEbooks).
+    if (format && format !== "audiobook") return { data: [], total: 0, limit, offset, has_more: false };
     const where = { submission_status: "approved", is_active: true, formats: { some: { format: "audiobook", is_available: true, submission_status: "approved" } } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }], skip: offset, take: limit, select: bookSelect }),
@@ -98,6 +119,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "popularHardCopies") {
+    if (format && format !== "hardcopy") return { data: [], total: 0, limit, offset, has_more: false };
     const where = { submission_status: "approved", is_active: true, formats: { some: { format: "hardcopy" as const, is_available: true, submission_status: "approved" } } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }], skip: offset, take: limit, select: bookSelect }),
@@ -107,6 +129,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "popularEbooks") {
+    if (format && format !== "ebook") return { data: [], total: 0, limit, offset, has_more: false };
     const where = { submission_status: "approved", is_active: true, formats: { some: { format: "ebook", is_available: true, submission_status: "approved" } } } as const;
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }], skip: offset, take: limit, select: bookSelect }),
@@ -116,7 +139,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "editorsPick") {
-    const where = { submission_status: "approved", is_active: true, is_featured: true } as const;
+    const where = { submission_status: "approved", is_active: true, is_featured: true, ...formatWhere };
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }], skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -125,7 +148,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "freeBooks") {
-    const where = { submission_status: "approved", is_active: true, is_free: true } as const;
+    const where = { submission_status: "approved", is_active: true, is_free: true, ...formatWhere };
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }, { id: "asc" }], skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -137,7 +160,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
     // Deliberately exempt from admin `priority` — this section's whole point is genuine
     // reader behavior, so a manually-boosted low-read book must never outrank a book
     // real readers are actually reading (mirrors trpc.books.browseBooks sort=mostRead).
-    const where = { submission_status: "approved", is_active: true } as const;
+    const where = { submission_status: "approved", is_active: true, ...formatWhere };
     const [books, total] = await Promise.all([
       prisma.book.findMany({ where, orderBy: [{ total_reads: "desc" }, { id: "asc" }], skip: offset, take: limit, select: bookSelect }),
       prisma.book.count({ where }),
@@ -153,7 +176,7 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
     if (!userId) {
       return { data: [], total: 0, limit, offset, has_more: false };
     }
-    const result = await getBecauseYouReadRecommendations(userId, Math.min(offset + limit, 30));
+    const result = await getBecauseYouReadRecommendations(userId, Math.min(offset + limit, 30), format);
     const total = result.books.length;
     const page = result.books.slice(offset, offset + limit);
     return { data: page, total, limit, offset, has_more: offset + limit < total };
@@ -188,7 +211,8 @@ homepageRestRouter.get("/:section", async (req: AuthenticatedRequest, res) => {
     // For book-list sections: direct paginated DB query
     if (PAGINATED_SECTIONS.has(section)) {
       const { limit, offset } = parsePaginationQuery(req.query);
-      const result = await getPaginatedSection(section, limit, offset, req.auth?.userId);
+      const format = normalizeHomepageType(typeof rawType === "string" ? rawType : undefined);
+      const result = await getPaginatedSection(section, limit, offset, req.auth?.userId, format);
       if (!result) return res.status(404).json({ error: "Section not found" });
       return res.json({ section, ...result });
     }

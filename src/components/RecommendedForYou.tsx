@@ -6,28 +6,26 @@ import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import { useBooks, trpcBookToMasterBook } from "@/hooks/useBooks";
 import { useContentFilter } from "@/contexts/ContentFilterContext";
-import { filterBooks } from "@/hooks/useBookFilter";
+import { toServerFormat } from "@/hooks/useBookFilter";
 
 export function RecommendedForYou() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
-  const { trending } = useBooks();
   const { globalFilter } = useContentFilter();
+  const format = toServerFormat(globalFilter);
+  const { trending } = useBooks(format);
 
   const scroll = (d: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: d === "left" ? -320 : 320, behavior: "smooth" });
 
-  const { data: recData, isLoading } = trpc.books.recommendations.useQuery(undefined, {
+  const { data: recData, isLoading } = trpc.books.recommendations.useQuery({ format }, {
     staleTime: 5 * 60 * 1000,
   });
 
   const recBooks = ((recData as any[]) ?? []).map(trpcBookToMasterBook);
   const loading = isLoading;
 
-  const displayBooks = filterBooks(
-    recBooks.length > 0 ? recBooks : trending.slice(0, 8),
-    globalFilter
-  );
+  const displayBooks = recBooks.length > 0 ? recBooks : trending.slice(0, 8);
 
   if (displayBooks.length === 0 && !loading) return null;
 

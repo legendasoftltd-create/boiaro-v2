@@ -30,9 +30,9 @@ export function useRecentlyViewed() {
 // progress and book-view history, never a generic popular-books stand-in. Gated to
 // logged-in users only (query disabled for guests) and only returns data when the
 // backend found at least 3 real related books; otherwise the section should hide.
-export function useBecauseYouRead() {
+export function useBecauseYouRead(format?: "ebook" | "audiobook" | "hardcopy") {
   const { user } = useAuth();
-  const query = trpc.books.becauseYouRead.useQuery(undefined, {
+  const query = trpc.books.becauseYouRead.useQuery({ format }, {
     enabled: !!user,
     staleTime: 5 * 60 * 1000,
   });

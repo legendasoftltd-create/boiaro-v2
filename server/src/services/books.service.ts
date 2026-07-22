@@ -19,6 +19,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     isBestseller,
     isFree,
     isNew,
+    format,
     language,
     author,
     publisher,
@@ -28,6 +29,19 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     publisherId,
     translatorId,
   } = input;
+
+  // `narrator` and `format` both constrain via the `formats` relation — merged into one
+  // `some` clause (rather than two separate `formats` keys, which Prisma can't express)
+  // so a caller can combine them, e.g. "audiobooks narrated by X".
+  const formatsSome: Record<string, unknown> | undefined =
+    narrator || format
+      ? {
+          ...(narrator ? { OR: [{ narrator_id: narrator }, { narrator_ids: { has: narrator } }] } : {}),
+          ...(format ? { format } : {}),
+          submission_status: "approved",
+          is_available: true,
+        }
+      : undefined;
 
   const books = await prisma.book.findMany({
     take: limit + 1,
@@ -44,15 +58,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
       ...((authorId || author) && { author_id: authorId ?? author }),
       ...((translatorId || translator) && { translator_id: translatorId ?? translator }),
       ...((publisherId || publisher) && { publisher_id: publisherId ?? publisher }),
-      ...(narrator && {
-        formats: {
-          some: {
-            OR: [{ narrator_id: narrator }, { narrator_ids: { has: narrator } }],
-            submission_status: "approved",
-            is_available: true,
-          },
-        },
-      }),
+      ...(formatsSome && { formats: { some: formatsSome } }),
       ...(search && {
         OR: [
           { title: { contains: search, mode: "insensitive" } },
@@ -527,7 +533,11 @@ export async function getUserBookmarks(userId: string, limit = 20, offset = 0) {
 // everywhere before, even for guests). Returns an empty result (section hidden) when the
 // user has no history, or when fewer than 3 related books can be found — a single or pair
 // of recommendations isn't a usable carousel.
-export async function getBecauseYouReadRecommendations(userId: string, limit = 10) {
+export async function getBecauseYouReadRecommendations(
+  userId: string,
+  limit = 10,
+  format?: "ebook" | "audiobook" | "hardcopy"
+) {
   const [readingRows, listeningRows, viewRows] = await Promise.all([
     prisma.readingProgress.findMany({
       where: { user_id: userId },
@@ -592,6 +602,7 @@ export async function getBecauseYouReadRecommendations(userId: string, limit = 1
         ...(categoryIds.length > 0 ? [{ category_id: { in: categoryIds } }] : []),
         ...(authorIds.length > 0 ? [{ author_id: { in: authorIds } }] : []),
       ],
+      ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" as const } } } : {}),
     },
     take: limit,
     orderBy: { total_reads: "desc" },
