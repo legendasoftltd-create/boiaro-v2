@@ -39,7 +39,7 @@ const navLinks = [
   { href: "/books?format=ebook", label: "eBooks", icon: BookOpen },
   { href: "/books?format=audiobook", label: "Audiobooks", icon: Headphones },
   { href: "/books?format=hardcopy", label: "Hard Copy", icon: Package },
-  { href: "/books", label: "Categories" },
+  { href: "/categories", label: "Categories" },
 ]
 
 export function Navbar() {

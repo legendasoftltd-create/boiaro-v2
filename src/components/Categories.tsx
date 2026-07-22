@@ -1,13 +1,10 @@
 import { useRef } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight, Grid, BookOpen, Heart, Sword, Ghost, Sparkles, GraduationCap, Baby, History, Lightbulb, Music, Globe, Feather } from "lucide-react"
+import { ChevronLeft, ChevronRight, Grid, BookOpen } from "lucide-react"
 import { useCategories } from "@/hooks/useBooks"
 import { toMediaUrl } from "@/lib/mediaUrl"
-
-const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-  BookOpen, Heart, Sword, Ghost, Sparkles, GraduationCap, Baby, History, Lightbulb, Music, Globe, Feather,
-}
+import { iconMap } from "@/lib/categoryIcons"
 
 function CategoryIcon({ icon }: { icon: string }) {
   const isUrl = icon.startsWith("/") || icon.startsWith("http")
@@ -63,7 +60,7 @@ export function Categories() {
           ))}
         </div>
         <div className="text-center mt-5 md:mt-8">
-          <Link to="/books"><Button variant="outline" className="btn-gold-outline h-10 px-6 text-[13px]">View All Categories</Button></Link>
+          <Link to="/categories"><Button variant="outline" className="btn-gold-outline h-10 px-6 text-[13px]">View All Categories</Button></Link>
         </div>
       </div>
     </section>

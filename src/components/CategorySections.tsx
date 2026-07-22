@@ -1,5 +1,4 @@
 import { useRef, useState } from "react"
-import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react"
 import { BookCard } from "./BookCard"
@@ -36,10 +35,15 @@ function CategorySectionRow({ section, showToggle, filter, setFilter }: Category
 
   const displayTitle = section.title || section.category.name_bn || section.category.name_en || section.category.name
   const subtitle = section.subtitle
+  const hasBooks = section.books && section.books.length > 0
 
-  if (!section.books || section.books.length === 0) return null
+  // Rows without the toggle still hide themselves when empty (unchanged behavior). The row
+  // that owns the toggle must stay visible even with zero matches for the current filter —
+  // otherwise picking a format with no results in this category hides the only control that
+  // could switch back to "All", trapping the user.
+  if (!hasBooks && !showToggle) return null
 
-  const mappedBooks = section.books.map((b: any) => ({
+  const mappedBooks = (section.books || []).map((b: any) => ({
     id: b.id,
     title: b.title,
     titleEn: b.title_en || "",
@@ -92,33 +96,33 @@ function CategorySectionRow({ section, showToggle, filter, setFilter }: Category
                 <ContentToggle value={filter} onChange={setFilter} />
               </div>
             )}
-            <Link
-              to={`/books?category=${section.category_id}`}
-              className="text-xs text-primary hover:underline font-medium shrink-0"
-            >
-              সব দেখুন →
-            </Link>
-            <div className="hidden md:flex items-center gap-1">
-              <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8">
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8">
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            </div>
+            {hasBooks && (
+              <div className="hidden md:flex items-center gap-1">
+                <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8">
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8">
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
-        <div
-          ref={scrollRef}
-          className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x"
-        >
-          {mappedBooks.map((book: any) => (
-            <div key={book.id} className="snap-start shrink-0">
-              <BookCard book={book} />
-            </div>
-          ))}
-        </div>
+        {hasBooks ? (
+          <div
+            ref={scrollRef}
+            className="flex gap-4 overflow-x-auto pb-4 scrollbar-hide snap-x"
+          >
+            {mappedBooks.map((book: any) => (
+              <div key={book.id} className="snap-start shrink-0">
+                <BookCard book={book} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground py-6">No books match this filter yet.</p>
+        )}
       </div>
     </section>
   )
