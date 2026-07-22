@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react"
@@ -6,15 +6,13 @@ import { BookCard } from "./BookCard"
 import { ContentToggle } from "./ContentToggle"
 import { useBooks } from "@/hooks/useBooks"
 import { toServerFormat } from "@/hooks/useBookFilter"
-import { useContentFilter } from "@/contexts/ContentFilterContext"
+import type { ContentType } from "@/contexts/ContentFilterContext"
 
 export function FeaturedBooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
-  // Bound to the same shared globalFilter as every other section (and the mobile navbar
-  // pill bar) — this used to be independent local state, so changing it here had no
-  // effect anywhere else on the page.
-  const { globalFilter, setGlobalFilter } = useContentFilter()
-  const { newReleases, books, loading } = useBooks(toServerFormat(globalFilter))
+  // Independent of every other section's filter — this toggle only controls New Releases.
+  const [localFilter, setLocalFilter] = useState<ContentType>("all")
+  const { newReleases, books, loading } = useBooks(toServerFormat(localFilter))
 
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
@@ -41,7 +39,7 @@ export function FeaturedBooks() {
           </div>
           <div className="flex items-center gap-3 overflow-x-auto pb-1 md:pb-0">
             <div className="hidden lg:block">
-              <ContentToggle value={globalFilter} onChange={setGlobalFilter} />
+              <ContentToggle value={localFilter} onChange={setLocalFilter} />
             </div>
             <div className="hidden md:flex items-center gap-1">
               <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>

@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react"
@@ -6,7 +6,7 @@ import { BookCard } from "./BookCard"
 import { ContentToggle } from "./ContentToggle"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
-import { useContentFilter, type ContentType } from "@/contexts/ContentFilterContext"
+import type { ContentType } from "@/contexts/ContentFilterContext"
 import { toServerFormat } from "@/hooks/useBookFilter"
 
 interface CategorySectionProps {
@@ -20,14 +20,14 @@ interface CategorySectionProps {
     category: { id: string; name: string; name_bn: string | null; name_en: string | null; slug: string | null };
     books: any[];
   };
-  /** Only the first row shows the toggle — it drives the same shared globalFilter every
-   *  category row already responds to, so repeating it on every row would be redundant. */
+  /** Only the first row shows the toggle — it drives the one filter shared by every
+   *  category row (they're all one query), independent of every other homepage section. */
   showToggle?: boolean;
-  globalFilter: ContentType;
-  setGlobalFilter: (value: ContentType) => void;
+  filter: ContentType;
+  setFilter: (value: ContentType) => void;
 }
 
-function CategorySectionRow({ section, showToggle, globalFilter, setGlobalFilter }: CategorySectionProps) {
+function CategorySectionRow({ section, showToggle, filter, setFilter }: CategorySectionProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const scroll = (dir: "left" | "right") => {
@@ -89,7 +89,7 @@ function CategorySectionRow({ section, showToggle, globalFilter, setGlobalFilter
           <div className="flex items-center gap-3">
             {showToggle && (
               <div className="hidden lg:block">
-                <ContentToggle value={globalFilter} onChange={setGlobalFilter} />
+                <ContentToggle value={filter} onChange={setFilter} />
               </div>
             )}
             <Link
@@ -125,8 +125,9 @@ function CategorySectionRow({ section, showToggle, globalFilter, setGlobalFilter
 }
 
 export function CategorySections() {
-  const { globalFilter, setGlobalFilter } = useContentFilter()
-  const { data: result } = trpc.books.homepageCategorySections.useQuery({ format: toServerFormat(globalFilter) })
+  // Independent of every other section's filter — this toggle only controls Category Sections.
+  const [filter, setFilter] = useState<ContentType>("all")
+  const { data: result } = trpc.books.homepageCategorySections.useQuery({ format: toServerFormat(filter) })
   const sections = result?.data ?? []
 
   if (sections.length === 0) return null
@@ -138,8 +139,8 @@ export function CategorySections() {
           key={section.id}
           section={section}
           showToggle={index === 0}
-          globalFilter={globalFilter}
-          setGlobalFilter={setGlobalFilter}
+          filter={filter}
+          setFilter={setFilter}
         />
       ))}
     </>

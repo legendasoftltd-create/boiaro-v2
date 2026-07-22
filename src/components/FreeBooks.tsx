@@ -1,17 +1,18 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Gift } from "lucide-react"
 import { BookCard } from "./BookCard"
 import { ContentToggle } from "./ContentToggle"
 import { useBooks } from "@/hooks/useBooks"
-import { useContentFilter } from "@/contexts/ContentFilterContext"
+import type { ContentType } from "@/contexts/ContentFilterContext"
 import { toServerFormat } from "@/hooks/useBookFilter"
 
 export function FreeBooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { globalFilter, setGlobalFilter } = useContentFilter()
-  const { freeBooks } = useBooks(toServerFormat(globalFilter))
+  // Independent of every other section's filter — this toggle only controls Free Books.
+  const [localFilter, setLocalFilter] = useState<ContentType>("all")
+  const { freeBooks } = useBooks(toServerFormat(localFilter))
   const filtered = freeBooks
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
@@ -34,7 +35,7 @@ export function FreeBooks() {
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden lg:block">
-              <ContentToggle value={globalFilter} onChange={setGlobalFilter} />
+              <ContentToggle value={localFilter} onChange={setLocalFilter} />
             </div>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
