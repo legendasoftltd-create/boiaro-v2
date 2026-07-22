@@ -1,19 +1,20 @@
-import { useRef, useState } from "react"
+import { useRef } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Flame } from "lucide-react"
 import { BookCard } from "./BookCard"
 import { ContentToggle } from "./ContentToggle"
 import { useBooks } from "@/hooks/useBooks"
-import { useBookFilter, toServerFormat } from "@/hooks/useBookFilter"
-
-type ContentType = "all" | "ebook" | "audiobook" | "hardcopy"
+import { toServerFormat } from "@/hooks/useBookFilter"
+import { useContentFilter } from "@/contexts/ContentFilterContext"
 
 export function TrendingBooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [localContentType, setLocalContentType] = useState<ContentType>("all")
-  const activeFilter = useBookFilter(localContentType)
-  const { trending } = useBooks(toServerFormat(activeFilter))
+  // Bound to the same shared globalFilter as every other section (and the mobile navbar
+  // pill bar) — this used to be independent local state, so changing it here had no
+  // effect anywhere else on the page.
+  const { globalFilter, setGlobalFilter } = useContentFilter()
+  const { trending } = useBooks(toServerFormat(globalFilter))
 
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
@@ -41,7 +42,7 @@ export function TrendingBooks() {
           </div>
           <div className="flex items-center gap-3 overflow-x-auto pb-1 md:pb-0">
             <div className="hidden lg:block">
-              <ContentToggle value={localContentType} onChange={setLocalContentType} />
+              <ContentToggle value={globalFilter} onChange={setGlobalFilter} />
             </div>
             <div className="hidden md:flex items-center gap-1">
               <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
