@@ -4,23 +4,26 @@ import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Gift } from "lucide-react"
 import { BookCard } from "./BookCard"
 import { ContentToggle } from "./ContentToggle"
+import { SectionSearch } from "./SectionSearch"
 import { useBooks } from "@/hooks/useBooks"
 import type { ContentType } from "@/contexts/ContentFilterContext"
 import { toServerFormat } from "@/hooks/useBookFilter"
 
 export function FreeBooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
-  // Independent of every other section's filter — this toggle only controls Free Books.
+  // Independent of every other section's filter/search — both only control Free Books.
   const [localFilter, setLocalFilter] = useState<ContentType>("all")
-  const { freeBooks } = useBooks(toServerFormat(localFilter))
+  const [search, setSearch] = useState("")
+  const { freeBooks } = useBooks(toServerFormat(localFilter), search)
   const filtered = freeBooks
+  const isFiltering = localFilter !== "all" || search.trim() !== ""
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
       scrollRef.current.scrollBy({ left: direction === "left" ? -320 : 320, behavior: "smooth" })
     }
   }
 
-  if (filtered.length === 0) return null
+  if (filtered.length === 0 && !isFiltering) return null
 
   return (
     <section className="section-container bg-gradient-to-b from-green-500/[0.03] via-background to-background">
@@ -37,15 +40,22 @@ export function FreeBooks() {
             <div className="hidden lg:block">
               <ContentToggle value={localFilter} onChange={setLocalFilter} />
             </div>
+            <div className="hidden lg:block">
+              <SectionSearch value={search} onChange={setSearch} placeholder="Search free books..." />
+            </div>
             <div className="flex items-center gap-1">
               <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
               <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
             </div>
           </div>
         </div>
-        <div ref={scrollRef} className="scroll-row stagger-children">
-          {filtered.map((book) => <BookCard key={book.id} book={book} showPrice />)}
-        </div>
+        {filtered.length > 0 ? (
+          <div ref={scrollRef} className="scroll-row stagger-children">
+            {filtered.map((book) => <BookCard key={book.id} book={book} showPrice />)}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground py-6">No books match this filter yet.</p>
+        )}
          <div className="text-center mt-4 md:mt-8">
            <Link to="/books?filter=free"><Button className="bg-green-600 hover:bg-green-700 text-foreground h-9 md:h-10 px-5 md:px-6 rounded-xl font-semibold text-[12px] md:text-[13px] transition-all duration-200">Browse All Free Books</Button></Link>
         </div>

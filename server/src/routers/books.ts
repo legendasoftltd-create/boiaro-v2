@@ -129,6 +129,7 @@ export const booksRouter = router({
       periodDays: z.number().default(7),
       limit: z.number().min(1).max(50).default(10),
       format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+      search: z.string().optional(),
     }))
     .query(async ({ input }) => {
       const since = new Date(Date.now() - input.periodDays * 24 * 60 * 60 * 1000);
@@ -159,6 +160,7 @@ export const booksRouter = router({
         where: {
           id: { in: candidateIds },
           ...(input.format ? { formats: { some: { format: input.format, is_available: true, submission_status: "approved" } } } : {}),
+          ...(input.search ? { title: { contains: input.search, mode: "insensitive" } } : {}),
         },
         select: { id: true, priority: true },
       });
@@ -600,11 +602,13 @@ export const booksRouter = router({
       pageSize: z.number().min(1).max(50).default(50),
       format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
       booksLimit: z.number().min(1).max(50).optional(),
+      search: z.string().optional(),
     }).optional())
     .query(async ({ input }) => {
       const page = input?.page ?? 0;
       const pageSize = input?.pageSize ?? 50;
       const format = input?.format;
+      const search = input?.search;
       const [sections, total] = await Promise.all([
         prisma.homepageCategorySection.findMany({
           orderBy: { sort_order: "asc" },
@@ -622,10 +626,11 @@ export const booksRouter = router({
               category_id: sec.category_id,
               submission_status: "approved",
               is_active: true,
-              // Applied before `take` (not filtered after) so a format filter narrows the
-              // candidate pool instead of shrinking an already-capped result — see the
+              // Applied before `take` (not filtered after) so a format/search filter narrows
+              // the candidate pool instead of shrinking an already-capped result — see the
               // same caution documented in homepage.service.ts.
               ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" } } } : {}),
+              ...(search ? { title: { contains: search, mode: "insensitive" } } : {}),
             },
             take: input?.booksLimit ?? sec.book_limit,
             orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
@@ -712,14 +717,18 @@ export const booksRouter = router({
     .input(z.object({
       bookId: z.string().optional(),
       format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+      search: z.string().optional(),
     }).optional().default({}))
     .query(async ({ input }) => {
       const formatWhere = input.format
         ? { formats: { some: { format: input.format, is_available: true, submission_status: "approved" as const } } }
         : {};
+      const searchWhere = input.search
+        ? { title: { contains: input.search, mode: "insensitive" as const } }
+        : {};
       if (!input.bookId) {
         return prisma.book.findMany({
-          where: { submission_status: "approved", is_active: true, ...formatWhere },
+          where: { submission_status: "approved", is_active: true, ...formatWhere, ...searchWhere },
           take: 10,
           orderBy: { total_reads: "desc" },
           include: {
@@ -744,6 +753,7 @@ export const booksRouter = router({
             { author_id: book.author_id ?? undefined },
           ],
           ...formatWhere,
+          ...searchWhere,
         },
         take: 10,
         orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { total_reads: "desc" }],
@@ -760,8 +770,11 @@ export const booksRouter = router({
   // protectedProcedure so a logged-out user can never trigger or see it; the frontend
   // additionally gates the query itself behind `enabled: !!user` for belt-and-suspenders.
   becauseYouRead: protectedProcedure
-    .input(z.object({ format: z.enum(["ebook", "audiobook", "hardcopy"]).optional() }).optional())
-    .query(({ ctx, input }) => getBecauseYouReadRecommendations(ctx.userId, 10, input?.format)),
+    .input(z.object({
+      format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+      search: z.string().optional(),
+    }).optional())
+    .query(({ ctx, input }) => getBecauseYouReadRecommendations(ctx.userId, 10, input?.format, input?.search)),
 
   comments: publicProcedure
     .input(z.object({ bookId: z.string(), userId: z.string().optional() }))

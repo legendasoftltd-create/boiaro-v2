@@ -1,15 +1,23 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Play, Clock, ChevronLeft, ChevronRight, Headphones, Star, User } from "lucide-react"
-import { useBooks } from "@/hooks/useBooks"
+import { trpc } from "@/lib/trpc"
+import { trpcBookToMasterBook } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
 import { formatDuration } from "@/lib/duration"
+import { SectionSearch } from "./SectionSearch"
 
 export function Audiobooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { audiobooks: popularAudiobooks } = useBooks()
+  // Independent of every other section's search — only narrows Popular Audiobooks.
+  const [search, setSearch] = useState("")
+  const { data } = trpc.books.browseBooks.useQuery(
+    { format: "audiobook", sort: "popular", pageSize: 10, query: search || undefined },
+    { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
+  )
+  const popularAudiobooks = (data?.books || []).map(trpcBookToMasterBook)
   const { globalFilter } = useContentFilter()
 
   const scroll = (direction: "left" | "right") => {
@@ -20,7 +28,7 @@ export function Audiobooks() {
 
   // Hide this section if filter excludes audiobooks
   if (globalFilter !== "all" && globalFilter !== "audiobook") return null
-  if (popularAudiobooks.length === 0) return null
+  if (popularAudiobooks.length === 0 && !search.trim()) return null
 
   return (
     <section id="audiobooks" className="section-container bg-gradient-to-b from-blue-500/[0.03] via-background to-background">
@@ -33,12 +41,20 @@ export function Audiobooks() {
               <p className="text-[13px] text-muted-foreground mt-0.5">Listen to Bengali classics anywhere</p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
+          <div className="flex items-center gap-3">
+            <div className="hidden lg:block">
+              <SectionSearch value={search} onChange={setSearch} placeholder="Search audiobooks..." />
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
+            </div>
           </div>
         </div>
 
+        {popularAudiobooks.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6">No audiobooks match this search yet.</p>
+        ) : (
         <div ref={scrollRef} className="scroll-row stagger-children">
           {popularAudiobooks.map((book) => {
             const audiobook = book.formats.audiobook!
@@ -79,6 +95,7 @@ export function Audiobooks() {
             )
           })}
         </div>
+        )}
          <div className="text-center mt-4 md:mt-8">
            <Link to="/books?format=audiobook"><Button variant="outline" className="border-blue-500/40 text-blue-400 hover:bg-blue-500 hover:text-foreground h-9 md:h-10 px-5 md:px-6 rounded-xl font-semibold text-[12px] md:text-[13px] transition-all duration-200">Explore All Audiobooks</Button></Link>
         </div>

@@ -26,6 +26,8 @@ categorySectionsRestRouter.get("/", async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 50);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
     const format = parseFormat(req.query.format);
+    const rawSearch = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+    const search = typeof rawSearch === "string" && rawSearch.trim() ? rawSearch.trim() : undefined;
     // Optional override for how many preview books each section returns, independent of
     // the per-section `book_limit` an admin configured — capped the same way `limit` is.
     const rawBooksLimit = Number(req.query.books_limit);
@@ -62,9 +64,10 @@ categorySectionsRestRouter.get("/", async (req, res) => {
             category_id: sec.category_id,
             submission_status: "approved",
             is_active: true,
-            // Applied before `take` (not filtered after) so a format filter narrows the
-            // candidate pool instead of shrinking an already-capped result.
+            // Applied before `take` (not filtered after) so a format/search filter narrows
+            // the candidate pool instead of shrinking an already-capped result.
             ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" } } } : {}),
+            ...(search ? { title: { contains: search, mode: "insensitive" as const } } : {}),
           },
           take: booksLimitOverride ?? sec.book_limit,
           orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
@@ -138,6 +141,8 @@ categorySectionsRestRouter.get("/:id/books", async (req, res) => {
     const limit = Math.min(Math.max(Number(req.query.limit ?? 20), 1), 50);
     const offset = Math.max(Number(req.query.offset ?? 0), 0);
     const format = parseFormat(req.query.format);
+    const rawSearch = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+    const search = typeof rawSearch === "string" && rawSearch.trim() ? rawSearch.trim() : undefined;
 
     const section = await prisma.homepageCategorySection.findUnique({
       where: { id },
@@ -153,6 +158,7 @@ categorySectionsRestRouter.get("/:id/books", async (req, res) => {
       submission_status: "approved",
       is_active: true,
       ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" } } } : {}),
+      ...(search ? { title: { contains: search, mode: "insensitive" as const } } : {}),
     };
     const [books, total] = await Promise.all([
       prisma.book.findMany({

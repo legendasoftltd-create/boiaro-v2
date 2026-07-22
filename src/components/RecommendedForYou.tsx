@@ -1,7 +1,8 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Sparkles, Loader2 } from "lucide-react";
 import { BookCard } from "./BookCard";
+import { SectionSearch } from "./SectionSearch";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import { useBooks, trpcBookToMasterBook } from "@/hooks/useBooks";
@@ -13,12 +14,14 @@ export function RecommendedForYou() {
   const { user } = useAuth();
   const { globalFilter } = useContentFilter();
   const format = toServerFormat(globalFilter);
-  const { trending } = useBooks(format);
+  // Independent of every other section's search — only narrows this one.
+  const [search, setSearch] = useState("");
+  const { trending } = useBooks(format, search);
 
   const scroll = (d: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: d === "left" ? -320 : 320, behavior: "smooth" });
 
-  const { data: recData, isLoading } = trpc.books.recommendations.useQuery({ format }, {
+  const { data: recData, isLoading } = trpc.books.recommendations.useQuery({ format, search: search || undefined }, {
     staleTime: 5 * 60 * 1000,
   });
 
@@ -27,7 +30,7 @@ export function RecommendedForYou() {
 
   const displayBooks = recBooks.length > 0 ? recBooks : trending.slice(0, 8);
 
-  if (displayBooks.length === 0 && !loading) return null;
+  if (displayBooks.length === 0 && !loading && !search.trim()) return null;
 
   return (
     <section className="section-container">
@@ -47,6 +50,9 @@ export function RecommendedForYou() {
               </p>
             </div>
           </div>
+          <div className="hidden lg:block">
+            <SectionSearch value={search} onChange={setSearch} placeholder="Search..." />
+          </div>
           <div className="hidden md:flex items-center gap-1">
             <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8">
               <ChevronLeft className="w-4 h-4" />
@@ -61,6 +67,8 @@ export function RecommendedForYou() {
           <div className="flex items-center justify-center h-48">
             <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
           </div>
+        ) : displayBooks.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6">No books match this search yet.</p>
         ) : (
           <div ref={scrollRef} className="scroll-row stagger-children">
             {displayBooks.map((book) => (

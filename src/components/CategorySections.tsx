@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, BookOpen } from "lucide-react"
 import { BookCard } from "./BookCard"
 import { ContentToggle } from "./ContentToggle"
+import { SectionSearch } from "./SectionSearch"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
 import type { ContentType } from "@/contexts/ContentFilterContext"
@@ -19,14 +20,16 @@ interface CategorySectionProps {
     category: { id: string; name: string; name_bn: string | null; name_en: string | null; slug: string | null };
     books: any[];
   };
-  /** Only the first row shows the toggle — it drives the one filter shared by every
-   *  category row (they're all one query), independent of every other homepage section. */
+  /** Only the first row shows the toggle/search — they drive the one filter/search shared
+   *  by every category row (they're all one query), independent of every other section. */
   showToggle?: boolean;
   filter: ContentType;
   setFilter: (value: ContentType) => void;
+  search: string;
+  setSearch: (value: string) => void;
 }
 
-function CategorySectionRow({ section, showToggle, filter, setFilter }: CategorySectionProps) {
+function CategorySectionRow({ section, showToggle, filter, setFilter, search, setSearch }: CategorySectionProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const scroll = (dir: "left" | "right") => {
@@ -96,6 +99,11 @@ function CategorySectionRow({ section, showToggle, filter, setFilter }: Category
                 <ContentToggle value={filter} onChange={setFilter} />
               </div>
             )}
+            {showToggle && (
+              <div className="hidden lg:block">
+                <SectionSearch value={search} onChange={setSearch} placeholder="Search category..." />
+              </div>
+            )}
             {hasBooks && (
               <div className="hidden md:flex items-center gap-1">
                 <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8">
@@ -129,9 +137,10 @@ function CategorySectionRow({ section, showToggle, filter, setFilter }: Category
 }
 
 export function CategorySections() {
-  // Independent of every other section's filter — this toggle only controls Category Sections.
+  // Independent of every other section's filter/search — both only control Category Sections.
   const [filter, setFilter] = useState<ContentType>("all")
-  const { data: result } = trpc.books.homepageCategorySections.useQuery({ format: toServerFormat(filter) })
+  const [search, setSearch] = useState("")
+  const { data: result } = trpc.books.homepageCategorySections.useQuery({ format: toServerFormat(filter), search: search || undefined })
   const sections = result?.data ?? []
 
   if (sections.length === 0) return null
@@ -145,6 +154,8 @@ export function CategorySections() {
           showToggle={index === 0}
           filter={filter}
           setFilter={setFilter}
+          search={search}
+          setSearch={setSearch}
         />
       ))}
     </>

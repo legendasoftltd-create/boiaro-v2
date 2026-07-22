@@ -149,9 +149,9 @@ export function trpcBookToMasterBook(book: any): MasterBook {
  * caller's own resolved filter (local `ContentToggle` state on desktop sections that
  * have one, `globalFilter` otherwise) — omit it (or "all") for the unfiltered default.
  */
-export function useBooks(format?: "ebook" | "audiobook" | "hardcopy") {
+export function useBooks(format?: "ebook" | "audiobook" | "hardcopy", search?: string) {
   const { data, isLoading: loading } = trpc.books.list.useQuery(
-    { limit: 100, format },
+    { limit: 100, format, search: search || undefined },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 
@@ -159,19 +159,19 @@ export function useBooks(format?: "ebook" | "audiobook" | "hardcopy") {
   // genuinely trending older book, or one marked "new" outside the most-recently-created
   // 100, still shows up here — mirrors the REST homepage API's trendingNow/NewReleases.
   const { data: trendingData } = trpc.books.trending.useQuery(
-    { periodDays: 7, format },
+    { periodDays: 7, format, search: search || undefined },
     { staleTime: 5 * 60 * 1000 }
   );
   const { data: newReleasesData } = trpc.books.list.useQuery(
-    { isNew: true, limit: 20, format },
+    { isNew: true, limit: 20, format, search: search || undefined },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 
   // Same reasoning as trending/newReleases above: queried directly (popularity-sorted,
   // full catalog) rather than filtered out of the capped `list`, so these match the
   // equivalent mobile REST sections instead of silently dropping older popular/free books.
-  // audiobooks/hardcopies are already locked to their one format below — `format` doesn't
-  // apply to them (a mismatched filter just means the whole section hides itself).
+  // audiobooks/hardcopies are already locked to their one format below — `format`/`search`
+  // don't apply to them, each has its own independent search via useBooks elsewhere.
   const { data: audiobooksData } = trpc.books.browseBooks.useQuery(
     { format: "audiobook", sort: "popular", pageSize: 10 },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
@@ -181,7 +181,7 @@ export function useBooks(format?: "ebook" | "audiobook" | "hardcopy") {
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
   const { data: freeBooksData } = trpc.books.browseBooks.useQuery(
-    { filter: "free", sort: "popular", pageSize: 10, format },
+    { filter: "free", sort: "popular", pageSize: 10, format, query: search || undefined },
     { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
   );
 

@@ -1,24 +1,29 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Headphones } from "lucide-react";
 import { BookCard } from "./BookCard";
-import type { MasterBook } from "@/lib/types";
+import { SectionSearch } from "./SectionSearch";
+import { trpc } from "@/lib/trpc";
+import { trpcBookToMasterBook } from "@/hooks/useBooks";
 import { useContentFilter } from "@/contexts/ContentFilterContext";
 
-interface Props {
-  books: MasterBook[];
-}
-
-export function PopularAudiobooks({ books }: Props) {
+export function PopularAudiobooks() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { globalFilter } = useContentFilter();
+  // Independent of every other section's search — only narrows Popular Audiobooks.
+  const [search, setSearch] = useState("");
+  const { data } = trpc.books.browseBooks.useQuery(
+    { format: "audiobook", sort: "popular", pageSize: 10, query: search || undefined },
+    { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
+  );
+  const books = (data?.books || []).map(trpcBookToMasterBook);
 
   const scroll = (d: "left" | "right") =>
     scrollRef.current?.scrollBy({ left: d === "left" ? -320 : 320, behavior: "smooth" });
 
   // Hide this section if filter excludes audiobooks
   if (globalFilter !== "all" && globalFilter !== "audiobook") return null;
-  if (books.length === 0) return null;
+  if (books.length === 0 && !search.trim()) return null;
 
   return (
     <section className="section-container">
@@ -35,6 +40,9 @@ export function PopularAudiobooks({ books }: Props) {
               <p className="text-[13px] text-muted-foreground mt-0.5">Most listened audiobooks this week</p>
             </div>
           </div>
+          <div className="hidden lg:block">
+            <SectionSearch value={search} onChange={setSearch} placeholder="Search audiobooks..." />
+          </div>
           <div className="hidden md:flex items-center gap-1">
             <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8">
               <ChevronLeft className="w-4 h-4" />
@@ -44,11 +52,15 @@ export function PopularAudiobooks({ books }: Props) {
             </Button>
           </div>
         </div>
+        {books.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6">No audiobooks match this search yet.</p>
+        ) : (
         <div ref={scrollRef} className="scroll-row stagger-children">
           {books.map((book) => (
             <BookCard key={book.id} book={book} />
           ))}
         </div>
+        )}
       </div>
     </section>
   );

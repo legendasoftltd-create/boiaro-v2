@@ -3,16 +3,24 @@ import { Link, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Star, ChevronLeft, ChevronRight, Package, Truck, ShoppingBag, BookOpen, Headphones, Check } from "lucide-react"
-import { useBooks } from "@/hooks/useBooks"
+import { trpc } from "@/lib/trpc"
+import { trpcBookToMasterBook } from "@/hooks/useBooks"
 import { usePlatformStats } from "@/hooks/usePlatformStats"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
 import { useCart } from "@/contexts/CartContext"
 import { toast } from "@/hooks/use-toast"
+import { SectionSearch } from "./SectionSearch"
 
 export function HardCopies() {
   const navigate = useNavigate()
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { hardcopies: popularHardcopies } = useBooks()
+  // Independent of every other section's search — only narrows Popular Hard Copies.
+  const [search, setSearch] = useState("")
+  const { data } = trpc.books.browseBooks.useQuery(
+    { format: "hardcopy", sort: "popular", pageSize: 10, query: search || undefined },
+    { staleTime: 3 * 60 * 1000, gcTime: 10 * 60 * 1000 }
+  )
+  const popularHardcopies = (data?.books || []).map(trpcBookToMasterBook)
   const { stats, formatCount } = usePlatformStats()
   const { globalFilter } = useContentFilter()
   const { addToCart, openCart } = useCart()
@@ -35,7 +43,7 @@ export function HardCopies() {
 
   // Hide this section if filter excludes hardcopies
   if (globalFilter !== "all" && globalFilter !== "hardcopy") return null
-  if (popularHardcopies.length === 0) return null
+  if (popularHardcopies.length === 0 && !search.trim()) return null
 
   return (
     <section id="hardcopy" className="section-container bg-gradient-to-b from-emerald-500/[0.03] via-background to-background">
@@ -48,12 +56,20 @@ export function HardCopies() {
               <p className="text-[13px] text-muted-foreground mt-0.5 flex items-center gap-1.5"><Truck className="w-3.5 h-3.5" />Free delivery on orders above ৳500</p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
+          <div className="flex items-center gap-3">
+            <div className="hidden lg:block">
+              <SectionSearch value={search} onChange={setSearch} placeholder="Search hard copies..." />
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
+            </div>
           </div>
         </div>
 
+        {popularHardcopies.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6">No hard copies match this search yet.</p>
+        ) : (
         <div ref={scrollRef} className="scroll-row stagger-children">
           {popularHardcopies.map((book) => {
             const hardcopy = book.formats.hardcopy!
@@ -97,6 +113,7 @@ export function HardCopies() {
             )
           })}
         </div>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 md:gap-3 mt-6 md:mt-10 pt-4 md:pt-6 border-t border-border/40">
           {[

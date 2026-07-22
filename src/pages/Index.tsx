@@ -2,8 +2,6 @@ import { lazy, Suspense, useMemo, memo } from "react"
 import { ContentFilterProvider } from "@/contexts/ContentFilterContext"
 import { Navbar } from "@/components/Navbar"
 import { Hero } from "@/components/Hero"
-import { useBooks } from "@/hooks/useBooks"
-import { usePopularAudiobooks } from "@/hooks/useRecommendations"
 import { useHomepageSections } from "@/hooks/useHomepageSections"
 import { Footer } from "@/components/Footer"
 import { SectionSkeleton } from "@/components/SectionSkeleton"
@@ -34,7 +32,7 @@ const LiveRadioSection = lazy(() => import("@/components/LiveRadio").then(m => (
 const CategorySections = lazy(() => import("@/components/CategorySections").then(m => ({ default: m.CategorySections })))
 
 // Map section_key → React element factory
-const SECTION_REGISTRY: Record<string, (props: { books: any[]; popularAudiobooks: any[] }) => JSX.Element | null> = {
+const SECTION_REGISTRY: Record<string, () => JSX.Element | null> = {
   continue_reading: () => <ContinueReading />,
   continue_listening: () => <ContinueListening />,
   recently_viewed: () => <RecentlyViewed />,
@@ -44,7 +42,7 @@ const SECTION_REGISTRY: Record<string, (props: { books: any[]; popularAudiobooks
   trending_books: () => <TrendingBooks />,
   top_10_most_read: () => <Top10MostRead />,
   editors_pick: () => <EditorsPick />,
-  popular_audiobooks: ({ popularAudiobooks }) => <PopularAudiobooks books={popularAudiobooks} />,
+  popular_audiobooks: () => <PopularAudiobooks />,
   audiobooks: () => <Audiobooks />,
   hard_copies: () => <HardCopies />,
   free_books: () => <FreeBooks />,
@@ -78,7 +76,7 @@ const SECTION_AD_PLACEMENT: Record<string, string> = {
 }
 
 /** Each section gets its own Suspense boundary so one slow import doesn't block others */
-const LazySection = memo(({ sectionKey, books, popularAudiobooks }: { sectionKey: string; books: any[]; popularAudiobooks: any[] }) => {
+const LazySection = memo(({ sectionKey }: { sectionKey: string }) => {
   const render = SECTION_REGISTRY[sectionKey]
   if (!render) return null
   const adPlacement = SECTION_AD_PLACEMENT[sectionKey]
@@ -86,7 +84,7 @@ const LazySection = memo(({ sectionKey, books, popularAudiobooks }: { sectionKey
     <>
       {adPlacement && <AdBannerBlock placementKey={adPlacement} />}
       <Suspense fallback={<SectionSkeleton />}>
-        {render({ books, popularAudiobooks })}
+        {render()}
       </Suspense>
     </>
   )
@@ -94,8 +92,6 @@ const LazySection = memo(({ sectionKey, books, popularAudiobooks }: { sectionKey
 LazySection.displayName = "LazySection"
 
 const Index = () => {
-  const { books } = useBooks()
-  const popularAudiobooks = usePopularAudiobooks()
   const { data: sections } = useHomepageSections()
 
   const orderedKeys = useMemo(() => {
@@ -119,7 +115,7 @@ const Index = () => {
         <div className="transition-opacity duration-200 ease-out">
           {orderedKeys.map(key => (
             <ErrorBoundary key={key}>
-              <LazySection sectionKey={key} books={books} popularAudiobooks={popularAudiobooks} />
+              <LazySection sectionKey={key} />
             </ErrorBoundary>
           ))}
         </div>

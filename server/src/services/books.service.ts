@@ -536,7 +536,8 @@ export async function getUserBookmarks(userId: string, limit = 20, offset = 0) {
 export async function getBecauseYouReadRecommendations(
   userId: string,
   limit = 10,
-  format?: "ebook" | "audiobook" | "hardcopy"
+  format?: "ebook" | "audiobook" | "hardcopy",
+  search?: string
 ) {
   const [readingRows, listeningRows, viewRows] = await Promise.all([
     prisma.readingProgress.findMany({
@@ -603,6 +604,7 @@ export async function getBecauseYouReadRecommendations(
         ...(authorIds.length > 0 ? [{ author_id: { in: authorIds } }] : []),
       ],
       ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" as const } } } : {}),
+      ...(search ? { title: { contains: search, mode: "insensitive" as const } } : {}),
     },
     take: limit,
     orderBy: { total_reads: "desc" },

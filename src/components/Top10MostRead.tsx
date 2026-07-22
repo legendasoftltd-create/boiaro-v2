@@ -1,13 +1,17 @@
+import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Trophy, Star, BookOpen, Eye } from "lucide-react"
 import { trpc } from "@/lib/trpc"
 import { trpcBookToMasterBook } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
 import { toServerFormat } from "@/hooks/useBookFilter"
+import { SectionSearch } from "./SectionSearch"
 
 export function Top10MostRead() {
   const navigate = useNavigate()
   const { globalFilter } = useContentFilter()
+  // Independent of every other section's search — only narrows Top 10 Most Read.
+  const [search, setSearch] = useState("")
 
   // Queried directly sorted by total_reads across the whole catalog — the
   // generic homepage book list is capped at 100 most-recently-created books,
@@ -15,30 +19,41 @@ export function Top10MostRead() {
   // sort: "mostRead" (not "popular") deliberately skips the admin priority
   // override — this section's whole point is genuine reader behavior.
   const { data } = trpc.books.browseBooks.useQuery(
-    { pageSize: 30, sort: "mostRead", format: toServerFormat(globalFilter) },
+    { pageSize: 30, sort: "mostRead", format: toServerFormat(globalFilter), query: search || undefined },
     { staleTime: 5 * 60 * 1000 }
   )
   const books = (data?.books || []).map(trpcBookToMasterBook)
 
   const top10 = books.slice(0, 10)
 
-  if (top10.length < 3) return null
+  // Below-3 normally hides the section (a 1-2 book "top 10" isn't meaningful) — but once
+  // the user is actively searching, keep the header (and search box) visible instead of
+  // vanishing with no way back to a cleared search.
+  if (top10.length < 3 && !search.trim()) return null
 
   return (
     <section className="section-container">
       <div className="container mx-auto px-4 lg:px-8">
-        <div className="section-header">
-          <div className="section-icon bg-amber-500/10">
-            <Trophy className="w-5 h-5 text-amber-400" />
+        <div className="section-header flex-wrap justify-between">
+          <div className="flex items-center gap-3">
+            <div className="section-icon bg-amber-500/10">
+              <Trophy className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <h2 className="text-xl md:text-2xl font-serif font-bold text-foreground">
+                Top 10 <span className="text-amber-400">Most Read</span>
+              </h2>
+              <p className="text-[13px] text-muted-foreground mt-0.5">All-time reader favorites</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-xl md:text-2xl font-serif font-bold text-foreground">
-              Top 10 <span className="text-amber-400">Most Read</span>
-            </h2>
-            <p className="text-[13px] text-muted-foreground mt-0.5">All-time reader favorites</p>
+          <div className="hidden lg:block">
+            <SectionSearch value={search} onChange={setSearch} placeholder="Search most read..." />
           </div>
         </div>
 
+        {top10.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6">No books match this search yet.</p>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3">
           {top10.map((book, index) => {
             const rank = index + 1
@@ -99,6 +114,7 @@ export function Top10MostRead() {
             )
           })}
         </div>
+        )}
       </div>
     </section>
   )
