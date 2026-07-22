@@ -3,13 +3,14 @@ import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight, Gift } from "lucide-react"
 import { BookCard } from "./BookCard"
+import { ContentToggle } from "./ContentToggle"
 import { useBooks } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
 import { toServerFormat } from "@/hooks/useBookFilter"
 
 export function FreeBooks() {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const { globalFilter } = useContentFilter()
+  const { globalFilter, setGlobalFilter } = useContentFilter()
   const { freeBooks } = useBooks(toServerFormat(globalFilter))
   const filtered = freeBooks
   const scroll = (direction: "left" | "right") => {
@@ -31,9 +32,14 @@ export function FreeBooks() {
               <p className="text-[13px] text-muted-foreground mt-0.5">No subscription required</p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
-            <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
+          <div className="flex items-center gap-3">
+            <div className="hidden lg:block">
+              <ContentToggle value={globalFilter} onChange={setGlobalFilter} />
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" onClick={() => scroll("left")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronLeft className="w-4 h-4" /></Button>
+              <Button variant="ghost" size="icon" onClick={() => scroll("right")} className="hover:bg-secondary text-muted-foreground hover:text-foreground rounded-full h-8 w-8"><ChevronRight className="w-4 h-4" /></Button>
+            </div>
           </div>
         </div>
         <div ref={scrollRef} className="scroll-row stagger-children">
