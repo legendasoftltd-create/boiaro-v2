@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Headphones } from "lucide-react";
 import { BookCard } from "./BookCard";
@@ -61,6 +62,9 @@ export function PopularAudiobooks() {
           ))}
         </div>
         )}
+        <div className="text-center mt-5 md:mt-8">
+          <Link to="/books?format=audiobook"><Button variant="outline" className="border-violet-500/40 text-violet-400 hover:bg-violet-500 hover:text-foreground h-10 px-6 rounded-xl font-semibold text-[13px] transition-all duration-200">সব দেখুন →</Button></Link>
+        </div>
       </div>
     </section>
   );

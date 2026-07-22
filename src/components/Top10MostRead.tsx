@@ -1,11 +1,12 @@
 import { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { Trophy, Star, BookOpen, Eye } from "lucide-react"
 import { trpc } from "@/lib/trpc"
 import { trpcBookToMasterBook } from "@/hooks/useBooks"
 import { useContentFilter } from "@/contexts/ContentFilterContext"
 import { toServerFormat } from "@/hooks/useBookFilter"
 import { SectionSearch } from "./SectionSearch"
+import { Button } from "@/components/ui/button"
 
 export function Top10MostRead() {
   const navigate = useNavigate()
@@ -115,6 +116,9 @@ export function Top10MostRead() {
           })}
         </div>
         )}
+        <div className="text-center mt-5 md:mt-8">
+          <Link to="/books?sort=mostRead"><Button variant="outline" className="border-amber-500/40 text-amber-400 hover:bg-amber-500 hover:text-foreground h-10 px-6 rounded-xl font-semibold text-[13px] transition-all duration-200">সব দেখুন →</Button></Link>
+        </div>
       </div>
     </section>
   )
