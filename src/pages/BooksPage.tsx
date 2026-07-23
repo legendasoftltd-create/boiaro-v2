@@ -61,7 +61,7 @@ function buildTitle(format: string | null, filter: string | null, categoryName: 
     parts.push(labels[format] || format)
   }
   if (categoryName) parts.push(categoryName)
-  if (tag) parts.push(`#${tag}`)
+  if (tag) parts.push(tag)
   if (parts.length === 0) return "Browse Books"
   return parts.join(" ") + " — Books"
 }
@@ -256,7 +256,7 @@ export default function BooksPage() {
                 )}
                 {tag && (
                   <Badge variant="secondary" className="gap-1 text-xs">
-                    #{tag}
+                    {tag}
                     <button onClick={() => updateParams({ tag: null })}><X className="w-3 h-3" /></button>
                   </Badge>
                 )}
@@ -295,20 +295,23 @@ export default function BooksPage() {
             )}
 
             {/* Tag pills */}
-            {!tag && tags.length > 0 && (
+            {tags.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 mb-6">
                 <TagIcon className="w-3.5 h-3.5 text-muted-foreground mr-0.5" />
-                {tags.slice(0, 16).map(t => (
-                  <Button
-                    key={t.tag}
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-[11px] rounded-full bg-card/40"
-                    onClick={() => updateParams({ tag: t.tag })}
-                  >
-                    #{t.tag}
-                  </Button>
-                ))}
+                {tags.slice(0, 16).map(t => {
+                  const isActive = tag === t.tag
+                  return (
+                    <Button
+                      key={t.tag}
+                      size="sm"
+                      variant={isActive ? "secondary" : "outline"}
+                      className={`h-7 text-[11px] rounded-full ${isActive ? "bg-secondary text-foreground ring-1 ring-primary/30" : "bg-card/40"}`}
+                      onClick={() => updateParams({ tag: isActive ? null : t.tag })}
+                    >
+                      {t.tag}
+                    </Button>
+                  )
+                })}
               </div>
             )}
 
