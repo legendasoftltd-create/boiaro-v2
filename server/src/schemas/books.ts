@@ -4,6 +4,7 @@ export const bookListSchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(20),
   cursor: z.string().optional(),
   categoryId: z.string().optional(),
+  tag: z.string().optional(),
   search: z.string().optional(),
   isFeatured: z.coerce.boolean().optional(),
   isBestseller: z.coerce.boolean().optional(),
@@ -18,6 +19,10 @@ export const bookListSchema = z.object({
   authorId: z.string().optional(),
   publisherId: z.string().optional(),
   translatorId: z.string().optional(),
+});
+
+export const bookTagsQuerySchema = z.object({
+  search: z.string().optional(),
 });
 
 export const bookByIdSchema = z.object({

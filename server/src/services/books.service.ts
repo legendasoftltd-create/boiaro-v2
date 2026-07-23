@@ -5,6 +5,7 @@ import { isS3Url, createPresignedGetUrl } from "../lib/s3.js";
 import type {
   bookListSchema,
   bookReviewsQuerySchema,
+  bookTagsQuerySchema,
   postReviewSchema,
 } from "../schemas/books.js";
 import type { z } from "zod";
@@ -14,6 +15,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
     limit,
     cursor,
     categoryId,
+    tag,
     search,
     isFeatured,
     isBestseller,
@@ -50,6 +52,7 @@ export async function listBooks(input: z.infer<typeof bookListSchema>) {
       submission_status: "approved",
       is_active: true,
       ...(categoryId && { category_id: categoryId }),
+      ...(tag && { tags: { has: tag } }),
       ...(isFeatured !== undefined && { is_featured: isFeatured }),
       ...(isBestseller !== undefined && { is_bestseller: isBestseller }),
       ...(isFree !== undefined && { is_free: isFree }),
@@ -331,6 +334,26 @@ export async function listBookCategories() {
     where: { status: "active" },
     orderBy: [{ priority: "desc" }, { name: "asc" }],
   });
+}
+
+export async function listBookTags(input: z.infer<typeof bookTagsQuerySchema>) {
+  const rows = await prisma.book.findMany({
+    where: { submission_status: "approved", is_active: true, tags: { isEmpty: false } },
+    select: { tags: true },
+  });
+
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    for (const t of row.tags) {
+      counts.set(t, (counts.get(t) || 0) + 1);
+    }
+  }
+
+  const search = input.search?.trim().toLowerCase();
+  return Array.from(counts.entries())
+    .filter(([t]) => !search || t.toLowerCase().includes(search))
+    .sort((a, b) => b[1] - a[1])
+    .map(([tag, count]) => ({ tag, count }));
 }
 
 export async function listBookReviews(

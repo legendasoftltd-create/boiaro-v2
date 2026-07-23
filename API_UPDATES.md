@@ -960,4 +960,26 @@ pending → confirmed → processing → ready_for_pickup → pickup_received �
 | `REDX_PICKUP_STORE_ID` | Your RedX pickup store ID (get from `GET /api/v1/shipping/redx/pickup-stores`) |
 | `REDX_WEBHOOK_SECRET` | Secret token validated on incoming webhook requests |
 
+## Books tag filter (REST)
+
+### Updated endpoint
+
+- `GET /api/v1/books`
+
+### New endpoint
+
+- `GET /api/v1/books/tags/list`
+
+### What changed
+
+- Added a `tag` query param to `GET /api/v1/books` — filters to books whose `tags` array contains the given exact tag string.
+- Added `GET /api/v1/books/tags/list` to enumerate all distinct tags currently in use across approved/active books, each with a usage `count`, sorted most-used first (optionally narrowed with `?search=`). Use this to populate a tag filter UI, then pass the selected value into `GET /api/v1/books?tag=...`.
+- Mirrors the tag filter already shipped on the web app's Browse Books page (`books.browseBooks` / `books.tags` tRPC procedures).
+
+### Examples
+
+- `GET /api/v1/books/tags/list`
+- `GET /api/v1/books/tags/list?search=thriller`
+- `GET /api/v1/books?tag=থ্রিলার&limit=20`
+
 

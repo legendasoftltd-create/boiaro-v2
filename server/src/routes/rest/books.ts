@@ -5,6 +5,7 @@ import {
   bookBySlugSchema,
   bookListSchema,
   bookReviewsQuerySchema,
+  bookTagsQuerySchema,
   postReviewSchema,
 } from "../../schemas/books.js";
 import {
@@ -15,6 +16,7 @@ import {
   listBookCategories,
   listBookReviews,
   listBooks,
+  listBookTags,
   removeBookBookmark,
   toggleBookBookmark,
   upsertBookReview,
@@ -52,6 +54,18 @@ booksRestRouter.get("/slug/:slug", async (req: AuthenticatedRequest, res) => {
 booksRestRouter.get("/categories/list", async (_req, res) => {
   try {
     const result = await listBookCategories();
+    res.json(result);
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// GET /api/v1/books/tags/list?search=... — distinct tags across approved/active
+// books with usage counts, sorted most-used first. Mirrors /categories/list.
+booksRestRouter.get("/tags/list", async (req, res) => {
+  try {
+    const input = bookTagsQuerySchema.parse(req.query);
+    const result = await listBookTags(input);
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);
