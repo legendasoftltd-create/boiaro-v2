@@ -479,7 +479,6 @@ List approved books with pagination and optional filters. No auth required.
 | limit | int | 20 | Results per page (max 100) |
 | cursor | string | — | Cursor-based pagination |
 | categoryId | uuid | — | Filter by category |
-| tag | string | — | Filter by exact tag (see `GET /books/tags/list` for available tags) |
 | isFeatured | boolean | — | Featured books only |
 | isBestseller | boolean | — | Bestseller books only |
 | isFree | boolean | — | Free books only |
@@ -545,32 +544,6 @@ Get active categories (short list format). No auth required.
 ```json
 [
   { "id": "uuid", "name": "Fiction", "slug": "fiction" }
-]
-```
-
----
-
-### `GET /books/tags/list`
-
-Get distinct tags used across approved/active books, with usage counts, sorted most-used first. Use this to populate a tag filter chip list — pass the chosen `tag` value straight into `GET /books?tag=...`. No auth required.
-
-**Query params:**
-
-| Param | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| search | string | — | Case-insensitive substring filter on tag name |
-
-```http
-GET /api/v1/books/tags/list
-GET /api/v1/books/tags/list?search=thriller
-```
-
-**Success (200):**
-```json
-[
-  { "tag": "বাংলা সাহিত্য", "count": 82 },
-  { "tag": "ছোট গল্প", "count": 70 },
-  { "tag": "থ্রিলার", "count": 23 }
 ]
 ```
 
@@ -1704,7 +1677,6 @@ Mark notifications as read. 🔒 Auth required.
 | GET | `/api/v1/books/:id` | No | Get book by ID |
 | GET | `/api/v1/books/slug/:slug` | No | Get book by slug |
 | GET | `/api/v1/books/categories/list` | No | List categories (short) |
-| GET | `/api/v1/books/tags/list` | No | List tags with usage counts |
 | GET | `/api/v1/books/:id/reviews` | No | Get book reviews |
 | POST | `/api/v1/books/:id/reviews` | Yes | Submit review |
 | GET | `/api/v1/books/:id/bookmark` | Yes | Check bookmark |
