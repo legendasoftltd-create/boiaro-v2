@@ -33,9 +33,14 @@ const CATEGORY_SELECT = {
   _count: { select: { books: { where: { submission_status: "approved" as const, is_active: true } } } },
 };
 
-export const getAllCategories = async () => {
+export const getAllCategories = async (search?: string) => {
   const categories = await prisma.category.findMany({
-    where: { status: "active" },
+    where: {
+      status: "active",
+      ...(search
+        ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_bn: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] }
+        : {}),
+    },
     orderBy: [{ priority: "asc" }, { created_at: "desc" }],
     select: CATEGORY_SELECT,
   });

@@ -324,10 +324,11 @@ export function useTranslators(opts?: { page?: number; pageSize?: number; search
   return { translators: items, total: data?.total ?? 0 };
 }
 
-export function useCategories() {
-  const { data: cats = [] } = trpc.books.categories.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-  });
+export function useCategories(search?: string) {
+  const { data: cats = [] } = trpc.books.categories.useQuery(
+    search ? { search } : undefined,
+    { staleTime: 5 * 60 * 1000 }
+  );
 
   return cats.map((c: any) => ({
     id: c.id,

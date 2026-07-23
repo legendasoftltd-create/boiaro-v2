@@ -244,17 +244,25 @@ export const booksRouter = router({
       return book;
     }),
 
-  categories: publicProcedure.query(() =>
-    prisma.category.findMany({
-      where: { status: "active" },
-      orderBy: [{ priority: "desc" }, { name: "asc" }],
-      include: {
-        _count: {
-          select: { books: { where: { submission_status: "approved", is_active: true } } },
+  categories: publicProcedure
+    .input(z.object({ search: z.string().optional() }).optional())
+    .query(({ input }) => {
+      const search = input?.search;
+      return prisma.category.findMany({
+        where: {
+          status: "active",
+          ...(search
+            ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_bn: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] }
+            : {}),
         },
-      },
-    })
-  ),
+        orderBy: [{ priority: "desc" }, { name: "asc" }],
+        include: {
+          _count: {
+            select: { books: { where: { submission_status: "approved", is_active: true } } },
+          },
+        },
+      });
+    }),
 
   heroBanners: publicProcedure.query(() =>
     prisma.heroBanner.findMany({

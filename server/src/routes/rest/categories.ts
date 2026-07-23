@@ -16,9 +16,11 @@ import { resolveBookUrls } from "../../lib/mediaUrl.js";
 export const categoriesRestRouter = Router();
 
 // GET /api/v1/categories
-categoriesRestRouter.get("/", async (_req, res) => {
+categoriesRestRouter.get("/", async (req, res) => {
   try {
-    const result = await getAllCategories();
+    const rawSearch = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+    const search = typeof rawSearch === "string" && rawSearch.trim() ? rawSearch.trim() : undefined;
+    const result = await getAllCategories(search);
     res.json({ success: true, ...result });
   } catch (error) {
     sendHttpError(res, error);
