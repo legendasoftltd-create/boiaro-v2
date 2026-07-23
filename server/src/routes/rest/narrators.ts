@@ -9,7 +9,9 @@ export const narratorsRestRouter = Router();
 
 narratorsRestRouter.get("/", async (req: AuthenticatedRequest, res) => {
   try {
-    const result = await getAllNarrators(req.auth?.userId);
+    const rawSearch = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+    const search = typeof rawSearch === "string" && rawSearch.trim() ? rawSearch.trim() : undefined;
+    const result = await getAllNarrators(req.auth?.userId, search);
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);

@@ -4,15 +4,20 @@ import { resolveFileUrl } from "../lib/mediaUrl.js";
 export const getAllTranslators = async (
   limit: number,
   offset: number,
-  userId?: string | null
+  userId?: string | null,
+  search?: string
 ) => {
   const safeLimit = Math.min(limit, 50);
+  const where = {
+    status: "active" as const,
+    ...(search
+      ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] }
+      : {}),
+  };
 
   const [translators, total] = await Promise.all([
     prisma.translator.findMany({
-      where: {
-        status: "active",
-      },
+      where,
       orderBy: [
         {
           priority: "asc",
@@ -36,11 +41,7 @@ export const getAllTranslators = async (
       },
     }),
 
-    prisma.translator.count({
-      where: {
-        status: "active",
-      },
-    }),
+    prisma.translator.count({ where }),
   ]);
 
   let followedTranslatorIds = new Set<string>();

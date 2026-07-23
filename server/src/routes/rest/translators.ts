@@ -11,8 +11,10 @@ translatorsRestRouter.get("/", async (req: AuthenticatedRequest, res) => {
   try {
     const limit = Number(req.query.limit) || 20;
     const offset = Number(req.query.offset) || 0;
+    const rawSearch = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+    const search = typeof rawSearch === "string" && rawSearch.trim() ? rawSearch.trim() : undefined;
 
-    const result = await getAllTranslators(limit, offset, req.auth?.userId);
+    const result = await getAllTranslators(limit, offset, req.auth?.userId, search);
 
     res.json(result);
   } catch (error) {

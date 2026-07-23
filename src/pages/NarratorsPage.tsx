@@ -1,12 +1,22 @@
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { useNarrators } from "@/hooks/useBooks";
 import { Link } from "react-router-dom";
-import { Headphones, Star, Mic2 } from "lucide-react";
+import { Headphones, Star, Mic2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 const NarratorsPage = () => {
-  const narrators = useNarrators();
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchDraft.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchDraft]);
+
+  const narrators = useNarrators(search);
 
   return (
     <main className="min-h-screen bg-background">
@@ -21,6 +31,18 @@ const NarratorsPage = () => {
             <p className="text-sm text-muted-foreground">Browse all narrators on the platform</p>
           </div>
         </div>
+        <div className="relative mb-6 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            placeholder="Search narrators by name..."
+            className="pl-9 h-10 bg-card border-border/60"
+          />
+        </div>
+        {narrators.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-10 text-center">No narrators match this search.</p>
+        ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
           {narrators.map((narrator) => (
             <Link key={narrator.id} to={`/narrator/${narrator.id}`} className="group text-center">
@@ -39,6 +61,7 @@ const NarratorsPage = () => {
             </Link>
           ))}
         </div>
+        )}
       </div>
       <Footer />
     </main>

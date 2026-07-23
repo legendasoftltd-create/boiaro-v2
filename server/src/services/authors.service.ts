@@ -6,15 +6,20 @@ import { resolveFileUrl } from "../lib/mediaUrl.js";
 export const getAllAuthors = async (
   limit: number,
   offset: number,
-  userId?: string | null
+  userId?: string | null,
+  search?: string
 ) => {
     const safeLimit = Math.min(limit, 50);
+    const where = {
+        status: "active" as const,
+        ...(search
+          ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] }
+          : {}),
+    };
 
     const [authors, total] = await Promise.all([
         prisma.author.findMany({
-            where: {
-                status: "active",
-            },
+            where,
             orderBy: [
                 {
                     priority: "asc",
@@ -38,11 +43,7 @@ export const getAllAuthors = async (
             },
         }),
 
-        prisma.author.count({
-            where: {
-                status: "active",
-            },
-        }),
+        prisma.author.count({ where }),
     ]);
 
     let followedAuthorIds = new Set<string>();

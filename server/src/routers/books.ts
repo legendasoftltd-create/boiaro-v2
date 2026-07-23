@@ -413,10 +413,16 @@ export const booksRouter = router({
       return { reads_count };
     }),
 
-  narrators: publicProcedure.query(async () => {
+  narrators: publicProcedure
+    .input(z.object({ search: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+    const search = input?.search;
     const [narrators, formats] = await Promise.all([
       prisma.narrator.findMany({
-        where: { status: "active" },
+        where: {
+          status: "active",
+          ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] } : {}),
+        },
         orderBy: [{ priority: "desc" }, { name: "asc" }],
       }),
       prisma.bookFormat.findMany({
@@ -528,18 +534,23 @@ export const booksRouter = router({
     }),
 
   authors: publicProcedure
-    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500) }).optional())
+    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500), search: z.string().optional() }).optional())
     .query(async ({ input }) => {
       const page = input?.page ?? 0;
       const pageSize = input?.pageSize ?? 500;
+      const search = input?.search;
+      const where = {
+        status: "active" as const,
+        ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] } : {}),
+      };
       const [authors, total, bookCounts] = await Promise.all([
         prisma.author.findMany({
-          where: { status: "active" },
+          where,
           orderBy: [{ priority: "desc" }, { name: "asc" }],
           skip: page * pageSize,
           take: pageSize,
         }),
-        prisma.author.count({ where: { status: "active" } }),
+        prisma.author.count({ where }),
         prisma.book.groupBy({
           by: ["author_id"],
           where: { submission_status: "approved", is_active: true, author_id: { not: null } },
@@ -552,18 +563,23 @@ export const booksRouter = router({
     }),
 
   translators: publicProcedure
-    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500) }).optional())
+    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500), search: z.string().optional() }).optional())
     .query(async ({ input }) => {
       const page = input?.page ?? 0;
       const pageSize = input?.pageSize ?? 500;
+      const search = input?.search;
+      const where = {
+        status: "active" as const,
+        ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] } : {}),
+      };
       const [translators, total, bookCounts] = await Promise.all([
         prisma.translator.findMany({
-          where: { status: "active" },
+          where,
           orderBy: [{ priority: "desc" }, { name: "asc" }],
           skip: page * pageSize,
           take: pageSize,
         }),
-        prisma.translator.count({ where: { status: "active" } }),
+        prisma.translator.count({ where }),
         prisma.book.groupBy({
           by: ["translator_id"],
           where: { submission_status: "approved", is_active: true, translator_id: { not: null } },

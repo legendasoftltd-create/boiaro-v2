@@ -261,9 +261,9 @@ export function useBrowseBooks(filters: BrowseFilters) {
   };
 }
 
-export function useAuthors(opts?: { page?: number; pageSize?: number }) {
+export function useAuthors(opts?: { page?: number; pageSize?: number; search?: string }) {
   const { data } = trpc.books.authors.useQuery(
-    opts ? { page: opts.page ?? 0, pageSize: opts.pageSize ?? 500 } : undefined,
+    opts ? { page: opts.page ?? 0, pageSize: opts.pageSize ?? 500, search: opts.search || undefined } : undefined,
     { staleTime: 5 * 60 * 1000 }
   );
 
@@ -282,10 +282,11 @@ export function useAuthors(opts?: { page?: number; pageSize?: number }) {
   return { authors: items, total: data?.total ?? 0 };
 }
 
-export function useNarrators() {
-  const { data: narrators = [] } = trpc.books.narrators.useQuery(undefined, {
-    staleTime: 5 * 60 * 1000,
-  });
+export function useNarrators(search?: string) {
+  const { data: narrators = [] } = trpc.books.narrators.useQuery(
+    search ? { search } : undefined,
+    { staleTime: 5 * 60 * 1000 }
+  );
 
   return narrators.map((n: any) => ({
     id: n.id,
@@ -302,9 +303,9 @@ export function useNarrators() {
   }));
 }
 
-export function useTranslators(opts?: { page?: number; pageSize?: number }) {
+export function useTranslators(opts?: { page?: number; pageSize?: number; search?: string }) {
   const { data } = trpc.books.translators.useQuery(
-    opts ? { page: opts.page ?? 0, pageSize: opts.pageSize ?? 500 } : undefined,
+    opts ? { page: opts.page ?? 0, pageSize: opts.pageSize ?? 500, search: opts.search || undefined } : undefined,
     { staleTime: 5 * 60 * 1000 }
   );
 

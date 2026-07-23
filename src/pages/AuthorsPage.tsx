@@ -1,17 +1,29 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { useAuthors } from "@/hooks/useBooks";
 import { Link } from "react-router-dom";
-import { BookOpen, Users, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { BookOpen, Users, Sparkles, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const PAGE_SIZE = 24;
 
 const AuthorsPage = () => {
   const [page, setPage] = useState(0);
-  const { authors, total } = useAuthors({ page, pageSize: PAGE_SIZE });
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setSearch(searchDraft.trim());
+      setPage(0);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchDraft]);
+
+  const { authors, total } = useAuthors({ page, pageSize: PAGE_SIZE, search });
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
@@ -32,6 +44,18 @@ const AuthorsPage = () => {
             <span className="text-sm text-muted-foreground hidden sm:block">Page {page + 1} of {totalPages}</span>
           )}
         </div>
+        <div className="relative mb-6 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            placeholder="Search authors by name..."
+            className="pl-9 h-10 bg-card border-border/60"
+          />
+        </div>
+        {authors.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-10 text-center">No authors match this search.</p>
+        ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
           {authors.map((author) => (
             <Link key={author.id} to={`/author/${author.id}`} className="group text-center">
@@ -50,7 +74,8 @@ const AuthorsPage = () => {
             </Link>
           ))}
         </div>
-        {totalPages > 1 && (
+        )}
+        {authors.length > 0 && totalPages > 1 && (
           <div className="flex items-center justify-center gap-3 mt-10">
             <Button
               variant="outline"
