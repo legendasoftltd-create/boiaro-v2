@@ -8,18 +8,19 @@ import { BookCard } from "@/components/BookCard"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { useBrowseBooks, useCategories } from "@/hooks/useBooks"
+import { useBrowseBooks, useCategories, useTags } from "@/hooks/useBooks"
 import { ContentFilterProvider } from "@/contexts/ContentFilterContext"
 import { AdBannerBlock } from "@/components/AdBannerBlock"
-import { Search, BookOpen, Headphones, Package, Flame, Gift, Sparkles, X, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react"
+import { Search, BookOpen, Headphones, Package, Flame, Gift, Sparkles, X, SlidersHorizontal, ChevronLeft, ChevronRight, Tag as TagIcon } from "lucide-react"
 
 /*──────────────────────────────────────────────
   URL schema:
-    /books?format=ebook&filter=trending&category=<id>&q=hello
+    /books?format=ebook&filter=trending&category=<id>&tag=thriller&q=hello
 
   - format:   ebook | audiobook | hardcopy           (omit = all formats)
   - filter:   trending | free | new | bestseller     (omit = none)
   - category: category UUID                          (omit = all categories)
+  - tag:      book tag string                         (omit = all tags)
   - q:        search string                          (omit = no search)
   - sort:     popular | newest | rating              (omit = default)
 
@@ -52,7 +53,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 // Filters are now applied server-side via useBrowseBooks
 
 /** Build a human-readable page title from active filters */
-function buildTitle(format: string | null, filter: string | null, categoryName: string | null): string {
+function buildTitle(format: string | null, filter: string | null, categoryName: string | null, tag: string | null): string {
   const parts: string[] = []
   if (filter) parts.push(filter.charAt(0).toUpperCase() + filter.slice(1))
   if (format) {
@@ -60,6 +61,7 @@ function buildTitle(format: string | null, filter: string | null, categoryName: 
     parts.push(labels[format] || format)
   }
   if (categoryName) parts.push(categoryName)
+  if (tag) parts.push(`#${tag}`)
   if (parts.length === 0) return "Browse Books"
   return parts.join(" ") + " — Books"
 }
@@ -72,6 +74,7 @@ export default function BooksPage() {
   const format = (searchParams.get("format") as FormatKey | null) || null
   const filter = (searchParams.get("filter") as FilterKey | null) || null
   const categoryId = searchParams.get("category") || null
+  const tag = searchParams.get("tag") || null
   const query = searchParams.get("q") || ""
   const sort = (searchParams.get("sort") as SortKey | null) || null
   const [searchDraft, setSearchDraft] = useState(query)
@@ -85,12 +88,14 @@ export default function BooksPage() {
     format: effectiveFormat,
     filter: effectiveFilter,
     categoryId,
+    tag,
     query: query || null,
     sort,
-  }), [effectiveFormat, effectiveFilter, categoryId, query, sort])
+  }), [effectiveFormat, effectiveFilter, categoryId, tag, query, sort])
 
   const { books: filtered, loading, total, page, totalPages, hasMore, setPage, nextPage, prevPage } = useBrowseBooks(browseFilters)
   const categories = useCategories()
+  const tags = useTags()
   const selectedCategory = categories.find(c => c.id === categoryId)
 
 
@@ -125,7 +130,7 @@ export default function BooksPage() {
   }, [searchDraft, query, updateParams]);
 
 
-  const pageTitle = buildTitle(effectiveFormat, effectiveFilter, selectedCategory?.nameBn || selectedCategory?.name || null)
+  const pageTitle = buildTitle(effectiveFormat, effectiveFilter, selectedCategory?.nameBn || selectedCategory?.name || null, tag)
   // Set document title for SEO
   const docTitle = `${pageTitle} | ${get("brand_name", "BoiAro")}`
   useEffect(() => {
@@ -228,7 +233,7 @@ export default function BooksPage() {
             </div>
 
             {/* Active filters summary */}
-            {(effectiveFormat || effectiveFilter || categoryId || query) && (
+            {(effectiveFormat || effectiveFilter || categoryId || tag || query) && (
               <div className="flex flex-wrap items-center gap-1.5 mb-4">
                 <span className="text-xs text-muted-foreground">Active:</span>
                 {effectiveFormat && (
@@ -247,6 +252,12 @@ export default function BooksPage() {
                   <Badge variant="secondary" className="gap-1 text-xs">
                     {selectedCategory.nameBn || selectedCategory.name}
                     <button onClick={() => updateParams({ category: null })}><X className="w-3 h-3" /></button>
+                  </Badge>
+                )}
+                {tag && (
+                  <Badge variant="secondary" className="gap-1 text-xs">
+                    #{tag}
+                    <button onClick={() => updateParams({ tag: null })}><X className="w-3 h-3" /></button>
                   </Badge>
                 )}
                 {query && (
@@ -268,7 +279,7 @@ export default function BooksPage() {
 
             {/* Category pills */}
             {!categoryId && (
-              <div className="flex flex-wrap gap-1.5 mb-6">
+              <div className="flex flex-wrap gap-1.5 mb-3">
                 {categories.slice(0, 12).map(cat => (
                   <Button
                     key={cat.id}
@@ -278,6 +289,24 @@ export default function BooksPage() {
                     onClick={() => updateParams({ category: cat.id })}
                   >
                     {cat.nameBn || cat.name}
+                  </Button>
+                ))}
+              </div>
+            )}
+
+            {/* Tag pills */}
+            {!tag && tags.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 mb-6">
+                <TagIcon className="w-3.5 h-3.5 text-muted-foreground mr-0.5" />
+                {tags.slice(0, 16).map(t => (
+                  <Button
+                    key={t.tag}
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px] rounded-full bg-card/40"
+                    onClick={() => updateParams({ tag: t.tag })}
+                  >
+                    #{t.tag}
                   </Button>
                 ))}
               </div>

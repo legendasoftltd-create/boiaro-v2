@@ -213,6 +213,7 @@ interface BrowseFilters {
   format?: string | null;
   filter?: string | null;
   categoryId?: string | null;
+  tag?: string | null;
   query?: string | null;
   sort?: string | null;
 }
@@ -235,6 +236,7 @@ export function useBrowseBooks(filters: BrowseFilters) {
       pageSize: PAGE_SIZE,
       format: (filters.format as "ebook" | "audiobook" | "hardcopy") || undefined,
       categoryId: filters.categoryId || undefined,
+      tag: filters.tag || undefined,
       filter: (filters.filter as "free" | "new" | "bestseller" | "trending") || undefined,
       query: filters.query || undefined,
       sort: (filters.sort as "newest" | "rating" | "popular") || undefined,
@@ -337,5 +339,17 @@ export function useCategories(search?: string) {
     icon: c.icon || "",
     count: String(c._count?.books ?? 0),
     color: c.color || "primary",
+  }));
+}
+
+export function useTags(search?: string) {
+  const { data: tags = [] } = trpc.books.tags.useQuery(
+    search ? { search } : undefined,
+    { staleTime: 5 * 60 * 1000 }
+  );
+
+  return tags.map((t: any) => ({
+    tag: t.tag as string,
+    count: t.count as number,
   }));
 }

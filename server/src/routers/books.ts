@@ -19,13 +19,14 @@ export const booksRouter = router({
         pageSize: z.number().min(1).max(100).default(30),
         format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
         categoryId: z.string().optional(),
+        tag: z.string().optional(),
         filter: z.enum(["free", "new", "bestseller", "trending"]).optional(),
         query: z.string().optional(),
         sort: z.enum(["newest", "rating", "popular", "mostRead"]).optional(),
       })
     )
     .query(async ({ input }) => {
-      const { page, pageSize, format, categoryId, filter, query, sort } = input;
+      const { page, pageSize, format, categoryId, tag, filter, query, sort } = input;
 
       let formatBookIds: string[] | undefined;
       if (format) {
@@ -42,6 +43,7 @@ export const booksRouter = router({
         is_active: true,
         ...(formatBookIds && { id: { in: formatBookIds } }),
         ...(categoryId && { category_id: categoryId }),
+        ...(tag && { tags: { has: tag } }),
         ...(filter === "free" && { is_free: true }),
         ...(filter === "new" && { is_new: true }),
         ...(filter === "bestseller" && { is_bestseller: true }),
@@ -262,6 +264,28 @@ export const booksRouter = router({
           },
         },
       });
+    }),
+
+  tags: publicProcedure
+    .input(z.object({ search: z.string().optional() }).optional())
+    .query(async ({ input }) => {
+      const rows = await prisma.book.findMany({
+        where: { submission_status: "approved", is_active: true, tags: { isEmpty: false } },
+        select: { tags: true },
+      });
+
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        for (const tag of row.tags) {
+          counts.set(tag, (counts.get(tag) || 0) + 1);
+        }
+      }
+
+      const search = input?.search?.trim().toLowerCase();
+      return Array.from(counts.entries())
+        .filter(([tag]) => !search || tag.toLowerCase().includes(search))
+        .sort((a, b) => b[1] - a[1])
+        .map(([tag, count]) => ({ tag, count }));
     }),
 
   heroBanners: publicProcedure.query(() =>
