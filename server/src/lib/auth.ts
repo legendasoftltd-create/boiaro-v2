@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import ms from "ms";
 
 export interface AuthUser {
   userId: string | null;
@@ -9,6 +10,14 @@ const ACCESS_TOKEN_EXPIRES_IN: jwt.SignOptions["expiresIn"] =
   (process.env.JWT_ACCESS_EXPIRES_IN ?? "7d") as jwt.SignOptions["expiresIn"];
 const REFRESH_TOKEN_EXPIRES_IN: jwt.SignOptions["expiresIn"] =
   (process.env.JWT_REFRESH_EXPIRES_IN ?? "30d") as jwt.SignOptions["expiresIn"];
+
+// Actual access-token lifetime in seconds, for clients (e.g. the mobile app)
+// that need to know when to refresh — kept in sync with ACCESS_TOKEN_EXPIRES_IN
+// so it can never drift from the real JWT `exp` claim.
+export const ACCESS_TOKEN_EXPIRES_IN_SECONDS =
+  typeof ACCESS_TOKEN_EXPIRES_IN === "number"
+    ? ACCESS_TOKEN_EXPIRES_IN
+    : Math.floor(ms(ACCESS_TOKEN_EXPIRES_IN as Parameters<typeof ms>[0]) / 1000);
 
 export function getAuthUserFromAuthorizationHeader(
   authorization?: string | null

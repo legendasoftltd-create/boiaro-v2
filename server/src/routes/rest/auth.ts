@@ -15,7 +15,7 @@ import { resolveDeviceSessionOnLogin } from "../../services/deviceSession.servic
 import type { DeviceLoginParams } from "../../services/deviceSession.service.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
-import { signTokens } from "../../lib/auth.js";
+import { signTokens, ACCESS_TOKEN_EXPIRES_IN_SECONDS } from "../../lib/auth.js";
 import { sendMail } from "../../lib/mailer.js";
 import { sendOtpSms, normalizeBdPhone } from "../../lib/sms.js";
 import { verifyAppleIdToken, findOrCreateAppleUser } from "../../lib/appleAuth.js";
@@ -58,7 +58,7 @@ function sendSocialLoginResponse(
   res.json({
     access_token: accessToken,
     refresh_token: refreshToken,
-    expires_in: 3600,
+    expires_in: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     user_id: user.id,
     user: {
       id: user.id,
@@ -125,7 +125,7 @@ authRestRouter.post("/login", async (req, res) => {
     res.json({
       access_token: result.accessToken,
       refresh_token: result.refreshToken,
-      expires_in: 3600,
+      expires_in: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
       user_id: result.user.id,
       user: { email: result.user.email },
     });
@@ -146,7 +146,7 @@ authRestRouter.post("/refresh", async (req, res) => {
     res.json({
       access_token: result.accessToken,
       refresh_token: result.refreshToken,
-      expires_in: 3600,
+      expires_in: ACCESS_TOKEN_EXPIRES_IN_SECONDS,
     });
   } catch (error) {
     sendHttpError(res, error);
