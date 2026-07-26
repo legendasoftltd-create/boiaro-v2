@@ -982,4 +982,17 @@ pending → confirmed → processing → ready_for_pickup → pickup_received �
 - `GET /api/v1/books/tags/list?search=thriller`
 - `GET /api/v1/books?tag=থ্রিলার&limit=20`
 
+## iOS payment config (REST)
+
+### New endpoint
+
+- `GET /api/v1/payment/config/ios`
+
+### What changed
+
+- Added an admin-controlled, country-gated switch for whether the iOS app shows SSLCommerz at checkout — driven by two new `platform_settings` keys, `sslcommerz_enabled_ios` (bool) and `allowed_countries_ios` (comma-separated ISO codes).
+- Country is detected from `CF-IPCountry` when present, otherwise via an offline GeoLite2 lookup (`geoip-lite`) against the request IP.
+- Managed in the admin panel at Payment Gateways → iOS SSLCommerz Visibility.
+- Full spec: `IOS_PAYMENT_CONFIG_API.md`.
+
 

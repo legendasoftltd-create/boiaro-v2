@@ -66,6 +66,8 @@ const gatewayConfigFields: Record<string, { key: string; label: string; secret?:
   ],
 };
 
+const IOS_VISIBILITY_KEYS = ["sslcommerz_enabled_ios", "allowed_countries_ios"];
+
 export default function AdminPaymentGateways() {
   const utils = trpc.useUtils();
   const updatePaymentGatewayMutation = trpc.admin.updatePaymentGateway.useMutation();
@@ -74,6 +76,26 @@ export default function AdminPaymentGateways() {
   const [saving, setSaving] = useState<string | null>(null);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const { log } = useAdminLogger();
+
+  const [iosSettings, setIosSettings] = useState<Record<string, string>>({});
+  const { data: loadedIosSettings } = trpc.admin.getPlatformSettings.useQuery({ keys: IOS_VISIBILITY_KEYS });
+  const saveIosSettingsMutation = trpc.admin.bulkSetPlatformSettings.useMutation({
+    onSuccess: async () => {
+      await utils.admin.getPlatformSettings.invalidate({ keys: IOS_VISIBILITY_KEYS });
+      await log({ module: "payments", action: "iOS SSLCommerz visibility updated", actionType: "update", targetType: "platform_setting", details: `sslcommerz_enabled_ios=${iosSettings.sslcommerz_enabled_ios}, allowed_countries_ios=${iosSettings.allowed_countries_ios}`, riskLevel: "medium" });
+      toast.success("iOS payment visibility settings saved");
+    },
+    onError: () => toast.error("Failed to save iOS payment visibility settings"),
+  });
+
+  useEffect(() => {
+    if (loadedIosSettings) setIosSettings(loadedIosSettings as Record<string, string>);
+  }, [loadedIosSettings]);
+
+  const setIosSetting = (key: string, value: string) => setIosSettings((p) => ({ ...p, [key]: value }));
+  const saveIosSettings = () => {
+    saveIosSettingsMutation.mutate(IOS_VISIBILITY_KEYS.map((key) => ({ key, value: iosSettings[key] ?? "" })));
+  };
 
   const load = async () => {
     const data = await utils.admin.listPaymentGateways.fetch();
@@ -138,6 +160,43 @@ export default function AdminPaymentGateways() {
           {gateways.filter(g => g.is_enabled).length} active
         </Badge>
       </div>
+
+      <Card className="border-border/30 mb-6">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Smartphone className="w-4 h-4 text-primary" /> iOS SSLCommerz Visibility
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground -mt-2">
+            Controls whether the iOS app shows SSLCommerz at checkout. Used by{" "}
+            <code className="font-mono">GET /api/v1/payment/config/ios</code> — see IOS_PAYMENT_CONFIG_API.md.
+          </p>
+          <div className="flex items-center justify-between">
+            <Label>Enable SSLCommerz on iOS</Label>
+            <Switch
+              checked={iosSettings.sslcommerz_enabled_ios === "true"}
+              onCheckedChange={(v) => setIosSetting("sslcommerz_enabled_ios", String(v))}
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Allowed Countries (comma-separated ISO codes, e.g. BD)</Label>
+            <Input
+              value={iosSettings.allowed_countries_ios || ""}
+              onChange={(e) => setIosSetting("allowed_countries_ios", e.target.value)}
+              placeholder="BD"
+              disabled={iosSettings.sslcommerz_enabled_ios !== "true"}
+              className="mt-1 bg-secondary font-mono text-xs"
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={saveIosSettings} disabled={saveIosSettingsMutation.isPending} className="gap-2">
+              <Save className="w-4 h-4" />
+              {saveIosSettingsMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="space-y-3">
         {gateways.map(gw => {
