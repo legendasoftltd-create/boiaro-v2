@@ -455,6 +455,10 @@ model BookFormatEarlyAccess {
   @@map("book_format_early_access")
 }
 
+// One row per user per book — mirrors BookListen. A "read" is only recorded
+// once the reader has crossed an engagement threshold (see readTracking.ts),
+// and the unique constraint makes repeat engagement for the same user/book
+// a no-op, so total_reads reflects unique readers, not open/click events.
 model BookRead {
   id         String   @id @default(uuid())
   book_id    String
@@ -463,6 +467,7 @@ model BookRead {
 
   book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
 
+  @@unique([user_id, book_id])
   @@map("book_reads")
 }
 
@@ -479,6 +484,30 @@ model BookListen {
 
   @@unique([user_id, book_id])
   @@map("book_listens")
+}
+
+// One row per viewer (user_id when logged in, device_id fallback for
+// anonymous visitors) per book — tracks Book Details page views with a
+// rolling 24h window, not a lifetime unique like BookRead/BookListen: the
+// same viewer opening the page again next week is a genuine new view, so
+// last_viewed_at is checked and only advanced once >24h has elapsed since
+// the previous view (see viewTracking.ts). Exactly one of user_id/device_id
+// is set per row — never both — so each unique constraint only dedups
+// within its own identity type.
+model BookView {
+  id             String   @id @default(uuid())
+  book_id        String
+  user_id        String?
+  device_id      String?
+  view_count     Int      @default(1)
+  last_viewed_at DateTime @default(now())
+  created_at     DateTime @default(now())
+
+  book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
+
+  @@unique([book_id, user_id])
+  @@unique([book_id, device_id])
+  @@map("book_views")
 }
 
 model Bookmark {
@@ -523,6 +552,7 @@ model Book {
   title_en          String?
   total_reads       Int?     @default(0)
   total_listens     Int?     @default(0)
+  total_views       Int?     @default(0)
   updated_at        DateTime @updatedAt
   subscriber_access Boolean? @default(false)
   voice_access_type String?  @default("paid")
@@ -538,6 +568,7 @@ model Book {
   contributors      BookContributor[]
   reads             BookRead[]
   listens           BookListen[]
+  views             BookView[]
   bookmarks         Bookmark[]
   reviews           Review[]
   reading_progress  ReadingProgress[]

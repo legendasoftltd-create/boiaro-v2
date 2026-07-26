@@ -6,6 +6,7 @@ import { bookByIdSchema, bookListSchema } from "../schemas/books.js";
 import { getBookById, listBooks, getBecauseYouReadRecommendations } from "../services/books.service.js";
 import { resolveBookUrls } from "../lib/mediaUrl.js";
 import { getCreatorBookIds } from "../lib/creatorBooks.js";
+import { maybeRecordView } from "../lib/viewTracking.js";
 
 export const booksRouter = router({
   list: publicProcedure
@@ -436,13 +437,15 @@ export const booksRouter = router({
     })
   ),
 
-  incrementRead: protectedProcedure
-    .input(z.object({ bookId: z.string() }))
+  // Fires when a user opens the Book Details page — records a *view*, not a
+  // read (actual reads are only counted once the reader engages inside
+  // EbookReader, see readTracking.ts). Public: anonymous visitors are
+  // deduped by deviceId instead of userId.
+  recordView: publicProcedure
+    .input(z.object({ bookId: z.string(), deviceId: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      await prisma.bookRead.create({ data: { user_id: ctx.userId, book_id: input.bookId } });
-      await prisma.book.update({ where: { id: input.bookId }, data: { total_reads: { increment: 1 } } });
-      const reads_count = await prisma.bookRead.count({ where: { book_id: input.bookId } });
-      return { reads_count };
+      await maybeRecordView(ctx.userId, input.deviceId, input.bookId);
+      return { success: true };
     }),
 
   narrators: publicProcedure

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 
@@ -13,6 +13,17 @@ interface ReadingProgressData {
 export function useReadingProgress(bookId: string | undefined) {
   const { user } = useAuth();
   const [localProgress, setLocalProgress] = useState<ReadingProgressData | null>(null);
+
+  // Session-scoped engagement tracking (resets whenever the reader mounts for
+  // a fresh bookId) — feeds the "read for >=60s or >=3 pages" threshold on
+  // the server (see readTracking.ts), so a click into the reader that's
+  // immediately closed doesn't count as a read.
+  const sessionStartRef = useRef<number>(Date.now());
+  const sessionStartPageRef = useRef<number | null>(null);
+  useEffect(() => {
+    sessionStartRef.current = Date.now();
+    sessionStartPageRef.current = null;
+  }, [bookId]);
 
   const query = trpc.profiles.readingProgressByBook.useQuery(
     { bookId: bookId! },
@@ -52,6 +63,10 @@ export function useReadingProgress(bookId: string | undefined) {
         lastReadCfi: cfi ?? localProgress?.lastReadCfi ?? null,
       });
 
+      if (sessionStartPageRef.current === null) sessionStartPageRef.current = currentPage;
+      const sessionSeconds = (Date.now() - sessionStartRef.current) / 1000;
+      const sessionPagesRead = Math.abs(currentPage - sessionStartPageRef.current);
+
       try {
         await updateMutation.mutateAsync({
           bookId,
@@ -59,6 +74,8 @@ export function useReadingProgress(bookId: string | undefined) {
           totalPages,
           percentage: clamped,
           cfi,
+          sessionSeconds,
+          sessionPagesRead,
         });
       } catch {
         // Silent

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
+import { getOrCreateDeviceId } from "@/lib/deviceId";
 
 export function useBookEngagement(bookId: string) {
   const { user } = useAuth();
@@ -9,11 +10,7 @@ export function useBookEngagement(bookId: string) {
   const [liveRating, setLiveRating] = useState<number | null>(null);
   const [liveReviewsCount, setLiveReviewsCount] = useState<number | null>(null);
 
-  const incrementReadMutation = trpc.books.incrementRead.useMutation({
-    onSuccess: (data: any) => {
-      if (typeof data?.reads_count === "number") setLiveReads(data.reads_count);
-    },
-  });
+  const recordViewMutation = trpc.books.recordView.useMutation();
 
   const bookQuery = trpc.books.byId.useQuery(
     { id: bookId },
@@ -29,25 +26,23 @@ export function useBookEngagement(bookId: string) {
     } as any
   );
 
-  const trackRead = useCallback(async () => {
-    if (!user || !bookId) return;
+  // Book Details page view — actual read engagement is tracked separately,
+  // inside the reader (see useReadingProgress). The server dedups this to at
+  // most once per 24h per user/device, so this is safe to call on every mount.
+  const trackView = useCallback(async () => {
+    if (!bookId) return;
 
-    const key = `read_${bookId}_${user.id}`;
+    const key = `view_${bookId}_${user?.id ?? "anon"}`;
     if (trackedKey.current === key) return;
     trackedKey.current = key;
 
-    const lastRead = localStorage.getItem(key);
-    const now = Date.now();
-    if (lastRead && now - Number(lastRead) < 3600000) return;
-
-    localStorage.setItem(key, String(now));
-
     try {
-      await incrementReadMutation.mutateAsync({ bookId });
+      const deviceId = user ? undefined : await getOrCreateDeviceId();
+      await recordViewMutation.mutateAsync({ bookId, deviceId });
     } catch {
       // Silent
     }
-  }, [user, bookId, incrementReadMutation]);
+  }, [user, bookId, recordViewMutation]);
 
   const refreshReviewStats = useCallback(async () => {
     await bookQuery.refetch();
@@ -57,7 +52,7 @@ export function useBookEngagement(bookId: string) {
     liveReads,
     liveRating,
     liveReviewsCount,
-    trackRead,
+    trackView,
     refreshReviewStats,
   };
 }

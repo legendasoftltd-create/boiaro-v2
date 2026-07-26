@@ -4,6 +4,7 @@ import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { resolveUrls, resolveFileUrl } from "../lib/mediaUrl.js";
 import { maybeRecordListen } from "../lib/listenTracking.js";
+import { maybeRecordRead } from "../lib/readTracking.js";
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import { getCreatorBookIds } from "../lib/creatorBooks.js";
 
@@ -113,6 +114,8 @@ export const profilesRouter = router({
         totalPages: z.number().int().min(0),
         percentage: z.number().min(0).max(100).optional(),
         cfi: z.string().optional(),
+        sessionSeconds: z.number().min(0).optional(),
+        sessionPagesRead: z.number().min(0).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -122,6 +125,8 @@ export const profilesRouter = router({
         : input.totalPages > 0
           ? Math.min((input.currentPage / input.totalPages) * 100, 100)
           : 0;
+
+      await maybeRecordRead(ctx.userId, input.bookId, input.sessionSeconds, input.sessionPagesRead);
 
       return prisma.readingProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },

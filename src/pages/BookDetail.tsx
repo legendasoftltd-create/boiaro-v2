@@ -341,7 +341,7 @@ export default function BookDetail() {
 
   useEffect(() => {
     if (!bookId) return
-    engagement.trackRead()
+    engagement.trackView()
   }, [bookId])
 
   if (isLoading) {

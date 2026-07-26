@@ -58,6 +58,8 @@ export default function AdminReadingAnalytics() {
   const [trendingPeriod, setTrendingPeriod] = useState("7");
   const [presenceData, setPresenceData] = useState<any[]>([]);
   const [liveFilter, setLiveFilter] = useState<LiveUserFilter>(null);
+  const [bookViewCounts, setBookViewCounts] = useState<Record<string, number>>({});
+  const [summary, setSummary] = useState({ totalViews: 0, uniqueReaders: 0, uniqueListeners: 0 });
 
   useEffect(() => {
     if (!data) {
@@ -79,6 +81,8 @@ export default function AdminReadingAnalytics() {
       }))
     );
     setPresenceData((data.presenceData as any[]) || []);
+    setBookViewCounts((data.bookViewCounts as Record<string, number>) || {});
+    setSummary((data.summary as typeof summary) || { totalViews: 0, uniqueReaders: 0, uniqueListeners: 0 });
     if (data.trendingPeriod) setTrendingPeriod(data.trendingPeriod);
     setLoading(false);
   }, [data, isLoading]);
@@ -350,6 +354,37 @@ export default function AdminReadingAnalytics() {
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Accurate engagement totals — unique-per-user counts, not raw event counts */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="border-border/30">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-secondary/60"><Eye className="w-5 h-5 text-blue-400" /></div>
+            <div>
+              <p className="text-xl font-bold">{summary.totalViews.toLocaleString()}</p>
+              <p className="text-[11px] text-muted-foreground">Total Views (24h-deduped per user/device)</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/30">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-secondary/60"><BookOpen className="w-5 h-5 text-primary" /></div>
+            <div>
+              <p className="text-xl font-bold">{summary.uniqueReaders.toLocaleString()}</p>
+              <p className="text-[11px] text-muted-foreground">Unique Readers (lifetime, per user)</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/30">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-secondary/60"><Headphones className="w-5 h-5 text-purple-400" /></div>
+            <div>
+              <p className="text-xl font-bold">{summary.uniqueListeners.toLocaleString()}</p>
+              <p className="text-[11px] text-muted-foreground">Unique Listeners (lifetime, per user)</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <LiveUsersModal filter={liveFilter} onClose={() => setLiveFilter(null)} />

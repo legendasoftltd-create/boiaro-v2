@@ -4,6 +4,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { maybeRecordListen } from "../../lib/listenTracking.js";
+import { maybeRecordRead } from "../../lib/readTracking.js";
 
 export const progressRestRouter = Router();
 
@@ -34,12 +35,13 @@ progressRestRouter.get("/reading", requireAuth, async (req: AuthenticatedRequest
 
 progressRestRouter.put("/reading", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { book_id, current_page, total_pages } = req.body;
+    const { book_id, current_page, total_pages, session_seconds, session_pages_read } = req.body;
     if (!book_id || current_page === undefined || total_pages === undefined) {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
     const percentage = total_pages > 0 ? Math.min((current_page / total_pages) * 100, 100) : 0;
+    await maybeRecordRead(req.auth.userId, book_id, session_seconds, session_pages_read);
     await prisma.readingProgress.upsert({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
       create: {

@@ -4149,15 +4149,21 @@ export const adminRouter = router({
     }),
 
   readingAnalyticsData: adminProcedure.query(async () => {
-    const [logs, books, bookReads, bookListens, presenceData, settings] = await Promise.all([
+    const [logs, books, bookReads, bookListens, bookViewsAgg, uniqueReaders, uniqueListeners, totalViews, presenceData, settings] = await Promise.all([
       prisma.userActivityLog.findMany({
         select: { action: true, book_id: true, user_id: true, created_at: true, metadata: true },
         orderBy: { created_at: "desc" },
         take: 5000,
       }),
-      prisma.book.findMany({ select: { id: true, title: true, total_reads: true, total_listens: true, cover_url: true } }),
+      prisma.book.findMany({ select: { id: true, title: true, total_reads: true, total_listens: true, total_views: true, cover_url: true } }),
       prisma.bookRead.findMany({ select: { book_id: true, user_id: true, created_at: true } }),
       prisma.bookListen.findMany({ select: { book_id: true, user_id: true, created_at: true } }),
+      prisma.bookView.groupBy({ by: ["book_id"], _sum: { view_count: true } }),
+      // BookRead/BookListen are unique-per-(user_id, book_id), so distinct user_id
+      // across the whole table is the platform-wide unique reader/listener count.
+      prisma.bookRead.findMany({ select: { user_id: true }, distinct: ["user_id"] }),
+      prisma.bookListen.findMany({ select: { user_id: true }, distinct: ["user_id"] }),
+      prisma.book.aggregate({ _sum: { total_views: true } }),
       prisma.userPresence.findMany(),
       prisma.platformSetting.findMany({
         where: { key: "rec_trending_period_days" },
@@ -4165,6 +4171,9 @@ export const adminRouter = router({
         take: 1,
       }),
     ]);
+
+    const bookViewCounts: Record<string, number> = {};
+    bookViewsAgg.forEach((row) => { bookViewCounts[row.book_id] = row._sum.view_count ?? 0; });
 
     return {
       logs: logs.map((row) => ({
@@ -4177,6 +4186,12 @@ export const adminRouter = router({
       books,
       bookReads,
       bookListens,
+      bookViewCounts,
+      summary: {
+        totalViews: totalViews._sum.total_views ?? 0,
+        uniqueReaders: uniqueReaders.length,
+        uniqueListeners: uniqueListeners.length,
+      },
       presenceData,
       trendingPeriod: settings[0]?.value ?? "7",
     };
