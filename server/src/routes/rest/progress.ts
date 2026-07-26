@@ -5,6 +5,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { maybeRecordListen } from "../../lib/listenTracking.js";
 import { maybeRecordRead } from "../../lib/readTracking.js";
+import { checkAndAwardBadges } from "../../services/gamification.service.js";
 
 export const progressRestRouter = Router();
 
@@ -54,6 +55,7 @@ progressRestRouter.put("/reading", requireAuth, async (req: AuthenticatedRequest
       },
       update: { current_page, total_pages, percentage, last_read_at: new Date() },
     });
+    checkAndAwardBadges(req.auth.userId!).catch(() => null);
     res.json({ message: "Reading progress saved" });
   } catch (error) {
     sendHttpError(res, error);
@@ -117,6 +119,7 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
         ...(speedVal != null && { playback_speed: speedVal }),
       },
     });
+    checkAndAwardBadges(req.auth.userId!).catch(() => null);
     res.json({ message: "Listening progress saved" });
   } catch (error) {
     sendHttpError(res, error);

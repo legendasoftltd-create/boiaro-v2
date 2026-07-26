@@ -504,6 +504,8 @@ List approved books with pagination and optional filters. No auth required.
       "language": "bn",
       "avg_rating": 4.5,
       "total_reads": 1200,
+      "total_views": 3400,
+      "total_listens": 300,
       "author": { "id": "uuid", "name": "Author Name", "avatar_url": "https://..." },
       "formats": [{ "id": "uuid", "format": "ebook", "price": 90, "coin_price": 50 }]
     }
@@ -626,6 +628,30 @@ List audiobook tracks for a book. No auth required.
 ```
 
 Returns `{ "tracks": [] }` if no audiobook format exists.
+
+---
+
+### `POST /books/:id/read`
+
+Call this when the user opens a book's details/entry screen. Records a
+**view** (not a read — see [BOOK_ENGAGEMENT_TRACKING_API.md](BOOK_ENGAGEMENT_TRACKING_API.md)
+for the full view/read/listen counting rules). Auth optional — send `device_id`
+for anonymous visitors so their views still dedup correctly.
+
+**Request body:**
+```json
+{ "device_id": "optional-anonymous-device-uuid" }
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| device_id | string | ❌ | Only used when the request has no `Authorization` token |
+
+**Success (200):** `{ "success": true }`
+
+Deduped server-side to at most one counted view per 24h per user (or per
+device when anonymous) — safe to call every time this screen opens, no
+client-side debounce needed.
 
 ---
 
@@ -1084,20 +1110,39 @@ Returns default if no progress exists:
 
 ### `PUT /progress/reading`
 
-Save or update reading progress. 🔒 Auth required.
+Save or update reading progress. 🔒 Auth required. Call this periodically
+while the reader is open (every page turn, or debounced every few seconds)
+— it's also how **Read Count** gets recorded, see below.
 
 **Request body:**
 ```json
-{ "book_id": "uuid", "current_page": 100, "total_pages": 320 }
+{
+  "book_id": "uuid",
+  "current_page": 100,
+  "total_pages": 320,
+  "session_seconds": 75,
+  "session_pages_read": 4
+}
 ```
 
-| Field | Type | Required |
-| :--- | :--- | :--- |
-| book_id | uuid | ✅ |
-| current_page | int | ✅ |
-| total_pages | int | ✅ |
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| book_id | uuid | ✅ | |
+| current_page | int | ✅ | |
+| total_pages | int | ✅ | |
+| session_seconds | number | ❌ | Seconds elapsed since the reader was opened for this book (this session) |
+| session_pages_read | number | ❌ | Pages advanced since the reader was opened for this book (this session) |
 
 **Success (200):** `{ "message": "Reading progress saved" }`
+
+**Read Count:** a book only counts as "read" for a user once, ever
+(unique per user, not per device) — recorded automatically the first time
+`session_seconds >= 60` OR `session_pages_read >= 3` on a call to this
+endpoint. Opening the book without reading, or just clicking "Read Now",
+does **not** count. Track `session_seconds`/`session_pages_read` client-side
+from the moment the reader opens for this book, resetting on a fresh
+reader-open — safe to send on every progress save, it's idempotent
+server-side. Full rules: [BOOK_ENGAGEMENT_TRACKING_API.md](BOOK_ENGAGEMENT_TRACKING_API.md).
 
 ---
 
@@ -1146,6 +1191,11 @@ Save or update listening progress. 🔒 Auth required.
 | total_seconds | int | ❌ (default 0) |
 
 **Success (200):** `{ "message": "Listening progress saved" }`
+
+**Listen Count:** unique per user (not per device) — recorded automatically
+the first time `position_seconds >= 60` OR `position_seconds / total_seconds >= 30%`
+on a call to this endpoint. Safe to call this endpoint on every playback
+progress tick; it's idempotent server-side.
 
 ---
 
@@ -1763,18 +1813,19 @@ On receiving HTTP 401:
 5. `POST /content/ebook-url` or `POST /content/audio-url` → Access
 
 ### Flow 6: Reading Session
-1. `POST /access/check` → Verify access
-2. `POST /content/ebook-url` → Get signed URL
-3. Open PDF/EPUB viewer
-4. `PUT /progress/reading` → Save progress periodically
-5. `GET /progress/reading` → Resume reading
+1. `POST /books/:id/read` → Record a view (fires when the book's details/entry screen opens)
+2. `POST /access/check` → Verify access
+3. `POST /content/ebook-url` → Get signed URL
+4. Open PDF/EPUB viewer, start a local session timer + starting-page marker
+5. `PUT /progress/reading` → Save progress periodically, including `session_seconds`/`session_pages_read` (this is what triggers Read Count)
+6. `GET /progress/reading` → Resume reading
 
 ### Flow 7: Listening Session
 1. `GET /books/:id/tracks` → Get track list
 2. `POST /access/check` → Verify access
 3. `POST /content/batch-audio-urls` → Get all track URLs
 4. Play audio
-5. `PUT /progress/listening` → Save progress periodically
+5. `PUT /progress/listening` → Save progress periodically (this is what triggers Listen Count)
 6. `GET /progress/listening` → Resume listening
 
 ---

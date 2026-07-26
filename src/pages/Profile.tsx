@@ -13,11 +13,14 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import {
   BookOpen, Headphones, ShoppingBag, Bookmark, Settings, LogOut,
-  Play, Eye, Trash2, BookCopy, Clock, Phone, Camera, Loader2, Smartphone,
+  Play, Eye, Trash2, BookCopy, Clock, Phone, Camera, Loader2, Smartphone, Award, Coins,
+  TrendingUp, Share2, BarChart3,
 } from "lucide-react"
-import { useNavigate, Link } from "react-router-dom"
+import { stripHtml } from "@/lib/stripHtml"
+import { useNavigate, useSearchParams, Link } from "react-router-dom"
 import { useToast } from "@/hooks/use-toast"
 import { toMediaUrl } from "@/lib/mediaUrl"
+import { shareCardImage } from "@/lib/shareCard"
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? ""
 
@@ -25,6 +28,10 @@ export default function Profile() {
   const { user, profile, signOut, updateProfile, setProfileAvatar } = useAuth()
   const navigate = useNavigate()
   const { toast } = useToast()
+  const [searchParams] = useSearchParams()
+  const defaultTab = searchParams.get("tab") === "weekly-report" ? "weekly-report" : "reading"
+  const [sharingBadgeId, setSharingBadgeId] = useState<string | null>(null)
+  const [sharingReport, setSharingReport] = useState(false)
   const [displayName, setDisplayName] = useState("")
   const [bio, setBio] = useState("")
   const [phone, setPhone] = useState("")
@@ -47,6 +54,33 @@ export default function Profile() {
   const { data: bookmarks = [], isLoading: bookmarksLoading } = trpc.books.userBookmarks.useQuery(undefined, { enabled: !!user })
   const { data: orders = [], isLoading: ordersLoading } = trpc.profiles.userOrders.useQuery(undefined, { enabled: !!user })
   const { data: devices = [], isLoading: devicesLoading } = trpc.devices.myDevices.useQuery(undefined, { enabled: !!user })
+  const { data: badgeDefs = [] } = trpc.gamification.badgeDefinitions.useQuery(undefined, { enabled: !!user })
+  const { data: userBadges = [] } = trpc.gamification.badges.useQuery(undefined, { enabled: !!user })
+  const earnedBadgeIds = new Set((userBadges as any[]).map((b: any) => b.badge_id))
+  const badgeIdByDefId = new Map((userBadges as any[]).map((b: any) => [b.badge_id, b.id]))
+  const { data: weeklyReport, isLoading: weeklyReportLoading } = trpc.gamification.myWeeklyReport.useQuery(undefined, { enabled: !!user })
+
+  const handleShareBadge = async (userBadgeId: string, title: string) => {
+    setSharingBadgeId(userBadgeId)
+    try {
+      await shareCardImage(`/api/v1/share/badge/${userBadgeId}.png`, "badge.png", title, "BoiAro-তে আমার নতুন অর্জন!")
+    } catch {
+      toast({ title: "শেয়ার করা যায়নি", variant: "destructive" })
+    } finally {
+      setSharingBadgeId(null)
+    }
+  }
+
+  const handleShareWeeklyReport = async () => {
+    setSharingReport(true)
+    try {
+      await shareCardImage("/api/v1/share/weekly-report.png", "weekly-report.png", "আমার সাপ্তাহিক রিডিং রিপোর্ট", "BoiAro-তে এই সপ্তাহে আমার পড়া!")
+    } catch {
+      toast({ title: "শেয়ার করা যায়নি", variant: "destructive" })
+    } finally {
+      setSharingReport(false)
+    }
+  }
 
   const bookmarkMutation = trpc.books.bookmark.useMutation({
     onSuccess: () => utils.books.userBookmarks.invalidate(),
@@ -250,10 +284,12 @@ export default function Profile() {
             </div>
           </div>
 
-          <Tabs defaultValue="reading" className="space-y-5">
+          <Tabs defaultValue={defaultTab} className="space-y-5">
             <TabsList className="bg-secondary/40 border border-border/30 flex-wrap h-auto gap-0.5 p-1">
               <TabsTrigger value="reading" className="gap-1.5 text-[13px]"><BookOpen className="w-3.5 h-3.5" /> Reading</TabsTrigger>
               <TabsTrigger value="listening" className="gap-1.5 text-[13px]"><Headphones className="w-3.5 h-3.5" /> Listening</TabsTrigger>
+              <TabsTrigger value="badges" className="gap-1.5 text-[13px]"><Award className="w-3.5 h-3.5" /> Badges</TabsTrigger>
+              <TabsTrigger value="weekly-report" className="gap-1.5 text-[13px]"><BarChart3 className="w-3.5 h-3.5" /> Weekly Report</TabsTrigger>
               <TabsTrigger value="bookmarks" className="gap-1.5 text-[13px]"><Bookmark className="w-3.5 h-3.5" /> Bookmarks</TabsTrigger>
               <TabsTrigger value="orders" className="gap-1.5 text-[13px]"><ShoppingBag className="w-3.5 h-3.5" /> Orders</TabsTrigger>
               <TabsTrigger value="devices" className="gap-1.5 text-[13px]"><Smartphone className="w-3.5 h-3.5" /> Devices</TabsTrigger>
@@ -289,6 +325,98 @@ export default function Profile() {
                     </div>
                   ) : (
                     <EmptyState icon={Headphones} text="No audiobooks in progress. Start listening!" />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="badges">
+              <Card className="border-border/30 bg-card/60">
+                <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Award className="w-4 h-4 text-primary" /> Badges & Achievements</CardTitle></CardHeader>
+                <CardContent>
+                  {(badgeDefs as any[]).length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                      {(badgeDefs as any[]).map((b: any) => {
+                        const earned = earnedBadgeIds.has(b.id)
+                        return (
+                          <div key={b.id} className={`p-3 rounded-xl border text-center transition-all ${earned ? "border-primary/30 bg-primary/5" : "border-border/20 bg-secondary/10 opacity-50"}`}>
+                            <Award className={`w-8 h-8 mx-auto mb-2 ${earned ? "text-primary" : "text-muted-foreground"}`} />
+                            <p className={`text-[13px] font-medium ${earned ? "text-foreground" : "text-muted-foreground"}`}>{b.title}</p>
+                            <p className="text-[10px] text-muted-foreground mt-0.5">{stripHtml(b.description || "")}</p>
+                            {b.coin_reward && b.coin_reward > 0 && (
+                              <Badge variant="outline" className="mt-1.5 text-[10px]"><Coins className="w-2.5 h-2.5 mr-0.5" />{b.coin_reward}</Badge>
+                            )}
+                            {earned && (
+                              <>
+                                <p className="text-[10px] text-primary mt-1">✓ Earned</p>
+                                <Button
+                                  size="sm" variant="ghost"
+                                  className="mt-1.5 h-6 text-[10px] gap-1 px-2"
+                                  disabled={sharingBadgeId === badgeIdByDefId.get(b.id)}
+                                  onClick={() => {
+                                    const userBadgeId = badgeIdByDefId.get(b.id)
+                                    if (userBadgeId) handleShareBadge(userBadgeId, b.title)
+                                  }}
+                                >
+                                  <Share2 className="w-3 h-3" /> Share
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <EmptyState icon={Award} text="No badges available yet." />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="weekly-report">
+              <Card className="border-border/30 bg-card/60">
+                <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="w-4 h-4 text-primary" /> এই সপ্তাহের রিপোর্ট</CardTitle>
+                  {weeklyReport && weeklyReport.totalSeconds > 0 && (
+                    <Button size="sm" variant="outline" className="gap-1.5" disabled={sharingReport} onClick={handleShareWeeklyReport}>
+                      <Share2 className="w-3.5 h-3.5" /> {sharingReport ? "..." : "Share"}
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {weeklyReportLoading ? (
+                    <p className="text-muted-foreground animate-pulse text-[13px]">Loading...</p>
+                  ) : weeklyReport && weeklyReport.totalSeconds > 0 ? (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-4 rounded-xl border border-border/20 bg-secondary/10 text-center">
+                          <p className="text-3xl font-bold text-primary">{weeklyReport.totalMinutes}</p>
+                          <p className="text-[12px] text-muted-foreground mt-1">মিনিট পড়া/শোনা</p>
+                        </div>
+                        <div className="p-4 rounded-xl border border-border/20 bg-secondary/10 text-center">
+                          <p className="text-3xl font-bold text-primary">{weeklyReport.bookCount}</p>
+                          <p className="text-[12px] text-muted-foreground mt-1">টি বই</p>
+                        </div>
+                      </div>
+                      {weeklyReport.weekOverWeekPercent !== null && (
+                        <p className="text-[13px] flex items-center gap-1.5 text-muted-foreground">
+                          <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                          গত সপ্তাহের তুলনায় {weeklyReport.weekOverWeekPercent >= 0 ? "+" : ""}{weeklyReport.weekOverWeekPercent}%
+                        </p>
+                      )}
+                      {weeklyReport.books.length > 0 && (
+                        <div>
+                          <p className="text-[12px] text-muted-foreground mb-2">এই সপ্তাহে পড়া বইগুলো</p>
+                          <div className="flex flex-wrap gap-2">
+                            {weeklyReport.books.map((b: any) => (
+                              <Badge key={b.id} variant="outline" className="text-[11px]">{b.title}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <EmptyState icon={BarChart3} text="এই সপ্তাহে এখনো কোনো পড়া/শোনার তথ্য নেই।" />
                   )}
                 </CardContent>
               </Card>

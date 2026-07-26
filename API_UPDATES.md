@@ -995,4 +995,18 @@ pending → confirmed → processing → ready_for_pickup → pickup_received �
 - Managed in the admin panel at Payment Gateways → iOS SSLCommerz Visibility.
 - Full spec: `IOS_PAYMENT_CONFIG_API.md`.
 
+## Book View/Read/Listen count fix (REST)
+
+### Updated endpoints
+
+- `POST /api/v1/books/:id/read` — now records a *view* (24h-deduped per user/device), not a read.
+- `PUT /api/v1/progress/reading` — new optional `session_seconds`/`session_pages_read` fields; now triggers Read Count.
+
+### What changed
+
+- Read Count previously incremented on every book-details-page open, so it measured opens, not unique readers. It's now unique-per-user for life, and only recorded once a reading session crosses 60s or 3 pages.
+- Added View Count (`Book.total_views`) as a separate signal, deduped to once per 24h per user/device.
+- Listen Count logic unchanged.
+- Mobile app **must** send `session_seconds`/`session_pages_read` on `PUT /progress/reading` for Read Count to register — see `BOOK_ENGAGEMENT_TRACKING_API.md` for the full contract and required client-side session tracking.
+
 

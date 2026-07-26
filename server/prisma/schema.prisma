@@ -664,6 +664,7 @@ model CoinTransaction {
   user_id      String
 
   @@index([user_id, created_at])
+  @@index([type, created_at])
   @@map("coin_transactions")
 }
 
@@ -712,6 +713,8 @@ model ContentConsumptionTime {
   seconds    Int      @default(0)
   user_id    String
 
+  @@index([format, created_at])
+  @@index([user_id, format, created_at])
   @@map("content_consumption_time")
 }
 
@@ -1841,6 +1844,107 @@ model UserStreak {
   user_id            String   @unique
 
   @@map("user_streaks")
+}
+
+// Admin-configured spin-wheel prize table. `segments` is a JSON array of
+// { label, coin_reward, weight } — weight drives the weighted-random pick,
+// not display size. One active config at a time (admin toggles is_active).
+model SpinWheelConfig {
+  id            String   @id @default(uuid())
+  is_active     Boolean  @default(true)
+  segments      Json
+  spins_per_day Int      @default(1)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  results SpinResult[]
+
+  @@map("spin_wheel_configs")
+}
+
+model SpinResult {
+  id            String   @id @default(uuid())
+  user_id       String
+  config_id     String
+  segment_label String
+  coin_reward   Int
+  created_at    DateTime @default(now())
+
+  config SpinWheelConfig @relation(fields: [config_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, created_at])
+  @@map("spin_results")
+}
+
+model Quiz {
+  id              String   @id @default(uuid())
+  title           String
+  description     String?
+  is_active       Boolean  @default(true)
+  coin_reward     Int      @default(0)
+  pass_percentage Int      @default(60)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            String @id @default(uuid())
+  quiz_id       String
+  question      String
+  options       Json
+  correct_index Int
+  sort_order    Int    @default(0)
+
+  quiz Quiz @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+
+  @@map("quiz_questions")
+}
+
+// One attempt per user per quiz, ever — mirrors BookListen/BookRead's
+// unique-per-user idempotency pattern instead of a client-side guard.
+model QuizAttempt {
+  id          String   @id @default(uuid())
+  quiz_id     String
+  user_id     String
+  score       Int
+  total       Int
+  passed      Boolean  @default(false)
+  coin_reward Int      @default(0)
+  created_at  DateTime @default(now())
+
+  quiz Quiz @relation(fields: [quiz_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, quiz_id])
+  @@map("quiz_attempts")
+}
+
+// Time-boxed contest ranked by a live-computed metric (no separate entry
+// table — ranking is derived from existing ContentConsumptionTime/Payment/
+// Referral rows filtered to [start_at, end_at]). winners_processed flips
+// once the end-of-competition cron sweep has paid out prizes, so it never
+// double-pays on a re-run.
+model Competition {
+  id                 String    @id @default(uuid())
+  title              String
+  description        String?
+  metric             String
+  start_at           DateTime
+  end_at             DateTime
+  prize_coin_top1    Int?
+  prize_coin_top2    Int?
+  prize_coin_top3    Int?
+  prize_description  String?
+  status             String    @default("active")
+  winners_processed  Boolean   @default(false)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  @@map("competitions")
 }
 
 model UserSubscription {

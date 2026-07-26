@@ -23,6 +23,7 @@ import {
 } from "./lib/s3.js";
 
 import { startStorageSyncService } from "./services/storageSync.service.js";
+import { startScheduledJobs } from "./jobs/index.js";
 import { applyWatermark } from "./lib/watermark.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -278,6 +279,7 @@ app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT} [storage: ${mode}]`);
   // Start background sync service (uploads locally-saved files to S3 when it recovers)
   startStorageSyncService();
+  startScheduledJobs();
   // Apply S3 bucket policy so TTS/ambient audio folders are publicly readable
   if (s3Configured) {
     applyPublicReadPolicy()

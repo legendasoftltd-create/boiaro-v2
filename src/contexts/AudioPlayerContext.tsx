@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useSecureContent } from "@/hooks/useSecureContent"
 import { recordPlaybackError } from "@/hooks/useSecureContent"
 import { usePresence } from "@/hooks/usePresence"
+import { useConsumptionTracker } from "@/hooks/useConsumptionTracker"
 import { trpc } from "@/lib/trpc"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { toast } from "sonner"
@@ -174,6 +175,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       setActivity("browsing")
     }
   }, [state.isPlaying, state.book?.id, user, setActivity])
+
+  useConsumptionTracker(state.book?.id, "audiobook", state.isPlaying)
 
   // Resolve audio URL for a track
   const resolveTrackUrl = useCallback(async (track: AudioTrack, bookId: string): Promise<string | null> => {

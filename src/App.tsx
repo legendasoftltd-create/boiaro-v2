@@ -21,7 +21,7 @@ const RoleApplicationSubmitter = lazy(() => import("@/components/RoleApplication
 const PresenceTracker = lazy(() => import("@/components/PresenceTracker").then(m => ({ default: m.PresenceTracker })));
 const PushNotificationManager = lazy(() => import("@/components/PushNotificationManager").then(m => ({ default: m.PushNotificationManager })));
 const BandwidthReporter = lazy(() => import("@/components/BandwidthReporter").then(m => ({ default: m.BandwidthReporter })));
-const DailyLoginReward = lazy(() => import("@/components/DailyLoginReward").then(m => ({ default: m.DailyLoginReward })));
+const DailyRewardDialog = lazy(() => import("@/components/DailyRewardDialog").then(m => ({ default: m.DailyRewardDialog })));
 
 // Critical path — eagerly loaded
 import Index from "./pages/Index.tsx";
@@ -216,7 +216,7 @@ const App = () => {
               <Suspense fallback={null}><PresenceTracker /></Suspense>
               <Suspense fallback={null}><PushNotificationManager /></Suspense>
               <Suspense fallback={null}><BandwidthReporter /></Suspense>
-              <Suspense fallback={null}><DailyLoginReward /></Suspense>
+              <Suspense fallback={null}><DailyRewardDialog /></Suspense>
               <Suspense fallback={<PageLoader />}>
               <NavigationErrorBoundary>
               <Routes>

@@ -12,6 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Trophy, Award, Flame, Target, Plus, Edit, Zap } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AdminSpinWheelTab } from "@/components/admin/AdminSpinWheelTab";
+import { AdminQuizzesTab } from "@/components/admin/AdminQuizzesTab";
+import { AdminCompetitionsTab } from "@/components/admin/AdminCompetitionsTab";
 
 interface BadgeDef {
   id: string; key: string; title: string; description: string | null;
@@ -30,6 +33,15 @@ export default function AdminGamification() {
   const [showForm, setShowForm] = useState(false);
   const [editBadge, setEditBadge] = useState<BadgeDef | null>(null);
   const [form, setForm] = useState({ key: "", title: "", description: "", category: "general", condition_type: "manual", condition_value: "0", coin_reward: "0", sort_order: "0" });
+
+  const SETTINGS_KEYS = ["gamification_enabled", "gamification_leaderboard_visible"];
+  const { data: loadedSettings } = trpc.admin.getPlatformSettings.useQuery({ keys: SETTINGS_KEYS });
+  const settingsMutation = trpc.admin.bulkSetPlatformSettings.useMutation({
+    onSuccess: () => { utils.admin.getPlatformSettings.invalidate({ keys: SETTINGS_KEYS }); toast({ title: "Setting saved" }); },
+  });
+  const gamificationEnabled = (loadedSettings as Record<string, string> | undefined)?.gamification_enabled !== "false";
+  const leaderboardVisible = (loadedSettings as Record<string, string> | undefined)?.gamification_leaderboard_visible !== "false";
+  const setSetting = (key: string, value: boolean) => settingsMutation.mutate([{ key, value: String(value) }]);
 
   useEffect(() => { load(); }, []);
 
@@ -117,8 +129,11 @@ export default function AdminGamification() {
       </div>
 
       <Tabs defaultValue="badges">
-        <TabsList className="bg-secondary/40 border border-border/30">
+        <TabsList className="bg-secondary/40 border border-border/30 flex-wrap h-auto gap-0.5 p-1">
           <TabsTrigger value="badges" className="text-[13px]">Badge Management</TabsTrigger>
+          <TabsTrigger value="spin-wheel" className="text-[13px]">Spin Wheel</TabsTrigger>
+          <TabsTrigger value="quizzes" className="text-[13px]">Quizzes</TabsTrigger>
+          <TabsTrigger value="competitions" className="text-[13px]">Competitions</TabsTrigger>
           <TabsTrigger value="settings" className="text-[13px]">Settings</TabsTrigger>
         </TabsList>
 
@@ -150,7 +165,7 @@ export default function AdminGamification() {
                       <Select value={form.condition_type} onValueChange={v => setForm({...form, condition_type: v})}>
                         <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          {["manual","streak","read_count","listen_count","coins_earned","referral_count","goal_complete"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                          {["manual","streak","book_completion","read_count","listen_count","coins_earned","referral_count","unlock_count","ad_count","daily_login_count","first_unlock","first_referral"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
@@ -185,6 +200,18 @@ export default function AdminGamification() {
           </div>
         </TabsContent>
 
+        <TabsContent value="spin-wheel" className="mt-4">
+          <AdminSpinWheelTab />
+        </TabsContent>
+
+        <TabsContent value="quizzes" className="mt-4">
+          <AdminQuizzesTab />
+        </TabsContent>
+
+        <TabsContent value="competitions" className="mt-4">
+          <AdminCompetitionsTab />
+        </TabsContent>
+
         <TabsContent value="settings" className="mt-4">
           <Card className="border-border/30">
             <CardHeader className="pb-3"><CardTitle className="text-base">Gamification Settings</CardTitle></CardHeader>
@@ -194,14 +221,14 @@ export default function AdminGamification() {
                   <p className="text-[13px] font-medium">Enable Gamification</p>
                   <p className="text-[11px] text-muted-foreground">Toggle the entire gamification system</p>
                 </div>
-                <Switch defaultChecked />
+                <Switch checked={gamificationEnabled} onCheckedChange={v => setSetting("gamification_enabled", v)} />
               </div>
               <div className="flex items-center justify-between p-3 rounded-lg border border-border/20 bg-secondary/10">
                 <div>
                   <p className="text-[13px] font-medium">Show Leaderboard</p>
                   <p className="text-[11px] text-muted-foreground">Show leaderboard to users</p>
                 </div>
-                <Switch defaultChecked />
+                <Switch checked={leaderboardVisible} onCheckedChange={v => setSetting("gamification_leaderboard_visible", v)} />
               </div>
               <div className="flex items-center justify-between p-3 rounded-lg border border-border/20 bg-secondary/10">
                 <div>

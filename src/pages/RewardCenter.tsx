@@ -10,6 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Coins, Gift, Play, Clock, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { RewardedAdOverlay } from "@/components/RewardedAdOverlay";
+import { SpinWheel } from "@/components/SpinWheel";
+import { QuizList } from "@/components/QuizList";
+import { CompetitionsList } from "@/components/CompetitionsList";
 
 export default function RewardCenter() {
   const { user } = useAuth();
@@ -103,6 +106,10 @@ export default function RewardCenter() {
             <Badge className="bg-primary/20 text-primary text-sm px-3 py-1">কয়েন</Badge>
           </CardContent>
         </Card>
+
+        <CompetitionsList />
+        <SpinWheel />
+        <QuizList />
 
         {/* Watch Ad Section */}
         <Card className="border-border/30 mb-6">

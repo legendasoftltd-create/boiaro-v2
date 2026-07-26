@@ -4,6 +4,7 @@ import { sendHttpError } from "../../lib/http.js";
 import { requireAuth, AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { resolveFileUrl } from "../../lib/mediaUrl.js";
+import { checkAndAwardBadges } from "../../services/gamification.service.js";
 
 export const adsRestRouter = Router();
 
@@ -164,6 +165,7 @@ adsRestRouter.post("/rewarded/claim", requireAuth, async (req: AuthenticatedRequ
       prisma.userCoin.upsert({ where: { user_id: userId }, create: { user_id: userId, balance: AD_REWARD, total_earned: AD_REWARD, total_spent: 0 }, update: { balance: { increment: AD_REWARD }, total_earned: { increment: AD_REWARD } } }),
     ]);
     await prisma.rewardedAdLog.create({ data: { user_id: userId, ad_event_id: ad_event_id || `${placement}_${Date.now()}`, placement_key: placement, coins_rewarded: AD_REWARD, status: "completed" } }).catch(() => null);
+    checkAndAwardBadges(userId).catch(() => null);
     res.json({ success: true, reward: AD_REWARD, new_balance: wallet.balance, today_count: todayCount + 1, remaining: Math.max(MAX_PER_DAY - todayCount - 1, 0) });
   } catch (error) {
     sendHttpError(res, error);

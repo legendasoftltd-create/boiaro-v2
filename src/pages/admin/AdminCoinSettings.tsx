@@ -12,7 +12,7 @@ interface CoinSetting {
   key: string;
   value: string;
   label: string;
-  type: "number" | "boolean";
+  type: "number" | "boolean" | "text";
   description?: string;
 }
 
@@ -21,7 +21,7 @@ const SETTINGS_CONFIG: Omit<CoinSetting, "value">[] = [
   { key: "coin_unlock_enabled", label: "Enable Unlock by Coin", type: "boolean", description: "Allow users to unlock content with coins" },
   { key: "coin_conversion_ratio", label: "Coin to BDT Ratio (1 coin = X BDT)", type: "number", description: "e.g. 0.01 means 1 coin = ৳0.01" },
   { key: "coin_min_unlock", label: "Minimum Coins for Unlock", type: "number" },
-  { key: "coin_daily_login_reward", label: "Daily Login Reward (coins)", type: "number", description: "Coins given per daily login" },
+  { key: "daily_reward_schedule", label: "7-Day Login Reward Schedule (comma-separated coins, Day 1-7)", type: "text", description: "e.g. 5,10,15,20,25,30,50 — shown in the daily reward dialog" },
   { key: "coin_ad_reward", label: "Rewarded Ad Coins", type: "number", description: "Coins earned per ad view" },
   { key: "coin_signup_bonus", label: "Signup Bonus (coins)", type: "number", description: "Coins given to new users on registration" },
   { key: "coin_daily_limit", label: "Daily Earn Limit (coins)", type: "number", description: "Max coins a user can earn per day" },
@@ -98,6 +98,17 @@ export default function AdminCoinSettings() {
               />
             </div>
           ))}
+          {SETTINGS_CONFIG.filter(s => s.type === "text").map(cfg => (
+            <div key={cfg.key} className="space-y-1.5">
+              <Label>{cfg.label}</Label>
+              {cfg.description && <p className="text-xs text-muted-foreground">{cfg.description}</p>}
+              <Input
+                value={settings[cfg.key] || ""}
+                placeholder="5,10,15,20,25,30,50"
+                onChange={e => setSettings(p => ({ ...p, [cfg.key]: e.target.value }))}
+              />
+            </div>
+          ))}
         </CardContent>
       </Card>
 
@@ -110,7 +121,7 @@ export default function AdminCoinSettings() {
             <span>Signup bonus: {settings.coin_signup_bonus ?? "10"} coins</span>
             <span>Expiry: {settings.coin_expiry_days ?? "30"} days</span>
             <span>Ad reward: {settings.coin_ad_reward ?? "5"} coins</span>
-            <span>Login reward: {settings.coin_daily_login_reward ?? "5"} coins</span>
+            <span>Login rewards (Day 1-7): {settings.daily_reward_schedule || "5,10,15,20,25,30,50"}</span>
           </div>
         </CardContent>
       </Card>

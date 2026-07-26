@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { resolveUrls, resolveFileUrl } from "../lib/mediaUrl.js";
 import { maybeRecordListen } from "../lib/listenTracking.js";
 import { maybeRecordRead } from "../lib/readTracking.js";
+import { checkAndAwardBadges } from "../services/gamification.service.js";
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import { getCreatorBookIds } from "../lib/creatorBooks.js";
 
@@ -128,7 +129,7 @@ export const profilesRouter = router({
 
       await maybeRecordRead(ctx.userId, input.bookId, input.sessionSeconds, input.sessionPagesRead);
 
-      return prisma.readingProgress.upsert({
+      const result = await prisma.readingProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
         create: {
           user_id: ctx.userId,
@@ -147,6 +148,8 @@ export const profilesRouter = router({
           ...(input.cfi !== undefined ? { last_read_cfi: input.cfi } : {}),
         },
       });
+      checkAndAwardBadges(ctx.userId!).catch(() => null);
+      return result;
     }),
 
   updateListeningProgress: protectedProcedure
@@ -166,7 +169,7 @@ export const profilesRouter = router({
 
       await maybeRecordListen(ctx.userId, input.bookId, input.currentPosition, input.totalDuration);
 
-      return prisma.listeningProgress.upsert({
+      const result = await prisma.listeningProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
         create: {
           user_id: ctx.userId,
@@ -187,6 +190,8 @@ export const profilesRouter = router({
           ...(input.playbackSpeed != null && { playback_speed: input.playbackSpeed }),
         },
       });
+      checkAndAwardBadges(ctx.userId!).catch(() => null);
+      return result;
     }),
 
   submitRoleApplication: protectedProcedure

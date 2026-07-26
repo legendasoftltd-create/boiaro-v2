@@ -5886,6 +5886,121 @@ export const adminRouter = router({
       prisma.badgeDefinition.update({ where: { id: input.id }, data: { is_active: input.is_active } })
     ),
 
+  // ── Spin Wheel ──────────────────────────────────────────────────────────
+  getSpinWheelConfig: adminProcedure.query(() =>
+    prisma.spinWheelConfig.findFirst({ orderBy: { created_at: "desc" } })
+  ),
+
+  upsertSpinWheelConfig: adminProcedure
+    .input(z.object({
+      id: z.string().optional(),
+      is_active: z.boolean().default(true),
+      spins_per_day: z.number().int().min(1).default(1),
+      segments: z.array(z.object({
+        label: z.string().min(1),
+        coin_reward: z.number().int().min(0),
+        weight: z.number().min(0.01),
+      })).min(1),
+    }))
+    .mutation(({ input }) => {
+      const data = { is_active: input.is_active, spins_per_day: input.spins_per_day, segments: input.segments as any };
+      if (input.id) return prisma.spinWheelConfig.update({ where: { id: input.id }, data });
+      return prisma.spinWheelConfig.create({ data });
+    }),
+
+  // ── Quiz ────────────────────────────────────────────────────────────────
+  listQuizzes: adminProcedure.query(() =>
+    prisma.quiz.findMany({ include: { questions: { orderBy: { sort_order: "asc" } }, _count: { select: { attempts: true } } }, orderBy: { created_at: "desc" } })
+  ),
+
+  upsertQuiz: adminProcedure
+    .input(z.object({
+      id: z.string().optional(),
+      title: z.string().min(1),
+      description: z.string().nullable().optional(),
+      is_active: z.boolean().default(true),
+      coin_reward: z.number().int().min(0).default(0),
+      pass_percentage: z.number().int().min(0).max(100).default(60),
+      questions: z.array(z.object({
+        question: z.string().min(1),
+        options: z.array(z.string().min(1)).min(2),
+        correct_index: z.number().int().min(0),
+      })).min(1),
+    }))
+    .mutation(async ({ input }) => {
+      const quizData = {
+        title: input.title,
+        description: input.description ?? null,
+        is_active: input.is_active,
+        coin_reward: input.coin_reward,
+        pass_percentage: input.pass_percentage,
+      };
+      const quiz = input.id
+        ? await prisma.quiz.update({ where: { id: input.id }, data: quizData })
+        : await prisma.quiz.create({ data: quizData });
+
+      // Replace all questions on every save — simpler than diffing, and
+      // quizzes with existing attempts shouldn't be edited anyway (scores
+      // reference question count/order at attempt time, not live rows).
+      await prisma.quizQuestion.deleteMany({ where: { quiz_id: quiz.id } });
+      await prisma.quizQuestion.createMany({
+        data: input.questions.map((q, i) => ({
+          quiz_id: quiz.id,
+          question: q.question,
+          options: q.options as any,
+          correct_index: q.correct_index,
+          sort_order: i,
+        })),
+      });
+      return quiz;
+    }),
+
+  setQuizActive: adminProcedure
+    .input(z.object({ id: z.string(), is_active: z.boolean() }))
+    .mutation(({ input }) => prisma.quiz.update({ where: { id: input.id }, data: { is_active: input.is_active } })),
+
+  deleteQuiz: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.quiz.delete({ where: { id: input.id } })),
+
+  // ── Competitions ────────────────────────────────────────────────────────
+  listCompetitions: adminProcedure.query(() =>
+    prisma.competition.findMany({ orderBy: { start_at: "desc" } })
+  ),
+
+  upsertCompetition: adminProcedure
+    .input(z.object({
+      id: z.string().optional(),
+      title: z.string().min(1),
+      description: z.string().nullable().optional(),
+      metric: z.enum(["reading_time", "listening_time", "purchases", "referrals"]),
+      start_at: z.string(),
+      end_at: z.string(),
+      prize_coin_top1: z.number().int().min(0).nullable().optional(),
+      prize_coin_top2: z.number().int().min(0).nullable().optional(),
+      prize_coin_top3: z.number().int().min(0).nullable().optional(),
+      prize_description: z.string().nullable().optional(),
+    }))
+    .mutation(({ input }) => {
+      const data = {
+        title: input.title,
+        description: input.description ?? null,
+        metric: input.metric,
+        start_at: new Date(input.start_at),
+        end_at: new Date(input.end_at),
+        prize_coin_top1: input.prize_coin_top1 ?? null,
+        prize_coin_top2: input.prize_coin_top2 ?? null,
+        prize_coin_top3: input.prize_coin_top3 ?? null,
+        prize_description: input.prize_description ?? null,
+      };
+      if (input.id) return prisma.competition.update({ where: { id: input.id }, data });
+      return prisma.competition.create({ data: { ...data, status: "active" } });
+    }),
+
+  cancelCompetition: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.competition.update({ where: { id: input.id }, data: { status: "cancelled" } })),
+
   smsRecipientsByGroup: adminProcedure
     .input(z.object({ group: z.enum(["authors", "narrators", "publishers", "users", "rj"]) }))
     .query(async ({ input }) => {

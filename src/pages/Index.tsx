@@ -30,6 +30,7 @@ const AppDownload = lazy(() => import("@/components/AppDownload").then(m => ({ d
 const BlogSection = lazy(() => import("@/components/BlogSection").then(m => ({ default: m.BlogSection })))
 const LiveRadioSection = lazy(() => import("@/components/LiveRadio").then(m => ({ default: m.LiveRadioSection })))
 const CategorySections = lazy(() => import("@/components/CategorySections").then(m => ({ default: m.CategorySections })))
+const HomeLeaderboard = lazy(() => import("@/components/HomeLeaderboard").then(m => ({ default: m.HomeLeaderboard })))
 
 // Map section_key → React element factory
 const SECTION_REGISTRY: Record<string, () => JSX.Element | null> = {
@@ -54,11 +55,12 @@ const SECTION_REGISTRY: Record<string, () => JSX.Element | null> = {
   live_radio: () => <LiveRadioSection />,
   app_download: () => <AppDownload />,
   category_sections: () => <CategorySections />,
+  leaderboard: () => <HomeLeaderboard />,
 }
 
 // Fallback order when DB sections haven't loaded yet
 const FALLBACK_KEYS = [
-  "continue_reading", "continue_listening", "recently_viewed",
+  "continue_reading", "continue_listening", "leaderboard", "recently_viewed",
   "recommended_for_you", "because_you_read", "featured_books",
   "trending_books", "top_10_most_read", "editors_pick",
   "popular_audiobooks", "audiobooks", "hard_copies", "free_books",

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useReadingProgress } from "@/hooks/useReadingProgress";
+import { useConsumptionTracker } from "@/hooks/useConsumptionTracker";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSecureContent } from "@/hooks/useSecureContent";
 import { useDrmProtection } from "@/hooks/useDrmProtection";
@@ -170,6 +171,7 @@ export default function EbookReader() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { progress, saveProgress } = useReadingProgress(bookId || undefined);
+  useConsumptionTracker(bookId, "ebook", !!bookId && !showPaywall);
 
   const utils = trpc.useUtils();
   const { data: bookmarkData, refetch: refetchBookmark } = trpc.books.isBookmarked.useQuery(
