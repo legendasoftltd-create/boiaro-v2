@@ -5,6 +5,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings } from "../../lib/earnings.js";
 import { checkBookFormatAccess } from "../../services/bookAccess.service.js";
+import { checkAndAwardBadges, getDailyRewardSchedule, advanceStreakForToday } from "../../services/gamification.service.js";
 
 export const walletRestRouter = Router();
 
@@ -45,36 +46,35 @@ walletRestRouter.get("/transactions", requireAuth, async (req: AuthenticatedRequ
   }
 });
 
+// Kept at this legacy path for backward compatibility with already-installed
+// mobile builds — delegates to the same Day 1-7 escalating schedule +
+// streak-advance logic as POST /gamification/daily-reward rather than
+// maintaining a second, divergent implementation (this used to read the old
+// flat coin_daily_login_reward setting and never advanced the streak).
 walletRestRouter.post("/claim-daily", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const userId = req.auth.userId!;
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
-    const dailySetting = await prisma.platformSetting.findUnique({ where: { key: "coin_daily_login_reward" } });
-    const DAILY_REWARD = parseInt(dailySetting?.value || "10", 10);
-
-    // Atomic: re-check inside the transaction to prevent race-condition double-claims
-    const wallet = await prisma.$transaction(async (tx) => {
-      const existing = await tx.coinTransaction.findFirst({
-        where: { user_id: req.auth.userId!, source: "daily_login", created_at: { gte: todayStart } },
-      });
-      if (existing) return null;
-
-      await tx.coinTransaction.create({
-        data: { user_id: req.auth.userId!, amount: DAILY_REWARD, type: "earn", description: "Daily login reward", source: "daily_login" },
-      });
-      return tx.userCoin.upsert({
-        where: { user_id: req.auth.userId! },
-        create: { user_id: req.auth.userId!, balance: DAILY_REWARD, total_earned: DAILY_REWARD, total_spent: 0 },
-        update: { balance: { increment: DAILY_REWARD }, total_earned: { increment: DAILY_REWARD } },
-      });
+    const existing = await prisma.coinTransaction.findFirst({
+      where: { user_id: userId, source: "daily_login", created_at: { gte: todayStart } },
     });
-
-    if (!wallet) {
+    if (existing) {
       res.status(400).json({ error: "Daily reward already claimed" });
       return;
     }
-    res.json({ reward: DAILY_REWARD, message: "Daily reward claimed", new_balance: wallet.balance });
+
+    const [streak, schedule] = await Promise.all([advanceStreakForToday(userId), getDailyRewardSchedule()]);
+    const day = ((streak.current_streak ?? 1) - 1) % 7 + 1;
+    const REWARD = schedule[day - 1] ?? schedule[schedule.length - 1];
+
+    const [, wallet] = await prisma.$transaction([
+      prisma.coinTransaction.create({ data: { user_id: userId, amount: REWARD, type: "earn", description: `Daily login reward (day ${day})`, source: "daily_login" } }),
+      prisma.userCoin.upsert({ where: { user_id: userId }, create: { user_id: userId, balance: REWARD, total_earned: REWARD, total_spent: 0 }, update: { balance: { increment: REWARD }, total_earned: { increment: REWARD } } }),
+    ]);
+    checkAndAwardBadges(userId).catch(() => null);
+    res.json({ reward: REWARD, day, schedule, current_streak: streak.current_streak, message: "Daily reward claimed", new_balance: wallet.balance });
   } catch (error) {
     sendHttpError(res, error);
   }
@@ -108,6 +108,7 @@ walletRestRouter.post("/claim-ad", requireAuth, async (req: AuthenticatedRequest
         update: { balance: { increment: AD_REWARD }, total_earned: { increment: AD_REWARD } },
       }),
     ]);
+    checkAndAwardBadges(req.auth.userId!).catch(() => null);
     res.json({ reward: AD_REWARD, message: "Ad reward claimed", new_balance: wallet.balance });
   } catch (error) {
     sendHttpError(res, error);

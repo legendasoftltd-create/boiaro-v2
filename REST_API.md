@@ -1273,16 +1273,28 @@ Get coin transaction history. 🔒 Auth required.
 
 ### `POST /wallet/claim-daily`
 
-Claim daily login reward coins. 🔒 Auth required.
+Claim the day's escalating (Day 1-7) login reward — same underlying logic as
+`POST /gamification/daily-reward`, kept at this path too for backward
+compatibility. 🔒 Auth required.
 
 **Request body:** None
 
 **Success (200):**
 ```json
-{ "reward": 10, "message": "Daily reward claimed", "new_balance": 260 }
+{
+  "reward": 15,
+  "day": 3,
+  "schedule": [5, 10, 15, 20, 25, 30, 50],
+  "current_streak": 3,
+  "message": "Daily reward claimed",
+  "new_balance": 260
+}
 ```
 
 **Error (400):** `{ "error": "Daily reward already claimed" }`
+
+Full Day 1-7 rules and client-side dialog guidance:
+[GAMIFICATION_RETENTION_API.md](GAMIFICATION_RETENTION_API.md#daily-reward).
 
 ---
 
@@ -1770,6 +1782,23 @@ Mark notifications as read. 🔒 Auth required.
 | GET | `/api/v1/subscriptions/my` | Yes | My subscriptions |
 | GET | `/api/v1/notifications` | Yes | Get notifications |
 | POST | `/api/v1/notifications/read` | Yes | Mark as read |
+| GET | `/api/v1/gamification/streak` | Yes | Get login streak |
+| POST | `/api/v1/gamification/streak/update` | Yes | Advance today's streak |
+| GET | `/api/v1/gamification/daily-reward/status` | Yes | Preview today's Day 1-7 reward |
+| POST | `/api/v1/gamification/daily-reward` | Yes | Claim today's Day 1-7 reward |
+| GET | `/api/v1/gamification/badges` | Yes | My earned badges |
+| GET | `/api/v1/gamification/badges/definitions` | Yes | All badge definitions |
+| GET | `/api/v1/gamification/weekly-report` | Yes | This week's reading/listening stats |
+| GET | `/api/v1/share/badge/:userBadgeId.png` | Yes | Shareable badge card image |
+| GET | `/api/v1/share/weekly-report.png` | Yes | Shareable weekly report card image |
+| GET | `/api/v1/gamification/leaderboard/home` | No | Home Screen leaderboard |
+| GET | `/api/v1/gamification/spin-wheel/status` | Yes | Spin wheel state |
+| POST | `/api/v1/gamification/spin-wheel/spin` | Yes | Spin the wheel |
+| GET | `/api/v1/gamification/quizzes` | Yes | Active quizzes |
+| GET | `/api/v1/gamification/quizzes/:id` | Yes | Quiz questions (no answers) |
+| POST | `/api/v1/gamification/quizzes/:id/submit` | Yes | Submit quiz answers |
+| GET | `/api/v1/gamification/competitions` | No | Active/recent competitions |
+| GET | `/api/v1/gamification/competitions/:id/leaderboard` | No | Live competition ranking |
 
 ---
 
@@ -1840,3 +1869,20 @@ On receiving HTTP 401:
 - All prices are in **BDT (Bangladeshi Taka)**
 - All image URLs (`cover_url`, `avatar_url`, `logo_url`) are absolute URLs — load directly with `CachedNetworkImage`
 - Pagination uses cursor-based paging for books/orders; `nextCursor` is the ID of the last item. Pass as `cursor` in next request; `null` means end of list
+
+---
+
+## 16. Gamification & Retention Features
+
+Daily Reward, Badges, Weekly Report + shareable cards, Home Screen
+Leaderboard, Spin Wheel, Quiz, and Mega Competitions — full request/response
+reference, business rules, and client-side implementation notes (e.g. the
+spin wheel's weighted-random payout, how to read the Day 1-7 schedule) live
+in a dedicated doc: **[GAMIFICATION_RETENTION_API.md](GAMIFICATION_RETENTION_API.md)**.
+
+Endpoint summary (see `13. Complete Endpoint List` above for the full table):
+`GET/POST /gamification/streak*`, `GET/POST /gamification/daily-reward*`,
+`GET /gamification/badges*`, `GET /gamification/weekly-report`,
+`GET /share/badge/:id.png`, `GET /share/weekly-report.png`,
+`GET /gamification/leaderboard/home`, `GET/POST /gamification/spin-wheel/*`,
+`GET/POST /gamification/quizzes*`, `GET /gamification/competitions*`.

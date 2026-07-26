@@ -1009,4 +1009,22 @@ pending → confirmed → processing → ready_for_pickup → pickup_received �
 - Listen Count logic unchanged.
 - Mobile app **must** send `session_seconds`/`session_pages_read` on `PUT /progress/reading` for Read Count to register — see `BOOK_ENGAGEMENT_TRACKING_API.md` for the full contract and required client-side session tracking.
 
+## Gamification & Retention features (REST)
+
+### New endpoints
+
+- `GET /gamification/daily-reward/status`, updated `POST /gamification/daily-reward` — Day 1-7 escalating reward (was a flat amount)
+- `GET /share/badge/:id.png`, `GET /share/weekly-report.png` — shareable PNG cards
+- `GET /gamification/weekly-report` — per-user weekly reading/listening stats
+- `GET /gamification/leaderboard/home` — Home Screen leaderboard (daily/weekly/monthly × reading/listening/coins)
+- `GET/POST /gamification/spin-wheel/*` — Lucky Spin wheel
+- `GET/POST /gamification/quizzes*` — Quiz
+- `GET /gamification/competitions*` — Mega Competitions, live-ranked
+
+### What changed
+
+- `POST /wallet/claim-daily` previously used a flat coin amount and never advanced the login streak or checked badges — it's now unified with `POST /gamification/daily-reward`'s Day 1-7 schedule (both paths share the same logic; the old one is kept for backward compatibility with installed app builds).
+- New push notification types: `inactivity_alert`, `streak_alert`, `weekly_summary`, `competition_won` — delivered via the existing FCM pipeline, no new client registration needed.
+- Full spec: `GAMIFICATION_RETENTION_API.md`.
+
 
