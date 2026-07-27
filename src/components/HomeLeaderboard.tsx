@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Crown, Trophy, BookOpen, Headphones, Coins } from "lucide-react";
-import { toMediaUrl } from "@/lib/mediaUrl";
 
 const METRICS = [
   { value: "reading", label: "পড়া", icon: BookOpen },
@@ -89,7 +88,6 @@ export function HomeLeaderboard() {
                   {entry.rank === 1 ? <Trophy className="w-4 h-4 text-yellow-500 mx-auto" /> : <span className="text-[13px] font-bold text-muted-foreground">{entry.rank}</span>}
                 </div>
                 <Avatar className="w-8 h-8">
-                  <AvatarImage src={toMediaUrl(entry.avatar_url) || undefined} />
                   <AvatarFallback className="text-[11px]">{(entry.display_name || "U")[0]}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
