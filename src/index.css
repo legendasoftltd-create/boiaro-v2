@@ -103,7 +103,7 @@
 @layer components {
   /* Section wrapper — tighter vertical rhythm + auto content-visibility */
   .section-container {
-    @apply py-4 md:py-14 lg:py-20;
+    @apply py-4 md:py-14 lg:py-16;
     content-visibility: auto;
     contain-intrinsic-size: auto 400px;
   }
