@@ -13,6 +13,8 @@ interface RadioStation {
   id: string
   name: string
   stream_url: string
+  stream_url_medium?: string | null
+  stream_url_low?: string | null
   artwork_url: string | null
   description: string | null
   is_active: boolean
@@ -57,6 +59,8 @@ export default function AdminRadio() {
   const [form, setForm] = useState({
     name: "",
     stream_url: "",
+    stream_url_medium: "",
+    stream_url_low: "",
     artwork_url: "",
     description: "",
     is_active: true,
@@ -98,6 +102,8 @@ export default function AdminRadio() {
       setForm({
         name: s.name,
         stream_url: s.stream_url,
+        stream_url_medium: s.stream_url_medium || "",
+        stream_url_low: s.stream_url_low || "",
         artwork_url: s.artwork_url || "",
         description: s.description || "",
         is_active: s.is_active,
@@ -126,6 +132,8 @@ export default function AdminRadio() {
     const payload = {
       name: form.name.trim(),
       stream_url: form.stream_url.trim(),
+      stream_url_medium: form.stream_url_medium.trim() || null,
+      stream_url_low: form.stream_url_low.trim() || null,
       artwork_url: form.artwork_url.trim() || null,
       description: form.description.trim() || null,
       is_active: form.is_active,
@@ -311,9 +319,31 @@ export default function AdminRadio() {
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Supports MP3, AAC, OGG, Icecast, Shoutcast, HLS streams. Audio loads only when user clicks play.
+              Supports MP3, AAC, OGG, Icecast, Shoutcast, HLS (.m3u8) streams — HLS streams are automatically demuxed via hls.js for browsers without native HLS support. Audio loads only when user clicks play.
             </p>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Medium-Quality Stream URL (optional)</Label>
+              <Input
+                value={form.stream_url_medium}
+                onChange={(e) => setForm((f) => ({ ...f, stream_url_medium: e.target.value }))}
+                placeholder="https://stream.example.com/live-64k.mp3"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Low-Quality Stream URL (optional)</Label>
+              <Input
+                value={form.stream_url_low}
+                onChange={(e) => setForm((f) => ({ ...f, stream_url_low: e.target.value }))}
+                placeholder="https://stream.example.com/live-32k.mp3"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Only fill these in if your Icecast/Shoutcast server actually runs separate lower-bitrate mount points — this app can't transcode a single stream into multiple qualities on its own. Leave blank and listeners just get the main stream, no quality selector shown.
+          </p>
 
           <div className="space-y-2">
             <Label>Artwork URL</Label>

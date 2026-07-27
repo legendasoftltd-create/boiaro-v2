@@ -3,6 +3,7 @@ import { runInactivityAlerts } from "./inactivityAlerts.js";
 import { runStreakAlerts } from "./streakAlerts.js";
 import { runWeeklySummary } from "./weeklySummary.js";
 import { runCompetitionPayouts } from "./competitionPayouts.js";
+import { runShowReminders } from "./showReminders.js";
 
 /**
  * Registers all recurring background jobs. Called once at server startup
@@ -43,5 +44,12 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] competitionPayouts failed:", err));
   });
 
-  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts)");
+  // Every 5 minutes — show-starting-soon reminders for followers
+  cron.schedule("*/5 * * * *", () => {
+    runShowReminders()
+      .then((r) => r.sent && console.log(`[jobs] showReminders: sent ${r.sent}`))
+      .catch((err) => console.error("[jobs] showReminders failed:", err));
+  });
+
+  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, show reminders)");
 }

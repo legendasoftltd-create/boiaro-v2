@@ -1027,4 +1027,27 @@ pending → confirmed → processing → ready_for_pickup → pickup_received �
 - New push notification types: `inactivity_alert`, `streak_alert`, `weekly_summary`, `competition_won` — delivered via the existing FCM pipeline, no new client registration needed.
 - Full spec: `GAMIFICATION_RETENTION_API.md`.
 
+## Live Radio (FM) platform
+
+### New: first real-time transport in this API
+
+- Socket.IO server at `/socket.io` (auth via `{ auth: { token } }` handshake) — powers live chat, ephemeral reactions, song requests, and live listener count. REST fallbacks exist for chat history, submitting/managing song requests, and moderation, but real-time delivery requires the socket connection.
+
+### New endpoints
+
+- `GET /radio/stations`, `GET /radio/live` — station list, current live session (now includes `rj_profile` and `listener_count`)
+- `GET/DELETE /radio/live/:id/chat*`, `GET/POST/PATCH /radio/live/:id/song-request*`, `GET /radio/live/:id/listener-count`
+- `POST /radio/live/:id/recording`, `GET /radio/catchup` — catch-up/podcast archive (manual recording attach, no auto-recording)
+- `GET /radio/rj/profiles` — public RJ directory
+- tRPC-only for now (REST mirror not yet built): `rj.showSchedules` (public EPG), `rj.myShowSchedules`, `rj.profileById`, `rj.attachRecording`
+
+### What changed
+
+- Fixed a real pre-existing bug: `GET /radio/live` (and its tRPC equivalent) never actually joined the RJ's profile data despite the frontend expecting it — the "who's live" display has never shown the RJ's name until now.
+- Going live now auto-notifies followers (new `rj_live` push type); a new cron job sends a `show_reminder` push ~15 minutes before a followed RJ's scheduled show.
+- Following an RJ reuses the existing generic follow system (`profileId` = RJ's `user_id`) — no new follow endpoint.
+- Admin: multi-bitrate station URLs (`stream_url_medium`/`stream_url_low`), show schedule CRUD, and a radio metrics dashboard (live status, today's activity, archive size).
+- Full spec: `LIVE_RADIO_API.md`.
+- Deferred: listener call-in (joining the live broadcast audio) — needs a third-party WebRTC/media SDK, scoped as separate follow-up work.
+
 

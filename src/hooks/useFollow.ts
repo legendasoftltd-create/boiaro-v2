@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 
 interface UseFollowOptions {
   profileId: string;
-  profileType: "author" | "narrator" | "publisher" | "translator";
+  profileType: "author" | "narrator" | "publisher" | "translator" | "rj";
 }
 
 export function useFollow({ profileId }: UseFollowOptions) {

@@ -1,11 +1,12 @@
 import { useState } from "react"
+import { Link } from "react-router-dom"
 import { useRjProfile, useMyLiveSession } from "@/hooks/useLiveSession"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi } from "lucide-react"
+import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle } from "lucide-react"
 import { toast } from "sonner"
 
 export default function RjDashboard() {
@@ -89,6 +90,10 @@ export default function RjDashboard() {
                 <p><strong>Stream URL:</strong> {liveSession.stream_url}</p>
               </div>
 
+              <Button asChild variant="outline" className="w-full gap-2">
+                <Link to="/live"><MessageCircle className="w-4 h-4" /> Manage Chat & Song Requests</Link>
+              </Button>
+
               <Button
                 variant="destructive"
                 className="w-full"
@@ -164,28 +169,58 @@ export default function RjDashboard() {
 }
 
 function RecentSessionsList() {
+  const utils = trpc.useUtils()
   const { data: sessions = [], isLoading } = trpc.rj.mySessions.useQuery()
+  const attachMutation = trpc.rj.attachRecording.useMutation({
+    onSuccess: () => { utils.rj.mySessions.invalidate(); toast.success("Recording attached — now available as catch-up audio") },
+    onError: (e) => toast.error(e.message),
+  })
+  const [recordingInputs, setRecordingInputs] = useState<Record<string, string>>({})
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>
   if (!sessions.length) return <p className="text-sm text-muted-foreground">No sessions yet. Go live to start!</p>
 
   return (
     <div className="space-y-2">
-      {sessions.map((s) => (
-        <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30 text-sm">
-          <div>
-            <p className="font-medium">{s.show_title || "Untitled Show"}</p>
-            <p className="text-xs text-muted-foreground">
-              {new Date(s.started_at).toLocaleDateString()} · {new Date(s.started_at).toLocaleTimeString()}
-            </p>
+      {sessions.map((s: any) => (
+        <div key={s.id} className="p-2.5 rounded-lg bg-muted/30 text-sm space-y-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{s.show_title || "Untitled Show"}</p>
+              <p className="text-xs text-muted-foreground">
+                {new Date(s.started_at).toLocaleDateString()} · {new Date(s.started_at).toLocaleTimeString()}
+              </p>
+            </div>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${
+              s.status === "live" ? "bg-destructive/15 text-destructive" :
+              s.status === "ended" ? "bg-emerald-500/15 text-emerald-400" :
+              "bg-amber-500/15 text-amber-400"
+            }`}>
+              {s.status}
+            </span>
           </div>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${
-            s.status === "live" ? "bg-destructive/15 text-destructive" :
-            s.status === "ended" ? "bg-emerald-500/15 text-emerald-400" :
-            "bg-amber-500/15 text-amber-400"
-          }`}>
-            {s.status}
-          </span>
+          {s.status === "ended" && (
+            s.recording_url ? (
+              <p className="text-xs text-emerald-400">✓ Recording attached — available as catch-up audio</p>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Input
+                  value={recordingInputs[s.id] || ""}
+                  onChange={(e) => setRecordingInputs((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                  placeholder="Paste recording URL to enable catch-up audio"
+                  className="h-8 text-xs"
+                />
+                <Button
+                  size="sm"
+                  className="h-8 text-xs shrink-0"
+                  disabled={attachMutation.isPending || !recordingInputs[s.id]?.trim()}
+                  onClick={() => attachMutation.mutate({ sessionId: s.id, recordingUrl: recordingInputs[s.id].trim() })}
+                >
+                  Attach
+                </Button>
+              </div>
+            )
+          )}
         </div>
       ))}
     </div>

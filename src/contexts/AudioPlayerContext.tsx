@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useRef, useEffect, useCallback, type ReactNode } from "react"
+import Hls from "hls.js"
 import { useAuth } from "@/contexts/AuthContext"
 import { useSecureContent } from "@/hooks/useSecureContent"
 import { recordPlaybackError } from "@/hooks/useSecureContent"
@@ -101,6 +102,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const updateListeningProgressRef = useRef(updateListeningProgressMutation.mutateAsync)
   updateListeningProgressRef.current = updateListeningProgressMutation.mutateAsync
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  // Only ever non-null for HLS (.m3u8) sources — e.g. a radio station
+  // streaming HLS — since Chrome/Firefox/Edge can't play those natively
+  // (only Safari can). Every other source (audiobook files, direct
+  // MP3/AAC/OGG radio streams) still goes through plain audio.src.
+  const hlsRef = useRef<Hls | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const loadRequestRef = useRef(0)
   const pendingSeekRef = useRef<number | null>(null)
@@ -238,7 +244,26 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     debugLog("Loading track", { trackIndex, url: url.slice(0, 80) })
     audio.pause()
-    audio.src = url
+
+    if (hlsRef.current) {
+      hlsRef.current.destroy()
+      hlsRef.current = null
+    }
+
+    // .m3u8 = HLS. Safari plays it natively (canPlayType), everyone else
+    // needs hls.js to demux it into something <audio> understands — without
+    // this, HLS radio streams silently fail to play on Chrome/Firefox/Edge.
+    const isHls = /\.m3u8(\?|$)/i.test(url)
+    const nativeHlsSupport = audio.canPlayType("application/vnd.apple.mpegurl") !== ""
+    if (isHls && !nativeHlsSupport && Hls.isSupported()) {
+      const hls = new Hls()
+      hls.loadSource(url)
+      hls.attachMedia(audio)
+      hlsRef.current = hls
+    } else {
+      audio.src = url
+    }
+
     audio.playbackRate = currentState.playbackRate
     audio.volume = currentState.volume
     // For video tracks the <video> element in VideoPlayer handles audio+video.
@@ -250,7 +275,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       pendingSeekRef.current = currentState.currentTime
     }
 
-    audio.load()
+    if (!hlsRef.current) audio.load()
 
     // If triggered by user gesture, play immediately after load
     if (shouldPlay) {
@@ -455,6 +480,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     return () => {
       audio.pause()
       audio.src = ""
+      hlsRef.current?.destroy()
+      hlsRef.current = null
     }
   }, [])
 
@@ -576,6 +603,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       audio.pause()
       audio.src = ""
     }
+    hlsRef.current?.destroy()
+    hlsRef.current = null
 
     prevTrackKeyRef.current = null
 

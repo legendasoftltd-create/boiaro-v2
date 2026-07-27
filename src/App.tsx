@@ -32,6 +32,10 @@ const AdminAuth = lazy(() => import("./pages/AdminAuth.tsx"));
 const Profile = lazy(() => import("./pages/Profile.tsx"));
 const UserDashboard = lazy(() => import("./pages/UserDashboard.tsx"));
 const BookDetail = lazy(() => import("./pages/BookDetail.tsx"));
+const LiveShow = lazy(() => import("./pages/LiveShow.tsx"));
+const RadioSchedule = lazy(() => import("./pages/RadioSchedule.tsx"));
+const PublicRjProfile = lazy(() => import("./pages/PublicRjProfile.tsx"));
+const RadioCatchup = lazy(() => import("./pages/RadioCatchup.tsx"));
 const Checkout = lazy(() => import("./pages/Checkout.tsx"));
 const Orders = lazy(() => import("./pages/Orders.tsx"));
 const EbookReader = lazy(() => import("./pages/EbookReader.tsx"));
@@ -114,6 +118,7 @@ const AdminAdReports = lazy(() => import("./pages/admin/AdminAdReports.tsx"));
 const AdminRecommendations = lazy(() => import("./pages/admin/AdminRecommendations.tsx"));
 const AdminDrmSettings = lazy(() => import("./pages/admin/AdminDrmSettings.tsx"));
 const AdminRadio = lazy(() => import("./pages/admin/AdminRadio.tsx"));
+const AdminRadioSchedule = lazy(() => import("./pages/admin/AdminRadioSchedule.tsx"));
 const AdminReferrals = lazy(() => import("./pages/admin/AdminReferrals.tsx"));
 const AdminGamification = lazy(() => import("./pages/admin/AdminGamification.tsx"));
 const AdminSiteSettings = lazy(() => import("./pages/admin/AdminSiteSettings.tsx"));
@@ -230,6 +235,10 @@ const App = () => {
                 <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
                 <Route path="/book/:slug" element={<BookDetail />} />
+                <Route path="/live" element={<LiveShow />} />
+                <Route path="/schedule" element={<RadioSchedule />} />
+                <Route path="/host/:userId" element={<PublicRjProfile />} />
+                <Route path="/catchup" element={<RadioCatchup />} />
                 <Route path="/b/:bookId" element={<BookDetail />} />
                 <Route path="/books" element={<BooksPage />} />
                 <Route path="/authors" element={<AuthorsPage />} />
@@ -318,6 +327,7 @@ const App = () => {
                   <Route path="recommendations" element={<AdminRecommendations />} />
                   <Route path="drm-settings" element={<AdminDrmSettings />} />
                   <Route path="radio" element={<AdminRadio />} />
+                  <Route path="radio-schedule" element={<AdminRadioSchedule />} />
                   <Route path="rj-management" element={<AdminRjManagement />} />
                   <Route path="referrals" element={<AdminReferrals />} />
                   <Route path="gamification" element={<AdminGamification />} />

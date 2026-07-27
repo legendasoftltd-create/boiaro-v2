@@ -1799,6 +1799,17 @@ Mark notifications as read. 🔒 Auth required.
 | POST | `/api/v1/gamification/quizzes/:id/submit` | Yes | Submit quiz answers |
 | GET | `/api/v1/gamification/competitions` | No | Active/recent competitions |
 | GET | `/api/v1/gamification/competitions/:id/leaderboard` | No | Live competition ranking |
+| GET | `/api/v1/radio/stations` | No | List active radio stations |
+| GET | `/api/v1/radio/live` | No | Current live RJ session, if any |
+| GET | `/api/v1/radio/live/:id/chat` | No | Recent chat history |
+| DELETE | `/api/v1/radio/live/:id/chat/:messageId` | Yes | Delete a chat message (host/mod) |
+| POST | `/api/v1/radio/live/:id/song-request` | Yes | Submit a song/topic request |
+| GET | `/api/v1/radio/live/:id/song-requests` | Yes | Request queue (host/mod) |
+| PATCH | `/api/v1/radio/live/:id/song-requests/:reqId` | Yes | Mark played/rejected (host/mod) |
+| GET | `/api/v1/radio/live/:id/listener-count` | No | Current concurrent listeners |
+| POST | `/api/v1/radio/live/:id/recording` | Yes | Attach a catch-up recording (host/mod) |
+| GET | `/api/v1/radio/catchup` | No | Podcast-style recorded show archive |
+| GET | `/api/v1/radio/rj/profiles` | No | List approved RJ/host profiles |
 
 ---
 
@@ -1886,3 +1897,21 @@ Endpoint summary (see `13. Complete Endpoint List` above for the full table):
 `GET /share/badge/:id.png`, `GET /share/weekly-report.png`,
 `GET /gamification/leaderboard/home`, `GET/POST /gamification/spin-wheel/*`,
 `GET/POST /gamification/quizzes*`, `GET /gamification/competitions*`.
+
+---
+
+## 17. Live Radio (FM)
+
+Live streaming, real-time chat/reactions/song-requests (Socket.IO — the
+first real-time transport in this API, not just request/response REST),
+host moderation, program schedule, RJ profiles, and catch-up/podcast audio.
+Full reference, including the Socket.IO connection/event contract:
+**[LIVE_RADIO_API.md](LIVE_RADIO_API.md)**.
+
+Endpoints: `GET /radio/stations`, `GET /radio/live`,
+`GET/DELETE /radio/live/:id/chat*`, `POST /radio/live/:id/song-request`,
+`GET/PATCH /radio/live/:id/song-requests*`,
+`GET /radio/live/:id/listener-count`, `POST /radio/live/:id/recording`,
+`GET /radio/catchup`, `GET /radio/rj/profiles`. Note: listener call-in
+(joining the broadcast audio) is explicitly not implemented yet — it needs
+a separate WebRTC/media-SDK integration.

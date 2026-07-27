@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react"
-import { Radio, Play, Pause, Loader2, WifiOff, Mic } from "lucide-react"
+import { Link } from "react-router-dom"
+import { Radio, Play, Pause, Loader2, WifiOff, Mic, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useRadioStation } from "@/hooks/useRadioStation"
 import { useCurrentLiveSession } from "@/hooks/useLiveSession"
@@ -30,18 +31,25 @@ export function LiveRadioSection() {
   return (
     <section className="section-container">
       <div className="container mx-auto px-4 lg:px-8">
-        <div className="section-header">
-          <div className="section-icon bg-destructive/15">
-            {isRjLive ? <Mic className="w-4 h-4 md:w-5 md:h-5 text-destructive" /> : <Radio className="w-4 h-4 md:w-5 md:h-5 text-destructive" />}
+        <div className="section-header flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <div className="section-icon bg-destructive/15">
+              {isRjLive ? <Mic className="w-4 h-4 md:w-5 md:h-5 text-destructive" /> : <Radio className="w-4 h-4 md:w-5 md:h-5 text-destructive" />}
+            </div>
+            <div>
+              <h2 className="text-lg md:text-2xl font-serif font-bold text-foreground">
+                Live <span className="text-destructive">{isRjLive ? "Show" : "Radio"}</span>
+              </h2>
+              <p className="text-xs md:text-sm text-muted-foreground">
+                {isRjLive ? `${liveSession.rj_profile?.stage_name || "RJ"} is broadcasting live` : "Listen to live streaming now"}
+              </p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg md:text-2xl font-serif font-bold text-foreground">
-              Live <span className="text-destructive">{isRjLive ? "Show" : "Radio"}</span>
-            </h2>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              {isRjLive ? `${liveSession.rj_profile?.stage_name || "RJ"} is broadcasting live` : "Listen to live streaming now"}
-            </p>
-          </div>
+          {isRjLive && (
+            <Button asChild size="sm" variant="outline" className="gap-1.5">
+              <Link to="/live"><MessageCircle className="w-3.5 h-3.5" /> Join Live Chat</Link>
+            </Button>
+          )}
         </div>
 
         <RadioCard
@@ -49,6 +57,12 @@ export function LiveRadioSection() {
             id: station?.id || liveSession?.id || "live",
             name: activeName,
             stream_url: activeStreamUrl,
+            // Quality tiers only apply to the station's own stream — an
+            // RJ's live session only ever provides one URL (no bitrate
+            // variants for ad-hoc broadcasts), so those tiers are skipped
+            // whenever a live session is what's actually playing.
+            stream_url_medium: isRjLive ? null : station?.stream_url_medium,
+            stream_url_low: isRjLive ? null : station?.stream_url_low,
             artwork_url: activeArtwork,
             description: activeDescription,
           }}
@@ -60,11 +74,22 @@ export function LiveRadioSection() {
 
 type StreamStatus = "idle" | "loading" | "playing" | "error"
 
-function RadioCard({ station }: { station: { id: string; name: string; stream_url: string; artwork_url: string | null; description: string | null } }) {
+type Quality = "high" | "medium" | "low"
+
+function RadioCard({ station }: { station: { id: string; name: string; stream_url: string; stream_url_medium?: string | null; stream_url_low?: string | null; artwork_url: string | null; description: string | null } }) {
   const { book, isPlaying, togglePlay, loadBook, pause } = useAudioPlayer()
   const { get } = useSiteSettings()
   const brandName = get("brand_name", "BoiAro")
   const isRadioActive = book?.id === `radio-${station.id}`
+
+  const [quality, setQuality] = useState<Quality>("high")
+  const hasQualityOptions = !!(station.stream_url_medium || station.stream_url_low)
+  const resolveUrlForQuality = useCallback((q: Quality) =>
+    q === "low" && station.stream_url_low ? station.stream_url_low :
+    q === "medium" && station.stream_url_medium ? station.stream_url_medium :
+    station.stream_url,
+  [station.stream_url, station.stream_url_medium, station.stream_url_low])
+  const effectiveStreamUrl = resolveUrlForQuality(quality)
 
   // Independent stream status tracking for radio
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("idle")
@@ -92,18 +117,23 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
     }
   }, [isRadioActive, isPlaying])
 
-  const handlePlay = useCallback(() => {
-    // If already active in shared player, just toggle
-    if (isRadioActive) {
+  const handlePlay = useCallback((urlOverride?: string) => {
+    // If already active in shared player, just toggle (no override case —
+    // quality switches always go through handleQualityChange's explicit
+    // pause-then-replay path instead, never toggle while overriding).
+    if (isRadioActive && !urlOverride) {
       togglePlay()
       return
     }
 
+    const url = urlOverride || effectiveStreamUrl
+
     // Validate URL before attempting
-    if (!station.stream_url || !station.stream_url.trim()) {
+    if (!url || !url.trim()) {
       setStreamStatus("error")
       return
     }
+    const isHls = /\.m3u8(\?|$)/i.test(url)
 
     setStreamStatus("loading")
     retryCountRef.current = 0
@@ -156,13 +186,25 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
       trackNumber: 1,
       title: station.name,
       duration: "Live",
-      audioUrl: station.stream_url,
+      audioUrl: url,
       isPreview: false,
       isActive: true,
     }
 
     // Load into shared player — the AudioPlayerContext handles actual playback
     loadBook(radioBook, radioAudiobook, [radioTrack])
+
+    // HLS (.m3u8) streams are played via hls.js inside the shared player,
+    // not a plain <audio> element — a reachability pre-check here with a
+    // bare Audio() would falsely fail (browsers without native HLS can't
+    // load .m3u8 that way even though playback works fine via hls.js), so
+    // skip straight to playing and let the shared player's own error
+    // handling (hls.js error events -> toast) surface real failures.
+    if (isHls) {
+      setStreamStatus("playing")
+      setTimeout(() => togglePlay(), 100)
+      return
+    }
 
     // Use a test audio element to verify the stream is reachable
     const testAudio = new Audio()
@@ -187,7 +229,7 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
         retryCountRef.current++
         // Retry after a short delay
         setTimeout(() => {
-          testAudio.src = station.stream_url
+          testAudio.src = url
           testAudio.load()
         }, 1000)
       } else {
@@ -198,7 +240,7 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
     testAudio.addEventListener("canplay", onCanPlay, { once: true })
     testAudio.addEventListener("error", onError, { once: true })
     
-    testAudio.src = station.stream_url
+    testAudio.src = url
     testAudio.load()
     streamAudioRef.current = testAudio
 
@@ -210,7 +252,7 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
         togglePlay()
       }
     }, 15000)
-  }, [isRadioActive, station, loadBook, togglePlay])
+  }, [isRadioActive, station, effectiveStreamUrl, loadBook, togglePlay])
 
   const handlePause = useCallback(() => {
     if (isRadioActive) {
@@ -218,6 +260,19 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
     }
     setStreamStatus("idle")
   }, [isRadioActive, pause])
+
+  const handleQualityChange = useCallback((next: Quality) => {
+    setQuality(next)
+    if (isRadioActive) {
+      // Resolve the new URL directly rather than relying on `quality` state
+      // (which won't have updated yet in this closure) — avoids a stale
+      // reload that plays the old quality on the first switch.
+      const nextUrl = resolveUrlForQuality(next)
+      pause()
+      setStreamStatus("idle")
+      setTimeout(() => handlePlay(nextUrl), 50)
+    }
+  }, [isRadioActive, pause, handlePlay, resolveUrlForQuality])
 
   const isCurrentlyPlaying = isRadioActive && isPlaying
   const isBuffering = streamStatus === "loading"
@@ -269,6 +324,21 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
               <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />
               Ready to play
             </span>
+          )}
+          {hasQualityOptions && (
+            <div className="flex items-center gap-0.5 ml-1 rounded-full border border-border/30 p-0.5">
+              {(["low", "medium", "high"] as Quality[]).map((q) => (
+                <button
+                  key={q}
+                  onClick={() => handleQualityChange(q)}
+                  className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium uppercase transition-colors ${
+                    quality === q ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>

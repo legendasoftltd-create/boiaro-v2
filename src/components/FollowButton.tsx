@@ -6,7 +6,7 @@ import { toast } from "sonner"
 
 interface Props {
   profileId: string
-  profileType: "author" | "narrator" | "publisher" | "translator"
+  profileType: "author" | "narrator" | "publisher" | "translator" | "rj"
   showCount?: boolean
   size?: "sm" | "default" | "icon"
   className?: string

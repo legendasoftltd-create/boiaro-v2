@@ -1061,10 +1061,46 @@ model LiveSession {
   station_id        String?
   status            String   @default("live")
   stream_url        String?
+  // Attached manually by the RJ/admin after the show ends — this platform
+  // doesn't record streams server-side, so catch-up audio only exists once
+  // someone uploads/links a recording (see CATCHUP_API docs for the flow).
+  recording_url     String?
 
-  station RadioStation? @relation(fields: [station_id], references: [id])
+  station RadioStation?     @relation(fields: [station_id], references: [id])
+  chat_messages     LiveChatMessage[]
+  song_requests     SongRequest[]
 
   @@map("live_sessions")
+}
+
+// Live show chat — persisted (unlike reactions, which are ephemeral/socket-only)
+// so late joiners can see recent history via REST, and so moderation has
+// something to delete.
+model LiveChatMessage {
+  id              String   @id @default(uuid())
+  live_session_id String
+  user_id         String
+  message         String
+  created_at      DateTime @default(now())
+
+  session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
+
+  @@index([live_session_id, created_at])
+  @@map("live_chat_messages")
+}
+
+model SongRequest {
+  id              String   @id @default(uuid())
+  live_session_id String
+  user_id         String
+  request_text    String
+  status          String   @default("pending") // pending | played | rejected
+  created_at      DateTime @default(now())
+
+  session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
+
+  @@index([live_session_id, created_at])
+  @@map("song_requests")
 }
 
 model Narrator {
@@ -1371,7 +1407,13 @@ model RadioStation {
   is_active   Boolean  @default(true)
   name        String
   sort_order  Int      @default(0)
-  stream_url  String
+  stream_url  String   // default / high-quality mount — always required
+  // Optional lower-bitrate mounts, if the station runs them (common on
+  // Icecast setups with multiple mount points). Null = quality selector
+  // just isn't shown for that tier; there's no server-side transcoding
+  // here, so these must be real alternate mounts the station provides.
+  stream_url_medium String?
+  stream_url_low    String?
   updated_at  DateTime @updatedAt
 
   live_sessions LiveSession[]

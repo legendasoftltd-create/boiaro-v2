@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import { createServer } from "http";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import path from "path";
@@ -25,6 +26,7 @@ import {
 import { startStorageSyncService } from "./services/storageSync.service.js";
 import { startScheduledJobs } from "./jobs/index.js";
 import { applyWatermark } from "./lib/watermark.js";
+import { initLiveSocket } from "./realtime/socket.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -273,8 +275,13 @@ if (process.env.NODE_ENV === "production") {
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────
+// Plain http.Server instead of app.listen() so Socket.IO can attach to the
+// same server/port rather than needing a second listener.
 
-app.listen(PORT, () => {
+const httpServer = createServer(app);
+initLiveSocket(httpServer);
+
+httpServer.listen(PORT, () => {
   const mode = s3Configured ? `S3 [circuit: ${getCircuitState()}]` : "local disk";
   console.log(`Server running on http://localhost:${PORT} [storage: ${mode}]`);
   // Start background sync service (uploads locally-saved files to S3 when it recovers)

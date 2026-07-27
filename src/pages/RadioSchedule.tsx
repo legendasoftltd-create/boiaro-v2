@@ -1,0 +1,60 @@
+import { Link } from "react-router-dom"
+import { Navbar } from "@/components/Navbar"
+import { Footer } from "@/components/Footer"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { trpc } from "@/lib/trpc"
+import { Calendar, Clock } from "lucide-react"
+
+const DAY_NAMES = ["রবিবার", "সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার"]
+
+export default function RadioSchedule() {
+  const { data: schedules = [], isLoading } = trpc.rj.showSchedules.useQuery()
+
+  const byDay = DAY_NAMES.map((name, i) => ({
+    day: name,
+    shows: (schedules as any[]).filter((s) => s.day_of_week === i),
+  }))
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <main className="container mx-auto px-4 pt-20 pb-10 max-w-3xl">
+        <h1 className="text-2xl font-serif font-bold flex items-center gap-2 mb-1">
+          <Calendar className="w-6 h-6 text-primary" /> শো সিডিউল
+        </h1>
+        <p className="text-muted-foreground text-sm mb-6">সাপ্তাহিক লাইভ শো-এর সময়সূচী</p>
+
+        {isLoading ? (
+          <div className="flex justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>
+        ) : schedules.length === 0 ? (
+          <p className="text-center text-muted-foreground py-16">এখনো কোনো শো নির্ধারণ করা হয়নি।</p>
+        ) : (
+          <div className="space-y-5">
+            {byDay.filter((d) => d.shows.length > 0).map((d) => (
+              <div key={d.day} id={d.shows[0]?.id}>
+                <h2 className="text-sm font-semibold text-muted-foreground mb-2">{d.day}</h2>
+                <div className="space-y-2">
+                  {d.shows.map((s: any) => (
+                    <Card key={s.id} id={s.id} className="border-border/30">
+                      <CardContent className="p-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{s.show_title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            <Link to={`/host/${s.rj_user_id}`} className="hover:text-foreground hover:underline">{s.rj_stage_name || "RJ"}</Link> · {s.station?.name}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="gap-1 shrink-0"><Clock className="w-3 h-3" /> {s.start_time} - {s.end_time}</Badge>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+      <Footer />
+    </div>
+  )
+}

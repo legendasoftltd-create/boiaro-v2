@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { getListenerCount } from "../realtime/socket.js";
 import { calculateOrderEarnings } from "../lib/earnings.js";
 import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
@@ -5753,6 +5754,43 @@ export const adminRouter = router({
       return prisma.rjProfile.update({ where: { id }, data });
     }),
 
+  // Radio dashboard overview — live status, today's activity, and archive
+  // size. "Stream health" per the spec is scoped to what this app can
+  // actually observe (its own DB + in-memory socket rooms) — it has no
+  // visibility into the Icecast/Shoutcast server's own uptime/bitrate.
+  radioMetrics: adminProcedure.query(async () => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const [liveSessions, sessionsToday, totalStations, activeStations, approvedRjs, scheduledShows, catchupCount, chatToday, requestsToday] = await Promise.all([
+      prisma.liveSession.findMany({ where: { status: "live" } }),
+      prisma.liveSession.count({ where: { started_at: { gte: todayStart } } }),
+      prisma.radioStation.count(),
+      prisma.radioStation.count({ where: { is_active: true } }),
+      prisma.rjProfile.count({ where: { is_approved: true, is_active: true } }),
+      prisma.showSchedule.count({ where: { is_active: true } }),
+      prisma.liveSession.count({ where: { status: "ended", recording_url: { not: null } } }),
+      prisma.liveChatMessage.count({ where: { created_at: { gte: todayStart } } }),
+      prisma.songRequest.count({ where: { created_at: { gte: todayStart } } }),
+    ]);
+
+    const currentListeners = liveSessions.reduce((sum, s) => sum + getListenerCount(s.id), 0);
+
+    return {
+      isLiveNow: liveSessions.length > 0,
+      liveSessionCount: liveSessions.length,
+      currentListeners,
+      sessionsToday,
+      totalStations,
+      activeStations,
+      approvedRjs,
+      scheduledShows,
+      catchupCount,
+      chatMessagesToday: chatToday,
+      songRequestsToday: requestsToday,
+    };
+  }),
+
   createRjProfileFromDisplayName: adminProcedure
     .input(z.object({ displayName: z.string().min(1), stageName: z.string().min(1) }))
     .mutation(async ({ input }) => {
@@ -5807,6 +5845,8 @@ export const adminRouter = router({
         id: z.string().optional(),
         name: z.string().min(1),
         stream_url: z.string().min(1),
+        stream_url_medium: z.string().nullable().optional(),
+        stream_url_low: z.string().nullable().optional(),
         artwork_url: z.string().nullable().optional(),
         description: z.string().nullable().optional(),
         is_active: z.boolean().default(true),
@@ -5817,6 +5857,8 @@ export const adminRouter = router({
       const data = {
         name: input.name,
         stream_url: input.stream_url,
+        stream_url_medium: input.stream_url_medium ?? null,
+        stream_url_low: input.stream_url_low ?? null,
         artwork_url: input.artwork_url ?? null,
         description: input.description ?? null,
         is_active: input.is_active,
@@ -5831,6 +5873,49 @@ export const adminRouter = router({
     .mutation(({ input }) =>
       prisma.radioStation.update({ where: { id: input.id }, data: { is_active: input.is_active } })
     ),
+
+  // ── Show Schedule (EPG) ─────────────────────────────────────────────────
+  listShowSchedules: adminProcedure.query(async () => {
+    const schedules = await prisma.showSchedule.findMany({
+      include: { station: { select: { id: true, name: true } } },
+      orderBy: [{ day_of_week: "asc" }, { start_time: "asc" }],
+    });
+    const rjIds = [...new Set(schedules.map((s) => s.rj_user_id))];
+    const profiles = rjIds.length
+      ? await prisma.rjProfile.findMany({ where: { user_id: { in: rjIds } }, select: { user_id: true, stage_name: true } })
+      : [];
+    const pMap = new Map(profiles.map((p) => [p.user_id, p.stage_name]));
+    return schedules.map((s) => ({ ...s, rj_stage_name: pMap.get(s.rj_user_id) ?? null }));
+  }),
+
+  upsertShowSchedule: adminProcedure
+    .input(z.object({
+      id: z.string().optional(),
+      station_id: z.string(),
+      rj_user_id: z.string(),
+      show_title: z.string().min(1),
+      day_of_week: z.number().int().min(0).max(6),
+      start_time: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM format"),
+      end_time: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM format"),
+      is_active: z.boolean().default(true),
+    }))
+    .mutation(({ input }) => {
+      const data = {
+        station_id: input.station_id,
+        rj_user_id: input.rj_user_id,
+        show_title: input.show_title,
+        day_of_week: input.day_of_week,
+        start_time: input.start_time,
+        end_time: input.end_time,
+        is_active: input.is_active,
+      };
+      if (input.id) return prisma.showSchedule.update({ where: { id: input.id }, data });
+      return prisma.showSchedule.create({ data });
+    }),
+
+  deleteShowSchedule: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.showSchedule.delete({ where: { id: input.id } })),
 
   gamificationData: adminProcedure.query(async () => {
     const [badges, streakUsers, earnedBadges, pointsAgg, activeGoals] = await Promise.all([

@@ -4,6 +4,8 @@ export interface RadioStation {
   id: string;
   name: string;
   stream_url: string;
+  stream_url_medium?: string | null;
+  stream_url_low?: string | null;
   artwork_url: string | null;
   description: string | null;
   is_active: boolean;

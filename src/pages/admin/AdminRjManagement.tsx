@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Radio, Loader2, UserCheck, UserX, MicOff, Plus } from "lucide-react"
+import { Radio, Loader2, UserCheck, UserX, MicOff, Plus, Users, Calendar, Headphones, MessageSquare } from "lucide-react"
 import { toast } from "sonner"
 
 interface RjRow {
@@ -35,6 +35,7 @@ interface LiveSessionRow {
 
 export default function AdminRjManagement() {
   const utils = trpc.useUtils()
+  const { data: metrics } = trpc.admin.radioMetrics.useQuery(undefined, { refetchInterval: 15_000 })
   const [rjs, setRjs] = useState<RjRow[]>([])
   const [liveSessions, setLiveSessions] = useState<LiveSessionRow[]>([])
   const [recentSessions, setRecentSessions] = useState<LiveSessionRow[]>([])
@@ -129,6 +130,52 @@ export default function AdminRjManagement() {
         </div>
         <CreateRjDialog onCreated={fetchAll} />
       </div>
+
+      {/* Radio Overview */}
+      {metrics && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="border-border/30"><CardContent className="p-4 text-center">
+            <Users className="w-5 h-5 mx-auto text-destructive mb-1" />
+            <p className="text-xl font-bold">{metrics.currentListeners}</p>
+            <p className="text-[11px] text-muted-foreground">Current Listeners</p>
+          </CardContent></Card>
+          <Card className="border-border/30"><CardContent className="p-4 text-center">
+            <Radio className="w-5 h-5 mx-auto text-primary mb-1" />
+            <p className="text-xl font-bold">{metrics.sessionsToday}</p>
+            <p className="text-[11px] text-muted-foreground">Sessions Today</p>
+          </CardContent></Card>
+          <Card className="border-border/30"><CardContent className="p-4 text-center">
+            <Calendar className="w-5 h-5 mx-auto text-emerald-500 mb-1" />
+            <p className="text-xl font-bold">{metrics.scheduledShows}</p>
+            <p className="text-[11px] text-muted-foreground">Scheduled Shows</p>
+          </CardContent></Card>
+          <Card className="border-border/30"><CardContent className="p-4 text-center">
+            <Headphones className="w-5 h-5 mx-auto text-amber-500 mb-1" />
+            <p className="text-xl font-bold">{metrics.catchupCount}</p>
+            <p className="text-[11px] text-muted-foreground">Catch-up Recordings</p>
+          </CardContent></Card>
+          <Card className="border-border/30"><CardContent className="p-4 text-center">
+            <UserCheck className="w-5 h-5 mx-auto text-primary mb-1" />
+            <p className="text-xl font-bold">{metrics.approvedRjs}</p>
+            <p className="text-[11px] text-muted-foreground">Approved RJs</p>
+          </CardContent></Card>
+          <Card className="border-border/30"><CardContent className="p-4 text-center">
+            <Radio className="w-5 h-5 mx-auto text-muted-foreground mb-1" />
+            <p className="text-xl font-bold">{metrics.activeStations}/{metrics.totalStations}</p>
+            <p className="text-[11px] text-muted-foreground">Active Stations</p>
+          </CardContent></Card>
+          <Card className="border-border/30"><CardContent className="p-4 text-center">
+            <MessageSquare className="w-5 h-5 mx-auto text-blue-400 mb-1" />
+            <p className="text-xl font-bold">{metrics.chatMessagesToday}</p>
+            <p className="text-[11px] text-muted-foreground">Chat Messages Today</p>
+          </CardContent></Card>
+          <Card className="border-border/30"><CardContent className="p-4 text-center">
+            <Headphones className="w-5 h-5 mx-auto text-blue-400 mb-1" />
+            <p className="text-xl font-bold">{metrics.songRequestsToday}</p>
+            <p className="text-[11px] text-muted-foreground">Song Requests Today</p>
+          </CardContent></Card>
+        </div>
+      )}
 
       {/* Currently Live */}
       {liveSessions.length > 0 && (
