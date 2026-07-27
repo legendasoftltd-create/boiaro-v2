@@ -29,6 +29,8 @@ export async function maybeRecordRead(
     await prisma.bookRead.create({ data: { user_id: userId, book_id: bookId } });
     await prisma.book.update({ where: { id: bookId }, data: { total_reads: { increment: 1 } } });
   } catch (err: any) {
-    if (err?.code !== "P2002") throw err; // already recorded for this user — not an error
+    // P2002 = already recorded for this user (idempotent no-op).
+    // P2003 = the book was deleted between load and this call landing.
+    if (err?.code !== "P2002" && err?.code !== "P2003") throw err;
   }
 }

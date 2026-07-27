@@ -32,12 +32,19 @@ export async function maybeRecordView(
     return; // already counted within the last 24h
   }
 
-  await prisma.$transaction([
-    prisma.bookView.upsert({
-      where: where as any,
-      create: { book_id: bookId, user_id: uid, device_id: did, last_viewed_at: now, view_count: 1 },
-      update: { last_viewed_at: now, view_count: { increment: 1 } },
-    }),
-    prisma.book.update({ where: { id: bookId }, data: { total_views: { increment: 1 } } }),
-  ]);
+  try {
+    await prisma.$transaction([
+      prisma.bookView.upsert({
+        where: where as any,
+        create: { book_id: bookId, user_id: uid, device_id: did, last_viewed_at: now, view_count: 1 },
+        update: { last_viewed_at: now, view_count: { increment: 1 } },
+      }),
+      prisma.book.update({ where: { id: bookId }, data: { total_views: { increment: 1 } } }),
+    ]);
+  } catch (err: any) {
+    // P2003 = the book was deleted between the client loading it and this
+    // call landing (a stale cached link, a tab left open, etc.) — nothing
+    // to record against, not a real error.
+    if (err?.code !== "P2003") throw err;
+  }
 }
