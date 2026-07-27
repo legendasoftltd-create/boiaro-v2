@@ -77,17 +77,24 @@ const SECTION_AD_PLACEMENT: Record<string, string> = {
   hard_copies:       "before_hardcopy",
 }
 
+// Which ad placement key to show right after each section
+const SECTION_AD_AFTER: Record<string, string> = {
+  recommended_for_you: "homepage_banner",
+}
+
 /** Each section gets its own Suspense boundary so one slow import doesn't block others */
 const LazySection = memo(({ sectionKey }: { sectionKey: string }) => {
   const render = SECTION_REGISTRY[sectionKey]
   if (!render) return null
-  const adPlacement = SECTION_AD_PLACEMENT[sectionKey]
+  const adBefore = SECTION_AD_PLACEMENT[sectionKey]
+  const adAfter = SECTION_AD_AFTER[sectionKey]
   return (
     <>
-      {adPlacement && <AdBannerBlock placementKey={adPlacement} />}
+      {adBefore && <AdBannerBlock placementKey={adBefore} />}
       <Suspense fallback={<SectionSkeleton />}>
         {render()}
       </Suspense>
+      {adAfter && <AdBannerBlock placementKey={adAfter} />}
     </>
   )
 })
@@ -113,9 +120,6 @@ const Index = () => {
         </ErrorBoundary>
         <ErrorBoundary>
           <HeroBannerStrip />
-        </ErrorBoundary>
-        <ErrorBoundary>
-          <AdBannerBlock placementKey="homepage_banner" />
         </ErrorBoundary>
         <div className="transition-opacity duration-200 ease-out">
           {orderedKeys.map(key => (

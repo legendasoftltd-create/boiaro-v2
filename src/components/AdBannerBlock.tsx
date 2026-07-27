@@ -57,7 +57,7 @@ function SlideLink({ slide, title, onClick }: { slide: BannerSlide; title?: stri
       target={isExternal ? "_blank" : "_self"}
       rel="noopener noreferrer"
       draggable={false}
-      className={`block w-full flex items-center justify-center bg-black/5 ${
+      className={`block w-full ${
         slide.destination_url ? "cursor-pointer" : "cursor-default pointer-events-none"
       }`}
       onClick={e => {
@@ -65,10 +65,12 @@ function SlideLink({ slide, title, onClick }: { slide: BannerSlide; title?: stri
         onClick();
       }}
     >
+      {/* True full-width, no artificial height cap — the image sets its own
+          height from its natural aspect ratio so it never letterboxes. */}
       <img
         src={slide.image_url}
         alt={title || "বিজ্ঞাপন"}
-        className="w-full h-auto max-h-[300px] object-contain block"
+        className="w-full h-auto block"
         loading="lazy"
         draggable={false}
       />
