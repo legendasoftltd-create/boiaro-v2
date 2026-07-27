@@ -3859,7 +3859,10 @@ export const adminRouter = router({
 
   // ── Ad Banners ──────────────────────────────────────────────────────────────
   listAdBanners: adminProcedure.query(() =>
-    prisma.adBanner.findMany({ orderBy: [{ display_order: "asc" }, { created_at: "desc" }] })
+    prisma.adBanner.findMany({
+      orderBy: [{ display_order: "asc" }, { created_at: "desc" }],
+      include: { slides: { orderBy: { display_order: "asc" } } },
+    })
   ),
 
   updateAdBanner: adminProcedure
@@ -3867,21 +3870,35 @@ export const adminRouter = router({
       z.object({
         id: z.string().optional(),
         title: z.string().nullable().optional(),
-        image_url: z.string().nullable().optional(),
-        destination_url: z.string().nullable().optional(),
         placement_key: z.string().min(1),
         start_date: z.string().nullable().optional(),
         end_date: z.string().nullable().optional(),
         status: z.string().default("active"),
         display_order: z.number().int().default(0),
         device: z.string().nullable().optional(),
+        // One or more images, each with its own click-through link — rendered
+        // as a single image when there's one, a sliding carousel when there's more.
+        // Existing slides carry their id back so their impression/click counters
+        // survive the edit; slides without an id are new.
+        slides: z
+          .array(
+            z.object({
+              id: z.string().optional(),
+              image_url: z.string().min(1),
+              destination_url: z.string().nullable().optional(),
+            })
+          )
+          .min(1, "At least one image is required"),
       })
     )
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
+      const firstSlide = input.slides[0];
       const data = {
         title: input.title ?? null,
-        image_url: input.image_url ?? null,
-        destination_url: input.destination_url ?? null,
+        // Legacy flat fields mirror the first slide so any already-shipped
+        // client still reading image_url/destination_url keeps working.
+        image_url: firstSlide.image_url,
+        destination_url: firstSlide.destination_url ?? null,
         placement_key: input.placement_key,
         start_date: input.start_date ? new Date(input.start_date) : null,
         end_date: input.end_date ? new Date(input.end_date) : null,
@@ -3889,8 +3906,40 @@ export const adminRouter = router({
         display_order: input.display_order,
         device: input.device ?? null,
       };
-      if (input.id) return prisma.adBanner.update({ where: { id: input.id }, data });
-      return prisma.adBanner.create({ data });
+
+      return prisma.$transaction(async (tx) => {
+        const banner = input.id
+          ? await tx.adBanner.update({ where: { id: input.id }, data })
+          : await tx.adBanner.create({ data });
+
+        const existing = await tx.adBannerSlide.findMany({ where: { banner_id: banner.id }, select: { id: true } });
+        const existingIds = new Set(existing.map((s) => s.id));
+        const keptIds = new Set(input.slides.map((s) => s.id).filter((id): id is string => !!id && existingIds.has(id)));
+
+        const toRemove = [...existingIds].filter((id) => !keptIds.has(id));
+        if (toRemove.length > 0) {
+          await tx.adBannerSlide.deleteMany({ where: { id: { in: toRemove } } });
+        }
+
+        await Promise.all(
+          input.slides.map((s, i) => {
+            if (s.id && existingIds.has(s.id)) {
+              return tx.adBannerSlide.update({
+                where: { id: s.id },
+                data: { image_url: s.image_url, destination_url: s.destination_url ?? null, display_order: i },
+              });
+            }
+            return tx.adBannerSlide.create({
+              data: { banner_id: banner.id, image_url: s.image_url, destination_url: s.destination_url ?? null, display_order: i },
+            });
+          })
+        );
+
+        return tx.adBanner.findUniqueOrThrow({
+          where: { id: banner.id },
+          include: { slides: { orderBy: { display_order: "asc" } } },
+        });
+      });
     }),
 
   deleteAdBanner: adminProcedure

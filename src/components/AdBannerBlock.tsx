@@ -1,7 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAdConfig } from "@/hooks/useAdConfig";
 import { useAuth } from "@/contexts/AuthContext";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
+const SLIDE_INTERVAL = 5000;
 
 declare global {
   interface Window { adsbygoogle: unknown[]; }
@@ -40,60 +43,140 @@ function AdSenseBanner({ publisherId, unitId }: { publisherId: string; unitId: s
   );
 }
 
+interface BannerSlide {
+  id?: string;
+  image_url: string;
+  destination_url?: string | null;
+}
+
+function SlideLink({ slide, title, onClick }: { slide: BannerSlide; title?: string | null; onClick: () => void }) {
+  const isExternal = slide.destination_url?.startsWith("http");
+  return (
+    <a
+      href={slide.destination_url || "#"}
+      target={isExternal ? "_blank" : "_self"}
+      rel="noopener noreferrer"
+      draggable={false}
+      className={`block w-full flex items-center justify-center bg-black/5 ${
+        slide.destination_url ? "cursor-pointer" : "cursor-default pointer-events-none"
+      }`}
+      onClick={e => {
+        if (!slide.destination_url) { e.preventDefault(); return; }
+        onClick();
+      }}
+    >
+      <img
+        src={slide.image_url}
+        alt={title || "বিজ্ঞাপন"}
+        className="w-full h-auto max-h-[300px] object-contain block"
+        loading="lazy"
+        draggable={false}
+      />
+    </a>
+  );
+}
+
 function BannerItem({ banner, onImpression, onClick }: {
-  banner: { id: string; title?: string | null; image_url?: string | null; destination_url?: string | null };
-  onImpression: (id: string) => void;
-  onClick: (id: string) => void;
+  banner: { id: string; title?: string | null; image_url?: string | null; destination_url?: string | null; slides?: BannerSlide[] };
+  onImpression: (bannerId: string, slideId?: string) => void;
+  onClick: (bannerId: string, slideId?: string) => void;
 }) {
-  const ref = useRef<HTMLAnchorElement>(null);
+  const slides: BannerSlide[] = banner.slides?.length
+    ? banner.slides
+    : banner.image_url
+      ? [{ image_url: banner.image_url, destination_url: banner.destination_url }]
+      : [];
+
+  const ref = useRef<HTMLDivElement>(null);
   const logged = useRef(false);
+  const [current, setCurrent] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const touchStartX = useRef<number | null>(null);
 
   useEffect(() => {
     if (logged.current || !ref.current) return;
     const observer = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && !logged.current) {
         logged.current = true;
-        onImpression(banner.id);
+        onImpression(banner.id, slides[current]?.id);
         observer.disconnect();
       }
     }, { threshold: 0.5 });
     observer.observe(ref.current);
     return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [banner.id]);
 
-  const isExternal = banner.destination_url?.startsWith("http");
+  const prefersReducedMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+  useEffect(() => {
+    if (paused || slides.length <= 1 || prefersReducedMotion) return;
+    const timer = setInterval(() => setCurrent(c => (c + 1) % slides.length), SLIDE_INTERVAL);
+    return () => clearInterval(timer);
+  }, [paused, slides.length, prefersReducedMotion]);
+
+  const goTo = useCallback((idx: number) => setCurrent((idx + slides.length) % slides.length), [slides.length]);
+
+  if (slides.length === 0) {
+    return banner.title ? (
+      <div className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-primary/10 border-l-4 border-primary rounded-xl">
+        <p className="text-sm font-semibold text-foreground leading-snug">{banner.title}</p>
+      </div>
+    ) : null;
+  }
 
   return (
-    <a
+    <div
       ref={ref}
-      href={banner.destination_url || "#"}
-      target={isExternal ? "_blank" : "_self"}
-      rel="noopener noreferrer"
-      className={`block w-full rounded-xl overflow-hidden border border-border/30 bg-card/40 ${
-        banner.destination_url ? "cursor-pointer hover:opacity-90 active:opacity-80 transition-opacity" : "cursor-default pointer-events-none"
-      }`}
-      onClick={e => {
-        if (!banner.destination_url) { e.preventDefault(); return; }
-        onClick(banner.id);
+      className="relative w-full rounded-xl overflow-hidden border border-border/30 bg-card/40"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onTouchStart={e => { touchStartX.current = e.touches[0].clientX; }}
+      onTouchEnd={e => {
+        if (touchStartX.current === null) return;
+        const delta = e.changedTouches[0].clientX - touchStartX.current;
+        if (Math.abs(delta) > 40) goTo(current + (delta < 0 ? 1 : -1));
+        touchStartX.current = null;
       }}
     >
-      {banner.image_url ? (
-        /* Use a flex container so the image never gets cropped — height is natural */
-        <div className="w-full flex items-center justify-center bg-black/5">
-          <img
-            src={banner.image_url}
-            alt={banner.title || "বিজ্ঞাপন"}
-            className="w-full h-auto max-h-[300px] object-contain block"
-            loading="lazy"
-            draggable={false}
-          />
+      {slides.map((slide, i) => (
+        <div key={slide.id ?? i} className={i === current ? "block" : "hidden"}>
+          <SlideLink slide={slide} title={banner.title} onClick={() => onClick(banner.id, slide.id)} />
         </div>
-      ) : banner.title ? (
-        <div className="w-full px-4 py-3 sm:px-6 sm:py-4 bg-primary/10 border-l-4 border-primary">
-          <p className="text-sm font-semibold text-foreground leading-snug">{banner.title}</p>
-        </div>
-      ) : null}
-    </a>
+      ))}
+
+      {slides.length > 1 && (
+        <>
+          <button
+            type="button"
+            aria-label="আগের ছবি"
+            onClick={() => goTo(current - 1)}
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-background/70 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="পরের ছবি"
+            onClick={() => goTo(current + 1)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-background/70 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+            {slides.map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={`স্লাইড ${i + 1}`}
+                onClick={() => goTo(i)}
+                className={`h-1.5 rounded-full transition-all duration-300 ${i === current ? "w-5 bg-primary" : "w-1.5 bg-muted-foreground/40"}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -140,8 +223,8 @@ export function AdBannerBlock({ placementKey, device = "all", noContainer = fals
         <BannerItem
           key={banner.id}
           banner={banner}
-          onImpression={id => user && recordImpression.mutate({ bannerId: id })}
-          onClick={id => user && recordClick.mutate({ bannerId: id })}
+          onImpression={(bannerId, slideId) => user && recordImpression.mutate({ bannerId, slideId })}
+          onClick={(bannerId, slideId) => user && recordClick.mutate({ bannerId, slideId })}
         />
       ))}
 

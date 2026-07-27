@@ -77,10 +77,23 @@ adsRestRouter.get("/banners", async (req, res) => {
         AND: andFilters,
       },
       orderBy: [{ display_order: "asc" }, { created_at: "desc" }],
-      select: { id: true, title: true, image_url: true, destination_url: true, placement_key: true, device: true, display_order: true, impressions: true, clicks: true },
+      select: {
+        id: true, title: true, image_url: true, destination_url: true, placement_key: true, device: true, display_order: true, impressions: true, clicks: true,
+        slides: {
+          orderBy: { display_order: "asc" },
+          select: { id: true, image_url: true, destination_url: true, display_order: true },
+        },
+      },
     });
     res.json({
-      banners: banners.map(b => ({ ...b, image_url: b.image_url ? resolveFileUrl(b.image_url) : null })),
+      // image_url/destination_url stay as a mirror of the first slide for
+      // backward compatibility — new clients should render `slides` as a
+      // carousel when it has more than one entry.
+      banners: banners.map(b => ({
+        ...b,
+        image_url: b.image_url ? resolveFileUrl(b.image_url) : null,
+        slides: b.slides.map(s => ({ ...s, image_url: resolveFileUrl(s.image_url) })),
+      })),
     });
   } catch (error) {
     sendHttpError(res, error);
@@ -193,12 +206,17 @@ adsRestRouter.get("/rewarded/history", requireAuth, async (req: AuthenticatedReq
 });
 
 // ── POST /api/v1/ads/impression ──────────────────────────────────────────────
-// Auth optional. Record a banner impression.
+// Auth optional. Record a banner impression. Body: { banner_id, slide_id? }
 adsRestRouter.post("/impression", async (req: AuthenticatedRequest, res) => {
   try {
-    const { banner_id } = req.body;
+    const { banner_id, slide_id } = req.body;
     if (!banner_id) { res.status(400).json({ error: "banner_id is required" }); return; }
-    await prisma.adBanner.update({ where: { id: banner_id }, data: { impressions: { increment: 1 } } }).catch(() => null);
+    await Promise.all([
+      prisma.adBanner.update({ where: { id: banner_id }, data: { impressions: { increment: 1 } } }).catch(() => null),
+      slide_id
+        ? prisma.adBannerSlide.update({ where: { id: slide_id }, data: { impressions: { increment: 1 } } }).catch(() => null)
+        : null,
+    ]);
     res.json({ recorded: true });
   } catch (error) {
     sendHttpError(res, error);
@@ -206,12 +224,17 @@ adsRestRouter.post("/impression", async (req: AuthenticatedRequest, res) => {
 });
 
 // ── POST /api/v1/ads/click ───────────────────────────────────────────────────
-// Auth optional. Record a banner click.
+// Auth optional. Record a banner click. Body: { banner_id, slide_id? }
 adsRestRouter.post("/click", async (req: AuthenticatedRequest, res) => {
   try {
-    const { banner_id } = req.body;
+    const { banner_id, slide_id } = req.body;
     if (!banner_id) { res.status(400).json({ error: "banner_id is required" }); return; }
-    await prisma.adBanner.update({ where: { id: banner_id }, data: { clicks: { increment: 1 } } }).catch(() => null);
+    await Promise.all([
+      prisma.adBanner.update({ where: { id: banner_id }, data: { clicks: { increment: 1 } } }).catch(() => null),
+      slide_id
+        ? prisma.adBannerSlide.update({ where: { id: slide_id }, data: { clicks: { increment: 1 } } }).catch(() => null)
+        : null,
+    ]);
     res.json({ recorded: true });
   } catch (error) {
     sendHttpError(res, error);
@@ -269,15 +292,29 @@ adsRestRouter.get("/admin/banners", requireAuth, async (req: AuthenticatedReques
     const banners = await prisma.adBanner.findMany({
       where,
       orderBy: [{ display_order: "asc" }, { created_at: "desc" }],
+      include: { slides: { orderBy: { display_order: "asc" } } },
     });
-    res.json({ banners: banners.map(b => ({ ...b, image_url: b.image_url ? resolveFileUrl(b.image_url) : null })) });
+    res.json({
+      banners: banners.map(b => ({
+        ...b,
+        image_url: b.image_url ? resolveFileUrl(b.image_url) : null,
+        slides: b.slides.map(s => ({ ...s, image_url: resolveFileUrl(s.image_url) })),
+      })),
+    });
   } catch (error) {
     sendHttpError(res, error);
   }
 });
 
+const slideSchema = z.object({
+  image_url: z.string().min(1),
+  destination_url: z.string().nullable().optional(),
+});
+
 // ── POST /api/v1/ads/admin/banners ───────────────────────────────────────────
-// Admin. Create a new banner.
+// Admin. Create a new banner. Pass `slides: [{image_url, destination_url?}, ...]`
+// for a multi-image carousel — omit it to fall back to the single image_url/
+// destination_url fields (kept as a single-slide banner).
 adsRestRouter.post("/admin/banners", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     if (!await assertAdmin(req, res)) return;
@@ -291,20 +328,30 @@ adsRestRouter.post("/admin/banners", requireAuth, async (req: AuthenticatedReque
       status: z.string().default("active"),
       display_order: z.number().int().default(0),
       device: z.string().nullable().optional(),
+      slides: z.array(slideSchema).optional(),
     });
     const input = schema.parse(req.body);
-    const banner = await prisma.adBanner.create({
-      data: {
-        title: input.title ?? null,
-        image_url: input.image_url ?? null,
-        destination_url: input.destination_url ?? null,
-        placement_key: input.placement_key,
-        start_date: input.start_date ? new Date(input.start_date) : null,
-        end_date: input.end_date ? new Date(input.end_date) : null,
-        status: input.status,
-        display_order: input.display_order,
-        device: input.device ?? null,
-      },
+    const slides = input.slides?.length ? input.slides : input.image_url ? [{ image_url: input.image_url, destination_url: input.destination_url ?? null }] : [];
+    if (slides.length === 0) { res.status(400).json({ error: "At least one image (image_url or slides) is required" }); return; }
+
+    const banner = await prisma.$transaction(async (tx) => {
+      const created = await tx.adBanner.create({
+        data: {
+          title: input.title ?? null,
+          image_url: slides[0].image_url,
+          destination_url: slides[0].destination_url ?? null,
+          placement_key: input.placement_key,
+          start_date: input.start_date ? new Date(input.start_date) : null,
+          end_date: input.end_date ? new Date(input.end_date) : null,
+          status: input.status,
+          display_order: input.display_order,
+          device: input.device ?? null,
+        },
+      });
+      await tx.adBannerSlide.createMany({
+        data: slides.map((s, i) => ({ banner_id: created.id, image_url: s.image_url, destination_url: s.destination_url ?? null, display_order: i })),
+      });
+      return tx.adBanner.findUniqueOrThrow({ where: { id: created.id }, include: { slides: { orderBy: { display_order: "asc" } } } });
     });
     res.status(201).json(banner);
   } catch (error) {
@@ -313,7 +360,8 @@ adsRestRouter.post("/admin/banners", requireAuth, async (req: AuthenticatedReque
 });
 
 // ── PUT /api/v1/ads/admin/banners/:id ────────────────────────────────────────
-// Admin. Update a banner.
+// Admin. Update a banner. Pass `slides` to replace the full image/link set;
+// omit it to only touch the banner's own fields (title, status, schedule, etc).
 adsRestRouter.put("/admin/banners/:id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     if (!await assertAdmin(req, res)) return;
@@ -328,19 +376,35 @@ adsRestRouter.put("/admin/banners/:id", requireAuth, async (req: AuthenticatedRe
       status: z.string().optional(),
       display_order: z.number().int().optional(),
       device: z.string().nullable().optional(),
+      slides: z.array(slideSchema).optional(),
     });
     const input = schema.parse(req.body);
     const data: Record<string, unknown> = {};
     if (input.title !== undefined) data.title = input.title;
-    if (input.image_url !== undefined) data.image_url = input.image_url;
-    if (input.destination_url !== undefined) data.destination_url = input.destination_url;
     if (input.placement_key) data.placement_key = input.placement_key;
     if (input.start_date !== undefined) data.start_date = input.start_date ? new Date(input.start_date) : null;
     if (input.end_date !== undefined) data.end_date = input.end_date ? new Date(input.end_date) : null;
     if (input.status) data.status = input.status;
     if (input.display_order !== undefined) data.display_order = input.display_order;
     if (input.device !== undefined) data.device = input.device;
-    const banner = await prisma.adBanner.update({ where: { id: bannerId }, data });
+    if (input.slides?.length) {
+      data.image_url = input.slides[0].image_url;
+      data.destination_url = input.slides[0].destination_url ?? null;
+    } else {
+      if (input.image_url !== undefined) data.image_url = input.image_url;
+      if (input.destination_url !== undefined) data.destination_url = input.destination_url;
+    }
+
+    const banner = await prisma.$transaction(async (tx) => {
+      const updated = await tx.adBanner.update({ where: { id: bannerId }, data });
+      if (input.slides?.length) {
+        await tx.adBannerSlide.deleteMany({ where: { banner_id: bannerId } });
+        await tx.adBannerSlide.createMany({
+          data: input.slides!.map((s, i) => ({ banner_id: bannerId, image_url: s.image_url, destination_url: s.destination_url ?? null, display_order: i })),
+        });
+      }
+      return tx.adBanner.findUniqueOrThrow({ where: { id: bannerId }, include: { slides: { orderBy: { display_order: "asc" } } } });
+    });
     res.json(banner);
   } catch (error) {
     sendHttpError(res, error);

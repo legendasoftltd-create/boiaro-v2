@@ -114,6 +114,9 @@ const Index = () => {
         <ErrorBoundary>
           <HeroBannerStrip />
         </ErrorBoundary>
+        <ErrorBoundary>
+          <AdBannerBlock placementKey="homepage_banner" />
+        </ErrorBoundary>
         <div className="transition-opacity duration-200 ease-out">
           {orderedKeys.map(key => (
             <ErrorBoundary key={key}>

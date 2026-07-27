@@ -308,6 +308,10 @@ export const booksRouter = router({
         placement_key: true,
         display_order: true,
         device: true,
+        slides: {
+          orderBy: { display_order: "asc" },
+          select: { id: true, image_url: true, destination_url: true, display_order: true },
+        },
       },
     })
   ),
@@ -336,21 +340,25 @@ export const booksRouter = router({
   ),
 
   recordAdImpression: protectedProcedure
-    .input(z.object({ bannerId: z.string() }))
+    .input(z.object({ bannerId: z.string(), slideId: z.string().optional() }))
     .mutation(({ input }) =>
-      prisma.adBanner.update({
-        where: { id: input.bannerId },
-        data: { impressions: { increment: 1 } },
-      }).catch(() => null)
+      Promise.all([
+        prisma.adBanner.update({ where: { id: input.bannerId }, data: { impressions: { increment: 1 } } }),
+        input.slideId
+          ? prisma.adBannerSlide.update({ where: { id: input.slideId }, data: { impressions: { increment: 1 } } })
+          : null,
+      ]).catch(() => null)
     ),
 
   recordAdClick: protectedProcedure
-    .input(z.object({ bannerId: z.string() }))
+    .input(z.object({ bannerId: z.string(), slideId: z.string().optional() }))
     .mutation(({ input }) =>
-      prisma.adBanner.update({
-        where: { id: input.bannerId },
-        data: { clicks: { increment: 1 } },
-      }).catch(() => null)
+      Promise.all([
+        prisma.adBanner.update({ where: { id: input.bannerId }, data: { clicks: { increment: 1 } } }),
+        input.slideId
+          ? prisma.adBannerSlide.update({ where: { id: input.slideId }, data: { clicks: { increment: 1 } } })
+          : null,
+      ]).catch(() => null)
     ),
 
   reviews: publicProcedure

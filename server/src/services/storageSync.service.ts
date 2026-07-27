@@ -50,6 +50,7 @@ async function patchAllDbUrls(localUrl: string, s3Url: string): Promise<void> {
 
     // Content / site
     prisma.adBanner.updateMany({ where: { image_url: localUrl }, data: { image_url: s3Url } }),
+    prisma.adBannerSlide.updateMany({ where: { image_url: localUrl }, data: { image_url: s3Url } }),
     prisma.heroBanner.updateMany({ where: { image_url: localUrl }, data: { image_url: s3Url } }),
     prisma.blogPost.updateMany({ where: { cover_image: localUrl }, data: { cover_image: s3Url } }),
     prisma.cmsPage.updateMany({ where: { featured_image: localUrl }, data: { featured_image: s3Url } }),

@@ -95,8 +95,28 @@ model AdBanner {
   status          String   @default("active")
   title           String?
   updated_at      DateTime @updatedAt
+  slides          AdBannerSlide[]
 
   @@map("ad_banners")
+}
+
+// One AdBanner can carry multiple images that slide/rotate in place, each
+// with its own click-through destination — legacy AdBanner.image_url /
+// destination_url stay populated as a mirror of the first slide so any
+// already-shipped mobile app build reading the old flat fields keeps working.
+model AdBannerSlide {
+  id              String   @id @default(uuid())
+  banner_id       String
+  image_url       String
+  destination_url String?
+  display_order   Int      @default(0)
+  impressions     Int      @default(0)
+  clicks          Int      @default(0)
+  created_at      DateTime @default(now())
+
+  banner AdBanner @relation(fields: [banner_id], references: [id], onDelete: Cascade)
+
+  @@map("ad_banner_slides")
 }
 
 model AdCampaign {

@@ -8,10 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { ImageIcon, Plus, Search, Trash2, Eye, MousePointerClick } from "lucide-react";
+import { ImageIcon, Plus, Search, Trash2, Eye, MousePointerClick, ArrowUp, ArrowDown, Images } from "lucide-react";
 import { SiteImageUpload } from "@/components/admin/SiteImageUpload";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
+
+interface AdBannerSlide {
+  id?: string;
+  image_url: string;
+  destination_url: string | null;
+}
 
 interface AdBanner {
   id: string;
@@ -26,6 +32,7 @@ interface AdBanner {
   impressions: number;
   clicks: number;
   device: string;
+  slides: AdBannerSlide[];
 }
 
 const PLACEMENTS = [
@@ -60,28 +67,46 @@ export default function AdminAdBanners() {
 
   const openNew = () => {
     setEditId(null);
-    setForm({ status: "active", placement_key: "homepage_banner", device: "both", display_order: 0 });
+    setForm({ status: "active", placement_key: "homepage_banner", device: "both", display_order: 0, slides: [{ image_url: "", destination_url: "" }] });
     setFormOpen(true);
   };
 
   const openEdit = (b: AdBanner) => {
     setEditId(b.id);
-    setForm({ ...b });
+    setForm({ ...b, slides: b.slides.length > 0 ? b.slides.map(s => ({ ...s })) : [{ image_url: b.image_url || "", destination_url: b.destination_url || "" }] });
     setFormOpen(true);
   };
 
+  const slides = form.slides || [];
+  const setSlides = (next: AdBannerSlide[]) => setForm(p => ({ ...p, slides: next }));
+  const addSlide = () => setSlides([...slides, { image_url: "", destination_url: "" }]);
+  const removeSlide = (i: number) => setSlides(slides.filter((_, idx) => idx !== i));
+  const updateSlide = (i: number, patch: Partial<AdBannerSlide>) =>
+    setSlides(slides.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  const moveSlide = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= slides.length) return;
+    const next = [...slides];
+    [next[i], next[j]] = [next[j], next[i]];
+    setSlides(next);
+  };
+
   const save = async () => {
+    const validSlides = slides.filter(s => s.image_url.trim());
+    if (validSlides.length === 0) {
+      toast.error("Add at least one image");
+      return;
+    }
     upsertMutation.mutate({
       id: editId || undefined,
       title: form.title || null,
-      image_url: form.image_url || null,
-      destination_url: form.destination_url || null,
       placement_key: form.placement_key || "homepage_banner",
       status: form.status || "active",
       display_order: form.display_order || 0,
       device: form.device || "both",
       start_date: form.start_date || new Date().toISOString(),
       end_date: form.end_date || null,
+      slides: validSlides.map(s => ({ id: s.id, image_url: s.image_url, destination_url: s.destination_url || null })),
     });
   };
 
@@ -145,11 +170,18 @@ export default function AdminAdBanners() {
               <TableRow key={b.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    {b.image_url ? (
-                      <img src={b.image_url} className="w-16 h-10 rounded object-cover border border-border/30" alt="" />
-                    ) : (
-                      <div className="w-16 h-10 rounded bg-secondary/60 flex items-center justify-center"><ImageIcon className="w-4 h-4 text-muted-foreground" /></div>
-                    )}
+                    <div className="relative shrink-0">
+                      {b.slides?.[0]?.image_url || b.image_url ? (
+                        <img src={b.slides?.[0]?.image_url || b.image_url || ""} className="w-16 h-10 rounded object-cover border border-border/30" alt="" />
+                      ) : (
+                        <div className="w-16 h-10 rounded bg-secondary/60 flex items-center justify-center"><ImageIcon className="w-4 h-4 text-muted-foreground" /></div>
+                      )}
+                      {b.slides?.length > 1 && (
+                        <Badge className="absolute -top-1.5 -right-1.5 h-4 px-1 text-[9px] gap-0.5 bg-primary text-primary-foreground">
+                          <Images className="w-2.5 h-2.5" />{b.slides.length}
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-sm font-medium">{b.title || "Untitled"}</p>
                   </div>
                 </TableCell>
@@ -171,12 +203,39 @@ export default function AdminAdBanners() {
       </Card>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editId ? "Edit" : "New"} Banner</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5"><Label>Title</Label><Input value={form.title || ""} onChange={e => setForm(p => ({ ...p, title: e.target.value }))} /></div>
-            <div className="space-y-1.5"><Label>Image</Label><SiteImageUpload value={form.image_url || ""} onChange={url => setForm(p => ({ ...p, image_url: url }))} fieldKey="ad-banner" /></div>
-            <div className="space-y-1.5"><Label>Destination URL</Label><Input value={form.destination_url || ""} onChange={e => setForm(p => ({ ...p, destination_url: e.target.value }))} /></div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Images {slides.length > 1 && <span className="text-muted-foreground font-normal">— slides in order, one image every 5s</span>}</Label>
+                <Button type="button" size="sm" variant="outline" onClick={addSlide} className="h-7 gap-1"><Plus className="w-3 h-3" />Add image</Button>
+              </div>
+              <div className="space-y-3">
+                {slides.map((slide, i) => (
+                  <div key={slide.id ?? i} className="rounded-lg border border-border/30 p-3 space-y-2 bg-secondary/10">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-muted-foreground">Slide {i + 1}</span>
+                      <div className="flex items-center gap-1">
+                        <Button type="button" size="icon" variant="ghost" className="h-6 w-6" disabled={i === 0} onClick={() => moveSlide(i, -1)}><ArrowUp className="w-3 h-3" /></Button>
+                        <Button type="button" size="icon" variant="ghost" className="h-6 w-6" disabled={i === slides.length - 1} onClick={() => moveSlide(i, 1)}><ArrowDown className="w-3 h-3" /></Button>
+                        <Button type="button" size="icon" variant="ghost" className="h-6 w-6 text-destructive" disabled={slides.length === 1} onClick={() => removeSlide(i)}><Trash2 className="w-3 h-3" /></Button>
+                      </div>
+                    </div>
+                    <SiteImageUpload value={slide.image_url} onChange={url => updateSlide(i, { image_url: url })} fieldKey={`ad-banner-${i}`} />
+                    <Input
+                      placeholder="Destination URL (where this image links to)"
+                      value={slide.destination_url || ""}
+                      onChange={e => updateSlide(i, { destination_url: e.target.value })}
+                      className="text-[13px]"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Placement</Label>
