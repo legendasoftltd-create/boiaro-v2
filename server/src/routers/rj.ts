@@ -9,6 +9,7 @@ import { getRadioSetting, getRadioSettingBool, getRadioSettingNumber } from "../
 import { startRecording, stopRecording, shouldAutoRecord } from "../lib/liveRecorder.js";
 import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished } from "../lib/radioNotify.js";
 import { deleteFromS3 } from "../lib/s3.js";
+import { getCallInIceServers } from "../lib/turnCredentials.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
   if (userId === session.rj_user_id) return;
@@ -542,6 +543,13 @@ export const rjRouter = router({
   // Disabled platform-wide by default (radio_callin_enabled) and per-session
   // (LiveSession.callin_enabled), both enforced here.
   callIn: router({
+    // STUN + (on production) time-limited TURN credentials for the peer
+    // connection. Fetch right before creating the RTCPeerConnection — the
+    // TURN credential expires after an hour.
+    iceServers: protectedProcedure.query(({ ctx }) => ({
+      iceServers: getCallInIceServers(ctx.userId),
+    })),
+
     request: protectedProcedure
       .input(z.object({ sessionId: z.string(), consentGiven: z.boolean() }))
       .mutation(async ({ ctx, input }) => {

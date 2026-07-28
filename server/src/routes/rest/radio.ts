@@ -9,6 +9,7 @@ import { logRadioAction } from "../../lib/radioAudit.js";
 import { generateBroadcastToken, verifyBroadcastToken } from "../../lib/broadcastToken.js";
 import { startRecording, stopRecording, shouldAutoRecord } from "../../lib/liveRecorder.js";
 import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished } from "../../lib/radioNotify.js";
+import { getCallInIceServers } from "../../lib/turnCredentials.js";
 import { deleteFromS3 } from "../../lib/s3.js";
 
 export const radioRestRouter = Router();
@@ -401,6 +402,13 @@ radioRestRouter.get("/rj/profiles", async (_req, res) => {
   } catch (error) {
     sendHttpError(res, error);
   }
+});
+
+// ── GET /api/v1/radio/callin/ice-servers ──────────────────────────────────────
+// STUN + (on production) time-limited TURN credentials for the WebRTC peer
+// connection. Fetch right before creating the RTCPeerConnection.
+radioRestRouter.get("/callin/ice-servers", requireAuth, (req: AuthenticatedRequest, res) => {
+  res.json({ ice_servers: getCallInIceServers(req.auth.userId!) });
 });
 
 // ── POST /api/v1/radio/live/:sessionId/callin/request ─────────────────────────

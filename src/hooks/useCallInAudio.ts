@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Socket } from "socket.io-client";
+import { trpc } from "@/lib/trpc";
 
-// Public STUN only, for now — works for most direct peer connections.
-// A self-hosted TURN relay (coturn) is the planned addition for callers
-// behind strict NAT/firewalls; add its urls/credentials here once
-// provisioned (see LIVE_RADIO_API.md's Call-in Audio section).
-const ICE_SERVERS: RTCIceServer[] = [
+// Fallback when the ice-servers query hasn't resolved yet (or fails):
+// public STUN still covers most direct peer connections. The server adds
+// the self-hosted coturn TURN relay with time-limited credentials on top
+// (rj.callIn.iceServers), which is what covers strict-NAT callers.
+const FALLBACK_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
@@ -28,6 +29,19 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
   const [state, setState] = useState<CallInConnectionState>("idle");
   const [localMuted, setLocalMuted] = useState(false);
 
+  // TURN credentials are time-limited (1h) — staleTime keeps them fresh
+  // enough that a connection started any time while the page is open gets
+  // a working credential.
+  const { data: iceData } = trpc.rj.callIn.iceServers.useQuery(undefined, {
+    enabled: !!sessionId,
+    staleTime: 30 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
+  });
+  const iceServersRef = useRef<RTCIceServer[]>(FALLBACK_ICE_SERVERS);
+  useEffect(() => {
+    if (iceData?.iceServers?.length) iceServersRef.current = iceData.iceServers as RTCIceServer[];
+  }, [iceData]);
+
   const cleanup = useCallback(() => {
     pcRef.current?.close();
     pcRef.current = null;
@@ -41,7 +55,7 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
   const ensurePeerConnection = useCallback((targetUserId: string) => {
     if (pcRef.current) return pcRef.current;
     peerUserIdRef.current = targetUserId;
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
     pc.onicecandidate = (e) => {
       if (e.candidate && sessionId) {
         getSocket()?.emit("callin:ice-candidate", { sessionId, targetUserId, payload: e.candidate });

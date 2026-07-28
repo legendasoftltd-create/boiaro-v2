@@ -19,9 +19,11 @@ in-browser/in-app "record and upload live" studio; building one (with
 mixing, ducking, jingles) was scoped out in favor of RJs using tools built
 for exactly this. **Listener call-in audio (a caller ↔ host, not RJ →
 server) is real WebRTC**, peer-to-peer, signaled over the existing
-Socket.IO connection — see section 9. It currently uses public STUN only;
-callers behind strict/symmetric NAT (roughly 10-20% of real-world networks)
-may fail to connect until a TURN relay is provisioned server-side.
+Socket.IO connection — see section 9. A self-hosted coturn TURN relay on
+the production server covers callers behind strict/symmetric NAT; clients
+fetch STUN+TURN with time-limited credentials from
+`GET /radio/callin/ice-servers` (or tRPC `rj.callIn.iceServers`) right
+before creating the peer connection.
 
 ---
 
@@ -470,13 +472,19 @@ platform-native WebRTC) — this API only handles the signaling relay and
 the request/accept/on-air state machine; the actual `RTCPeerConnection`
 setup is a client concern on every platform, web included.
 
-**Current limitation: public STUN only, no TURN relay yet.** STUN is
-enough for callers on an open/moderately-NATted connection to connect
-directly; callers behind strict/symmetric NAT or restrictive corporate/
-mobile-carrier firewalls will fail to establish a peer connection without
-a TURN relay (a self-hosted `coturn` instance was scoped for this but
-needs a separate, explicit go-ahead to install — see the delivery report).
-Until then, expect call-in to work for most listeners but not all.
+**ICE servers — fetch them from the API, don't hardcode.**
+`GET /radio/callin/ice-servers` (🔒 auth required; tRPC:
+`rj.callIn.iceServers`) returns
+`{ "ice_servers": [{ "urls": ... , "username"?, "credential"? }] }` —
+public STUN entries plus, on production, the self-hosted coturn TURN relay
+(`turn:217.15.162.31:3478`, UDP and TCP). TURN credentials are
+**time-limited (1 hour)** HMAC credentials (coturn's `use-auth-secret`
+REST mechanism) — fetch them right before creating the
+`RTCPeerConnection`, don't cache them across shows. The relay covers
+callers behind strict/symmetric NAT or restrictive corporate/
+mobile-carrier firewalls who can't connect peer-to-peer via STUN alone.
+On environments without TURN configured (local dev), the endpoint
+degrades to STUN-only.
 
 ### State machine + REST
 - `POST /radio/live/:sessionId/callin/request` — 🔒 Body: `{ "consent_given": true }` (consent is mandatory — recording implications). Idempotent: calling again while you already have an active request just returns it.
