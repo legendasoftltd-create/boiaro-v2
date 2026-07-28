@@ -157,6 +157,7 @@ const RjSchedule = lazy(() => import("./pages/rj/RjSchedule.tsx"));
 
 // Admin RJ
 const AdminRjManagement = lazy(() => import("./pages/admin/AdminRjManagement.tsx"));
+const AdminRadioSafety = lazy(() => import("./pages/admin/AdminRadioSafety.tsx"));
 const AdminSms = lazy(() => import("./pages/admin/AdminSms.tsx"));
 const TtsDemo = lazy(() => import("./pages/TtsDemo.tsx"));
 
@@ -329,6 +330,7 @@ const App = () => {
                   <Route path="radio" element={<AdminRadio />} />
                   <Route path="radio-schedule" element={<AdminRadioSchedule />} />
                   <Route path="rj-management" element={<AdminRjManagement />} />
+                  <Route path="radio-safety" element={<AdminRadioSafety />} />
                   <Route path="referrals" element={<AdminReferrals />} />
                   <Route path="gamification" element={<AdminGamification />} />
                   <Route path="system-logs" element={<AdminSystemLogs />} />
