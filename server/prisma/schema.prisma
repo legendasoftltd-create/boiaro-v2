@@ -1079,6 +1079,7 @@ model LiveSession {
   show_title        String?
   started_at        DateTime @default(now())
   station_id        String?
+  // scheduled | preparing | testing | live | reconnecting | ended
   status            String   @default("live")
   stream_url        String?
   // Attached manually by the RJ/admin after the show ends — this platform
@@ -1086,11 +1087,126 @@ model LiveSession {
   // someone uploads/links a recording (see CATCHUP_API docs for the flow).
   recording_url     String?
 
+  // Private test broadcast — never surfaced in the public "current live"
+  // queries, only visible to the host and admins.
+  is_test           Boolean  @default(false)
+  category          String?
+  chat_enabled      Boolean  @default(true)
+  requests_enabled  Boolean  @default(true)
+  recording_enabled Boolean  @default(true)
+  callin_enabled    Boolean  @default(false)
+  reaction_count    Int      @default(0)
+
+  // Liveness heartbeat from the RJ client — a stale heartbeat past the
+  // configured grace period flips status to "reconnecting", then auto-ends
+  // the session if it stays stale (see jobs/streamReconnect.ts).
+  last_heartbeat_at DateTime @default(now())
+
   station RadioStation?     @relation(fields: [station_id], references: [id])
   chat_messages     LiveChatMessage[]
   song_requests     SongRequest[]
+  listener_sessions ListenerSession[]
+  call_ins          CallInRequest[]
+  mutes             RadioMute[]
+  reports           LiveReport[]
 
   @@map("live_sessions")
+}
+
+// Persisted join/leave per listener — the in-memory Socket.IO room size only
+// gives a live count and resets on server restart, so this is the only
+// source for accurate unique-listener counts, average duration, and any
+// historical analytics once a session has ended.
+model ListenerSession {
+  id              String    @id @default(uuid())
+  live_session_id String
+  user_id         String?
+  // Privacy-safe anonymous identifier for guests (never a real device
+  // fingerprint) — same convention as book view tracking's device_id.
+  device_id       String?
+  platform        String? // web | android | ios
+  joined_at       DateTime  @default(now())
+  left_at         DateTime?
+  created_at      DateTime  @default(now())
+
+  session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
+
+  @@index([live_session_id, joined_at])
+  @@map("listener_sessions")
+}
+
+// Session-scoped chat/request mute — checked before accepting a chat message
+// or song request. expires_at null = permanent (until explicitly unmuted).
+model RadioMute {
+  id              String    @id @default(uuid())
+  live_session_id String
+  user_id         String
+  muted_by        String
+  reason          String?
+  expires_at      DateTime?
+  created_at      DateTime  @default(now())
+
+  session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
+
+  @@index([live_session_id, user_id])
+  @@map("radio_mutes")
+}
+
+// Listener-submitted report on a chat message or song request.
+model LiveReport {
+  id              String    @id @default(uuid())
+  live_session_id String
+  reporter_id     String
+  target_type     String // chat_message | song_request
+  target_id       String
+  reason          String
+  status          String    @default("pending") // pending | reviewed | dismissed | actioned
+  reviewed_by     String?
+  reviewed_at     DateTime?
+  created_at      DateTime  @default(now())
+
+  session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
+
+  @@index([status, created_at])
+  @@map("live_reports")
+}
+
+// Listener call-in state machine — DB/API built per spec even though the
+// actual WebRTC audio transport is out of scope for this pass (deferred,
+// same as the earlier explicit decision on this feature). Nothing here
+// carries audio; it only tracks who asked, who's accepted, and who's on air.
+model CallInRequest {
+  id               String    @id @default(uuid())
+  live_session_id  String
+  user_id          String
+  // requested | waiting | accepted | rejected | on_air | muted | removed | ended
+  status           String    @default("requested")
+  requested_at     DateTime  @default(now())
+  responded_at     DateTime?
+  on_air_at        DateTime?
+  ended_at         DateTime?
+  consent_given_at DateTime?
+  created_at       DateTime  @default(now())
+
+  session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
+
+  @@index([live_session_id, status])
+  @@map("call_in_requests")
+}
+
+// Approval/status transition history for an RJ — separate from RjProfile's
+// current-state fields so admins can see the full timeline (approved,
+// rejected, suspended, deactivated, reactivated) and who did it.
+model RjApprovalLog {
+  id         String   @id @default(uuid())
+  rj_user_id String
+  action     String // approved | rejected | suspended | deactivated | reactivated
+  reason     String?
+  actor_id   String
+  created_at DateTime @default(now())
+
+  @@index([rj_user_id, created_at])
+  @@map("rj_approval_logs")
 }
 
 // Live show chat — persisted (unlike reactions, which are ephemeral/socket-only)
@@ -1519,6 +1635,18 @@ model RjProfile {
   stage_name  String
   updated_at  DateTime @updatedAt
   user_id     String   @unique
+
+  // Broadcast credential — a secret distinct from the RJ's login session,
+  // required to start a live session. Only ever stored/compared hashed;
+  // the plaintext token is shown to the RJ once, at generation time.
+  broadcast_token_hash       String?
+  broadcast_token_created_at DateTime?
+  broadcast_token_revoked_at DateTime?
+
+  // Must accept the current radio_terms_version (platform_settings) before
+  // going live — copyright/content-responsibility acknowledgement.
+  terms_accepted_at      DateTime?
+  terms_accepted_version String?
 
   @@map("rj_profiles")
 }

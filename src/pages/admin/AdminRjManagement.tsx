@@ -79,9 +79,15 @@ export default function AdminRjManagement() {
 
   useEffect(() => { fetchAll() }, [])
 
+  // Explicit, logged transitions — each records to RjApprovalLog and, where
+  // it matters, revokes the RJ's broadcast token immediately.
   const toggleApproval = async (rj: RjRow) => {
     try {
-      await utils.admin.updateRjProfile.fetch({ id: rj.id, is_approved: !rj.is_approved })
+      if (rj.is_approved) {
+        await utils.admin.rejectRj.fetch({ id: rj.id })
+      } else {
+        await utils.admin.approveRj.fetch({ id: rj.id })
+      }
     } catch {
       toast.error("Failed to update")
       return
@@ -92,12 +98,16 @@ export default function AdminRjManagement() {
 
   const toggleActive = async (rj: RjRow) => {
     try {
-      await utils.admin.updateRjProfile.fetch({ id: rj.id, is_active: !rj.is_active })
+      if (rj.is_active) {
+        await utils.admin.suspendRj.fetch({ id: rj.id })
+      } else {
+        await utils.admin.reactivateRj.fetch({ id: rj.id })
+      }
     } catch {
       toast.error("Failed to update")
       return
     }
-    toast.success(rj.is_active ? "RJ deactivated" : "RJ activated!")
+    toast.success(rj.is_active ? "RJ suspended — any live session was stopped and their broadcast token revoked" : "RJ reactivated!")
     fetchAll()
   }
 

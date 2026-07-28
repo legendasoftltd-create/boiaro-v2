@@ -1,36 +1,78 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { useRjProfile, useMyLiveSession } from "@/hooks/useLiveSession"
+import { useRjProfile, useMyLiveSession, useBroadcastToken, useRjTerms } from "@/hooks/useLiveSession"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
 export default function RjDashboard() {
   const { profile } = useRjProfile()
   const { session: liveSession, goLive, endLive } = useMyLiveSession()
+  const { status: tokenStatus, regenerate: regenerateToken, revoke: revokeToken, isRegenerating } = useBroadcastToken()
+  const { status: termsStatus, accept: acceptTerms, isAccepting } = useRjTerms()
+
   const [streamUrl, setStreamUrl] = useState("")
   const [showTitle, setShowTitle] = useState("")
+  const [broadcastToken, setBroadcastToken] = useState("")
+  const [isTestBroadcast, setIsTestBroadcast] = useState(false)
   const [isGoingLive, setIsGoingLive] = useState(false)
   const [isEnding, setIsEnding] = useState(false)
+  const [freshToken, setFreshToken] = useState<string | null>(null)
+
+  const needsTerms = !!termsStatus?.needsAcceptance
+
+  const handleGenerateToken = async () => {
+    try {
+      const result = await regenerateToken()
+      setFreshToken(result.token)
+      setBroadcastToken(result.token)
+      toast.success("New broadcast token generated — copy it now, it won't be shown again")
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate token")
+    }
+  }
+
+  const handleAcceptTerms = async () => {
+    try {
+      await acceptTerms()
+      toast.success("Broadcaster terms accepted")
+    } catch (err: any) {
+      toast.error(err.message || "Failed to accept terms")
+    }
+  }
 
   const handleGoLive = async () => {
     if (!streamUrl.trim()) {
       toast.error("Please enter your stream URL")
       return
     }
+    if (!broadcastToken.trim()) {
+      toast.error("Enter your broadcast token — generate one below if you don't have it")
+      return
+    }
     if (!profile?.is_approved) {
       toast.error("Your account is not yet approved by admin")
+      return
+    }
+    if (needsTerms) {
+      toast.error("Accept the broadcaster terms first")
       return
     }
 
     setIsGoingLive(true)
     try {
-      await goLive(streamUrl.trim(), showTitle.trim() || undefined)
-      toast.success("🎙️ You are now LIVE!")
+      await goLive({
+        streamUrl: streamUrl.trim(),
+        showTitle: showTitle.trim() || undefined,
+        broadcastToken: broadcastToken.trim(),
+        isTest: isTestBroadcast,
+      })
+      toast.success(isTestBroadcast ? "🔧 Test broadcast started (private — not visible to listeners)" : "🎙️ You are now LIVE!")
     } catch (err: any) {
       toast.error(err.message || "Failed to go live")
     }
@@ -48,7 +90,8 @@ export default function RjDashboard() {
     setIsEnding(false)
   }
 
-  const isLive = liveSession?.status === "live"
+  const isLive = liveSession?.status === "live" || liveSession?.status === "reconnecting"
+  const isReconnecting = liveSession?.status === "reconnecting"
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -59,21 +102,78 @@ export default function RjDashboard() {
         </p>
       </div>
 
+      {needsTerms && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="pt-6 space-y-3">
+            <div className="flex items-center gap-2 text-amber-400 text-sm font-medium">
+              <ShieldCheck className="w-4 h-4" /> Broadcaster terms require your acceptance
+            </div>
+            <p className="text-xs text-muted-foreground">
+              You must confirm you own or are licensed to broadcast any music/content you play, and accept
+              responsibility for copyright compliance, before you can go live.
+            </p>
+            <Button size="sm" onClick={handleAcceptTerms} disabled={isAccepting}>
+              {isAccepting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+              I Accept the Broadcaster Terms
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Broadcast credential */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <KeyRound className="w-4 h-4" /> Broadcast Token
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            A secret separate from your login, required to go live. Generate one and paste it into the Go Live
+            form below each time you broadcast — regenerating replaces the old one immediately.
+          </p>
+          {freshToken && (
+            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 space-y-1.5">
+              <p className="text-[11px] text-emerald-400 font-medium">Copy this now — it won't be shown again:</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs bg-background/60 rounded px-2 py-1.5 overflow-x-auto whitespace-nowrap">{freshToken}</code>
+                <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => { navigator.clipboard.writeText(freshToken); toast.success("Copied") }}>
+                  <Copy className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={handleGenerateToken} disabled={isRegenerating}>
+              {isRegenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+              {tokenStatus?.hasToken ? "Regenerate Token" : "Generate Token"}
+            </Button>
+            {tokenStatus?.hasToken && (
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => revokeToken().then(() => toast.success("Token revoked"))}>
+                Revoke
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Live Status Card */}
       <Card className={isLive ? "border-destructive/40 bg-destructive/5" : ""}>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Radio className={`w-5 h-5 ${isLive ? "text-destructive animate-pulse" : "text-muted-foreground"}`} />
-            {isLive ? "You are LIVE" : "Go Live"}
+            {isLive ? (liveSession?.is_test ? "Test Broadcast Running" : "You are LIVE") : "Go Live"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {isLive && liveSession ? (
             <>
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                <span className="w-3 h-3 bg-destructive rounded-full animate-pulse" />
+              <div className={`flex items-center gap-3 p-3 rounded-lg border ${isReconnecting ? "bg-amber-500/10 border-amber-500/20" : "bg-destructive/10 border-destructive/20"}`}>
+                <span className={`w-3 h-3 rounded-full animate-pulse ${isReconnecting ? "bg-amber-500" : "bg-destructive"}`} />
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-destructive">Broadcasting Live</p>
+                  <p className={`text-sm font-medium ${isReconnecting ? "text-amber-400" : "text-destructive"}`}>
+                    {isReconnecting ? "Reconnecting…" : liveSession.is_test ? "Private Test Broadcast" : "Broadcasting Live"}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Since {new Date(liveSession.started_at).toLocaleTimeString()}
                   </p>
@@ -81,8 +181,8 @@ export default function RjDashboard() {
                     <p className="text-xs text-muted-foreground mt-0.5">Show: {liveSession.show_title}</p>
                   )}
                 </div>
-                <div className="flex items-center gap-1 text-xs text-emerald-400">
-                  <Wifi className="w-3 h-3" /> Connected
+                <div className={`flex items-center gap-1 text-xs ${isReconnecting ? "text-amber-400" : "text-emerald-400"}`}>
+                  <Wifi className="w-3 h-3" /> {isReconnecting ? "Lost signal" : "Connected"}
                 </div>
               </div>
 
@@ -90,9 +190,11 @@ export default function RjDashboard() {
                 <p><strong>Stream URL:</strong> {liveSession.stream_url}</p>
               </div>
 
-              <Button asChild variant="outline" className="w-full gap-2">
-                <Link to="/live"><MessageCircle className="w-4 h-4" /> Manage Chat & Song Requests</Link>
-              </Button>
+              {!liveSession.is_test && (
+                <Button asChild variant="outline" className="w-full gap-2">
+                  <Link to="/live"><MessageCircle className="w-4 h-4" /> Manage Chat & Song Requests</Link>
+                </Button>
+              )}
 
               <Button
                 variant="destructive"
@@ -101,7 +203,7 @@ export default function RjDashboard() {
                 disabled={isEnding}
               >
                 {isEnding ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <MicOff className="w-4 h-4 mr-2" />}
-                End Live Session
+                {liveSession.is_test ? "End Test Broadcast" : "End Live Session"}
               </Button>
             </>
           ) : (
@@ -127,6 +229,17 @@ export default function RjDashboard() {
               </div>
 
               <div className="space-y-2">
+                <Label>Broadcast Token *</Label>
+                <Input
+                  value={broadcastToken}
+                  onChange={(e) => setBroadcastToken(e.target.value)}
+                  placeholder="Paste the token generated above"
+                  disabled={!profile?.is_approved}
+                  type="password"
+                />
+              </div>
+
+              <div className="space-y-2">
                 <Label>Show Title (optional)</Label>
                 <Input
                   value={showTitle}
@@ -136,17 +249,25 @@ export default function RjDashboard() {
                 />
               </div>
 
+              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                <div>
+                  <p className="text-sm font-medium">Test Broadcast</p>
+                  <p className="text-[11px] text-muted-foreground">Private — not shown to listeners, no follower notification</p>
+                </div>
+                <Switch checked={isTestBroadcast} onCheckedChange={setIsTestBroadcast} disabled={!profile?.is_approved} />
+              </div>
+
               <Button
                 className="w-full bg-destructive hover:bg-destructive/90 text-destructive-foreground"
                 onClick={handleGoLive}
-                disabled={isGoingLive || !profile?.is_approved}
+                disabled={isGoingLive || !profile?.is_approved || needsTerms}
               >
                 {isGoingLive ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 ) : (
                   <Mic className="w-4 h-4 mr-2" />
                 )}
-                Go Live
+                {isTestBroadcast ? "Start Test Broadcast" : "Go Live"}
               </Button>
             </>
           )}

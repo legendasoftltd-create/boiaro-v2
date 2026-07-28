@@ -14,6 +14,10 @@ import { notifyUser } from "../lib/notify.js";
 import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClipsForFormat } from "../lib/audioPreview.js";
+import { logRadioAction } from "../lib/radioAudit.js";
+import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, type RadioSettingKey } from "../lib/radioSettings.js";
+import os from "os";
+import fs from "fs";
 
 function orderSellableAmount(order: { total_amount?: number | null; shipping_cost?: number | null }) {
   return Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
@@ -5869,18 +5873,16 @@ export const adminRouter = router({
 
   forceEndLiveSession: adminProcedure
     .input(z.object({ sessionId: z.string() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      // Ending a session must never touch station state — it previously
+      // deactivated whichever station happened to be first in the table
+      // (unrelated to this session), silently taking the whole feature
+      // down for every other host. A force-end only ever ends the session.
       const session = await prisma.liveSession.update({
         where: { id: input.sessionId },
         data: { status: "ended", ended_at: new Date(), disconnect_reason: "admin_force_stop" },
       });
-      const station = await prisma.radioStation.findFirst({ select: { id: true } });
-      if (station) {
-        await prisma.radioStation.update({
-          where: { id: station.id },
-          data: { is_active: false },
-        });
-      }
+      await logRadioAction(ctx.userId!, "admin_force_ended_session", { sessionId: input.sessionId });
       return session;
     }),
 
@@ -5965,6 +5967,174 @@ export const adminRouter = router({
   deleteShowSchedule: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.showSchedule.delete({ where: { id: input.id } })),
+
+  // ── RJ approval workflow ───────────────────────────────────────────────
+  // Explicit, logged transitions (RjApprovalLog) instead of a blunt
+  // is_approved/is_active toggle — each one also revokes the broadcast
+  // token where that matters, so access actually stops immediately.
+  approveRj: adminProcedure
+    .input(z.object({ id: z.string(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const profile = await prisma.rjProfile.update({ where: { id: input.id }, data: { is_approved: true, is_active: true } });
+      await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "approved", reason: input.reason, actor_id: ctx.userId! } });
+      await logRadioAction(ctx.userId!, "rj_approved", { rjUserId: profile.user_id });
+      return profile;
+    }),
+
+  rejectRj: adminProcedure
+    .input(z.object({ id: z.string(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const profile = await prisma.rjProfile.update({
+        where: { id: input.id },
+        data: { is_approved: false, broadcast_token_hash: null, broadcast_token_revoked_at: new Date() },
+      });
+      await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "rejected", reason: input.reason, actor_id: ctx.userId! } });
+      await logRadioAction(ctx.userId!, "rj_rejected", { rjUserId: profile.user_id });
+      return profile;
+    }),
+
+  suspendRj: adminProcedure
+    .input(z.object({ id: z.string(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const profile = await prisma.rjProfile.update({
+        where: { id: input.id },
+        data: { is_active: false, broadcast_token_revoked_at: new Date() },
+      });
+      // A suspended RJ going live right now must also be stopped — not just
+      // blocked from starting a new one.
+      await prisma.liveSession.updateMany({
+        where: { rj_user_id: profile.user_id, status: { in: ["live", "reconnecting"] } },
+        data: { status: "ended", ended_at: new Date(), disconnect_reason: "rj_suspended" },
+      });
+      await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "suspended", reason: input.reason, actor_id: ctx.userId! } });
+      await logRadioAction(ctx.userId!, "rj_suspended", { rjUserId: profile.user_id });
+      return profile;
+    }),
+
+  deactivateRj: adminProcedure
+    .input(z.object({ id: z.string(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const profile = await prisma.rjProfile.update({
+        where: { id: input.id },
+        data: { is_active: false, broadcast_token_revoked_at: new Date() },
+      });
+      await prisma.liveSession.updateMany({
+        where: { rj_user_id: profile.user_id, status: { in: ["live", "reconnecting"] } },
+        data: { status: "ended", ended_at: new Date(), disconnect_reason: "rj_deactivated" },
+      });
+      await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "deactivated", reason: input.reason, actor_id: ctx.userId! } });
+      await logRadioAction(ctx.userId!, "rj_deactivated", { rjUserId: profile.user_id });
+      return profile;
+    }),
+
+  reactivateRj: adminProcedure
+    .input(z.object({ id: z.string(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const profile = await prisma.rjProfile.update({ where: { id: input.id }, data: { is_active: true } });
+      await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "reactivated", reason: input.reason, actor_id: ctx.userId! } });
+      await logRadioAction(ctx.userId!, "rj_reactivated", { rjUserId: profile.user_id });
+      return profile;
+    }),
+
+  rjApprovalHistory: adminProcedure
+    .input(z.object({ rjUserId: z.string() }))
+    .query(({ input }) =>
+      prisma.rjApprovalLog.findMany({ where: { rj_user_id: input.rjUserId }, orderBy: { created_at: "desc" } })
+    ),
+
+  // ── Feature toggles / cost controls ────────────────────────────────────
+  // Every key here is enforced server-side (socket.ts, rest/radio.ts, rj.ts)
+  // — not just hidden in the UI.
+  radioSettings: adminProcedure.query(() => getRadioSettings()),
+
+  updateRadioSettings: adminProcedure
+    .input(z.record(z.string(), z.string()))
+    .mutation(async ({ ctx, input }) => {
+      const allowedKeys = Object.keys(RADIO_SETTINGS_DEFAULTS) as RadioSettingKey[];
+      const pairs = Object.entries(input).filter(([k]) => (allowedKeys as string[]).includes(k));
+      if (pairs.length === 0) return { updated: [] };
+      await prisma.$transaction(
+        pairs.map(([key, value]) =>
+          prisma.platformSetting.upsert({ where: { key }, create: { key, value }, update: { value } })
+        )
+      );
+      await logRadioAction(ctx.userId!, "radio_settings_updated", { keys: pairs.map(([k]) => k) });
+      return { updated: pairs.map(([k]) => k) };
+    }),
+
+  // ── Moderation / reports ────────────────────────────────────────────────
+  radioReports: adminProcedure
+    .input(z.object({ status: z.string().optional() }).optional())
+    .query(({ input }) =>
+      prisma.liveReport.findMany({
+        where: input?.status ? { status: input.status } : undefined,
+        orderBy: { created_at: "desc" },
+        take: 100,
+      })
+    ),
+
+  reviewRadioReport: adminProcedure
+    .input(z.object({ id: z.string(), status: z.enum(["reviewed", "dismissed", "actioned"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const report = await prisma.liveReport.update({
+        where: { id: input.id },
+        data: { status: input.status, reviewed_by: ctx.userId, reviewed_at: new Date() },
+      });
+      await logRadioAction(ctx.userId!, "report_reviewed", { reportId: input.id, status: input.status });
+      return report;
+    }),
+
+  radioAuditLog: adminProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional())
+    .query(({ input }) =>
+      prisma.auditLog.findMany({
+        where: { target_type: "radio" },
+        orderBy: { created_at: "desc" },
+        take: input?.limit ?? 50,
+      })
+    ),
+
+  // ── Server cost monitoring ──────────────────────────────────────────────
+  // Scoped to what this single Node process can actually observe — no
+  // external monitoring agent. Bandwidth is an estimate (bitrate × listener
+  // minutes), not a measured counter, since there's no reverse-proxy metrics
+  // hook wired up; flagged as such in the response.
+  serverMetrics: adminProcedure.query(async () => {
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const usedMemPct = ((totalMem - freeMem) / totalMem) * 100;
+    const load1 = os.loadavg()[0];
+    const cpuCount = os.cpus().length;
+    const cpuLoadPct = Math.min(100, (load1 / cpuCount) * 100);
+
+    let diskUsedPct: number | null = null;
+    try {
+      const stat = fs.statfsSync("/");
+      diskUsedPct = ((stat.blocks - stat.bfree) / stat.blocks) * 100;
+    } catch {
+      diskUsedPct = null;
+    }
+
+    const liveSessions = await prisma.liveSession.findMany({ where: { status: { in: ["live", "reconnecting"] } } });
+    const currentListeners = liveSessions.reduce((sum, s) => sum + getListenerCount(s.id), 0);
+
+    const alertThresholds = [70, 85, 95];
+    const metrics = { cpuLoadPct, usedMemPct, diskUsedPct: diskUsedPct ?? 0 };
+    const alerts = Object.entries(metrics).flatMap(([key, value]) => {
+      const hit = [...alertThresholds].reverse().find((t) => value >= t);
+      return hit ? [{ metric: key, value: Math.round(value), threshold: hit }] : [];
+    });
+
+    return {
+      cpuLoadPct: Math.round(cpuLoadPct),
+      memoryUsedPct: Math.round(usedMemPct),
+      diskUsedPct: diskUsedPct !== null ? Math.round(diskUsedPct) : null,
+      currentListeners,
+      liveSessionCount: liveSessions.length,
+      bandwidthNote: "Estimate only — bitrate × concurrent-listener-minutes, not a measured counter",
+      alerts,
+    };
+  }),
 
   gamificationData: adminProcedure.query(async () => {
     const [badges, streakUsers, earnedBadges, pointsAgg, activeGoals] = await Promise.all([

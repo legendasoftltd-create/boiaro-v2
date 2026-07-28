@@ -4,6 +4,7 @@ import { runStreakAlerts } from "./streakAlerts.js";
 import { runWeeklySummary } from "./weeklySummary.js";
 import { runCompetitionPayouts } from "./competitionPayouts.js";
 import { runShowReminders } from "./showReminders.js";
+import { runStreamReconnectSweep } from "./streamReconnect.js";
 
 /**
  * Registers all recurring background jobs. Called once at server startup
@@ -51,5 +52,13 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] showReminders failed:", err));
   });
 
-  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, show reminders)");
+  // Every minute — flip stale live sessions to "reconnecting", then
+  // auto-end ones that stay stale past the timeout
+  cron.schedule("* * * * *", () => {
+    runStreamReconnectSweep()
+      .then((r) => (r.markedReconnecting || r.autoEnded) && console.log(`[jobs] streamReconnect: reconnecting=${r.markedReconnecting} ended=${r.autoEnded}`))
+      .catch((err) => console.error("[jobs] streamReconnect failed:", err));
+  });
+
+  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, show reminders, stream reconnect)");
 }

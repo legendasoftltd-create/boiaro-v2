@@ -2,6 +2,8 @@ import type { Server as HttpServer } from "http";
 import { Server as SocketIOServer, type Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
+import { getRadioSettingBool } from "../lib/radioSettings.js";
+import { logRadioAction } from "../lib/radioAudit.js";
 
 interface AuthedSocket extends Socket {
   userId?: string;
@@ -9,6 +11,8 @@ interface AuthedSocket extends Socket {
 
 const MESSAGE_MIN_INTERVAL_MS = 2000; // basic per-socket spam throttle
 const lastMessageAt = new Map<string, number>();
+// socketId -> ListenerSession row id, so leave/disconnect can close it out.
+const listenerSessionRows = new Map<string, string>();
 
 function room(sessionId: string) {
   return `live:${sessionId}`;
@@ -18,6 +22,13 @@ async function isHostOrModerator(userId: string, session: { rj_user_id: string }
   if (userId === session.rj_user_id) return true;
   const role = await prisma.userRole.findFirst({ where: { user_id: userId, role: { in: ["admin", "moderator"] } } });
   return !!role;
+}
+
+async function isMuted(sessionId: string, userId: string): Promise<boolean> {
+  const mute = await prisma.radioMute.findFirst({
+    where: { live_session_id: sessionId, user_id: userId, OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }] },
+  });
+  return !!mute;
 }
 
 let io: SocketIOServer | null = null;
@@ -62,24 +73,54 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       io!.to(room(sessionId)).emit("listener_count", { sessionId, count });
     };
 
-    socket.on("join_session", async ({ sessionId }: { sessionId: string }) => {
+    const closeListenerSessionRow = async () => {
+      const rowId = listenerSessionRows.get(socket.id);
+      if (!rowId) return;
+      listenerSessionRows.delete(socket.id);
+      await prisma.listenerSession.update({ where: { id: rowId }, data: { left_at: new Date() } }).catch(() => null);
+    };
+
+    socket.on("join_session", async ({ sessionId, platform }: { sessionId: string; platform?: string }) => {
       if (!sessionId) return;
-      if (joinedSessionId) socket.leave(room(joinedSessionId));
+      if (joinedSessionId) {
+        socket.leave(room(joinedSessionId));
+        await closeListenerSessionRow();
+      }
       socket.join(room(sessionId));
       joinedSessionId = sessionId;
       emitListenerCount(sessionId);
+
+      const row = await prisma.listenerSession
+        .create({ data: { live_session_id: sessionId, user_id: userId, platform: platform ?? "web" } })
+        .catch(() => null);
+      if (row) listenerSessionRows.set(socket.id, row.id);
     });
 
-    socket.on("leave_session", () => {
+    socket.on("leave_session", async () => {
       if (!joinedSessionId) return;
       socket.leave(room(joinedSessionId));
       emitListenerCount(joinedSessionId);
+      await closeListenerSessionRow();
       joinedSessionId = null;
     });
 
     socket.on("chat:send", async ({ sessionId, message }: { sessionId: string; message: string }) => {
       const text = (message || "").trim().slice(0, 500);
       if (!sessionId || !text) return;
+
+      if (!(await getRadioSettingBool("radio_chat_enabled"))) {
+        socket.emit("error", { message: "Chat is currently disabled" });
+        return;
+      }
+      const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { chat_enabled: true } });
+      if (!session?.chat_enabled) {
+        socket.emit("error", { message: "Chat is off for this show" });
+        return;
+      }
+      if (await isMuted(sessionId, userId)) {
+        socket.emit("error", { message: "You've been muted in this room" });
+        return;
+      }
 
       const now = Date.now();
       const last = lastMessageAt.get(userId) ?? 0;
@@ -105,13 +146,32 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
 
     socket.on("reaction:send", async ({ sessionId, emoji }: { sessionId: string; emoji: string }) => {
       if (!sessionId || !emoji) return;
-      // Ephemeral — no DB write, purely a broadcast for floating-reaction animation.
+      if (!(await getRadioSettingBool("radio_reactions_enabled"))) return;
+      // Ephemeral — no per-reaction DB write, purely a broadcast for the
+      // floating-reaction animation. The running total is still tracked
+      // (LiveSession.reaction_count) so analytics has a real number.
       io!.to(room(sessionId)).emit("reaction:new", { emoji: String(emoji).slice(0, 8), user_id: userId });
+      await prisma.liveSession.update({ where: { id: sessionId }, data: { reaction_count: { increment: 1 } } }).catch(() => null);
     });
 
     socket.on("song_request:send", async ({ sessionId, requestText }: { sessionId: string; requestText: string }) => {
       const text = (requestText || "").trim().slice(0, 200);
       if (!sessionId || !text) return;
+
+      if (!(await getRadioSettingBool("radio_requests_enabled"))) {
+        socket.emit("error", { message: "Song requests are currently disabled" });
+        return;
+      }
+      const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { requests_enabled: true } });
+      if (!session?.requests_enabled) {
+        socket.emit("error", { message: "Requests are off for this show" });
+        return;
+      }
+      if (await isMuted(sessionId, userId)) {
+        socket.emit("error", { message: "You've been muted in this room" });
+        return;
+      }
+
       const [saved, profile] = await Promise.all([
         prisma.songRequest.create({ data: { live_session_id: sessionId, user_id: userId, request_text: text } }),
         prisma.profile.findUnique({ where: { user_id: userId }, select: { display_name: true } }),
@@ -135,6 +195,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       }
       await prisma.liveChatMessage.delete({ where: { id: messageId } }).catch(() => null);
       io!.to(room(sessionId)).emit("chat:deleted", { messageId });
+      logRadioAction(userId, "chat_message_deleted", { sessionId, messageId }).catch(() => null);
     });
 
     socket.on("song_request:update_status", async ({ sessionId, requestId, status }: { sessionId: string; requestId: string; status: string }) => {
@@ -148,8 +209,9 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       if (updated) io!.to(room(sessionId)).emit("song_request:updated", { id: updated.id, status: updated.status });
     });
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       if (joinedSessionId) emitListenerCount(joinedSessionId);
+      await closeListenerSessionRow();
       lastMessageAt.delete(userId);
     });
   });

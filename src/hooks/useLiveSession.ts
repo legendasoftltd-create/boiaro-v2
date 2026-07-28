@@ -1,5 +1,8 @@
+import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
+
+const HEARTBEAT_INTERVAL_MS = 20_000;
 
 export interface LiveSession {
   id: string;
@@ -11,6 +14,12 @@ export interface LiveSession {
   started_at: string;
   ended_at: string | null;
   disconnect_reason: string | null;
+  is_test?: boolean;
+  category?: string | null;
+  chat_enabled?: boolean;
+  requests_enabled?: boolean;
+  recording_enabled?: boolean;
+  callin_enabled?: boolean;
 }
 
 export interface RjProfile {
@@ -42,39 +51,117 @@ export function useCurrentLiveSession() {
   };
 }
 
+// The broadcast credential required to go live — a secret distinct from the
+// RJ's login session. The plaintext token is only ever available in the
+// return value of `regenerate()`, right after generating it.
+export function useBroadcastToken() {
+  const utils = trpc.useUtils();
+  const statusQuery = trpc.rj.broadcastTokenStatus.useQuery();
+  const regenerateMutation = trpc.rj.regenerateBroadcastToken.useMutation({
+    onSuccess: () => utils.rj.broadcastTokenStatus.invalidate(),
+  });
+  const revokeMutation = trpc.rj.revokeBroadcastToken.useMutation({
+    onSuccess: () => utils.rj.broadcastTokenStatus.invalidate(),
+  });
+
+  return {
+    status: statusQuery.data,
+    loading: statusQuery.isLoading,
+    regenerate: () => regenerateMutation.mutateAsync(),
+    revoke: () => revokeMutation.mutateAsync(),
+    isRegenerating: regenerateMutation.isPending,
+  };
+}
+
+// Broadcaster terms/copyright acceptance — must be accepted (current
+// platform version) before the RJ can start a live session.
+export function useRjTerms() {
+  const utils = trpc.useUtils();
+  const statusQuery = trpc.rj.termsStatus.useQuery();
+  const acceptMutation = trpc.rj.acceptTerms.useMutation({
+    onSuccess: () => utils.rj.termsStatus.invalidate(),
+  });
+
+  return {
+    status: statusQuery.data,
+    loading: statusQuery.isLoading,
+    accept: () => acceptMutation.mutateAsync(),
+    isAccepting: acceptMutation.isPending,
+  };
+}
+
+export interface GoLiveOptions {
+  streamUrl: string;
+  showTitle?: string;
+  stationId?: string;
+  category?: string;
+  broadcastToken: string;
+  isTest?: boolean;
+  chatEnabled?: boolean;
+  requestsEnabled?: boolean;
+  recordingEnabled?: boolean;
+  callinEnabled?: boolean;
+}
+
 export function useMyLiveSession() {
-  const { user } = useAuth();
   const utils = trpc.useUtils();
 
-  const currentQuery = trpc.rj.liveSession.current.useQuery(undefined, {
+  // The RJ's own session — correct even when a different host is live at
+  // the same time (unlike the old approach of reusing the single
+  // platform-wide "current" query and checking whose id it was).
+  const myActiveQuery = trpc.rj.liveSession.myActiveSession.useQuery(undefined, {
     refetchInterval: 10_000,
-    enabled: !!user,
   });
 
   const startMutation = trpc.rj.liveSession.start.useMutation({
-    onSuccess: () => utils.rj.liveSession.current.invalidate(),
+    onSuccess: () => utils.rj.liveSession.myActiveSession.invalidate(),
   });
 
   const endMutation = trpc.rj.liveSession.end.useMutation({
-    onSuccess: () => utils.rj.liveSession.current.invalidate(),
+    onSuccess: () => utils.rj.liveSession.myActiveSession.invalidate(),
   });
 
-  const currentSession = currentQuery.data as LiveSession | null | undefined;
-  const mySession = currentSession?.rj_user_id === user?.id ? currentSession : null;
+  const heartbeatMutation = trpc.rj.liveSession.heartbeat.useMutation();
 
-  const goLive = async (streamUrl: string, showTitle?: string) => {
-    const result = await startMutation.mutateAsync({ streamUrl, showTitle });
-    return result;
+  const mySession = myActiveQuery.data as LiveSession | null | undefined;
+
+  // Keep the session alive server-side — a missed heartbeat past the grace
+  // period flips the session to "reconnecting" and, if it stays missed,
+  // auto-ends it (jobs/streamReconnect.ts). This is what tells the backend
+  // "the broadcast is still actually running" independent of the stream URL.
+  useEffect(() => {
+    if (!mySession || mySession.status === "ended") return;
+    const id = mySession.id;
+    const timer = setInterval(() => {
+      heartbeatMutation.mutate({ sessionId: id });
+    }, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mySession?.id, mySession?.status]);
+
+  const goLive = async (opts: GoLiveOptions) => {
+    return startMutation.mutateAsync({
+      streamUrl: opts.streamUrl,
+      showTitle: opts.showTitle,
+      stationId: opts.stationId,
+      category: opts.category,
+      broadcastToken: opts.broadcastToken,
+      isTest: opts.isTest ?? false,
+      chatEnabled: opts.chatEnabled ?? true,
+      requestsEnabled: opts.requestsEnabled ?? true,
+      recordingEnabled: opts.recordingEnabled ?? true,
+      callinEnabled: opts.callinEnabled ?? false,
+    });
   };
 
-  const endLive = async (_reason?: string) => {
+  const endLive = async () => {
     if (!mySession) return;
     await endMutation.mutateAsync({ sessionId: mySession.id });
   };
 
   return {
     session: mySession,
-    loading: currentQuery.isLoading,
+    loading: myActiveQuery.isLoading,
     goLive,
     endLive,
   };
