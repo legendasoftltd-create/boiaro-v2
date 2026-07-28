@@ -1,20 +1,27 @@
-# Live Radio (FM) API
+# BoiAro On Air API
+
+("Live Radio" internally — routes, DB tables, and most backend code still
+say `radio`/`live` for compatibility; user-facing text everywhere says
+"BoiAro On Air".)
 
 Reference for the mobile app covering live streaming, real-time chat/
 reactions/song-requests, host moderation, program schedule, RJ profiles,
-catch-up (podcast) audio, and the host broadcast lifecycle (credentials,
-terms, test mode, reconnect handling). Base URL and auth headers: see
-[REST_API.md](REST_API.md). REST endpoints below are under `/api/v1`; the
-real-time layer is a separate Socket.IO connection (see below).
+catch-up (podcast) audio, listener call-in (real WebRTC audio), automatic
+recording, and the host broadcast lifecycle (credentials, terms, test mode,
+reconnect handling). Base URL and auth headers: see [REST_API.md](REST_API.md).
+REST endpoints below are under `/api/v1`; the real-time layer is a separate
+Socket.IO connection (see below).
 
-**Not covered here (explicitly deferred):** listeners actually joining the
-live broadcast audio themselves (call-in). The request/accept/on-air/mute/
-remove **state machine** is fully built (section 9) and safe to wire up in
-the UI, but no audio transport exists yet — going on-air today only flips a
-status, it doesn't connect any audio. That needs a separate WebRTC/media-SDK
-integration. The feature is also off platform-wide by default
-(`radio_callin_enabled`) until that's built and an admin turns it on per
-station/show.
+**Broadcasting audio itself (RJ → server) is external-encoder based, not
+in-app.** RJs push their stream to the Icecast/Shoutcast mount from OBS,
+Mixxx, BUTT, or any compatible encoder — see section 8a. There's no
+in-browser/in-app "record and upload live" studio; building one (with
+mixing, ducking, jingles) was scoped out in favor of RJs using tools built
+for exactly this. **Listener call-in audio (a caller ↔ host, not RJ →
+server) is real WebRTC**, peer-to-peer, signaled over the existing
+Socket.IO connection — see section 9. It currently uses public STUN only;
+callers behind strict/symmetric NAT (roughly 10-20% of real-world networks)
+may fail to connect until a TURN relay is provisioned server-side.
 
 ---
 
@@ -162,29 +169,68 @@ from other clients, only its own connected users).
 ## 4. Program Schedule (EPG)
 
 ### `GET /rj/showSchedules` *(tRPC)* — mobile REST equivalent not yet built; use the tRPC endpoint or ask backend to mirror it if needed
-Public weekly schedule, every active slot:
+Public schedule, every active slot — both weekly-recurring and one-time
+specials:
 ```json
-[{ "id": "uuid", "show_title": "Morning Vibes", "day_of_week": 0, "start_time": "08:00", "end_time": "09:00", "station": { "name": "..." }, "rj_stage_name": "DJ Test", "rj_avatar_url": null }]
+[{
+  "id": "uuid", "show_title": "Morning Vibes",
+  "schedule_type": "recurring", "day_of_week": 0, "specific_date": null,
+  "start_time": "08:00", "end_time": "09:00", "status": "active",
+  "category": "Music", "cover_image_url": null,
+  "station": { "name": "..." }, "rj_stage_name": "DJ Test", "rj_avatar_url": null
+}]
 ```
-`day_of_week` is 0=Sunday..6=Saturday (JS `Date.getDay()` convention).
+`schedule_type` is `"recurring"` (uses `day_of_week`, 0=Sunday..6=Saturday,
+JS `Date.getDay()` convention) or `"one_time"` (uses `specific_date`
+instead). `status` is `"active"`, `"cancelled"`, or `"rescheduled"` —
+cancelled shows are filtered out of this list already (they also have
+`is_active: false`), so you don't need to check `status` client-side unless
+you're building an admin view.
+
+Admin owns the schedule; an RJ can only *propose* a cancellation or
+reschedule for their own slot (`rj.requestScheduleChange`, tRPC-only today),
+which an admin then approves or rejects. Approval is what actually changes
+the `ShowSchedule` row and fires the cancel/reschedule notification below —
+the request itself doesn't change anything until reviewed.
 
 ### Show reminders
-Following an RJ (see section 6) gets you a push notification ~15 minutes
-before each of their scheduled shows, and another the moment they actually
-go live. No separate "set a reminder" call — it's tied to follow state.
+Following an RJ (see section 6) gets you push notifications at two points
+before each of their scheduled shows — **30 minutes** and **10 minutes**
+before start (`show_reminder_30` / `show_reminder_10`) — plus another the
+moment they actually go live (`rj_live`). A cancelled show fires
+`show_cancelled`; a rescheduled one fires `show_rescheduled`; a newly
+published catch-up recording fires `catchup_published`. See section 10 for
+the full notification type table. No separate "set a reminder" call — it's
+all tied to follow state.
 
 ---
 
 ## 5. Catch-up / Podcast Archive
 
-This platform doesn't record streams automatically — catch-up audio only
-exists for sessions where the RJ (or admin) manually attached a recording
-afterward (either an external URL, or a file uploaded through the normal
-`/upload/media` endpoint first). Test broadcasts never appear here.
+Two ways a recording gets attached to a session:
+1. **Automatic** — if `recording_enabled: true` was passed to `live/start`
+   (and the platform + station toggles allow it), the server captures the
+   Icecast stream itself via `ffmpeg -c copy` (zero-transcode remux, so it
+   costs no meaningful CPU) for the whole broadcast and uploads it to S3 the
+   moment the session ends. Starts as `recording_status: "draft"` —
+   **awaiting review**, not visible in catch-up yet.
+2. **Manual** — RJ/moderator pastes an external URL or uploads a file via
+   `/upload/media` first, then `POST /live/:sessionId/recording` (or tRPC
+   `rj.attachRecording`). Goes straight to `"published"`.
+
+Either way, a draft only becomes visible to listeners once **published**
+(review workflow below). Test broadcasts never appear here, published or
+not.
+
+### Recording review workflow (host/moderator)
+- `GET /radio/live/pending-recordings` — sessions with a draft recording awaiting review.
+- `POST /radio/live/:sessionId/recording/:action` — `action` is `approve` (marks reviewed, doesn't publish), `reject`, `publish` (makes it live in catch-up + notifies the RJ's followers, `catchup_published`), `unpublish` (pulls it back to draft), or `delete` (removes the S3 file and clears the recording fields).
+- Drafts/rejected recordings are auto-deleted after `radio_recording_draft_retention_days` (default 7, admin-configurable, `0`/blank = never). Published recordings only auto-delete if `radio_recording_published_retention_days` is explicitly set (blank by default = kept forever). Runs as a daily cron.
 
 ### `GET /radio/catchup?limit=20&cursor=...`
-Public. Returns an empty list (not an error) when the platform toggle
-`radio_catchup_enabled` is off. Cursor-paginated, most recent first.
+Public. Only `recording_status: "published"` sessions appear here. Returns
+an empty list (not an error) when the platform toggle `radio_catchup_enabled`
+is off. Cursor-paginated, most recent first.
 ```json
 {
   "sessions": [{ "id": "uuid", "show_title": "...", "recording_url": "https://...", "started_at": "...", "station": {...}, "rj_stage_name": "...", "rj_avatar_url": null }],
@@ -194,8 +240,20 @@ Public. Returns an empty list (not an error) when the platform toggle
 Play `recording_url` like any on-demand audio file.
 
 ### `POST /radio/live/:sessionId/recording`
-🔒 Host/moderator only. Body: `{ "recording_url": "https://..." }`. Attaches
-a recording to an ended session, making it appear in the catch-up list.
+🔒 Host/moderator only. Body: `{ "recording_url": "https://..." }` (must be
+`https://`). Manually attaches a recording to an ended session and
+publishes it immediately, making it appear in the catch-up list right away
+(no separate publish step for the manual path).
+
+### Resume, plays, and completion tracking
+One `CatchupProgress` row per user per session, doubling as both "resume
+where you left off" and the analytics source for unique listeners /
+completion rate.
+
+- `GET /radio/catchup/:sessionId/progress` — 🔒 your own saved position: `{ "progress": { "position_seconds", "duration_seconds", "completed", "total_plays", "last_played_at" } | null }`. `null` if you've never played it.
+- `POST /radio/catchup/:sessionId/play` — 🔒 call once when playback starts (not on every tick) — increments the session's total play count and your own `total_plays`.
+- `POST /radio/catchup/:sessionId/progress` — 🔒 call periodically (e.g. every 15s) and on pause. Body: `{ "position_seconds": 123, "duration_seconds"?: 1800 }`. Marks `completed: true` once you've reached 95% of duration.
+- `GET /radio/catchup/history` — 🔒 your own last 50 played recordings, most recently played first, with session details embedded.
 
 ---
 
@@ -224,13 +282,30 @@ Body: `{ "target_type": "chat_message" | "song_request", "target_id": "uuid", "r
 Reviewed by admins (not mobile-facing).
 
 ### `POST /radio/live/:sessionId/mute`
-🔒 Host/moderator only. Body: `{ "user_id": "uuid", "reason"?: "...", "duration_minutes"?: 30 }`.
-Omit `duration_minutes` for a permanent mute (until explicitly unmuted). A
-muted user can still listen — chat and song requests are blocked, with a
-clear `error`/`403` explaining why.
+🔒 Host/moderator only. Body: `{ "user_id": "uuid", "reason"?: "...", "duration_minutes"?: 30, "type"?: "mute" | "ban" }`.
+Omit `duration_minutes` for permanent (until explicitly unmuted/unbanned).
+- `type: "mute"` (default) — chat and song requests are blocked; the user
+  can still listen.
+- `type: "ban"` — same restriction, **and** the user is forcibly
+  disconnected from the session's real-time layer right away (their socket
+  is kicked from the room), not just blocked on their next message.
 
 ### `DELETE /radio/live/:sessionId/mute/:userId`
-🔒 Host/moderator only. Lifts a mute immediately.
+🔒 Host/moderator only. Lifts a mute or ban immediately.
+
+### Chat safety (automatic, no endpoint — enforced inside `chat:send`)
+- **Slow mode**: minimum gap between a user's messages, admin-configurable
+  (`radio_slow_mode_seconds`, default 2s).
+- **Blocked words**: admin-maintained list (`radio_blocked_words`,
+  comma-separated); a message containing any of them is rejected with an
+  `error` event, never saved or broadcast.
+- **Duplicate prevention**: sending the same message text twice within
+  `radio_duplicate_message_window_seconds` (default 30s) is rejected.
+- **Link spam**: if `radio_chat_links_enabled` is off, any message
+  containing a URL is rejected outright.
+
+All four checks happen server-side inside the socket handler — a modified
+client can't bypass them, they're not just UI-side hints.
 
 ---
 
@@ -314,23 +389,130 @@ the stream is actually fine** — it isn't optional.
 
 ---
 
-## 9. Listener call-in (state machine only — see the note at the top)
+## 8a. Broadcasting the show itself — external encoder (feasibility + setup)
 
-Off by default (`radio_callin_enabled`). Even when on, a show must also set
-`callin_enabled: true` when going live. Nothing here transports audio yet.
+**Why not in-browser/in-app broadcasting?** A browser can *capture* a mic
+via `getUserMedia`, but Icecast/Shoutcast (what this platform's stream
+infrastructure speaks) expects a "source client" talking the Icecast
+source protocol — browsers don't speak that natively, and there's no
+standard way to push a MediaRecorder blob to it as a continuous live
+stream. The real alternative would be a server-side WebRTC-to-Icecast
+bridge (an SFU that decodes the browser's WebRTC audio and re-encodes it
+into the Icecast mount) — extra always-on infrastructure, added latency,
+and real CPU/bandwidth cost on a server this project is deliberately
+keeping lean (see section 11 / server cost control). Every mainstream
+internet radio operation — professional or hobbyist — broadcasts with a
+dedicated encoder for exactly this reason, so that's the path this
+platform uses too, rather than reinventing a worse version of tools that
+already do this well.
 
+**Recommended tools** (either works; pick based on whether you also want
+a mixer):
+- **[BUTT](https://danielnoethen.de/butt/)** (Broadcast Using This Tool) —
+  free, tiny, purpose-built for exactly this: pick your mic, paste the
+  Icecast mount details, hit Start. No mixing/jingles, just a clean single
+  source. Easiest option if you're only ever speaking live with no music
+  bed.
+- **[Mixxx](https://mixxx.org/)** — free DJ software with a real mixer
+  (decks, crossfader, cue) *and* built-in Icecast broadcasting in
+  Preferences → Live Broadcasting. Use this if you want to play music/
+  jingles between talking segments from the same app.
+- **OBS Studio** — works too, but **not out of the box for Icecast**: OBS's
+  native "Custom" streaming output speaks RTMP, not the Icecast source
+  protocol. To use OBS you need either the community `obs-shoutcast-icecast`
+  plugin, or route OBS's audio through a virtual audio cable (e.g.
+  VB-Audio Cable) into BUTT/Mixxx acting as the actual Icecast source. If
+  you're not already invested in OBS for video, BUTT or Mixxx is the more
+  direct path.
+
+**Setup (BUTT, the simplest case):**
+1. Get your station's Icecast mount details from an admin — hostname,
+   port, mount point, and source password (not your BoiAro login).
+2. Get your **broadcast token** first: RJ dashboard → Broadcast Token →
+   Generate (see section 8) — this is separate from the Icecast source
+   password and is what authorizes your session with *this* API.
+3. In BUTT: Settings → Main → Add a server, protocol `Icecast`, fill in
+   host/port/mount/password from step 1. Settings → Audio → pick your mic.
+4. Start streaming in BUTT (this starts the actual audio flowing to
+   Icecast) — *then* call `POST /radio/rj/live/start` (or use the RJ
+   dashboard's "Go Live" button) with your station's public `stream_url`
+   so the platform shows you as live and listeners' players pick up the
+   stream. Starting the API session before audio is flowing means
+   listeners hit dead air; starting audio without the API session means
+   you're not discoverable and no chat/reactions/schedule tie-in happens.
+5. Send a heartbeat every ~20s while live (section 8) — BUTT keeps the
+   audio connection alive on its own, but the API session will still
+   auto-end without heartbeats.
+6. Use **test mode** (`is_test: true`) the first time to confirm your
+   BUTT → Icecast → player chain actually works before going live for
+   real — it behaves identically but never appears publicly or notifies
+   followers.
+
+This is a genuinely manual, external-tool-dependent flow — there's no way
+to shrink it to a single in-app button without building the bridge
+described above. If real usage shows this is too much friction for RJs,
+building that bridge (or shipping a bundled, pre-configured BUTT profile)
+would be the next investment, not a quick add-on.
+
+---
+
+## 9. Listener call-in — real WebRTC audio (peer-to-peer)
+
+A caller talking live with the host, not the RJ's own broadcast — this is
+a separate audio path from section 8a. Off by default
+(`radio_callin_enabled`), and a show must also set `callin_enabled: true`
+when going live. Audio is **peer-to-peer WebRTC** between the caller's and
+host's browsers/apps — the server never touches the audio itself, it only
+relays signaling messages (SDP offer/answer, ICE candidates) over the
+existing Socket.IO connection from section 2. This means **native mobile
+apps need their own WebRTC implementation** (e.g. `react-native-webrtc` or
+platform-native WebRTC) — this API only handles the signaling relay and
+the request/accept/on-air state machine; the actual `RTCPeerConnection`
+setup is a client concern on every platform, web included.
+
+**Current limitation: public STUN only, no TURN relay yet.** STUN is
+enough for callers on an open/moderately-NATted connection to connect
+directly; callers behind strict/symmetric NAT or restrictive corporate/
+mobile-carrier firewalls will fail to establish a peer connection without
+a TURN relay (a self-hosted `coturn` instance was scoped for this but
+needs a separate, explicit go-ahead to install — see the delivery report).
+Until then, expect call-in to work for most listeners but not all.
+
+### State machine + REST
 - `POST /radio/live/:sessionId/callin/request` — 🔒 Body: `{ "consent_given": true }` (consent is mandatory — recording implications). Idempotent: calling again while you already have an active request just returns it.
 - `GET /radio/live/:sessionId/callin/my-status` — 🔒 Your own current call state.
 - `GET /radio/live/:sessionId/callin/queue` — 🔒 Host/moderator only.
 - `POST /radio/callin/:callId/accept` — 🔒 Host/moderator. → status `"waiting"`.
 - `POST /radio/callin/:callId/reject` — 🔒 Host/moderator.
-- `POST /radio/callin/:callId/on-air` — 🔒 Host/moderator. Enforces `radio_callin_max_concurrent` (default 1) — `409` if already at the limit.
-- `POST /radio/callin/:callId/mute` — 🔒 Host/moderator.
-- `POST /radio/callin/:callId/remove` — 🔒 Host/moderator.
+- `POST /radio/callin/:callId/on-air` — 🔒 Host/moderator. Enforces `radio_callin_max_concurrent` (default 1) — `409` if already at the limit. This is the signal for the **caller's** client to start the WebRTC handshake (send an offer) — it doesn't connect any audio by itself.
+- `POST /radio/callin/:callId/mute` — 🔒 Host/moderator. Tells the caller's client to disable its own outgoing mic track.
+- `POST /radio/callin/:callId/remove` — 🔒 Host/moderator. Ends the call and tells both sides to tear down the peer connection.
 - `POST /radio/callin/:callId/end` — 🔒 Caller only, ends their own call.
 
 Status values: `requested → waiting → on_air → (muted) → ended`, or
 `rejected`/`removed` at any point after `requested`.
+
+### WebRTC signaling (Socket.IO, same connection as section 2)
+Once a caller's status flips to `on_air` (via `callin:status` below), the
+**caller's** client creates an `RTCPeerConnection`, gets the mic via
+`getUserMedia`, creates an offer, and emits it; the **host's** client
+answers. Both sides exchange ICE candidates the same way. The server
+validates that both the sender and the target of every signal are
+legitimate participants in that session's call (the host, or a caller with
+a live `CallInRequest`) before relaying — arbitrary users can't target
+each other with fake offers.
+
+| Event | Direction | Payload |
+| :--- | :--- | :--- |
+| `callin:status` | server → both | `{ callId, status, hostUserId? }` — mirrors the REST state machine above in real time |
+| `callin:offer` | either → server → target | `{ sessionId, targetUserId, payload: RTCSessionDescriptionInit }` |
+| `callin:answer` | either → server → target | `{ sessionId, targetUserId, payload: RTCSessionDescriptionInit }` |
+| `callin:ice-candidate` | either → server → target | `{ sessionId, targetUserId, payload: RTCIceCandidateInit }` |
+| `callin:mute` | server → caller | `{ callId }` — disable your outgoing track |
+| `callin:hangup` | either → server → target | `{ sessionId, targetUserId }` in, `{ sessionId, fromUserId }` out — tear down your peer connection |
+
+Rate-limited server-side (min ~150ms between signaling events per user) to
+prevent one side flooding the other's socket.
 
 ---
 
@@ -341,7 +523,11 @@ New `type` values on notifications delivered via the existing FCM pipeline:
 | type | Fired when |
 | :--- | :--- |
 | `rj_live` | An RJ you follow goes live (never for a test broadcast) |
-| `show_reminder` | A followed RJ's scheduled show starts in ~15 minutes |
+| `show_reminder_30` | A followed RJ's scheduled show starts in ~30 minutes |
+| `show_reminder_10` | A followed RJ's scheduled show starts in ~10 minutes |
+| `show_cancelled` | A followed RJ's scheduled show was cancelled (admin approved the RJ's cancel request) |
+| `show_rescheduled` | A followed RJ's scheduled show moved to a new day/time (admin approved the RJ's reschedule request) |
+| `catchup_published` | A followed RJ's recording became available in catch-up |
 | `competition_won`, etc. | Unrelated — see GAMIFICATION_RETENTION_API.md |
 
 ---
@@ -351,6 +537,12 @@ New `type` values on notifications delivered via the existing FCM pipeline:
 - `rj.myProfile` / `createProfile` / `updateProfile` — self-service profile
 - `rj.mySessions` — session history
 - `rj.approvalHistory` — your own approve/reject/suspend/reactivate timeline
-- `rj.attachRecording` `{ sessionId, recordingUrl }` — enables catch-up for that session
+- `rj.attachRecording` `{ sessionId, recordingUrl }` — enables catch-up for that session (https URLs only)
 - `rj.myShowSchedules` — read-only view of admin-assigned slots
-- `rj.liveSession.mutedUsers` `{ sessionId }` — host/moderator's view of who's currently muted
+- `rj.requestScheduleChange` `{ scheduleId, requestType: "cancel"|"reschedule", proposedDayOfWeek?, proposedStartTime?, proposedEndTime?, proposedSpecificDate?, reason? }` — propose a change to your own slot; admin reviews it
+- `rj.myScheduleChangeRequests` — your own change requests and their `pending`/`approved`/`rejected` status
+- `rj.pendingRecordings` / `approveRecording` / `rejectRecording` / `publishRecording` / `unpublishRecording` / `deleteRecording` — recording review workflow (tRPC form of the REST `recording/:action` endpoint in section 5)
+- `rj.myCatchupProgress` / `recordCatchupPlay` / `saveCatchupProgress` / `myCatchupHistory` — tRPC form of the catch-up progress endpoints in section 5
+- `rj.liveSession.mutedUsers` `{ sessionId }` — host/moderator's view of who's currently muted or banned
+- `admin.radioAnalytics` `{ from?, to?, groupBy?: "none"|"rj"|"station" }` — admin-only. Unique/peak-concurrent/average listeners, total listening minutes, new followers, chat/reaction/request counts, catch-up plays/unique listeners/completion rate, device breakdown, optionally broken down per RJ or per station. Surfaced in the admin "Radio Safety & Controls" → Analytics tab, not exposed to mobile.
+- `admin.serverMetrics` — admin-only. CPU/memory/disk plus radio-specific storage/bandwidth estimates and cost-alert thresholds (70/85/95%) for the server cost control requirements.

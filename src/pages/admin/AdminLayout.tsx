@@ -120,7 +120,7 @@ const navGroups: NavGroup[] = [
       { label: "Pages", path: "/admin/pages", icon: Globe },
       { label: "Blog", path: "/admin/blog", icon: Newspaper },
       { label: "Homepage", path: "/admin/homepage-sections", icon: PanelTop },
-      { label: "Live Radio", path: "/admin/radio", icon: HeadphonesIcon },
+      { label: "BoiAro On Air", path: "/admin/radio", icon: HeadphonesIcon },
       { label: "Show Schedule", path: "/admin/radio-schedule", icon: Calendar },
       { label: "RJ Management", path: "/admin/rj-management", icon: Mic2 },
       { label: "Radio Safety & Controls", path: "/admin/radio-safety", icon: ShieldAlert },

@@ -2,31 +2,18 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
-import { getListenerCount, emitToSession } from "../realtime/socket.js";
-import { notifyUser } from "../lib/notify.js";
+import { getListenerCount, emitToSession, kickUserFromSession, emitToUserInSession } from "../realtime/socket.js";
 import { generateBroadcastToken, verifyBroadcastToken } from "../lib/broadcastToken.js";
 import { logRadioAction } from "../lib/radioAudit.js";
 import { getRadioSetting, getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
+import { startRecording, stopRecording, shouldAutoRecord } from "../lib/liveRecorder.js";
+import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished } from "../lib/radioNotify.js";
+import { deleteFromS3 } from "../lib/s3.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
   if (userId === session.rj_user_id) return;
   const role = await prisma.userRole.findFirst({ where: { user_id: userId, role: { in: ["admin", "moderator"] } } });
   if (!role) throw new TRPCError({ code: "FORBIDDEN", message: "Only the host or a moderator can do this" });
-}
-
-// "Follow" an RJ (via the generic Follow model, followee_id = rj_user_id)
-// to get notified whenever they go live — no separate favorite-show model.
-async function notifyFollowersOfGoLive(rjUserId: string, stageName: string, showTitle?: string): Promise<void> {
-  const followers = await prisma.follow.findMany({ where: { followee_id: rjUserId }, select: { follower_id: true } });
-  for (const f of followers) {
-    await notifyUser(f.follower_id, {
-      title: `🎙️ ${stageName} লাইভে এসেছেন!`,
-      message: showTitle ? `"${showTitle}" এখনই শুনুন।` : "এখনই লাইভ শুনুন।",
-      type: "rj_live",
-      link: "/live",
-      preferenceKey: "reminder_enabled",
-    }).catch(() => null);
-  }
 }
 
 export const rjRouter = router({
@@ -157,14 +144,111 @@ export const rjRouter = router({
   // exists once the RJ (or admin) manually attaches a recording URL after
   // the show ends (either by pasting an external URL or uploading the audio
   // file through the normal /upload/media endpoint first).
+  // Manual attach (paste a URL, or upload via /upload/media first and paste
+  // the returned URL here) — goes straight to published, unlike an automatic
+  // capture which starts as a draft awaiting review.
   attachRecording: protectedProcedure
-    .input(z.object({ sessionId: z.string(), recordingUrl: z.string().url() }))
+    .input(z.object({ sessionId: z.string(), recordingUrl: z.string().url().regex(/^https:\/\//i, "Must be an https URL") }))
     .mutation(async ({ ctx, input }) => {
       const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
       if (!session) throw new TRPCError({ code: "NOT_FOUND" });
       await assertHostOrModerator(ctx.userId!, session);
-      const updated = await prisma.liveSession.update({ where: { id: input.sessionId }, data: { recording_url: input.recordingUrl } });
+      const updated = await prisma.liveSession.update({
+        where: { id: input.sessionId },
+        data: {
+          recording_url: input.recordingUrl,
+          recording_status: "published",
+          recording_source: "manual",
+          recording_published_at: new Date(),
+        },
+      });
       await logRadioAction(ctx.userId!, "recording_attached", { sessionId: input.sessionId });
+      return updated;
+    }),
+
+  // Draft recordings pending review — host's own, or (via assertHostOrModerator) any for an admin.
+  pendingRecordings: protectedProcedure.query(async ({ ctx }) => {
+    const isAdmin = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
+    const sessions = await prisma.liveSession.findMany({
+      where: {
+        recording_status: { in: ["draft", "rejected"] },
+        ...(isAdmin ? {} : { rj_user_id: ctx.userId }),
+      },
+      orderBy: { ended_at: "desc" },
+      take: 50,
+    });
+    return sessions;
+  }),
+
+  approveRecording: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertHostOrModerator(ctx.userId!, session);
+      const updated = await prisma.liveSession.update({
+        where: { id: input.sessionId },
+        data: { recording_approved_by: ctx.userId, recording_approved_at: new Date() },
+      });
+      await logRadioAction(ctx.userId!, "recording_approved", { sessionId: input.sessionId });
+      return updated;
+    }),
+
+  rejectRecording: protectedProcedure
+    .input(z.object({ sessionId: z.string(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertHostOrModerator(ctx.userId!, session);
+      const updated = await prisma.liveSession.update({ where: { id: input.sessionId }, data: { recording_status: "rejected" } });
+      await logRadioAction(ctx.userId!, "recording_rejected", { sessionId: input.sessionId, reason: input.reason });
+      return updated;
+    }),
+
+  publishRecording: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!session.recording_url) throw new TRPCError({ code: "BAD_REQUEST", message: "No recording to publish" });
+      await assertHostOrModerator(ctx.userId!, session);
+      const updated = await prisma.liveSession.update({
+        where: { id: input.sessionId },
+        data: { recording_status: "published", recording_published_at: new Date() },
+      });
+      await logRadioAction(ctx.userId!, "recording_published", { sessionId: input.sessionId });
+      notifyFollowersOfCatchupPublished(session.rj_user_id, session.show_title).catch(() => null);
+      return updated;
+    }),
+
+  unpublishRecording: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertHostOrModerator(ctx.userId!, session);
+      const updated = await prisma.liveSession.update({ where: { id: input.sessionId }, data: { recording_status: "draft" } });
+      await logRadioAction(ctx.userId!, "recording_unpublished", { sessionId: input.sessionId });
+      return updated;
+    }),
+
+  deleteRecording: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertHostOrModerator(ctx.userId!, session);
+      if (session.recording_url) {
+        await deleteFromS3(session.recording_url).catch((err) => console.error("[deleteRecording] S3 delete failed:", err?.message));
+      }
+      const updated = await prisma.liveSession.update({
+        where: { id: input.sessionId },
+        data: {
+          recording_url: null, recording_status: "deleted", recording_file_size_bytes: null,
+          recording_duration_seconds: null,
+        },
+      });
+      await logRadioAction(ctx.userId!, "recording_deleted", { sessionId: input.sessionId });
       return updated;
     }),
 
@@ -175,7 +259,7 @@ export const rjRouter = router({
       if (!(await getRadioSettingBool("radio_catchup_enabled"))) return { sessions: [], nextCursor: null };
       const limit = input?.limit ?? 20;
       const sessions = await prisma.liveSession.findMany({
-        where: { status: "ended", recording_url: { not: null }, is_test: false },
+        where: { status: "ended", recording_url: { not: null }, recording_status: "published", is_test: false },
         include: { station: { select: { id: true, name: true, artwork_url: true } } },
         orderBy: { started_at: "desc" },
         take: limit + 1,
@@ -296,6 +380,9 @@ export const rjRouter = router({
         if (!input.isTest) {
           notifyFollowersOfGoLive(ctx.userId!, profile.stage_name, input.showTitle).catch(() => null);
         }
+        if (!input.isTest && (await shouldAutoRecord(input.stationId, input.recordingEnabled))) {
+          startRecording(session.id, input.streamUrl);
+        }
         await logRadioAction(ctx.userId!, input.isTest ? "test_broadcast_started" : "live_session_started", { sessionId: session.id });
         return session;
       }),
@@ -308,6 +395,7 @@ export const rjRouter = router({
         if (session.rj_user_id !== ctx.userId) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You can only end your own live session" });
         }
+        stopRecording(input.sessionId);
         const updated = await prisma.liveSession.update({
           where: { id: input.sessionId },
           data: { status: "ended", ended_at: new Date() },
@@ -390,7 +478,13 @@ export const rjRouter = router({
       }),
 
     muteUser: protectedProcedure
-      .input(z.object({ sessionId: z.string(), userId: z.string(), reason: z.string().optional(), durationMinutes: z.number().int().positive().optional() }))
+      .input(z.object({
+        sessionId: z.string(),
+        userId: z.string(),
+        reason: z.string().optional(),
+        durationMinutes: z.number().int().positive().optional(),
+        type: z.enum(["mute", "ban"]).default("mute"),
+      }))
       .mutation(async ({ ctx, input }) => {
         const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId }, select: { rj_user_id: true } });
         if (!session) throw new TRPCError({ code: "NOT_FOUND" });
@@ -401,10 +495,14 @@ export const rjRouter = router({
             user_id: input.userId,
             muted_by: ctx.userId!,
             reason: input.reason,
+            type: input.type,
             expires_at: input.durationMinutes ? new Date(Date.now() + input.durationMinutes * 60_000) : null,
           },
         });
-        await logRadioAction(ctx.userId!, "user_muted", { sessionId: input.sessionId, userId: input.userId, permanent: !input.durationMinutes });
+        if (input.type === "ban") {
+          kickUserFromSession(input.sessionId, input.userId, "You've been banned from this room");
+        }
+        await logRadioAction(ctx.userId!, input.type === "ban" ? "user_banned" : "user_muted", { sessionId: input.sessionId, userId: input.userId, permanent: !input.durationMinutes });
         return mute;
       }),
 
@@ -495,21 +593,28 @@ export const rjRouter = router({
     accept: protectedProcedure
       .input(z.object({ callId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true } } } });
+        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true, id: true } } } });
         if (!call) throw new TRPCError({ code: "NOT_FOUND" });
         await assertHostOrModerator(ctx.userId!, call.session);
-        return prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "waiting", responded_at: new Date() } });
+        const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "waiting", responded_at: new Date() } });
+        emitToUserInSession(call.session.id, call.user_id, "callin:status", { callId: call.id, status: "waiting" });
+        return updated;
       }),
 
     reject: protectedProcedure
       .input(z.object({ callId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true } } } });
+        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true, id: true } } } });
         if (!call) throw new TRPCError({ code: "NOT_FOUND" });
         await assertHostOrModerator(ctx.userId!, call.session);
-        return prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "rejected", responded_at: new Date() } });
+        const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "rejected", responded_at: new Date() } });
+        emitToUserInSession(call.session.id, call.user_id, "callin:status", { callId: call.id, status: "rejected" });
+        return updated;
       }),
 
+    // Signals the caller's browser to begin the WebRTC handshake (send an
+    // offer) — going "on air" is the moment audio actually starts flowing,
+    // not just a queue-position label like the earlier statuses.
     goOnAir: protectedProcedure
       .input(z.object({ callId: z.string() }))
       .mutation(async ({ ctx, input }) => {
@@ -521,25 +626,35 @@ export const rjRouter = router({
         if (onAirCount >= maxConcurrent) {
           throw new TRPCError({ code: "CONFLICT", message: `Maximum ${maxConcurrent} caller(s) on air already` });
         }
-        return prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "on_air", on_air_at: new Date() } });
+        const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "on_air", on_air_at: new Date() } });
+        emitToUserInSession(call.session.id, call.user_id, "callin:status", { callId: call.id, status: "on_air", hostUserId: call.session.rj_user_id });
+        await logRadioAction(ctx.userId!, "callin_on_air", { sessionId: call.session.id, userId: call.user_id });
+        return updated;
       }),
 
     muteCaller: protectedProcedure
       .input(z.object({ callId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true } } } });
+        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true, id: true } } } });
         if (!call) throw new TRPCError({ code: "NOT_FOUND" });
         await assertHostOrModerator(ctx.userId!, call.session);
-        return prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "muted" } });
+        const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "muted" } });
+        // Tells the caller's own browser to disable its outgoing mic track —
+        // the server never touches the audio itself.
+        emitToUserInSession(call.session.id, call.user_id, "callin:mute", { callId: call.id });
+        return updated;
       }),
 
     remove: protectedProcedure
       .input(z.object({ callId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true } } } });
+        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true, id: true } } } });
         if (!call) throw new TRPCError({ code: "NOT_FOUND" });
         await assertHostOrModerator(ctx.userId!, call.session);
-        return prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "removed", ended_at: new Date() } });
+        const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "removed", ended_at: new Date() } });
+        emitToUserInSession(call.session.id, call.user_id, "callin:hangup", { callId: call.id, reason: "removed" });
+        await logRadioAction(ctx.userId!, "callin_removed", { sessionId: call.session.id, userId: call.user_id });
+        return updated;
       }),
 
     end: protectedProcedure
@@ -548,7 +663,11 @@ export const rjRouter = router({
         const call = await prisma.callInRequest.findUnique({ where: { id: input.callId } });
         if (!call) throw new TRPCError({ code: "NOT_FOUND" });
         if (call.user_id !== ctx.userId) throw new TRPCError({ code: "FORBIDDEN" });
-        return prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "ended", ended_at: new Date() } });
+        const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "ended", ended_at: new Date() } });
+        // Let the host know their caller hung up their end.
+        const session = await prisma.liveSession.findUnique({ where: { id: call.live_session_id }, select: { rj_user_id: true } });
+        if (session) emitToUserInSession(call.live_session_id, session.rj_user_id, "callin:hangup", { callId: call.id, reason: "caller_ended" });
+        return updated;
       }),
   }),
 
@@ -593,4 +712,99 @@ export const rjRouter = router({
       orderBy: [{ day_of_week: "asc" }, { start_time: "asc" }],
     })
   ),
+
+  // RJs can't edit their own slots directly — admin owns the schedule — but
+  // they can propose a cancel or reschedule, which admin then approves or
+  // rejects (reviewScheduleChangeRequest in admin.ts).
+  requestScheduleChange: protectedProcedure
+    .input(z.object({
+      scheduleId: z.string(),
+      requestType: z.enum(["cancel", "reschedule"]),
+      proposedDayOfWeek: z.number().int().min(0).max(6).optional(),
+      proposedStartTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+      proposedEndTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+      proposedSpecificDate: z.string().datetime().optional(),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const schedule = await prisma.showSchedule.findUnique({ where: { id: input.scheduleId } });
+      if (!schedule) throw new TRPCError({ code: "NOT_FOUND" });
+      if (schedule.rj_user_id !== ctx.userId) throw new TRPCError({ code: "FORBIDDEN" });
+      const existing = await prisma.scheduleChangeRequest.findFirst({ where: { schedule_id: input.scheduleId, status: "pending" } });
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "A change request for this show is already pending" });
+      return prisma.scheduleChangeRequest.create({
+        data: {
+          schedule_id: input.scheduleId,
+          rj_user_id: ctx.userId!,
+          request_type: input.requestType,
+          proposed_day_of_week: input.proposedDayOfWeek,
+          proposed_start_time: input.proposedStartTime,
+          proposed_end_time: input.proposedEndTime,
+          proposed_specific_date: input.proposedSpecificDate ? new Date(input.proposedSpecificDate) : undefined,
+          reason: input.reason,
+        },
+      });
+    }),
+
+  myScheduleChangeRequests: protectedProcedure.query(({ ctx }) =>
+    prisma.scheduleChangeRequest.findMany({
+      where: { rj_user_id: ctx.userId },
+      include: { schedule: { select: { show_title: true, start_time: true, end_time: true, day_of_week: true } } },
+      orderBy: { created_at: "desc" },
+    })
+  ),
+
+  // ── Catch-up playback tracking ──────────────────────────────────────────
+  myCatchupProgress: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .query(({ ctx, input }) =>
+      prisma.catchupProgress.findUnique({
+        where: { user_id_live_session_id: { user_id: ctx.userId!, live_session_id: input.sessionId } },
+      })
+    ),
+
+  // Call once when playback actually starts (not on every progress tick) —
+  // bumps the session's total-plays counter and this listener's own count.
+  recordCatchupPlay: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await prisma.liveSession.update({ where: { id: input.sessionId }, data: { catchup_play_count: { increment: 1 } } }).catch(() => null);
+      return prisma.catchupProgress.upsert({
+        where: { user_id_live_session_id: { user_id: ctx.userId!, live_session_id: input.sessionId } },
+        create: { user_id: ctx.userId!, live_session_id: input.sessionId },
+        update: { total_plays: { increment: 1 }, last_played_at: new Date() },
+      });
+    }),
+
+  // Call periodically (e.g. every 15s) and on pause/unmount — this is what
+  // "resume where you left off" reads back from.
+  saveCatchupProgress: protectedProcedure
+    .input(z.object({ sessionId: z.string(), positionSeconds: z.number().int().min(0), durationSeconds: z.number().int().positive().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const completed = !!input.durationSeconds && input.positionSeconds / input.durationSeconds >= 0.95;
+      return prisma.catchupProgress.upsert({
+        where: { user_id_live_session_id: { user_id: ctx.userId!, live_session_id: input.sessionId } },
+        create: {
+          user_id: ctx.userId!, live_session_id: input.sessionId,
+          position_seconds: input.positionSeconds, duration_seconds: input.durationSeconds ?? null, completed,
+        },
+        update: {
+          position_seconds: input.positionSeconds,
+          duration_seconds: input.durationSeconds ?? undefined,
+          completed,
+          last_played_at: new Date(),
+        },
+      });
+    }),
+
+  // Listener's own catch-up history, most recently played first.
+  myCatchupHistory: protectedProcedure.query(async ({ ctx }) => {
+    const rows = await prisma.catchupProgress.findMany({
+      where: { user_id: ctx.userId },
+      orderBy: { last_played_at: "desc" },
+      take: 50,
+      include: { session: { select: { id: true, show_title: true, started_at: true, recording_url: true } } },
+    });
+    return rows;
+  }),
 });

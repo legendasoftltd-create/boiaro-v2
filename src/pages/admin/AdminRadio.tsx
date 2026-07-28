@@ -236,7 +236,7 @@ export default function AdminRadio() {
         setForm(f => ({ ...f, is_active: s.is_active }))
         setStation(s)
 
-        toast.success(active ? "Live Radio is now ON — visible on website" : "Live Radio is now OFF — hidden from website")
+        toast.success(active ? "BoiAro On Air is now ON — visible on website" : "BoiAro On Air is now OFF — hidden from website")
       }
     }
   }
@@ -253,7 +253,7 @@ export default function AdminRadio() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Live Radio</h1>
+          <h1 className="text-2xl font-bold">BoiAro On Air</h1>
           <p className="text-muted-foreground text-sm">Configure and control your live radio stream</p>
         </div>
         {station && (

@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Link } from "react-router-dom"
 import { Navbar } from "@/components/Navbar"
 import { Footer } from "@/components/Footer"
@@ -10,10 +11,19 @@ const DAY_NAMES = ["রবিবার", "সোমবার", "মঙ্গল�
 
 export default function RadioSchedule() {
   const { data: schedules = [], isLoading } = trpc.rj.showSchedules.useQuery()
+  useEffect(() => {
+    document.title = "শো সিডিউল — BoiAro On Air"
+    return () => { document.title = "BoiAro" }
+  }, [])
+
+  const recurring = (schedules as any[]).filter((s) => s.schedule_type !== "one_time")
+  const upcoming = (schedules as any[])
+    .filter((s) => s.schedule_type === "one_time" && s.specific_date && new Date(s.specific_date) >= new Date(new Date().toDateString()))
+    .sort((a, b) => new Date(a.specific_date).getTime() - new Date(b.specific_date).getTime())
 
   const byDay = DAY_NAMES.map((name, i) => ({
     day: name,
-    shows: (schedules as any[]).filter((s) => s.day_of_week === i),
+    shows: recurring.filter((s) => s.day_of_week === i),
   }))
 
   return (
@@ -31,6 +41,26 @@ export default function RadioSchedule() {
           <p className="text-center text-muted-foreground py-16">এখনো কোনো শো নির্ধারণ করা হয়নি।</p>
         ) : (
           <div className="space-y-5">
+            {upcoming.length > 0 && (
+              <div>
+                <h2 className="text-sm font-semibold text-muted-foreground mb-2">বিশেষ শো (একবার প্রচারিত)</h2>
+                <div className="space-y-2">
+                  {upcoming.map((s: any) => (
+                    <Card key={s.id} id={s.id} className="border-border/30">
+                      <CardContent className="p-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{s.show_title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            <Link to={`/host/${s.rj_user_id}`} className="hover:text-foreground hover:underline">{s.rj_stage_name || "RJ"}</Link> · {s.station?.name} · {new Date(s.specific_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="gap-1 shrink-0"><Clock className="w-3 h-3" /> {s.start_time} - {s.end_time}</Badge>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
             {byDay.filter((d) => d.shows.length > 0).map((d) => (
               <div key={d.day} id={d.shows[0]?.id}>
                 <h2 className="text-sm font-semibold text-muted-foreground mb-2">{d.day}</h2>

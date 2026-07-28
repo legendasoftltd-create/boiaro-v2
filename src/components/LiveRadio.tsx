@@ -145,7 +145,7 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
       titleEn: "",
       slug: `radio-${station.id}`,
       cover: station.artwork_url || "/placeholder.svg",
-      description: station.description || "Live radio stream",
+      description: station.description || "BoiAro On Air stream",
       descriptionBn: station.description || "",
       language: "bn",
       isFeatured: false,

@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma.js";
 import { getRadioSettingNumber } from "../lib/radioSettings.js";
 import { emitToSession } from "../realtime/socket.js";
 import { logRadioAction } from "../lib/radioAudit.js";
+import { stopRecording } from "../lib/liveRecorder.js";
 
 /**
  * Runs every minute (see jobs/index.ts). A live session's RJ client is
@@ -52,6 +53,7 @@ export async function runStreamReconnectSweep(): Promise<{ markedReconnecting: n
       data: { status: "ended", ended_at: new Date(), disconnect_reason: "heartbeat_timeout" },
     });
     for (const s of toEnd) {
+      stopRecording(s.id);
       emitToSession(s.id, "session:ended", { sessionId: s.id, reason: "heartbeat_timeout" });
       await logRadioAction(s.rj_user_id, "session_auto_ended_heartbeat_timeout", { sessionId: s.id });
     }

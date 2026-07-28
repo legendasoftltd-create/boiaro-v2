@@ -5,6 +5,7 @@ import { runWeeklySummary } from "./weeklySummary.js";
 import { runCompetitionPayouts } from "./competitionPayouts.js";
 import { runShowReminders } from "./showReminders.js";
 import { runStreamReconnectSweep } from "./streamReconnect.js";
+import { runRecordingRetentionSweep } from "./recordingRetention.js";
 
 /**
  * Registers all recurring background jobs. Called once at server startup
@@ -60,5 +61,13 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] streamReconnect failed:", err));
   });
 
-  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, show reminders, stream reconnect)");
+  // Daily at 04:00 — delete draft/rejected recordings past retention, and
+  // published ones too if an explicit published-retention limit is set
+  cron.schedule("0 4 * * *", () => {
+    runRecordingRetentionSweep()
+      .then((r) => (r.draftsDeleted || r.publishedDeleted) && console.log(`[jobs] recordingRetention: drafts=${r.draftsDeleted} published=${r.publishedDeleted}`))
+      .catch((err) => console.error("[jobs] recordingRetention failed:", err));
+  });
+
+  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, show reminders, stream reconnect, recording retention)");
 }

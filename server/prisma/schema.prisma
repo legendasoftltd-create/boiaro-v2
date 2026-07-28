@@ -1082,10 +1082,17 @@ model LiveSession {
   // scheduled | preparing | testing | live | reconnecting | ended
   status            String   @default("live")
   stream_url        String?
-  // Attached manually by the RJ/admin after the show ends — this platform
-  // doesn't record streams server-side, so catch-up audio only exists once
-  // someone uploads/links a recording (see CATCHUP_API docs for the flow).
+  // Populated either automatically (ffmpeg capture, see lib/liveRecorder.ts)
+  // or manually attached by the RJ/admin after the show ends.
   recording_url     String?
+  // null (no recording) | recording | processing | draft | published | rejected | deleted
+  recording_status         String?
+  recording_source         String?   // "automatic" | "manual"
+  recording_duration_seconds Int?
+  recording_file_size_bytes  Int?
+  recording_approved_by    String?
+  recording_approved_at    DateTime?
+  recording_published_at   DateTime?
 
   // Private test broadcast — never surfaced in the public "current live"
   // queries, only visible to the host and admins.
@@ -1096,6 +1103,7 @@ model LiveSession {
   recording_enabled Boolean  @default(true)
   callin_enabled    Boolean  @default(false)
   reaction_count    Int      @default(0)
+  catchup_play_count Int     @default(0)
 
   // Liveness heartbeat from the RJ client — a stale heartbeat past the
   // configured grace period flips status to "reconnecting", then auto-ends
@@ -1109,6 +1117,7 @@ model LiveSession {
   call_ins          CallInRequest[]
   mutes             RadioMute[]
   reports           LiveReport[]
+  catchup_progress  CatchupProgress[]
 
   @@map("live_sessions")
 }
@@ -1145,11 +1154,37 @@ model RadioMute {
   reason          String?
   expires_at      DateTime?
   created_at      DateTime  @default(now())
+  // "mute" — blocks chat/requests, still able to listen.
+  // "ban"  — also removed from the room's interactive layer entirely
+  // (can't rejoin the socket room), a heavier tool than a mute.
+  type            String    @default("mute")
 
   session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
 
   @@index([live_session_id, user_id])
   @@map("radio_mutes")
+}
+
+// Per-listener catch-up playback state — powers both "resume where you left
+// off" and the catch-up analytics (unique listeners = distinct rows,
+// completion rate = % with completed=true). One row per user per recording;
+// total_plays increments every time they start it again from the beginning.
+model CatchupProgress {
+  id               String   @id @default(uuid())
+  live_session_id  String
+  user_id          String
+  position_seconds Int      @default(0)
+  duration_seconds Int?
+  completed        Boolean  @default(false)
+  total_plays      Int      @default(1)
+  last_played_at   DateTime @default(now())
+  created_at       DateTime @default(now())
+
+  session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, live_session_id])
+  @@index([live_session_id])
+  @@map("catchup_progress")
 }
 
 // Listener-submitted report on a chat message or song request.
@@ -1552,6 +1587,11 @@ model RadioStation {
   stream_url_low    String?
   updated_at  DateTime @updatedAt
 
+  // Station-level automatic-recording control — a session only auto-records
+  // when this AND the platform-wide toggle AND the session's own
+  // recording_enabled flag all say yes.
+  auto_recording_enabled Boolean @default(false)
+
   live_sessions LiveSession[]
   show_schedules ShowSchedule[]
 
@@ -1738,20 +1778,49 @@ model ShippingMethod {
 }
 
 model ShowSchedule {
-  id           String   @id @default(uuid())
-  created_at   DateTime @default(now())
-  day_of_week  Int
-  end_time     String
-  is_active    Boolean  @default(true)
-  rj_user_id   String
-  show_title   String
-  start_time   String
-  station_id   String
-  updated_at   DateTime @updatedAt
+  id              String    @id @default(uuid())
+  created_at      DateTime  @default(now())
+  day_of_week     Int
+  end_time        String
+  is_active       Boolean   @default(true)
+  rj_user_id      String
+  show_title      String
+  start_time      String
+  station_id      String
+  updated_at      DateTime  @updatedAt
+  schedule_type   String    @default("recurring") // recurring | one_time
+  specific_date   DateTime? // set when schedule_type = one_time; day_of_week still derived/stored for display
+  status          String    @default("active") // active | cancelled | rescheduled
+  category        String?
+  cover_image_url String?
+  cancel_reason   String?
 
-  station RadioStation @relation(fields: [station_id], references: [id])
+  station        RadioStation            @relation(fields: [station_id], references: [id])
+  changeRequests ScheduleChangeRequest[]
 
   @@map("show_schedules")
+}
+
+model ScheduleChangeRequest {
+  id                     String    @id @default(uuid())
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+  schedule_id            String
+  rj_user_id             String
+  request_type           String // cancel | reschedule
+  proposed_day_of_week   Int?
+  proposed_start_time    String?
+  proposed_end_time      String?
+  proposed_specific_date DateTime?
+  reason                 String?
+  status                 String    @default("pending") // pending | approved | rejected
+  admin_note             String?
+  reviewed_by            String?
+  reviewed_at            DateTime?
+
+  schedule ShowSchedule @relation(fields: [schedule_id], references: [id])
+
+  @@map("schedule_change_requests")
 }
 
 model SiteSetting {

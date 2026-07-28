@@ -17,6 +17,20 @@ export const RADIO_SETTINGS_DEFAULTS = {
   radio_reconnect_timeout_seconds: "600", // auto-end after this much total silence
   radio_transcoding_enabled: "false", // placeholder — no transcoding pipeline implemented
   radio_terms_version: "1",
+
+  // Automatic recording lifecycle / storage cost control.
+  radio_recording_draft_retention_days: "7", // unpublished/draft auto-delete after this many days
+  radio_recording_published_retention_days: "", // empty = keep forever
+  radio_recording_storage_limit_gb: "", // empty = unlimited — alert-only, nothing auto-deletes to enforce it
+  radio_monthly_bandwidth_limit_gb: "", // empty = unlimited
+  radio_estimated_bitrate_kbps: "128", // used only to compute the bandwidth/cost estimate below
+  radio_estimated_cost_per_gb: "", // admin-entered currency/GB — empty disables the cost estimate
+
+  // Chat safety.
+  radio_slow_mode_seconds: "2", // minimum gap between messages from the same user
+  radio_blocked_words: "", // comma-separated, case-insensitive substrings
+  radio_chat_links_enabled: "true", // false = strip any message containing a URL
+  radio_duplicate_message_window_seconds: "30", // reject an identical repeat from the same user within this window
 } as const;
 
 export type RadioSettingKey = keyof typeof RADIO_SETTINGS_DEFAULTS;

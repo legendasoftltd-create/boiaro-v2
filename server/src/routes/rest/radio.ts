@@ -3,10 +3,13 @@ import { z } from "zod";
 import { sendHttpError } from "../../lib/http.js";
 import { requireAuth, AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
-import { getListenerCount, emitToSession } from "../../realtime/socket.js";
+import { getListenerCount, emitToSession, kickUserFromSession } from "../../realtime/socket.js";
 import { getRadioSetting, getRadioSettingBool, getRadioSettingNumber } from "../../lib/radioSettings.js";
 import { logRadioAction } from "../../lib/radioAudit.js";
 import { generateBroadcastToken, verifyBroadcastToken } from "../../lib/broadcastToken.js";
+import { startRecording, stopRecording, shouldAutoRecord } from "../../lib/liveRecorder.js";
+import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished } from "../../lib/radioNotify.js";
+import { deleteFromS3 } from "../../lib/s3.js";
 
 export const radioRestRouter = Router();
 
@@ -211,25 +214,32 @@ radioRestRouter.post("/live/:sessionId/report", requireAuth, async (req: Authent
 });
 
 // ── POST /api/v1/radio/live/:sessionId/mute ────────────────────────────────────
-// Host/moderator only. Body: { user_id, reason?, duration_minutes? }
+// Host/moderator only. Body: { user_id, reason?, duration_minutes?, type? } —
+// type is "mute" (default, blocks chat/requests) or "ban" (also removed from
+// the room's interactive layer and immediately disconnected).
 radioRestRouter.post("/live/:sessionId/mute", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const sessionId = String(req.params.sessionId);
     const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { rj_user_id: true } });
     if (!session) { res.status(404).json({ error: "Session not found" }); return; }
     if (!(await assertHostOrModerator(req.auth.userId!, session))) { res.status(403).json({ error: "Not authorized" }); return; }
-    const { user_id, reason, duration_minutes } = req.body || {};
+    const { user_id, reason, duration_minutes, type } = req.body || {};
     if (!user_id) { res.status(400).json({ error: "user_id is required" }); return; }
+    const muteType = type === "ban" ? "ban" : "mute";
     const mute = await prisma.radioMute.create({
       data: {
         live_session_id: sessionId,
         user_id: String(user_id),
         muted_by: req.auth.userId!,
         reason: reason ? String(reason) : undefined,
+        type: muteType,
         expires_at: duration_minutes ? new Date(Date.now() + Number(duration_minutes) * 60_000) : null,
       },
     });
-    await logRadioAction(req.auth.userId!, "user_muted", { sessionId, userId: user_id, permanent: !duration_minutes });
+    if (muteType === "ban") {
+      kickUserFromSession(sessionId, String(user_id), "You've been banned from this room");
+    }
+    await logRadioAction(req.auth.userId!, muteType === "ban" ? "user_banned" : "user_muted", { sessionId, userId: user_id, permanent: !duration_minutes });
     res.status(201).json(mute);
   } catch (error) {
     sendHttpError(res, error);
@@ -258,14 +268,96 @@ radioRestRouter.post("/live/:sessionId/recording", requireAuth, async (req: Auth
     const sessionId = String(req.params.sessionId);
     const url = String(req.body?.recording_url || "").trim();
     if (!url) { res.status(400).json({ error: "recording_url is required" }); return; }
+    if (!/^https:\/\//i.test(url)) { res.status(400).json({ error: "recording_url must be an https URL" }); return; }
 
     const session = await prisma.liveSession.findUnique({ where: { id: sessionId } });
     if (!session) { res.status(404).json({ error: "Session not found" }); return; }
     if (!(await assertHostOrModerator(req.auth.userId!, session))) { res.status(403).json({ error: "Not authorized" }); return; }
 
-    const updated = await prisma.liveSession.update({ where: { id: sessionId }, data: { recording_url: url } });
+    const updated = await prisma.liveSession.update({
+      where: { id: sessionId },
+      data: { recording_url: url, recording_status: "published", recording_source: "manual", recording_published_at: new Date() },
+    });
     await logRadioAction(req.auth.userId!, "recording_attached", { sessionId });
+    notifyFollowersOfCatchupPublished(session.rj_user_id, session.show_title).catch(() => null);
     res.json(updated);
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── GET /api/v1/radio/live/pending-recordings ───────────────────────────────────
+// Auth required. Draft/rejected recordings awaiting review — the caller's own
+// unless they're an admin/moderator, who see all of them.
+radioRestRouter.get("/live/pending-recordings", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const isAdmin = await prisma.userRole.findFirst({ where: { user_id: req.auth.userId!, role: { in: ["admin", "moderator"] } } });
+    const sessions = await prisma.liveSession.findMany({
+      where: {
+        recording_status: { in: ["draft", "rejected"] },
+        ...(isAdmin ? {} : { rj_user_id: req.auth.userId! }),
+      },
+      orderBy: { ended_at: "desc" },
+      take: 50,
+    });
+    res.json({ sessions });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── POST /api/v1/radio/live/:sessionId/recording/:action ────────────────────────
+// Host/moderator only. action: approve | reject | publish | unpublish | delete
+radioRestRouter.post("/live/:sessionId/recording/:action", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const sessionId = String(req.params.sessionId);
+    const action = String(req.params.action);
+    const session = await prisma.liveSession.findUnique({ where: { id: sessionId } });
+    if (!session) { res.status(404).json({ error: "Session not found" }); return; }
+    if (!(await assertHostOrModerator(req.auth.userId!, session))) { res.status(403).json({ error: "Not authorized" }); return; }
+
+    switch (action) {
+      case "approve": {
+        const updated = await prisma.liveSession.update({ where: { id: sessionId }, data: { recording_approved_by: req.auth.userId, recording_approved_at: new Date() } });
+        await logRadioAction(req.auth.userId!, "recording_approved", { sessionId });
+        res.json(updated);
+        return;
+      }
+      case "reject": {
+        const updated = await prisma.liveSession.update({ where: { id: sessionId }, data: { recording_status: "rejected" } });
+        await logRadioAction(req.auth.userId!, "recording_rejected", { sessionId, reason: req.body?.reason });
+        res.json(updated);
+        return;
+      }
+      case "publish": {
+        if (!session.recording_url) { res.status(400).json({ error: "No recording to publish" }); return; }
+        const updated = await prisma.liveSession.update({ where: { id: sessionId }, data: { recording_status: "published", recording_published_at: new Date() } });
+        await logRadioAction(req.auth.userId!, "recording_published", { sessionId });
+        notifyFollowersOfCatchupPublished(session.rj_user_id, session.show_title).catch(() => null);
+        res.json(updated);
+        return;
+      }
+      case "unpublish": {
+        const updated = await prisma.liveSession.update({ where: { id: sessionId }, data: { recording_status: "draft" } });
+        await logRadioAction(req.auth.userId!, "recording_unpublished", { sessionId });
+        res.json(updated);
+        return;
+      }
+      case "delete": {
+        if (session.recording_url) {
+          await deleteFromS3(session.recording_url).catch((err) => console.error("[recording/delete] S3 delete failed:", err?.message));
+        }
+        const updated = await prisma.liveSession.update({
+          where: { id: sessionId },
+          data: { recording_url: null, recording_status: "deleted", recording_file_size_bytes: null, recording_duration_seconds: null },
+        });
+        await logRadioAction(req.auth.userId!, "recording_deleted", { sessionId });
+        res.json(updated);
+        return;
+      }
+      default:
+        res.status(400).json({ error: "Unknown action" });
+    }
   } catch (error) {
     sendHttpError(res, error);
   }
@@ -279,7 +371,7 @@ radioRestRouter.get("/catchup", async (req, res) => {
     const limit = Math.min(Number(req.query.limit ?? 20), 50);
     const cursor = req.query.cursor ? String(req.query.cursor) : undefined;
     const sessions = await prisma.liveSession.findMany({
-      where: { status: "ended", recording_url: { not: null }, is_test: false },
+      where: { status: "ended", recording_url: { not: null }, recording_status: "published", is_test: false },
       include: { station: { select: { id: true, name: true, artwork_url: true } } },
       orderBy: { started_at: "desc" },
       take: limit + 1,
@@ -568,6 +660,12 @@ radioRestRouter.post("/rj/live/start", requireAuth, async (req: AuthenticatedReq
         callin_enabled: input.callin_enabled,
       },
     });
+    if (!input.is_test) {
+      notifyFollowersOfGoLive(userId, profile.stage_name, input.show_title).catch(() => null);
+    }
+    if (!input.is_test && (await shouldAutoRecord(input.station_id, input.recording_enabled))) {
+      startRecording(session.id, input.stream_url);
+    }
     await logRadioAction(userId, input.is_test ? "test_broadcast_started" : "live_session_started", { sessionId: session.id });
     res.status(201).json(session);
   } catch (error) {
@@ -582,6 +680,7 @@ radioRestRouter.post("/rj/live/:sessionId/end", requireAuth, async (req: Authent
     const session = await prisma.liveSession.findUnique({ where: { id: sessionId } });
     if (!session) { res.status(404).json({ error: "Session not found" }); return; }
     if (session.rj_user_id !== req.auth.userId) { res.status(403).json({ error: "You can only end your own live session" }); return; }
+    stopRecording(sessionId);
     const updated = await prisma.liveSession.update({ where: { id: sessionId }, data: { status: "ended", ended_at: new Date() } });
     await logRadioAction(req.auth.userId!, session.is_test ? "test_broadcast_ended" : "live_session_ended", { sessionId });
     res.json(updated);
@@ -599,6 +698,73 @@ radioRestRouter.post("/rj/live/:sessionId/heartbeat", requireAuth, async (req: A
     const data: { last_heartbeat_at: Date; status?: string } = { last_heartbeat_at: new Date() };
     if (session.status === "reconnecting") data.status = "live";
     res.json(await prisma.liveSession.update({ where: { id: sessionId }, data }));
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── GET /api/v1/radio/catchup/:sessionId/progress ────────────────────────────────
+radioRestRouter.get("/catchup/:sessionId/progress", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const progress = await prisma.catchupProgress.findUnique({
+      where: { user_id_live_session_id: { user_id: req.auth.userId!, live_session_id: String(req.params.sessionId) } },
+    });
+    res.json({ progress });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── POST /api/v1/radio/catchup/:sessionId/play ────────────────────────────────────
+// Call once when playback starts (not on every progress tick).
+radioRestRouter.post("/catchup/:sessionId/play", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const sessionId = String(req.params.sessionId);
+    const userId = req.auth.userId!;
+    await prisma.liveSession.update({ where: { id: sessionId }, data: { catchup_play_count: { increment: 1 } } }).catch(() => null);
+    const progress = await prisma.catchupProgress.upsert({
+      where: { user_id_live_session_id: { user_id: userId, live_session_id: sessionId } },
+      create: { user_id: userId, live_session_id: sessionId },
+      update: { total_plays: { increment: 1 }, last_played_at: new Date() },
+    });
+    res.json(progress);
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── POST /api/v1/radio/catchup/:sessionId/progress ────────────────────────────────
+// Call periodically (e.g. every 15s) and on pause — powers "resume where you left off".
+// Body: { position_seconds, duration_seconds? }
+radioRestRouter.post("/catchup/:sessionId/progress", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const sessionId = String(req.params.sessionId);
+    const userId = req.auth.userId!;
+    const positionSeconds = Number(req.body?.position_seconds);
+    const durationSeconds = req.body?.duration_seconds ? Number(req.body.duration_seconds) : undefined;
+    if (!Number.isFinite(positionSeconds) || positionSeconds < 0) { res.status(400).json({ error: "position_seconds is required" }); return; }
+    const completed = !!durationSeconds && positionSeconds / durationSeconds >= 0.95;
+    const progress = await prisma.catchupProgress.upsert({
+      where: { user_id_live_session_id: { user_id: userId, live_session_id: sessionId } },
+      create: { user_id: userId, live_session_id: sessionId, position_seconds: positionSeconds, duration_seconds: durationSeconds ?? null, completed },
+      update: { position_seconds: positionSeconds, duration_seconds: durationSeconds, completed, last_played_at: new Date() },
+    });
+    res.json(progress);
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── GET /api/v1/radio/catchup/history ────────────────────────────────────────────
+radioRestRouter.get("/catchup/history", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const rows = await prisma.catchupProgress.findMany({
+      where: { user_id: req.auth.userId! },
+      orderBy: { last_played_at: "desc" },
+      take: 50,
+      include: { session: { select: { id: true, show_title: true, started_at: true, recording_url: true } } },
+    });
+    res.json({ history: rows });
   } catch (error) {
     sendHttpError(res, error);
   }

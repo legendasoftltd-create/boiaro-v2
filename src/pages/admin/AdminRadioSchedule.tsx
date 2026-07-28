@@ -4,14 +4,56 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Calendar, Plus, Edit, Trash2, Clock } from "lucide-react"
+import { Calendar, Plus, Edit, Trash2, Clock, Inbox, Check, X } from "lucide-react"
 import { toast } from "sonner"
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+const STATUS_STYLE: Record<string, string> = {
+  active: "text-emerald-500 border-emerald-500/30",
+  cancelled: "text-destructive border-destructive/30",
+  rescheduled: "text-amber-500 border-amber-500/30",
+}
+
+function ScheduleChangeRequests() {
+  const utils = trpc.useUtils()
+  const { data: requests = [], isLoading } = trpc.admin.listScheduleChangeRequests.useQuery({ status: "pending" })
+  const reviewMutation = trpc.admin.reviewScheduleChangeRequest.useMutation({
+    onSuccess: () => { utils.admin.listScheduleChangeRequests.invalidate(); utils.admin.listShowSchedules.invalidate(); toast.success("Reviewed") },
+    onError: (e) => toast.error(e.message),
+  })
+
+  if (isLoading) return null
+  if (requests.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base flex items-center gap-2"><Inbox className="w-4 h-4" /> Pending RJ change requests ({requests.length})</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {(requests as any[]).map((r) => (
+          <div key={r.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/20 bg-secondary/10">
+            <Badge variant="outline" className="capitalize shrink-0">{r.request_type}</Badge>
+            <div className="flex-1 min-w-0 text-[13px]">
+              <p className="font-medium">{r.schedule.show_title} <span className="text-muted-foreground font-normal">by {r.rj_stage_name}</span></p>
+              {r.request_type === "reschedule" && (
+                <p className="text-[11px] text-muted-foreground">
+                  New: {r.proposed_specific_date ? new Date(r.proposed_specific_date).toLocaleDateString() : (r.proposed_day_of_week != null ? DAY_NAMES[r.proposed_day_of_week] : r.schedule.day_of_week != null ? DAY_NAMES[r.schedule.day_of_week] : "")}{" "}
+                  {r.proposed_start_time ?? r.schedule.start_time}-{r.proposed_end_time ?? r.schedule.end_time}
+                </p>
+              )}
+              {r.reason && <p className="text-[11px] text-muted-foreground">Reason: {r.reason}</p>}
+            </div>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-emerald-500" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, decision: "approve" })}><Check className="w-4 h-4" /></Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, decision: "reject" })}><X className="w-4 h-4" /></Button>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function AdminRadioSchedule() {
   const utils = trpc.useUtils()
@@ -30,20 +72,32 @@ export default function AdminRadioSchedule() {
   const [open, setOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState({
-    station_id: "", rj_user_id: "", show_title: "", day_of_week: "0", start_time: "18:00", end_time: "19:00",
+    station_id: "", rj_user_id: "", show_title: "", schedule_type: "recurring" as "recurring" | "one_time",
+    day_of_week: "0", specific_date: "", start_time: "18:00", end_time: "19:00",
+    category: "", cover_image_url: "", status: "active" as "active" | "cancelled" | "rescheduled",
   })
 
   const approvedRjs = (rjProfiles as any[]).filter((r) => r.is_approved)
 
   const openNew = () => {
     setEditId(null)
-    setForm({ station_id: (stations as any[])[0]?.id || "", rj_user_id: approvedRjs[0]?.user_id || "", show_title: "", day_of_week: "0", start_time: "18:00", end_time: "19:00" })
+    setForm({
+      station_id: (stations as any[])[0]?.id || "", rj_user_id: approvedRjs[0]?.user_id || "", show_title: "",
+      schedule_type: "recurring", day_of_week: "0", specific_date: "", start_time: "18:00", end_time: "19:00",
+      category: "", cover_image_url: "", status: "active",
+    })
     setOpen(true)
   }
 
   const openEdit = (s: any) => {
     setEditId(s.id)
-    setForm({ station_id: s.station_id, rj_user_id: s.rj_user_id, show_title: s.show_title, day_of_week: String(s.day_of_week), start_time: s.start_time, end_time: s.end_time })
+    setForm({
+      station_id: s.station_id, rj_user_id: s.rj_user_id, show_title: s.show_title,
+      schedule_type: s.schedule_type || "recurring", day_of_week: String(s.day_of_week),
+      specific_date: s.specific_date ? String(s.specific_date).slice(0, 10) : "",
+      start_time: s.start_time, end_time: s.end_time,
+      category: s.category || "", cover_image_url: s.cover_image_url || "", status: s.status || "active",
+    })
     setOpen(true)
   }
 
@@ -52,15 +106,24 @@ export default function AdminRadioSchedule() {
       toast.error("Fill in station, RJ, and show title")
       return
     }
+    if (form.schedule_type === "one_time" && !form.specific_date) {
+      toast.error("Pick a date for a one-time show")
+      return
+    }
     saveMutation.mutate({
       id: editId || undefined,
       station_id: form.station_id,
       rj_user_id: form.rj_user_id,
       show_title: form.show_title,
-      day_of_week: Number(form.day_of_week),
+      schedule_type: form.schedule_type,
+      day_of_week: form.schedule_type === "one_time" ? new Date(form.specific_date).getDay() : Number(form.day_of_week),
+      specific_date: form.schedule_type === "one_time" ? new Date(`${form.specific_date}T00:00:00.000Z`).toISOString() : undefined,
       start_time: form.start_time,
       end_time: form.end_time,
-      is_active: true,
+      is_active: form.status !== "cancelled",
+      status: form.status,
+      category: form.category || undefined,
+      cover_image_url: form.cover_image_url || undefined,
     })
   }
 
@@ -92,15 +155,44 @@ export default function AdminRadioSchedule() {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div><Label className="text-[12px]">Day</Label>
-                  <Select value={form.day_of_week} onValueChange={(v) => setForm({ ...form, day_of_week: v })}>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-[12px]">Type</Label>
+                  <Select value={form.schedule_type} onValueChange={(v) => setForm({ ...form, schedule_type: v as any })}>
                     <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
-                    <SelectContent>{DAY_NAMES.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      <SelectItem value="recurring">Recurring (weekly)</SelectItem>
+                      <SelectItem value="one_time">One-time</SelectItem>
+                    </SelectContent>
                   </Select>
                 </div>
+                <div><Label className="text-[12px]">Status</Label>
+                  <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as any })}>
+                    <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                      <SelectItem value="rescheduled">Rescheduled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {form.schedule_type === "recurring" ? (
+                  <div><Label className="text-[12px]">Day</Label>
+                    <Select value={form.day_of_week} onValueChange={(v) => setForm({ ...form, day_of_week: v })}>
+                      <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                      <SelectContent>{DAY_NAMES.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div><Label className="text-[12px]">Date</Label><Input type="date" value={form.specific_date} onChange={(e) => setForm({ ...form, specific_date: e.target.value })} className="h-9 text-[13px]" /></div>
+                )}
                 <div><Label className="text-[12px]">Start</Label><Input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} className="h-9 text-[13px]" /></div>
                 <div><Label className="text-[12px]">End</Label><Input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} className="h-9 text-[13px]" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-[12px]">Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Music, Talk, News..." className="h-9 text-[13px]" /></div>
+                <div><Label className="text-[12px]">Cover image URL</Label><Input value={form.cover_image_url} onChange={(e) => setForm({ ...form, cover_image_url: e.target.value })} className="h-9 text-[13px]" /></div>
               </div>
               <Button onClick={save} disabled={saveMutation.isPending} className="w-full">{saveMutation.isPending ? "Saving..." : "Save"}</Button>
             </div>
@@ -108,17 +200,22 @@ export default function AdminRadioSchedule() {
         </Dialog>
       </div>
 
+      <ScheduleChangeRequests />
+
       <div className="space-y-2">
         {schedules.length === 0 ? (
           <p className="text-center text-muted-foreground text-sm py-10">No shows scheduled yet.</p>
         ) : (
           (schedules as any[]).map((s) => (
             <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/20 bg-secondary/10">
-              <Badge variant="outline" className="w-20 justify-center shrink-0">{DAY_NAMES[s.day_of_week].slice(0, 3)}</Badge>
+              <Badge variant="outline" className="w-24 justify-center shrink-0">
+                {s.schedule_type === "one_time" && s.specific_date ? new Date(s.specific_date).toLocaleDateString() : DAY_NAMES[s.day_of_week].slice(0, 3)}
+              </Badge>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-medium">{s.show_title}</p>
-                <p className="text-[11px] text-muted-foreground">{s.rj_stage_name || "Unassigned"} · {s.station?.name}</p>
+                <p className="text-[11px] text-muted-foreground">{s.rj_stage_name || "Unassigned"} · {s.station?.name}{s.category ? ` · ${s.category}` : ""}</p>
               </div>
+              <Badge variant="outline" className={`shrink-0 capitalize ${STATUS_STYLE[s.status] || ""}`}>{s.status}</Badge>
               <Badge variant="outline" className="gap-1 shrink-0"><Clock className="w-3 h-3" /> {s.start_time}-{s.end_time}</Badge>
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(s)}><Edit className="w-3.5 h-3.5" /></Button>
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { if (confirm("Delete this show?")) deleteMutation.mutate({ id: s.id }) }}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>

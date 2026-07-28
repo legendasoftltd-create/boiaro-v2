@@ -2,17 +2,22 @@ import type { Server as HttpServer } from "http";
 import { Server as SocketIOServer, type Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
-import { getRadioSettingBool } from "../lib/radioSettings.js";
+import { getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
 import { logRadioAction } from "../lib/radioAudit.js";
+import { checkMessageSafety } from "../lib/chatSafety.js";
 
 interface AuthedSocket extends Socket {
   userId?: string;
 }
 
-const MESSAGE_MIN_INTERVAL_MS = 2000; // basic per-socket spam throttle
 const lastMessageAt = new Map<string, number>();
 // socketId -> ListenerSession row id, so leave/disconnect can close it out.
 const listenerSessionRows = new Map<string, string>();
+// userId -> last callin:offer/answer/ice-candidate timestamp, so a
+// participant can't flood their call partner's socket (repeated
+// getUserMedia-triggering offers, or an ICE-candidate storm).
+const lastCallInSignalAt = new Map<string, number>();
+const CALLIN_SIGNAL_MIN_INTERVAL_MS = 150;
 
 function room(sessionId: string) {
   return `live:${sessionId}`;
@@ -24,11 +29,12 @@ async function isHostOrModerator(userId: string, session: { rj_user_id: string }
   return !!role;
 }
 
-async function isMuted(sessionId: string, userId: string): Promise<boolean> {
+/** "mute" or "ban" — either counts as restricted for chat/request purposes. */
+async function activeRestriction(sessionId: string, userId: string): Promise<string | null> {
   const mute = await prisma.radioMute.findFirst({
     where: { live_session_id: sessionId, user_id: userId, OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }] },
   });
-  return !!mute;
+  return mute?.type ?? null;
 }
 
 let io: SocketIOServer | null = null;
@@ -82,6 +88,11 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
 
     socket.on("join_session", async ({ sessionId, platform }: { sessionId: string; platform?: string }) => {
       if (!sessionId) return;
+      const restriction = await activeRestriction(sessionId, userId);
+      if (restriction === "ban") {
+        socket.emit("error", { message: "You've been banned from this room" });
+        return;
+      }
       if (joinedSessionId) {
         socket.leave(room(joinedSessionId));
         await closeListenerSessionRow();
@@ -117,15 +128,22 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
         socket.emit("error", { message: "Chat is off for this show" });
         return;
       }
-      if (await isMuted(sessionId, userId)) {
+      if (await activeRestriction(sessionId, userId)) {
         socket.emit("error", { message: "You've been muted in this room" });
         return;
       }
 
+      const slowModeMs = ((await getRadioSettingNumber("radio_slow_mode_seconds")) ?? 2) * 1000;
       const now = Date.now();
       const last = lastMessageAt.get(userId) ?? 0;
-      if (now - last < MESSAGE_MIN_INTERVAL_MS) {
+      if (now - last < slowModeMs) {
         socket.emit("error", { message: "You're sending messages too fast" });
+        return;
+      }
+
+      const rejection = await checkMessageSafety(sessionId, userId, text);
+      if (rejection) {
+        socket.emit("error", { message: rejection });
         return;
       }
       lastMessageAt.set(userId, now);
@@ -167,7 +185,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
         socket.emit("error", { message: "Requests are off for this show" });
         return;
       }
-      if (await isMuted(sessionId, userId)) {
+      if (await activeRestriction(sessionId, userId)) {
         socket.emit("error", { message: "You've been muted in this room" });
         return;
       }
@@ -209,10 +227,51 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       if (updated) io!.to(room(sessionId)).emit("song_request:updated", { id: updated.id, status: updated.status });
     });
 
+    // ── Listener call-in: WebRTC signaling relay ──────────────────────────
+    // The server never sees or touches audio — it only relays SDP/ICE
+    // messages between the host and one specific caller so their browsers
+    // can establish a direct (or TURN-relayed) peer connection. Either side
+    // must be a legitimate participant in that session's call: the host, or
+    // the target listener with a non-terminal CallInRequest.
+    const isCallInParticipant = async (sessionId: string, participantUserId: string): Promise<boolean> => {
+      const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { rj_user_id: true } });
+      if (!session) return false;
+      if (session.rj_user_id === participantUserId) return true;
+      const call = await prisma.callInRequest.findFirst({
+        where: { live_session_id: sessionId, user_id: participantUserId, status: { in: ["waiting", "accepted", "on_air", "muted"] } },
+      });
+      return !!call;
+    };
+
+    for (const evt of ["callin:offer", "callin:answer", "callin:ice-candidate"] as const) {
+      socket.on(evt, async ({ sessionId, targetUserId, payload }: { sessionId: string; targetUserId: string; payload: unknown }) => {
+        if (!sessionId || !targetUserId) return;
+        const lastAt = lastCallInSignalAt.get(userId) ?? 0;
+        if (Date.now() - lastAt < CALLIN_SIGNAL_MIN_INTERVAL_MS) return;
+        lastCallInSignalAt.set(userId, Date.now());
+        // Both ends of the relay must be legitimate call-in participants —
+        // otherwise a waiting/accepted caller could target an arbitrary
+        // listener in the room and trigger an uninvited getUserMedia prompt
+        // on their device (the client answers offers automatically).
+        if (!(await isCallInParticipant(sessionId, userId)) || !(await isCallInParticipant(sessionId, targetUserId))) {
+          socket.emit("error", { message: "Not part of this call" });
+          return;
+        }
+        emitToUserInSession(sessionId, targetUserId, evt, { sessionId, fromUserId: userId, payload });
+      });
+    }
+
+    socket.on("callin:hangup", async ({ sessionId, targetUserId }: { sessionId: string; targetUserId: string }) => {
+      if (!sessionId || !targetUserId) return;
+      if (!(await isCallInParticipant(sessionId, userId)) || !(await isCallInParticipant(sessionId, targetUserId))) return;
+      emitToUserInSession(sessionId, targetUserId, "callin:hangup", { sessionId, fromUserId: userId });
+    });
+
     socket.on("disconnect", async () => {
       if (joinedSessionId) emitListenerCount(joinedSessionId);
       await closeListenerSessionRow();
       lastMessageAt.delete(userId);
+      lastCallInSignalAt.delete(userId);
     });
   });
 
@@ -233,4 +292,35 @@ export function getListenerCount(sessionId: string): number {
 // still see it in real time either way.
 export function emitToSession(sessionId: string, event: string, payload: unknown): void {
   io?.to(room(sessionId)).emit(event, payload);
+}
+
+// Forcibly removes a specific user's socket(s) from a live room — used for
+// bans and admin emergency-disconnect, so the removal is immediate rather
+// than only taking effect the next time they try to rejoin or send something.
+export function kickUserFromSession(sessionId: string, userId: string, reason: string): void {
+  if (!io) return;
+  const roomSockets = io.sockets.adapter.rooms.get(room(sessionId));
+  if (!roomSockets) return;
+  for (const socketId of roomSockets) {
+    const s = io.sockets.sockets.get(socketId) as AuthedSocket | undefined;
+    if (s?.userId === userId) {
+      s.emit("error", { message: reason });
+      s.leave(room(sessionId));
+    }
+  }
+  const count = io.sockets.adapter.rooms.get(room(sessionId))?.size ?? 0;
+  io.to(room(sessionId)).emit("listener_count", { sessionId, count });
+}
+
+// Targeted send to one specific user's socket(s) within a session's room —
+// used for call-in WebRTC signaling (offer/answer/ICE), which must go to
+// exactly one peer, never broadcast to the whole room.
+export function emitToUserInSession(sessionId: string, userId: string, event: string, payload: unknown): void {
+  if (!io) return;
+  const roomSockets = io.sockets.adapter.rooms.get(room(sessionId));
+  if (!roomSockets) return;
+  for (const socketId of roomSockets) {
+    const s = io.sockets.sockets.get(socketId) as AuthedSocket | undefined;
+    if (s?.userId === userId) s.emit(event, payload);
+  }
 }

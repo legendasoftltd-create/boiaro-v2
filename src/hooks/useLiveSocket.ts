@@ -115,9 +115,14 @@ export function useLiveSocket(sessionId: string | undefined) {
     socketRef.current?.emit("song_request:update_status", { sessionId, requestId, status });
   }, [sessionId]);
 
+  // Lazily read the current socket — used by useCallInAudio, which attaches
+  // its own listeners to this same connection rather than opening a second
+  // one just for call-in signaling.
+  const getSocket = useCallback(() => socketRef.current, []);
+
   return {
     connected, listenerCount, messages, reactions, songRequests,
     sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus,
-    setMessages, setSongRequests,
+    setMessages, setSongRequests, getSocket,
   };
 }

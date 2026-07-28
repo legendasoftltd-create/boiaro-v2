@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Link } from "react-router-dom"
 import { Navbar } from "@/components/Navbar"
 import { Footer } from "@/components/Footer"
@@ -11,16 +12,38 @@ import type { MasterBook, AudiobookFormat } from "@/lib/types"
 
 export default function RadioCatchup() {
   const { data, isLoading } = trpc.rj.catchupSessions.useQuery({ limit: 20 })
-  const { book, isPlaying, togglePlay, loadBook } = useAudioPlayer()
+  const { book, isPlaying, currentTime, duration, togglePlay, loadBook, seekTo } = useAudioPlayer()
+  const saveProgress = trpc.rj.saveCatchupProgress.useMutation()
+  const recordPlay = trpc.rj.recordCatchupPlay.useMutation()
+  const utils = trpc.useUtils()
+
+  useEffect(() => {
+    document.title = "ক্যাচ-আপ অডিও — BoiAro On Air"
+    return () => { document.title = "BoiAro" }
+  }, [])
+
+  // Periodically persist playback position for whichever catch-up recording
+  // is currently active, so it can resume from here next time.
+  useEffect(() => {
+    if (!book?.id?.startsWith("catchup-") || !isPlaying || !currentTime) return
+    const sessionId = book.id.replace("catchup-", "")
+    const timer = setInterval(() => {
+      saveProgress.mutate({ sessionId, positionSeconds: Math.floor(currentTime), durationSeconds: duration ? Math.floor(duration) : undefined })
+    }, 15_000)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [book?.id, isPlaying])
 
   const sessions = data?.sessions ?? []
 
-  const handlePlay = (session: any) => {
+  const handlePlay = async (session: any) => {
     const bookId = `catchup-${session.id}`
     if (book?.id === bookId) {
       togglePlay()
       return
     }
+    recordPlay.mutate({ sessionId: session.id })
+    const resumeAt = await utils.rj.myCatchupProgress.fetch({ sessionId: session.id }).catch(() => null)
     const masterBook: MasterBook = {
       id: bookId,
       title: session.show_title || "Recorded Show",
@@ -38,7 +61,11 @@ export default function RadioCatchup() {
     const audiobook: AudiobookFormat = { available: true, price: 0, duration: "", narrator: { id: "", name: "", nameEn: "", avatar: "", bio: "", specialty: "", audiobooksCount: 0, listeners: "0", rating: 0, isFeatured: false }, chapters: 1, quality: "standard" }
     const track = { id: session.id, trackNumber: 1, title: session.show_title || "Recorded Show", duration: "", audioUrl: session.recording_url, isPreview: false, isActive: true }
     loadBook(masterBook, audiobook, [track])
-    setTimeout(() => togglePlay(), 100)
+    const resumePosition = (resumeAt as any)?.position_seconds
+    setTimeout(() => {
+      togglePlay()
+      if (resumePosition > 5) seekTo(resumePosition) // skip trivial resumes near the start
+    }, 300)
   }
 
   return (

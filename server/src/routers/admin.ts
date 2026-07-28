@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
-import { getListenerCount } from "../realtime/socket.js";
+import { getListenerCount, emitToUserInSession } from "../realtime/socket.js";
 import { calculateOrderEarnings } from "../lib/earnings.js";
 import { isVerifiedRevenueOrder } from "../lib/revenueVerification.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
@@ -15,7 +15,9 @@ import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClipsForFormat } from "../lib/audioPreview.js";
 import { logRadioAction } from "../lib/radioAudit.js";
-import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, type RadioSettingKey } from "../lib/radioSettings.js";
+import { stopRecording } from "../lib/liveRecorder.js";
+import { notifyFollowersOfScheduleCancelled, notifyFollowersOfScheduleRescheduled } from "../lib/radioNotify.js";
+import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSettingNumber, type RadioSettingKey } from "../lib/radioSettings.js";
 import os from "os";
 import fs from "fs";
 
@@ -83,7 +85,7 @@ const HOMEPAGE_SECTION_DEFAULTS: Array<{
   { section_key: "authors", title: "জনপ্রিয় লেখক", subtitle: "আমাদের প্রিয় লেখকগণ", is_enabled: true, sort_order: 16, display_source: null },
   { section_key: "narrators", title: "জনপ্রিয় কথক", subtitle: null, is_enabled: true, sort_order: 17, display_source: null },
   { section_key: "translators", title: "জনপ্রিয় অনুবাদক", subtitle: null, is_enabled: true, sort_order: 18, display_source: null },
-  { section_key: "live_radio", title: "Live Radio", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 19, display_source: null },
+  { section_key: "live_radio", title: "BoiAro On Air", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 19, display_source: null },
   { section_key: "blog", title: "ব্লগ ও আর্টিকেল", subtitle: "আমাদের সাম্প্রতিক লেখা", is_enabled: true, sort_order: 20, display_source: null },
   { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 21, display_source: null },
   { section_key: "category_sections", title: "ক্যাটাগরি সেকশন", subtitle: "বিভাগ অনুযায়ী বই", is_enabled: true, sort_order: 22, display_source: null },
@@ -5811,6 +5813,121 @@ export const adminRouter = router({
   // size. "Stream health" per the spec is scoped to what this app can
   // actually observe (its own DB + in-memory socket rooms) — it has no
   // visibility into the Icecast/Shoutcast server's own uptime/bitrate.
+  // Deep analytics over a date range — everything the spec's "Complete
+  // Analytics" list asks for that radioMetrics (a lightweight today-only
+  // snapshot) doesn't cover: unique/peak listeners, average duration,
+  // chat/reaction/request totals, catch-up performance, device breakdown,
+  // and optional per-RJ or per-station grouping.
+  radioAnalytics: adminProcedure
+    .input(z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      groupBy: z.enum(["none", "rj", "station"]).default("none"),
+    }))
+    .query(async ({ input }) => {
+      const from = input.from ? new Date(input.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const to = input.to ? new Date(input.to) : new Date();
+
+      const sessionsInRange = await prisma.liveSession.findMany({
+        where: { started_at: { gte: from, lte: to }, is_test: false },
+        select: {
+          id: true, rj_user_id: true, station_id: true, show_title: true, category: true,
+          reaction_count: true, catchup_play_count: true, started_at: true, ended_at: true,
+        },
+      });
+      const sessionIds = sessionsInRange.map((s) => s.id);
+
+      const [listenerRows, chatRows, requestCount, newFollowers, catchupRows, stations, rjProfiles] = await Promise.all([
+        prisma.listenerSession.findMany({
+          where: { live_session_id: { in: sessionIds } },
+          select: { live_session_id: true, user_id: true, device_id: true, platform: true, joined_at: true, left_at: true },
+        }),
+        prisma.liveChatMessage.findMany({ where: { live_session_id: { in: sessionIds } }, select: { live_session_id: true, user_id: true } }),
+        prisma.songRequest.count({ where: { live_session_id: { in: sessionIds } } }),
+        prisma.follow.count({ where: { created_at: { gte: from, lte: to }, followee_id: { in: [...new Set(sessionsInRange.map((s) => s.rj_user_id))] } } }),
+        prisma.catchupProgress.findMany({ where: { live_session_id: { in: sessionIds } }, select: { live_session_id: true, user_id: true, completed: true } }),
+        prisma.radioStation.findMany({ select: { id: true, name: true } }),
+        prisma.rjProfile.findMany({ select: { user_id: true, stage_name: true } }),
+      ]);
+
+      const stationName = new Map(stations.map((s) => [s.id, s.name]));
+      const rjName = new Map(rjProfiles.map((r) => [r.user_id, r.stage_name]));
+
+      // Peak concurrent listeners — sweep-line over join/leave events.
+      const now = Date.now();
+      const events = listenerRows.flatMap((r) => [
+        { t: r.joined_at.getTime(), d: 1 },
+        { t: (r.left_at ?? new Date(now)).getTime(), d: -1 },
+      ]).sort((a, b) => a.t - b.t);
+      let running = 0, peakConcurrent = 0;
+      for (const e of events) { running += e.d; if (running > peakConcurrent) peakConcurrent = running; }
+
+      const totalListeningSeconds = listenerRows.reduce((sum, r) => sum + Math.max(0, ((r.left_at?.getTime() ?? now) - r.joined_at.getTime()) / 1000), 0);
+      const uniqueListenerKeys = new Set(listenerRows.map((r) => r.user_id ?? `device:${r.device_id}`));
+      const uniqueChatUsers = new Set(chatRows.map((r) => r.user_id));
+
+      const deviceBreakdown: Record<string, number> = {};
+      listenerRows.forEach((r) => { const p = r.platform ?? "unknown"; deviceBreakdown[p] = (deviceBreakdown[p] ?? 0) + 1; });
+
+      const catchupUniqueListeners = new Set(catchupRows.map((r) => `${r.live_session_id}:${r.user_id}`)).size;
+      const catchupCompleted = catchupRows.filter((r) => r.completed).length;
+
+      const summary = {
+        totalSessions: sessionsInRange.length,
+        uniqueListeners: uniqueListenerKeys.size,
+        peakConcurrentListeners: peakConcurrent,
+        totalListeningMinutes: Math.round(totalListeningSeconds / 60),
+        averageListeningMinutes: listenerRows.length ? Math.round((totalListeningSeconds / listenerRows.length) / 60 * 10) / 10 : 0,
+        newFollowers,
+        chatCount: chatRows.length,
+        uniqueChatUsers: uniqueChatUsers.size,
+        reactionCount: sessionsInRange.reduce((sum, s) => sum + s.reaction_count, 0),
+        requestCount,
+        catchupPlays: sessionsInRange.reduce((sum, s) => sum + s.catchup_play_count, 0),
+        catchupUniqueListeners,
+        catchupCompletionRatePct: catchupRows.length ? Math.round((catchupCompleted / catchupRows.length) * 1000) / 10 : 0,
+        deviceBreakdown,
+      };
+
+      let groups: Array<{ key: string; label: string } & typeof summary> | null = null;
+      if (input.groupBy !== "none") {
+        const keyOf = (s: (typeof sessionsInRange)[number]) => input.groupBy === "rj" ? s.rj_user_id : (s.station_id ?? "none");
+        const labelOf = (key: string) => input.groupBy === "rj" ? (rjName.get(key) ?? "Unknown RJ") : (stationName.get(key) ?? "No station");
+        const keys = [...new Set(sessionsInRange.map(keyOf))];
+        groups = keys.map((key) => {
+          const groupSessionIds = new Set(sessionsInRange.filter((s) => keyOf(s) === key).map((s) => s.id));
+          const gListener = listenerRows.filter((r) => groupSessionIds.has(r.live_session_id));
+          const gChat = chatRows.filter((r) => groupSessionIds.has(r.live_session_id));
+          const gCatchup = catchupRows.filter((r) => groupSessionIds.has(r.live_session_id));
+          const gSessions = sessionsInRange.filter((s) => groupSessionIds.has(s.id));
+          const gSeconds = gListener.reduce((sum, r) => sum + Math.max(0, ((r.left_at?.getTime() ?? now) - r.joined_at.getTime()) / 1000), 0);
+          const gEvents = gListener.flatMap((r) => [{ t: r.joined_at.getTime(), d: 1 }, { t: (r.left_at ?? new Date(now)).getTime(), d: -1 }]).sort((a, b) => a.t - b.t);
+          let gRunning = 0, gPeak = 0;
+          for (const e of gEvents) { gRunning += e.d; if (gRunning > gPeak) gPeak = gRunning; }
+          const gCompleted = gCatchup.filter((r) => r.completed).length;
+          return {
+            key, label: labelOf(key),
+            totalSessions: gSessions.length,
+            uniqueListeners: new Set(gListener.map((r) => r.user_id ?? `device:${r.device_id}`)).size,
+            peakConcurrentListeners: gPeak,
+            totalListeningMinutes: Math.round(gSeconds / 60),
+            averageListeningMinutes: gListener.length ? Math.round((gSeconds / gListener.length) / 60 * 10) / 10 : 0,
+            newFollowers: 0, // per-group follower attribution isn't meaningful for station grouping; see summary for the overall figure
+            chatCount: gChat.length,
+            uniqueChatUsers: new Set(gChat.map((r) => r.user_id)).size,
+            reactionCount: gSessions.reduce((sum, s) => sum + s.reaction_count, 0),
+            requestCount: 0, // not split per-group to keep this one query; see summary for the overall figure
+            catchupPlays: gSessions.reduce((sum, s) => sum + s.catchup_play_count, 0),
+            catchupUniqueListeners: new Set(gCatchup.map((r) => r.user_id)).size,
+            catchupCompletionRatePct: gCatchup.length ? Math.round((gCompleted / gCatchup.length) * 1000) / 10 : 0,
+            deviceBreakdown: {},
+          };
+        }).sort((a, b) => b.uniqueListeners - a.uniqueListeners);
+      }
+
+      return { from, to, summary, groups };
+    }),
+
   radioMetrics: adminProcedure.query(async () => {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -5878,12 +5995,28 @@ export const adminRouter = router({
       // deactivated whichever station happened to be first in the table
       // (unrelated to this session), silently taking the whole feature
       // down for every other host. A force-end only ever ends the session.
+      stopRecording(input.sessionId);
       const session = await prisma.liveSession.update({
         where: { id: input.sessionId },
         data: { status: "ended", ended_at: new Date(), disconnect_reason: "admin_force_stop" },
       });
       await logRadioAction(ctx.userId!, "admin_force_ended_session", { sessionId: input.sessionId });
       return session;
+    }),
+
+  // Emergency disconnect for a listener call-in — ends it and signals both
+  // the caller and host to tear down their WebRTC connection immediately.
+  emergencyEndCallIn: adminProcedure
+    .input(z.object({ callId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const call = await prisma.callInRequest.findUnique({ where: { id: input.callId } });
+      if (!call) throw new TRPCError({ code: "NOT_FOUND" });
+      const session = await prisma.liveSession.findUnique({ where: { id: call.live_session_id }, select: { rj_user_id: true } });
+      const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "removed", ended_at: new Date() } });
+      emitToUserInSession(call.live_session_id, call.user_id, "callin:hangup", { callId: call.id, reason: "admin_emergency_disconnect" });
+      if (session) emitToUserInSession(call.live_session_id, session.rj_user_id, "callin:hangup", { callId: call.id, reason: "admin_emergency_disconnect" });
+      await logRadioAction(ctx.userId!, "callin_admin_emergency_disconnect", { sessionId: call.live_session_id, userId: call.user_id });
+      return updated;
     }),
 
   listRadioStations: adminProcedure.query(() =>
@@ -5939,26 +6072,69 @@ export const adminRouter = router({
     return schedules.map((s) => ({ ...s, rj_stage_name: pMap.get(s.rj_user_id) ?? null }));
   }),
 
+  // Minutes-since-midnight overlap check for two HH:MM ranges.
   upsertShowSchedule: adminProcedure
     .input(z.object({
       id: z.string().optional(),
       station_id: z.string(),
       rj_user_id: z.string(),
       show_title: z.string().min(1),
+      schedule_type: z.enum(["recurring", "one_time"]).default("recurring"),
       day_of_week: z.number().int().min(0).max(6),
+      specific_date: z.string().datetime().optional().nullable(),
       start_time: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM format"),
       end_time: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM format"),
       is_active: z.boolean().default(true),
+      status: z.enum(["active", "cancelled", "rescheduled"]).default("active"),
+      category: z.string().optional().nullable(),
+      cover_image_url: z.string().optional().nullable(),
+      cancel_reason: z.string().optional().nullable(),
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
+      if (input.schedule_type === "one_time" && !input.specific_date) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "specific_date is required for one-time shows" });
+      }
+      const toMinutes = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+      const startMin = toMinutes(input.start_time);
+      const endMin = toMinutes(input.end_time);
+      if (endMin <= startMin) throw new TRPCError({ code: "BAD_REQUEST", message: "End time must be after start time" });
+
+      // Conflict detection: other active schedules on the same station that
+      // occupy the same day (recurring) or same calendar date (one_time) and
+      // whose time range overlaps this one.
+      const candidates = await prisma.showSchedule.findMany({
+        where: {
+          station_id: input.station_id,
+          status: "active",
+          id: input.id ? { not: input.id } : undefined,
+          ...(input.schedule_type === "recurring"
+            ? { day_of_week: input.day_of_week, schedule_type: "recurring" }
+            : { schedule_type: "one_time", specific_date: new Date(input.specific_date!) }),
+        },
+      });
+      const conflict = candidates.find((c) => {
+        const cStart = toMinutes(c.start_time);
+        const cEnd = toMinutes(c.end_time);
+        return startMin < cEnd && cStart < endMin;
+      });
+      if (conflict) {
+        throw new TRPCError({ code: "CONFLICT", message: `Time conflicts with "${conflict.show_title}" (${conflict.start_time}-${conflict.end_time}) on the same station` });
+      }
+
       const data = {
         station_id: input.station_id,
         rj_user_id: input.rj_user_id,
         show_title: input.show_title,
+        schedule_type: input.schedule_type,
         day_of_week: input.day_of_week,
+        specific_date: input.specific_date ? new Date(input.specific_date) : null,
         start_time: input.start_time,
         end_time: input.end_time,
         is_active: input.is_active,
+        status: input.status,
+        category: input.category || null,
+        cover_image_url: input.cover_image_url || null,
+        cancel_reason: input.cancel_reason || null,
       };
       if (input.id) return prisma.showSchedule.update({ where: { id: input.id }, data });
       return prisma.showSchedule.create({ data });
@@ -5967,6 +6143,59 @@ export const adminRouter = router({
   deleteShowSchedule: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.showSchedule.delete({ where: { id: input.id } })),
+
+  // ── RJ schedule-change requests ─────────────────────────────────────────
+  listScheduleChangeRequests: adminProcedure
+    .input(z.object({ status: z.enum(["pending", "approved", "rejected"]).default("pending") }))
+    .query(async ({ input }) => {
+      const requests = await prisma.scheduleChangeRequest.findMany({
+        where: { status: input.status },
+        include: { schedule: { include: { station: { select: { id: true, name: true } } } } },
+        orderBy: { created_at: "desc" },
+      });
+      const rjIds = [...new Set(requests.map((r) => r.rj_user_id))];
+      const profiles = rjIds.length
+        ? await prisma.rjProfile.findMany({ where: { user_id: { in: rjIds } }, select: { user_id: true, stage_name: true } })
+        : [];
+      const pMap = new Map(profiles.map((p) => [p.user_id, p.stage_name]));
+      return requests.map((r) => ({ ...r, rj_stage_name: pMap.get(r.rj_user_id) ?? null }));
+    }),
+
+  reviewScheduleChangeRequest: adminProcedure
+    .input(z.object({ id: z.string(), decision: z.enum(["approve", "reject"]), admin_note: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const request = await prisma.scheduleChangeRequest.findUnique({ where: { id: input.id }, include: { schedule: true } });
+      if (!request) throw new TRPCError({ code: "NOT_FOUND" });
+      if (request.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Request already reviewed" });
+
+      if (input.decision === "approve") {
+        if (request.request_type === "cancel") {
+          await prisma.showSchedule.update({
+            where: { id: request.schedule_id },
+            data: { status: "cancelled", is_active: false, cancel_reason: request.reason ?? null },
+          });
+          await notifyFollowersOfScheduleCancelled(request.schedule.rj_user_id, request.schedule.show_title, request.reason);
+        } else if (request.request_type === "reschedule") {
+          const data: Record<string, unknown> = { status: "active" };
+          if (request.proposed_day_of_week != null) data.day_of_week = request.proposed_day_of_week;
+          if (request.proposed_start_time) data.start_time = request.proposed_start_time;
+          if (request.proposed_end_time) data.end_time = request.proposed_end_time;
+          if (request.proposed_specific_date) data.specific_date = request.proposed_specific_date;
+          await prisma.showSchedule.update({ where: { id: request.schedule_id }, data });
+          const newWhen = request.proposed_specific_date
+            ? `${new Date(request.proposed_specific_date).toLocaleDateString()} ${request.proposed_start_time ?? request.schedule.start_time}`
+            : `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][request.proposed_day_of_week ?? request.schedule.day_of_week]} ${request.proposed_start_time ?? request.schedule.start_time}`;
+          await notifyFollowersOfScheduleRescheduled(request.schedule.rj_user_id, request.schedule.show_title, newWhen);
+        }
+      }
+
+      const updated = await prisma.scheduleChangeRequest.update({
+        where: { id: input.id },
+        data: { status: input.decision === "approve" ? "approved" : "rejected", admin_note: input.admin_note, reviewed_by: ctx.userId, reviewed_at: new Date() },
+      });
+      await logRadioAction(ctx.userId!, `schedule_change_${input.decision}d`, { requestId: input.id, scheduleId: request.schedule_id });
+      return updated;
+    }),
 
   // ── RJ approval workflow ───────────────────────────────────────────────
   // Explicit, logged transitions (RjApprovalLog) instead of a blunt
@@ -6002,8 +6231,13 @@ export const adminRouter = router({
       });
       // A suspended RJ going live right now must also be stopped — not just
       // blocked from starting a new one.
-      await prisma.liveSession.updateMany({
+      const activeSessions = await prisma.liveSession.findMany({
         where: { rj_user_id: profile.user_id, status: { in: ["live", "reconnecting"] } },
+        select: { id: true },
+      });
+      activeSessions.forEach((s) => stopRecording(s.id));
+      await prisma.liveSession.updateMany({
+        where: { id: { in: activeSessions.map((s) => s.id) } },
         data: { status: "ended", ended_at: new Date(), disconnect_reason: "rj_suspended" },
       });
       await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "suspended", reason: input.reason, actor_id: ctx.userId! } });
@@ -6018,8 +6252,13 @@ export const adminRouter = router({
         where: { id: input.id },
         data: { is_active: false, broadcast_token_revoked_at: new Date() },
       });
-      await prisma.liveSession.updateMany({
+      const activeSessions = await prisma.liveSession.findMany({
         where: { rj_user_id: profile.user_id, status: { in: ["live", "reconnecting"] } },
+        select: { id: true },
+      });
+      activeSessions.forEach((s) => stopRecording(s.id));
+      await prisma.liveSession.updateMany({
+        where: { id: { in: activeSessions.map((s) => s.id) } },
         data: { status: "ended", ended_at: new Date(), disconnect_reason: "rj_deactivated" },
       });
       await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "deactivated", reason: input.reason, actor_id: ctx.userId! } });
@@ -6118,8 +6357,38 @@ export const adminRouter = router({
     const liveSessions = await prisma.liveSession.findMany({ where: { status: { in: ["live", "reconnecting"] } } });
     const currentListeners = liveSessions.reduce((sum, s) => sum + getListenerCount(s.id), 0);
 
+    // Storage usage — sum of every recording's captured/uploaded file size.
+    // Draft/rejected count toward usage too (they're still occupying real
+    // storage until reviewed or auto-deleted by the retention job).
+    const [storageAgg, storageLimitGb, bandwidthLimitGb, bitrateKbps, costPerGb, monthListenerSeconds] = await Promise.all([
+      prisma.liveSession.aggregate({ _sum: { recording_file_size_bytes: true } }),
+      getRadioSettingNumber("radio_recording_storage_limit_gb"),
+      getRadioSettingNumber("radio_monthly_bandwidth_limit_gb"),
+      getRadioSettingNumber("radio_estimated_bitrate_kbps"),
+      getRadioSettingNumber("radio_estimated_cost_per_gb"),
+      // Listener-seconds over the last 30 days — summed in JS since duration
+      // (left_at - joined_at) isn't something Prisma's query builder can
+      // aggregate directly in Postgres.
+      prisma.listenerSession
+        .findMany({
+          where: { joined_at: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+          select: { joined_at: true, left_at: true },
+        })
+        .then((rows) => {
+          const now = Date.now();
+          return rows.reduce((sum, r) => sum + Math.max(0, ((r.left_at?.getTime() ?? now) - r.joined_at.getTime()) / 1000), 0);
+        }),
+    ]);
+
+    const storageUsedGb = (storageAgg._sum.recording_file_size_bytes ?? 0) / (1024 ** 3);
+    const bitrate = bitrateKbps ?? 128;
+    const estimatedBandwidthGb30d = (monthListenerSeconds * bitrate * 1000) / 8 / (1024 ** 3);
+    const estimatedMonthlyCost = costPerGb ? estimatedBandwidthGb30d * costPerGb : null;
+
     const alertThresholds = [70, 85, 95];
-    const metrics = { cpuLoadPct, usedMemPct, diskUsedPct: diskUsedPct ?? 0 };
+    const metrics: Record<string, number> = { cpuLoadPct, usedMemPct, diskUsedPct: diskUsedPct ?? 0 };
+    if (storageLimitGb) metrics.storageUsedPct = (storageUsedGb / storageLimitGb) * 100;
+    if (bandwidthLimitGb) metrics.bandwidthUsedPct = (estimatedBandwidthGb30d / bandwidthLimitGb) * 100;
     const alerts = Object.entries(metrics).flatMap(([key, value]) => {
       const hit = [...alertThresholds].reverse().find((t) => value >= t);
       return hit ? [{ metric: key, value: Math.round(value), threshold: hit }] : [];
@@ -6131,7 +6400,12 @@ export const adminRouter = router({
       diskUsedPct: diskUsedPct !== null ? Math.round(diskUsedPct) : null,
       currentListeners,
       liveSessionCount: liveSessions.length,
-      bandwidthNote: "Estimate only — bitrate × concurrent-listener-minutes, not a measured counter",
+      storageUsedGb: Math.round(storageUsedGb * 100) / 100,
+      storageLimitGb,
+      estimatedBandwidthGb30d: Math.round(estimatedBandwidthGb30d * 100) / 100,
+      bandwidthLimitGb,
+      estimatedMonthlyCost,
+      bandwidthNote: "Estimate only — configured bitrate × actual listener-seconds over the last 30 days, not a measured network counter",
       alerts,
     };
   }),

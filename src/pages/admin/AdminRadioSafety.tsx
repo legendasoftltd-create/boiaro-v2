@@ -10,12 +10,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   ShieldAlert, Activity, Cpu, MemoryStick, HardDrive, Users, Radio,
-  AlertTriangle, RefreshCw, Flag, ScrollText, SlidersHorizontal, CheckCircle2,
+  AlertTriangle, RefreshCw, Flag, ScrollText, SlidersHorizontal, CheckCircle2, BarChart3,
 } from "lucide-react"
 import { toast } from "sonner"
 
 const TABS = [
   { value: "health", label: "Server Health", icon: Activity },
+  { value: "analytics", label: "Analytics", icon: BarChart3 },
   { value: "toggles", label: "Feature Toggles", icon: SlidersHorizontal },
   { value: "reports", label: "Reports", icon: Flag },
   { value: "audit", label: "Audit Log", icon: ScrollText },
@@ -83,6 +84,25 @@ function AdminRadioSafetyHealth() {
         </CardContent></Card>
       </div>
 
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <Card className="border-border/30"><CardContent className="p-3">
+          <div className="flex items-center gap-2 mb-1"><HardDrive className="w-4 h-4 text-primary" /><span className="text-xs text-muted-foreground">Recording Storage</span></div>
+          <p className="text-xl font-bold">{data?.storageUsedGb ?? 0} GB</p>
+          {data?.storageLimitGb ? <p className="text-[10px] text-muted-foreground">of {data.storageLimitGb} GB limit</p> : null}
+        </CardContent></Card>
+        <Card className="border-border/30"><CardContent className="p-3">
+          <div className="flex items-center gap-2 mb-1"><Activity className="w-4 h-4 text-primary" /><span className="text-xs text-muted-foreground">Bandwidth (30d, est.)</span></div>
+          <p className="text-xl font-bold">{data?.estimatedBandwidthGb30d ?? 0} GB</p>
+          {data?.bandwidthLimitGb ? <p className="text-[10px] text-muted-foreground">of {data.bandwidthLimitGb} GB/mo limit</p> : null}
+        </CardContent></Card>
+        {data?.estimatedMonthlyCost != null && (
+          <Card className="border-border/30"><CardContent className="p-3">
+            <div className="flex items-center gap-2 mb-1"><span className="text-xs text-muted-foreground">Est. Monthly Cost</span></div>
+            <p className="text-xl font-bold">{Math.round(data.estimatedMonthlyCost * 100) / 100}</p>
+          </CardContent></Card>
+        )}
+      </div>
+
       <p className="text-[11px] text-muted-foreground">{data?.bandwidthNote}</p>
     </div>
   )
@@ -95,7 +115,8 @@ const TOGGLE_KEYS: { key: string; label: string; help: string }[] = [
   { key: "radio_catchup_enabled", label: "Catch-up archive", help: "Public catch-up listing returns empty when off" },
   { key: "radio_recording_enabled", label: "Recording", help: "Whether sessions are eligible to have a recording attached" },
   { key: "radio_guest_listening_enabled", label: "Guest listening", help: "Signed-out visitors get a playable stream URL" },
-  { key: "radio_callin_enabled", label: "Listener call-in", help: "State machine only — no audio transport yet. Off by default." },
+  { key: "radio_callin_enabled", label: "Listener call-in", help: "Peer-to-peer WebRTC audio (public STUN only until a TURN relay is provisioned — see docs). Off by default." },
+  { key: "radio_chat_links_enabled", label: "Links in chat", help: "Turn off to strip any message containing a URL" },
 ]
 
 const NUMERIC_KEYS: { key: string; label: string; help: string; placeholder: string }[] = [
@@ -104,7 +125,17 @@ const NUMERIC_KEYS: { key: string; label: string; help: string; placeholder: str
   { key: "radio_reconnect_grace_seconds", label: "Reconnect grace period (seconds)", help: "How long before a dropped host shows as \"Reconnecting\"", placeholder: "120" },
   { key: "radio_reconnect_timeout_seconds", label: "Reconnect timeout (seconds)", help: "Total silence before the session auto-ends", placeholder: "600" },
   { key: "radio_terms_version", label: "Broadcaster terms version", help: "Bump this to force every RJ to re-accept terms before going live", placeholder: "1" },
+  { key: "radio_slow_mode_seconds", label: "Chat slow mode (seconds)", help: "Minimum gap between messages from the same person", placeholder: "2" },
+  { key: "radio_duplicate_message_window_seconds", label: "Duplicate message window (seconds)", help: "Blocks an identical repeat from the same person within this window", placeholder: "30" },
+  { key: "radio_recording_draft_retention_days", label: "Draft recording retention (days)", help: "Auto-deletes never-published recordings after this long", placeholder: "7" },
+  { key: "radio_recording_published_retention_days", label: "Published recording retention (days)", help: "Blank = keep forever", placeholder: "unlimited" },
+  { key: "radio_recording_storage_limit_gb", label: "Recording storage limit (GB)", help: "Blank = unlimited — alert-only, nothing auto-deletes to enforce it", placeholder: "unlimited" },
+  { key: "radio_monthly_bandwidth_limit_gb", label: "Monthly bandwidth limit (GB)", help: "Blank = unlimited — used for the capacity alert only", placeholder: "unlimited" },
+  { key: "radio_estimated_bitrate_kbps", label: "Estimated stream bitrate (kbps)", help: "Used only to compute the bandwidth/cost estimate below", placeholder: "128" },
+  { key: "radio_estimated_cost_per_gb", label: "Estimated cost per GB", help: "Your currency, admin-entered — blank disables the cost estimate", placeholder: "0" },
 ]
+
+const BLOCKED_WORDS_KEY = "radio_blocked_words"
 
 function AdminRadioSafetyToggles() {
   const utils = trpc.useUtils()
@@ -165,12 +196,123 @@ function AdminRadioSafetyToggles() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader><CardTitle className="text-base">Blocked words</CardTitle></CardHeader>
+        <CardContent className="space-y-1.5">
+          <Label className="text-[12px]">Comma-separated, case-insensitive</Label>
+          <Input
+            value={value(BLOCKED_WORDS_KEY)}
+            onChange={(e) => setValue(BLOCKED_WORDS_KEY, e.target.value)}
+            placeholder="e.g. spam, badword, another phrase"
+            className="h-9 text-[13px]"
+          />
+          <p className="text-[11px] text-muted-foreground">Any chat message or song request containing one of these is rejected.</p>
+        </CardContent>
+      </Card>
+
       <div className="flex justify-end">
         <Button onClick={() => saveMutation.mutate(pending)} disabled={!hasChanges || saveMutation.isPending}>
           {saveMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />}
           Save changes{hasChanges ? ` (${Object.keys(pending).length})` : ""}
         </Button>
       </div>
+    </div>
+  )
+}
+
+const STAT_LABELS: { key: string; label: string }[] = [
+  { key: "totalSessions", label: "Total Sessions" },
+  { key: "uniqueListeners", label: "Unique Listeners" },
+  { key: "peakConcurrentListeners", label: "Peak Concurrent" },
+  { key: "totalListeningMinutes", label: "Total Listening (min)" },
+  { key: "averageListeningMinutes", label: "Avg. Listening (min)" },
+  { key: "newFollowers", label: "New Followers" },
+  { key: "chatCount", label: "Chat Messages" },
+  { key: "uniqueChatUsers", label: "Unique Chat Users" },
+  { key: "reactionCount", label: "Reactions" },
+  { key: "requestCount", label: "Song Requests" },
+  { key: "catchupPlays", label: "Catch-up Plays" },
+  { key: "catchupUniqueListeners", label: "Catch-up Unique Listeners" },
+  { key: "catchupCompletionRatePct", label: "Catch-up Completion %" },
+]
+
+function AdminRadioSafetyAnalytics() {
+  const [range, setRange] = useState<"7" | "30" | "90">("30")
+  const [groupBy, setGroupBy] = useState<"none" | "rj" | "station">("none")
+  const from = new Date(Date.now() - Number(range) * 24 * 60 * 60 * 1000).toISOString()
+  const { data, isLoading } = trpc.admin.radioAnalytics.useQuery({ from, groupBy })
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        {(["7", "30", "90"] as const).map((r) => (
+          <Button key={r} size="sm" variant={range === r ? "default" : "outline"} onClick={() => setRange(r)} className="text-xs">Last {r}d</Button>
+        ))}
+        <span className="text-muted-foreground text-xs mx-1">Group by:</span>
+        {(["none", "rj", "station"] as const).map((g) => (
+          <Button key={g} size="sm" variant={groupBy === g ? "default" : "outline"} onClick={() => setGroupBy(g)} className="text-xs capitalize">{g === "none" ? "Nothing" : g.toUpperCase()}</Button>
+        ))}
+      </div>
+
+      {isLoading || !data ? (
+        <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 justify-center"><RefreshCw className="w-4 h-4 animate-spin" /> Loading...</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {STAT_LABELS.map((s) => (
+              <Card key={s.key} className="border-border/30"><CardContent className="p-3">
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+                <p className="text-xl font-bold">{(data.summary as any)[s.key]}</p>
+              </CardContent></Card>
+            ))}
+          </div>
+
+          {Object.keys(data.summary.deviceBreakdown).length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Device / Platform Breakdown</CardTitle></CardHeader>
+              <CardContent className="flex gap-4 flex-wrap">
+                {Object.entries(data.summary.deviceBreakdown).map(([platform, count]) => (
+                  <div key={platform} className="text-sm"><span className="font-medium capitalize">{platform}</span>: {count as number}</div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {data.groups && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">By {groupBy === "rj" ? "RJ" : "Station"}</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{groupBy === "rj" ? "RJ" : "Station"}</TableHead>
+                      <TableHead className="text-right">Sessions</TableHead>
+                      <TableHead className="text-right">Unique Listeners</TableHead>
+                      <TableHead className="text-right">Peak</TableHead>
+                      <TableHead className="text-right">Avg. Min</TableHead>
+                      <TableHead className="text-right">Chat</TableHead>
+                      <TableHead className="text-right">Catch-up %</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(data.groups as any[]).map((g) => (
+                      <TableRow key={g.key}>
+                        <TableCell className="font-medium">{g.label}</TableCell>
+                        <TableCell className="text-right">{g.totalSessions}</TableCell>
+                        <TableCell className="text-right">{g.uniqueListeners}</TableCell>
+                        <TableCell className="text-right">{g.peakConcurrentListeners}</TableCell>
+                        <TableCell className="text-right">{g.averageListeningMinutes}</TableCell>
+                        <TableCell className="text-right">{g.chatCount}</TableCell>
+                        <TableCell className="text-right">{g.catchupCompletionRatePct}%</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
     </div>
   )
 }
@@ -312,6 +454,7 @@ export default function AdminRadioSafety() {
       </Tabs>
 
       {tab === "health" && <AdminRadioSafetyHealth />}
+      {tab === "analytics" && <AdminRadioSafetyAnalytics />}
       {tab === "toggles" && <AdminRadioSafetyToggles />}
       {tab === "reports" && <AdminRadioSafetyReports />}
       {tab === "audit" && <AdminRadioSafetyAudit />}

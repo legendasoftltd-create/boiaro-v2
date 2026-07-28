@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { useRjProfile, useMyLiveSession, useBroadcastToken, useRjTerms } from "@/hooks/useLiveSession"
 import { trpc } from "@/lib/trpc"
@@ -25,6 +25,11 @@ export default function RjDashboard() {
   const [freshToken, setFreshToken] = useState<string | null>(null)
 
   const needsTerms = !!termsStatus?.needsAcceptance
+
+  useEffect(() => {
+    document.title = "RJ Dashboard — BoiAro On Air"
+    return () => { document.title = "BoiAro" }
+  }, [])
 
   const handleGenerateToken = async () => {
     try {
