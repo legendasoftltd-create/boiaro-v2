@@ -14,6 +14,7 @@ import { attachAuth } from "./middleware/auth.js";
 import { restRouter } from "./routes/rest/index.js";
 import { registerOgImageRoute } from "./routes/og-image.js";
 import { socialBotMiddleware } from "./middleware/social-bot.js";
+import { getAnalyticsInjectedHtml } from "./lib/analyticsHtml.js";
 import {
   s3Configured,
   uploadWithFallback,
@@ -270,8 +271,20 @@ registerOgImageRoute(app, frontendDist);
 app.use(socialBotMiddleware);
 
 if (process.env.NODE_ENV === "production") {
-  app.use(express.static(frontendDist));
-  app.get("*", (_req, res) => res.sendFile(path.join(frontendDist, "index.html")));
+  // index: false — index.html must fall through to the handler below so
+  // GA4/GTM tags can be injected server-side rather than served as a static file.
+  app.use(express.static(frontendDist, { index: false }));
+  app.get("*", async (_req, res) => {
+    try {
+      const html = await getAnalyticsInjectedHtml(path.join(frontendDist, "index.html"));
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache");
+      res.send(html);
+    } catch (err) {
+      console.error("[analytics-html] injection failed, serving raw index.html:", (err as Error)?.message);
+      res.sendFile(path.join(frontendDist, "index.html"));
+    }
+  });
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

@@ -52,11 +52,17 @@ function injectGtm(containerId: string) {
 }
 
 async function injectGa4(measurementId: string) {
+  // The server injects the same marker into index.html when GA4 is enabled
+  // (see server/src/lib/analyticsHtml.ts) — skip re-configuring in that case,
+  // it would otherwise double-count the initial page_view.
+  const alreadyServerRendered = !!document.querySelector(`script[data-analytics-marker="ga4-${measurementId}"]`);
   await loadScript(`https://www.googletagmanager.com/gtag/js?id=${measurementId}`, `ga4-${measurementId}`);
   window.dataLayer = window.dataLayer || [];
   window.gtag = window.gtag || function gtag(...args: unknown[]) { window.dataLayer.push(args); };
-  window.gtag("js", new Date());
-  window.gtag("config", measurementId, { send_page_view: true });
+  if (!alreadyServerRendered) {
+    window.gtag("js", new Date());
+    window.gtag("config", measurementId, { send_page_view: true });
+  }
 }
 
 /** Mounted once at the app root. Loads GA4/GTM only when the admin has enabled and configured them, then tracks SPA route changes. */
