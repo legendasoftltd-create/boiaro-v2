@@ -82,7 +82,10 @@ export default function AdminRadio() {
 
   const loadStation = async () => {
     setLoading(true)
-    const rows = await utils.admin.listRadioStations.fetch()
+    // staleTime: 0 forces a fresh fetch — loadStation also runs right after
+    // handleSave, so cached (pre-save) data would otherwise be served until
+    // the global 30s staleTime expires.
+    const rows = await utils.admin.listRadioStations.fetch(undefined, { staleTime: 0 })
 
     if (rows && rows.length > 1) {
       console.warn("[AdminRadio] Multiple radio_stations rows detected", {

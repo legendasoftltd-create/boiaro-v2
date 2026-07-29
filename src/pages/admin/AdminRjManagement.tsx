@@ -50,11 +50,14 @@ export default function AdminRjManagement() {
   const fetchAll = async () => {
     setLoading(true)
     try {
+      // staleTime: 0 forces a fresh network fetch — this runs right after
+      // approve/reject/suspend/reactivate mutations, so cached (pre-mutation)
+      // data would otherwise be served until the global 30s staleTime expires.
       const [rjData, liveData, recentData, usersResponse] = await Promise.all([
-        utils.admin.listRjProfiles.fetch(),
-        utils.admin.listLiveSessions.fetch({ status: "live", limit: 20 }),
-        utils.admin.listLiveSessions.fetch({ limit: 20 }),
-        utils.admin.listUsers.fetch({ limit: 500 }),
+        utils.admin.listRjProfiles.fetch(undefined, { staleTime: 0 }),
+        utils.admin.listLiveSessions.fetch({ status: "live", limit: 20 }, { staleTime: 0 }),
+        utils.admin.listLiveSessions.fetch({ limit: 20 }, { staleTime: 0 }),
+        utils.admin.listUsers.fetch({ limit: 500 }, { staleTime: 0 }),
       ])
 
       const users = usersResponse?.users ?? []
