@@ -52,6 +52,8 @@ function validateStreamUrl(url: string): { valid: boolean; warning?: string } {
 
 export default function AdminRadio() {
   const utils = trpc.useUtils()
+  const upsertRadioStationMutation = trpc.admin.upsertRadioStation.useMutation()
+  const setRadioStationActiveMutation = trpc.admin.setRadioStationActive.useMutation()
   const [station, setStation] = useState<RadioStation | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -150,7 +152,7 @@ export default function AdminRadio() {
     let savedStation: RadioStation | null = null
     if (station) {
       try {
-        savedStation = await utils.admin.upsertRadioStation.fetch({
+        savedStation = await upsertRadioStationMutation.mutateAsync({
           id: station.id,
           name: payload.name,
           stream_url: payload.stream_url,
@@ -164,7 +166,7 @@ export default function AdminRadio() {
       }
     } else {
       try {
-        savedStation = await utils.admin.upsertRadioStation.fetch({
+        savedStation = await upsertRadioStationMutation.mutateAsync({
           name: payload.name,
           stream_url: payload.stream_url,
           artwork_url: payload.artwork_url,
@@ -210,7 +212,7 @@ export default function AdminRadio() {
       let updatedRow: RadioStation | null = null
       let error: any = null
       try {
-        updatedRow = await utils.admin.setRadioStationActive.fetch({ id: station.id, is_active: active }) as any
+        updatedRow = await setRadioStationActiveMutation.mutateAsync({ id: station.id, is_active: active }) as any
       } catch (e: any) {
         error = e
       }

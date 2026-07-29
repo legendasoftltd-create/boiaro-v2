@@ -41,6 +41,12 @@ export default function AdminRjManagement() {
   const [recentSessions, setRecentSessions] = useState<LiveSessionRow[]>([])
   const [loading, setLoading] = useState(true)
 
+  const approveRjMutation = trpc.admin.approveRj.useMutation()
+  const rejectRjMutation = trpc.admin.rejectRj.useMutation()
+  const suspendRjMutation = trpc.admin.suspendRj.useMutation()
+  const reactivateRjMutation = trpc.admin.reactivateRj.useMutation()
+  const forceEndLiveSessionMutation = trpc.admin.forceEndLiveSession.useMutation()
+
   const fetchAll = async () => {
     setLoading(true)
     try {
@@ -84,9 +90,9 @@ export default function AdminRjManagement() {
   const toggleApproval = async (rj: RjRow) => {
     try {
       if (rj.is_approved) {
-        await utils.admin.rejectRj.fetch({ id: rj.id })
+        await rejectRjMutation.mutateAsync({ id: rj.id })
       } else {
-        await utils.admin.approveRj.fetch({ id: rj.id })
+        await approveRjMutation.mutateAsync({ id: rj.id })
       }
     } catch {
       toast.error("Failed to update")
@@ -99,9 +105,9 @@ export default function AdminRjManagement() {
   const toggleActive = async (rj: RjRow) => {
     try {
       if (rj.is_active) {
-        await utils.admin.suspendRj.fetch({ id: rj.id })
+        await suspendRjMutation.mutateAsync({ id: rj.id })
       } else {
-        await utils.admin.reactivateRj.fetch({ id: rj.id })
+        await reactivateRjMutation.mutateAsync({ id: rj.id })
       }
     } catch {
       toast.error("Failed to update")
@@ -113,7 +119,7 @@ export default function AdminRjManagement() {
 
   const forceEndSession = async (session: LiveSessionRow) => {
     try {
-      await utils.admin.forceEndLiveSession.fetch({ sessionId: session.id })
+      await forceEndLiveSessionMutation.mutateAsync({ sessionId: session.id })
     } catch {
       toast.error("Failed to end session")
       return
@@ -318,7 +324,7 @@ export default function AdminRjManagement() {
 }
 
 function CreateRjDialog({ onCreated }: { onCreated: () => void }) {
-  const utils = trpc.useUtils()
+  const createRjMutation = trpc.admin.createRjProfileFromDisplayName.useMutation()
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [stageName, setStageName] = useState("")
@@ -333,7 +339,7 @@ function CreateRjDialog({ onCreated }: { onCreated: () => void }) {
     setCreating(true)
 
     try {
-      await utils.admin.createRjProfileFromDisplayName.fetch({
+      await createRjMutation.mutateAsync({
         displayName: email.trim(),
         stageName: stageName.trim(),
       })
