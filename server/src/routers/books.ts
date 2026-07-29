@@ -331,6 +331,18 @@ export const booksRouter = router({
     return map;
   }),
 
+  // Public analytics settings — safe subset of platform_settings for frontend consumers
+  analyticsSettings: publicProcedure.query(async () => {
+    const keys = [
+      "analytics_ga4_enabled", "analytics_ga4_measurement_id",
+      "analytics_gtm_enabled", "analytics_gtm_container_id",
+    ];
+    const rows = await prisma.platformSetting.findMany({ where: { key: { in: keys } } });
+    const map: Record<string, string> = {};
+    rows.forEach(r => { map[r.key] = r.value; });
+    return map;
+  }),
+
   // Active placement definitions — used to gate ad display by placement
   activePlacements: publicProcedure.query(() =>
     prisma.adPlacement.findMany({

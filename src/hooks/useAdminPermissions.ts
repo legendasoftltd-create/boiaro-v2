@@ -69,6 +69,7 @@ export const MODULE_MAP: Record<string, string> = {
   "/admin/ad-banners":          "settings",
   "/admin/ad-campaigns":        "settings",
   "/admin/ad-settings":         "settings",
+  "/admin/analytics-settings":  "settings",
   "/admin/referrals":           "settings",
   "/admin/gamification":        "settings",
   "/admin/drm-settings":        "settings",

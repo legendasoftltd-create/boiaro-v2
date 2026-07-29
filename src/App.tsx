@@ -21,6 +21,7 @@ const RoleApplicationSubmitter = lazy(() => import("@/components/RoleApplication
 const PresenceTracker = lazy(() => import("@/components/PresenceTracker").then(m => ({ default: m.PresenceTracker })));
 const PushNotificationManager = lazy(() => import("@/components/PushNotificationManager").then(m => ({ default: m.PushNotificationManager })));
 const BandwidthReporter = lazy(() => import("@/components/BandwidthReporter").then(m => ({ default: m.BandwidthReporter })));
+const AnalyticsScripts = lazy(() => import("@/components/AnalyticsScripts").then(m => ({ default: m.AnalyticsScripts })));
 const DailyRewardDialog = lazy(() => import("@/components/DailyRewardDialog").then(m => ({ default: m.DailyRewardDialog })));
 
 // Critical path — eagerly loaded
@@ -114,6 +115,7 @@ const AdminAdPlacements = lazy(() => import("./pages/admin/AdminAdPlacements.tsx
 const AdminAdBanners = lazy(() => import("./pages/admin/AdminAdBanners.tsx"));
 const AdminAdCampaigns = lazy(() => import("./pages/admin/AdminAdCampaigns.tsx"));
 const AdminAdSettings = lazy(() => import("./pages/admin/AdminAdSettings.tsx"));
+const AdminAnalyticsSettings = lazy(() => import("./pages/admin/AdminAnalyticsSettings.tsx"));
 const AdminAdReports = lazy(() => import("./pages/admin/AdminAdReports.tsx"));
 const AdminRecommendations = lazy(() => import("./pages/admin/AdminRecommendations.tsx"));
 const AdminDrmSettings = lazy(() => import("./pages/admin/AdminDrmSettings.tsx"));
@@ -222,6 +224,7 @@ const App = () => {
               <Suspense fallback={null}><PresenceTracker /></Suspense>
               <Suspense fallback={null}><PushNotificationManager /></Suspense>
               <Suspense fallback={null}><BandwidthReporter /></Suspense>
+              <Suspense fallback={null}><AnalyticsScripts /></Suspense>
               <Suspense fallback={null}><DailyRewardDialog /></Suspense>
               <Suspense fallback={<PageLoader />}>
               <NavigationErrorBoundary>
@@ -324,6 +327,7 @@ const App = () => {
                   <Route path="ad-banners" element={<AdminAdBanners />} />
                   <Route path="ad-campaigns" element={<AdminAdCampaigns />} />
                   <Route path="ad-settings" element={<AdminAdSettings />} />
+                  <Route path="analytics-settings" element={<AdminAnalyticsSettings />} />
                   <Route path="ad-reports" element={<AdminAdReports />} />
                   <Route path="recommendations" element={<AdminRecommendations />} />
                   <Route path="drm-settings" element={<AdminDrmSettings />} />

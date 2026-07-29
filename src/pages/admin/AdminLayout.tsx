@@ -109,6 +109,7 @@ const navGroups: NavGroup[] = [
       { label: "Ad Campaigns", path: "/admin/ad-campaigns", icon: Megaphone },
       { label: "Ad Settings", path: "/admin/ad-settings", icon: Settings },
       { label: "Ad Reports", path: "/admin/ad-reports", icon: BarChart3 },
+      { label: "Analytics Settings", path: "/admin/analytics-settings", icon: BarChart3 },
       { label: "Referrals", path: "/admin/referrals", icon: Gift },
       { label: "Gamification", path: "/admin/gamification", icon: Sparkles },
     ],
