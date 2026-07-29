@@ -29,7 +29,7 @@ export function LiveRadioSection() {
   const isRjLive = !!liveSession
 
   return (
-    <section className="section-container">
+    <section className="section-container" data-section="live_radio">
       <div className="container mx-auto px-4 lg:px-8">
         <div className="section-header flex-wrap gap-2">
           <div className="flex items-center gap-3">

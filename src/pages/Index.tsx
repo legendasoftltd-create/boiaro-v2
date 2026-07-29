@@ -1,4 +1,5 @@
-import { lazy, Suspense, useMemo, memo } from "react"
+import { lazy, Suspense, useEffect, useMemo, memo } from "react"
+import { useLocation } from "react-router-dom"
 import { ContentFilterProvider } from "@/contexts/ContentFilterContext"
 import { Navbar } from "@/components/Navbar"
 import { Hero } from "@/components/Hero"
@@ -102,6 +103,7 @@ LazySection.displayName = "LazySection"
 
 const Index = () => {
   const { data: sections } = useHomepageSections()
+  const { hash } = useLocation()
 
   const orderedKeys = useMemo(() => {
     if (!sections || sections.length === 0) return FALLBACK_KEYS
@@ -110,6 +112,26 @@ const Index = () => {
       .filter((k): k is string => REGISTRY_KEYS.has(k))
     return known.length > 0 ? known : FALLBACK_KEYS
   }, [sections])
+
+  // Sections are lazy-loaded, so the target may not be in the DOM yet when
+  // navigating here via a #section-key hash (e.g. the navbar radio icon) —
+  // poll briefly instead of a single scrollIntoView attempt.
+  useEffect(() => {
+    const key = hash.replace(/^#/, "")
+    if (!key) return
+    let attempts = 0
+    const id = window.setInterval(() => {
+      attempts += 1
+      const el = document.querySelector(`[data-section='${key}']`)
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" })
+        window.clearInterval(id)
+      } else if (attempts > 20) {
+        window.clearInterval(id)
+      }
+    }, 150)
+    return () => window.clearInterval(id)
+  }, [hash])
 
   return (
     <ContentFilterProvider>
