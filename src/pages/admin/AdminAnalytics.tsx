@@ -229,7 +229,7 @@ export default function AdminAnalytics() {
         {[
           { label: "Verified Order Revenue", value: `৳${totalRevenue.toLocaleString()}`, icon: DollarSign, color: "text-green-400" },
           { label: "Total Orders", value: totalOrdersCount, icon: ShoppingCart, color: "text-blue-400" },
-          { label: "Active Users", value: uniqueUsers, icon: Users, color: "text-purple-400" },
+          { label: "Active Buyers", value: uniqueUsers, icon: Users, color: "text-purple-400" },
           { label: "Books Sold", value: totalBooksSold, icon: BookOpen, color: "text-primary" },
         ].map(c => (
           <Card key={c.label}>

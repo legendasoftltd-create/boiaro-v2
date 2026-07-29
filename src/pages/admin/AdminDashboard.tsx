@@ -297,7 +297,7 @@ export default function AdminDashboard() {
         {/* === SECTION 2: User & Conversion KPIs === */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-stretch">
           <StaggeredItem index={4}>
-            <KPICard icon={Users} label="Active Users" value={stats.totalUsers} tooltip="Total registered users" color="text-purple-400" bgColor="bg-purple-500/10" onClick={() => navigate("/admin/users")} />
+            <KPICard icon={Users} label="Total Users" value={stats.totalUsers} tooltip="Total registered users (lifetime) — see User Analytics for daily active users" color="text-purple-400" bgColor="bg-purple-500/10" onClick={() => navigate("/admin/users")} />
           </StaggeredItem>
           <StaggeredItem index={5}>
             <KPICard icon={UserCheck} label="Paid Users" value={stats.paidUsers} tooltip="Users with at least one verified paid or settled-COD order" color="text-emerald-400" bgColor="bg-emerald-500/10" onClick={() => navigate("/admin/users")} />
