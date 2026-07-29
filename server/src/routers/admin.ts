@@ -18,6 +18,7 @@ import { logRadioAction } from "../lib/radioAudit.js";
 import { stopRecording } from "../lib/liveRecorder.js";
 import { notifyFollowersOfScheduleCancelled, notifyFollowersOfScheduleRescheduled } from "../lib/radioNotify.js";
 import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSettingNumber, type RadioSettingKey } from "../lib/radioSettings.js";
+import { getGaRealtimeReport } from "../lib/gaRealtime.js";
 import os from "os";
 import fs from "fs";
 
@@ -5725,6 +5726,10 @@ export const adminRouter = router({
       );
       return { success: true };
     }),
+
+  // GA4 Realtime report — active users right now, pulled live from the
+  // Google Analytics Data API using the admin-supplied service account.
+  getGaRealtimeReport: adminProcedure.query(() => getGaRealtimeReport()),
 
   // ── Book Titles (for select dropdowns) ───────────────────────────────────
   listBookTitles: adminProcedure.query(() =>

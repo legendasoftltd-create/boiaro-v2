@@ -35,6 +35,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1041.0",
     "@aws-sdk/s3-request-presigner": "^3.1041.0",
+    "@google-analytics/data": "^6.1.0",
     "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "^6.19.3",
     "@trpc/server": "^11.0.0",
