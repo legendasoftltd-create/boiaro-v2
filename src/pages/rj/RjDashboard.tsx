@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { useRjProfile, useMyLiveSession, useBroadcastToken, useRjTerms } from "@/hooks/useLiveSession"
+import { useSiteSettings } from "@/hooks/useSiteSettings"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck } from "lucide-react"
+import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck, Antenna } from "lucide-react"
 import { toast } from "sonner"
 
 export default function RjDashboard() {
@@ -15,6 +16,12 @@ export default function RjDashboard() {
   const { session: liveSession, goLive, endLive } = useMyLiveSession()
   const { status: tokenStatus, regenerate: regenerateToken, revoke: revokeToken, isRegenerating } = useBroadcastToken()
   const { status: termsStatus, accept: acceptTerms, isAccepting } = useRjTerms()
+  const { get: getSetting, isLoading: settingsLoading } = useSiteSettings()
+
+  const broadcastHost = getSetting("radio_broadcast_host")
+  const broadcastPort = getSetting("radio_broadcast_port")
+  const broadcastMount = getSetting("radio_broadcast_mount")
+  const publicStreamUrl = getSetting("radio_public_stream_url")
 
   const [streamUrl, setStreamUrl] = useState("")
   const [showTitle, setShowTitle] = useState("")
@@ -30,6 +37,10 @@ export default function RjDashboard() {
     document.title = "RJ Dashboard — BoiAro On Air"
     return () => { document.title = "BoiAro" }
   }, [])
+
+  useEffect(() => {
+    if (!streamUrl && publicStreamUrl) setStreamUrl(publicStreamUrl)
+  }, [publicStreamUrl])
 
   const handleGenerateToken = async () => {
     try {
@@ -121,6 +132,32 @@ export default function RjDashboard() {
               {isAccepting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
               I Accept the Broadcaster Terms
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Broadcast setup — where to point your encoder */}
+      {!settingsLoading && broadcastHost && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Antenna className="w-4 h-4" /> Broadcast Setup
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Configure BUTT, Mixxx, or any Icecast-compatible encoder with these details, then start
+              broadcasting there before clicking Go Live below.
+            </p>
+            <div className="text-xs bg-muted/50 rounded-lg p-3 space-y-1 font-mono">
+              <p><span className="text-muted-foreground font-sans">Host:</span> {broadcastHost}</p>
+              <p><span className="text-muted-foreground font-sans">Port:</span> {broadcastPort}</p>
+              <p><span className="text-muted-foreground font-sans">Mount:</span> {broadcastMount}</p>
+              <p><span className="text-muted-foreground font-sans">Protocol:</span> Icecast2</p>
+            </div>
+            <p className="text-xs text-amber-400 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3 shrink-0" /> Ask an admin for your source password — not your BoiAro login.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -229,7 +266,9 @@ export default function RjDashboard() {
                   disabled={!profile?.is_approved}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Enter your Icecast, Shoutcast, or any audio stream URL
+                  {publicStreamUrl
+                    ? "Pre-filled with the platform's public listener URL — only change this if you're broadcasting to a different stream."
+                    : "Enter your Icecast, Shoutcast, or any audio stream URL"}
                 </p>
               </div>
 

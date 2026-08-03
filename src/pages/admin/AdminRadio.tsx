@@ -6,8 +6,93 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Radio, Save, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { Radio, Save, Loader2, AlertTriangle, CheckCircle2, Antenna } from "lucide-react"
 import { toast } from "sonner"
+import { useSiteSettings } from "@/hooks/useSiteSettings"
+
+const BROADCAST_SETTING_KEYS = [
+  "radio_broadcast_host",
+  "radio_broadcast_port",
+  "radio_broadcast_mount",
+  "radio_public_stream_url",
+] as const
+
+function BroadcastSetupCard() {
+  const { get, isLoading, refetch } = useSiteSettings()
+  const updateMutation = trpc.admin.updateSiteSetting.useMutation()
+  const [saving, setSaving] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    radio_broadcast_host: "",
+    radio_broadcast_port: "",
+    radio_broadcast_mount: "",
+    radio_public_stream_url: "",
+  })
+
+  useEffect(() => {
+    if (isLoading) return
+    setForm({
+      radio_broadcast_host: get("radio_broadcast_host"),
+      radio_broadcast_port: get("radio_broadcast_port"),
+      radio_broadcast_mount: get("radio_broadcast_mount"),
+      radio_public_stream_url: get("radio_public_stream_url"),
+    })
+  }, [isLoading])
+
+  const handleSaveField = async (key: (typeof BROADCAST_SETTING_KEYS)[number]) => {
+    setSaving(key)
+    try {
+      await updateMutation.mutateAsync({ key, value: form[key].trim() })
+      await refetch()
+      toast.success("Saved")
+    } catch (e: any) {
+      toast.error("Failed to save: " + (e.message || "unknown error"))
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Antenna className="w-5 h-5 text-red-400" />
+          Broadcast Setup (for RJs)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-xs text-muted-foreground">
+          Non-secret Icecast connection details shown to RJs on their dashboard so they know where to
+          point BUTT/Mixxx. The Icecast source password is NOT stored here — hand it out to approved
+          RJs yourself, out of band.
+        </p>
+        {([
+          ["radio_broadcast_host", "Icecast Host"],
+          ["radio_broadcast_port", "Icecast Port"],
+          ["radio_broadcast_mount", "Mount Point"],
+          ["radio_public_stream_url", "Public Listener Stream URL"],
+        ] as const).map(([key, label]) => (
+          <div key={key} className="space-y-2">
+            <Label>{label}</Label>
+            <div className="flex gap-2">
+              <Input
+                value={form[key]}
+                onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleSaveField(key)}
+                disabled={saving === key}
+              >
+                {saving === key ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
 
 interface RadioStation {
   id: string
@@ -389,6 +474,8 @@ export default function AdminRadio() {
           </CardContent>
         </Card>
       )}
+
+      <BroadcastSetupCard />
     </div>
   )
 }
