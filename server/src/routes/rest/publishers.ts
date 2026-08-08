@@ -9,7 +9,9 @@ export const publishersRestRouter = Router();
 
 publishersRestRouter.get("/", async (req: AuthenticatedRequest, res) => {
   try {
-    const result = await getAllPublishers(req.auth?.userId);
+    const rawSearch = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+    const search = typeof rawSearch === "string" && rawSearch.trim() ? rawSearch.trim() : undefined;
+    const result = await getAllPublishers(req.auth?.userId, search);
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);

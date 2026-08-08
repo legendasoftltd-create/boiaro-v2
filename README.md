@@ -1,5 +1,24 @@
 # BoiAro v2 Setup
 
+## System Dependencies (Required on the server, not just the app)
+Ubuntu/Debian package names — install these on any box that runs `server/`
+(dev or production) **before** relying on image generation:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y fonts-noto-core fonts-noto-extra fonts-noto-color-emoji
+sudo fc-cache -f
+```
+
+Without these, `server/src/lib/shareCard.ts` (used by `GET /api/v1/share/badge/:id.png`
+and `GET /api/v1/share/weekly-report.png`) renders Bengali text as broken/tofu
+glyphs — it uses `sharp`/librsvg under the hood, which falls back to whatever
+fonts fontconfig can find on the host, and a bare Ubuntu box only ships DejaVu
+(Latin-only) by default. `fonts-noto-extra` carries Noto Sans/Serif Bengali;
+`fonts-noto-color-emoji` covers the emoji glyphs used in badge cards. Restart
+the API process (`pm2 restart boiaro-api` in production) after installing so
+it's not holding a stale fontconfig cache.
+
 ## Fresh Setup (Required)
 Run from project root:
 

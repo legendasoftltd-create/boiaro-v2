@@ -69,7 +69,7 @@ export async function requestWebPushToken(): Promise<string | null> {
 
 /** Subscribe to foreground (tab open & focused) push messages. Returns an unsubscribe fn. */
 export async function onForegroundPush(
-  callback: (payload: { title?: string; body?: string; link?: string }) => void
+  callback: (payload: { title?: string; body?: string; link?: string; image?: string }) => void
 ): Promise<() => void> {
   if (!cachedApp) return () => {};
   const messaging = getMessaging(cachedApp);
@@ -78,6 +78,7 @@ export async function onForegroundPush(
       title: payload.notification?.title,
       body: payload.notification?.body,
       link: payload.data?.link,
+      image: payload.notification?.image,
     });
   });
 }

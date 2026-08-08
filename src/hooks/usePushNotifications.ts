@@ -77,7 +77,10 @@ export function usePushNotifications() {
       utils.notifications.unreadCount.invalidate();
       if (payload.title) {
         // Lightweight native browser notification while the tab is focused.
-        new Notification(payload.title, { body: payload.body });
+        new Notification(payload.title, {
+          body: payload.body,
+          ...(payload.image ? { image: payload.image } : {}),
+        });
       }
     }).then((unsub) => {
       unsubscribe = unsub;

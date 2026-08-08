@@ -1,10 +1,13 @@
 import { prisma } from "../lib/prisma.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
 
-export const getAllPublishers = async (userId?: string | null) => {
+export const getAllPublishers = async (userId?: string | null, search?: string) => {
   const publishers = await prisma.publisher.findMany({
     where: {
       status: "active",
+      ...(search
+        ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] }
+        : {}),
     },
     orderBy: [
       {

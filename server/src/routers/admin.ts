@@ -2266,6 +2266,7 @@ export const adminRouter = router({
         targetUserId: z.string().nullable().optional(),
         priority: z.string().default("normal"),
         link: z.string().nullable().optional(),
+        imageUrl: z.string().nullable().optional(),
         channel: z.string().default("in_app"),
         scheduledAt: z.string().nullable().optional(),
       })
@@ -2280,6 +2281,7 @@ export const adminRouter = router({
           target_user_id: input.audience === "specific" ? input.targetUserId ?? null : null,
           priority: input.priority,
           link: input.link ?? null,
+          image_url: input.imageUrl ?? null,
           channel: input.channel,
           scheduled_at: input.scheduledAt ? new Date(input.scheduledAt) : null,
           created_by: ctx.userId,
@@ -2299,6 +2301,7 @@ export const adminRouter = router({
         targetUserId: z.string().nullable().optional(),
         priority: z.string().default("normal"),
         link: z.string().nullable().optional(),
+        imageUrl: z.string().nullable().optional(),
         channel: z.string().default("in_app"),
         scheduledAt: z.string().nullable().optional(),
       })
@@ -2314,6 +2317,7 @@ export const adminRouter = router({
           target_user_id: input.audience === "specific" ? input.targetUserId ?? null : null,
           priority: input.priority,
           link: input.link ?? null,
+          image_url: input.imageUrl ?? null,
           channel: input.channel,
           scheduled_at: input.scheduledAt ? new Date(input.scheduledAt) : null,
           status: input.scheduledAt ? "scheduled" : "draft",
@@ -2409,6 +2413,7 @@ export const adminRouter = router({
         channel: z.string().default("in_app"),
         ctaText: z.string().nullable().optional(),
         ctaLink: z.string().nullable().optional(),
+        imageUrl: z.string().nullable().optional(),
       })
     )
     .mutation(({ input }) =>
@@ -2421,6 +2426,7 @@ export const adminRouter = router({
           channel: input.channel,
           cta_text: input.ctaText ?? null,
           cta_link: input.ctaLink ?? null,
+          image_url: input.imageUrl ?? null,
         },
       })
     ),
@@ -2436,6 +2442,7 @@ export const adminRouter = router({
         channel: z.string().default("in_app"),
         ctaText: z.string().nullable().optional(),
         ctaLink: z.string().nullable().optional(),
+        imageUrl: z.string().nullable().optional(),
       })
     )
     .mutation(({ input }) =>
@@ -2449,6 +2456,7 @@ export const adminRouter = router({
           channel: input.channel,
           cta_text: input.ctaText ?? null,
           cta_link: input.ctaLink ?? null,
+          image_url: input.imageUrl ?? null,
         },
       })
     ),

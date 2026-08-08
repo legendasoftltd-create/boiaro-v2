@@ -32,10 +32,12 @@ async function init() {
       const title = payload.notification?.title || "BoiAro";
       const body = payload.notification?.body || "";
       const link = payload.data?.link || "/";
+      const image = payload.notification?.image;
       self.registration.showNotification(title, {
         body,
         icon: "/favicon-64.png",
         badge: "/favicon-32.png",
+        ...(image ? { image } : {}),
         data: { link },
       });
     });

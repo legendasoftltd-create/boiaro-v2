@@ -15,13 +15,14 @@ import { Bell, Plus, Send, Search, Trash2, Edit, Eye, Clock, ShoppingCart, Credi
 interface Notification {
   id: string; title: string; message: string; type: string; audience: string;
   target_user_id: string | null; priority: string; status: string; link: string | null;
+  image_url: string | null;
   channel: string; scheduled_at: string | null; created_at: string; sent_at: string | null;
   created_by: string | null;
 }
 
 interface Template {
   id: string; name: string; title: string; message: string; type: string;
-  channel: string; cta_text: string | null; cta_link: string | null; status: string;
+  channel: string; cta_text: string | null; cta_link: string | null; image_url: string | null; status: string;
   created_at: string;
 }
 
@@ -69,8 +70,8 @@ export default function AdminNotifications() {
   const [tab, setTab] = useState("all");
   const [tplDialog, setTplDialog] = useState(false);
   const [editingTpl, setEditingTpl] = useState<Template | null>(null);
-  const [tplForm, setTplForm] = useState({ name: "", title: "", message: "", type: "system", channel: "in_app", cta_text: "", cta_link: "" });
-  const [form, setForm] = useState({ title: "", message: "", type: "system", audience: "all", target_user_id: "", priority: "normal", link: "", channel: "in_app", scheduled_at: "" });
+  const [tplForm, setTplForm] = useState({ name: "", title: "", message: "", type: "system", channel: "in_app", cta_text: "", cta_link: "", image_url: "" });
+  const [form, setForm] = useState({ title: "", message: "", type: "system", audience: "all", target_user_id: "", priority: "normal", link: "", image_url: "", channel: "in_app", scheduled_at: "" });
 
   const { data: notificationsRaw = [], isLoading: loading } = trpc.admin.listNotifications.useQuery();
   const { data: templatesRaw = [] } = trpc.admin.listNotificationTemplates.useQuery();
@@ -84,15 +85,15 @@ export default function AdminNotifications() {
   const updateTemplateMutation = trpc.admin.updateNotificationTemplate.useMutation();
   const deleteTemplateMutation = trpc.admin.deleteNotificationTemplate.useMutation();
 
-  const resetForm = () => { setForm({ title: "", message: "", type: "system", audience: "all", target_user_id: "", priority: "normal", link: "", channel: "in_app", scheduled_at: "" }); setEditing(null); };
+  const resetForm = () => { setForm({ title: "", message: "", type: "system", audience: "all", target_user_id: "", priority: "normal", link: "", image_url: "", channel: "in_app", scheduled_at: "" }); setEditing(null); };
   const openCreate = () => { resetForm(); setDialogOpen(true); };
   const openEdit = (n: Notification) => {
     setEditing(n);
-    setForm({ title: n.title, message: n.message, type: n.type, audience: n.audience, target_user_id: n.target_user_id || "", priority: n.priority, link: n.link || "", channel: n.channel || "in_app", scheduled_at: n.scheduled_at ? n.scheduled_at.slice(0, 16) : "" });
+    setForm({ title: n.title, message: n.message, type: n.type, audience: n.audience, target_user_id: n.target_user_id || "", priority: n.priority, link: n.link || "", image_url: n.image_url || "", channel: n.channel || "in_app", scheduled_at: n.scheduled_at ? n.scheduled_at.slice(0, 16) : "" });
     setDialogOpen(true);
   };
   const useTemplate = (t: Template) => {
-    setForm({ title: t.title, message: t.message, type: t.type, audience: "all", target_user_id: "", priority: "normal", link: t.cta_link || "", channel: t.channel, scheduled_at: "" });
+    setForm({ title: t.title, message: t.message, type: t.type, audience: "all", target_user_id: "", priority: "normal", link: t.cta_link || "", image_url: t.image_url || "", channel: t.channel, scheduled_at: "" });
     setDialogOpen(true); setEditing(null);
   };
 
@@ -105,6 +106,7 @@ export default function AdminNotifications() {
       audience: form.audience,
       priority: form.priority,
       link: form.link || null,
+      imageUrl: form.image_url || null,
       channel: form.channel,
       scheduledAt: form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null,
       targetUserId: form.audience === "specific" ? form.target_user_id || null : null,
@@ -144,8 +146,8 @@ export default function AdminNotifications() {
     await utils.admin.listNotifications.invalidate();
   };
 
-  const openCreateTpl = () => { setTplForm({ name: "", title: "", message: "", type: "system", channel: "in_app", cta_text: "", cta_link: "" }); setEditingTpl(null); setTplDialog(true); };
-  const openEditTpl = (t: Template) => { setEditingTpl(t); setTplForm({ name: t.name, title: t.title, message: t.message, type: t.type, channel: t.channel, cta_text: t.cta_text || "", cta_link: t.cta_link || "" }); setTplDialog(true); };
+  const openCreateTpl = () => { setTplForm({ name: "", title: "", message: "", type: "system", channel: "in_app", cta_text: "", cta_link: "", image_url: "" }); setEditingTpl(null); setTplDialog(true); };
+  const openEditTpl = (t: Template) => { setEditingTpl(t); setTplForm({ name: t.name, title: t.title, message: t.message, type: t.type, channel: t.channel, cta_text: t.cta_text || "", cta_link: t.cta_link || "", image_url: t.image_url || "" }); setTplDialog(true); };
   const saveTpl = async () => {
     if (!tplForm.name || !tplForm.title) return toast.error("Name and title are required");
     const payload = {
@@ -156,6 +158,7 @@ export default function AdminNotifications() {
       channel: tplForm.channel,
       ctaText: tplForm.cta_text || null,
       ctaLink: tplForm.cta_link || null,
+      imageUrl: tplForm.image_url || null,
     };
     if (editingTpl) {
       await updateTemplateMutation.mutateAsync({ id: editingTpl.id, ...payload });
@@ -304,6 +307,9 @@ export default function AdminNotifications() {
             {templates.map((t) => (
               <Card key={t.id} className="border-border/30">
                 <CardContent className="p-4 space-y-3">
+                  {t.image_url && (
+                    <img src={t.image_url} alt="" className="w-full h-20 rounded-md object-cover border border-border/30" />
+                  )}
                   <div className="flex items-start justify-between">
                     <div><p className="font-medium text-sm">{t.name}</p><p className="text-[12px] text-muted-foreground">{t.title}</p></div>
                     <div className="flex gap-1">
@@ -344,6 +350,19 @@ export default function AdminNotifications() {
             <div><label className="text-sm font-medium mb-1 block">Audience</label><Select value={form.audience} onValueChange={(v) => setForm({ ...form, audience: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{AUDIENCES.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent></Select></div>
             {form.audience === "specific" && <div><label className="text-sm font-medium mb-1 block">User ID</label><Input value={form.target_user_id} onChange={(e) => setForm({ ...form, target_user_id: e.target.value })} placeholder="UUID" /></div>}
             <div><label className="text-sm font-medium mb-1 block">Link (optional)</label><Input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="/orders, /dashboard" /></div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Image URL (optional)</label>
+              <Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://example.com/banner.jpg" />
+              {form.image_url && (
+                <img
+                  src={form.image_url}
+                  alt="Notification preview"
+                  className="mt-2 h-24 w-full rounded-md object-cover border border-border/30"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  onLoad={(e) => { (e.target as HTMLImageElement).style.display = "block"; }}
+                />
+              )}
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button className="btn-gold" onClick={saveNotification}>{editing ? "Update" : "Create"}</Button>
@@ -368,6 +387,19 @@ export default function AdminNotifications() {
               <div><label className="text-sm font-medium mb-1 block">CTA Text</label><Input value={tplForm.cta_text} onChange={(e) => setTplForm({ ...tplForm, cta_text: e.target.value })} placeholder="View Now" /></div>
               <div><label className="text-sm font-medium mb-1 block">CTA Link</label><Input value={tplForm.cta_link} onChange={(e) => setTplForm({ ...tplForm, cta_link: e.target.value })} placeholder="/orders" /></div>
             </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Image URL (optional)</label>
+              <Input value={tplForm.image_url} onChange={(e) => setTplForm({ ...tplForm, image_url: e.target.value })} placeholder="https://example.com/banner.jpg" />
+              {tplForm.image_url && (
+                <img
+                  src={tplForm.image_url}
+                  alt="Template preview"
+                  className="mt-2 h-24 w-full rounded-md object-cover border border-border/30"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  onLoad={(e) => { (e.target as HTMLImageElement).style.display = "block"; }}
+                />
+              )}
+            </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setTplDialog(false)}>Cancel</Button>
               <Button className="btn-gold" onClick={saveTpl}>{editingTpl ? "Update" : "Create"}</Button>
@@ -382,6 +414,9 @@ export default function AdminNotifications() {
           <DialogHeader><DialogTitle className="font-serif">{viewDialog?.title}</DialogTitle></DialogHeader>
           {viewDialog && (
             <div className="space-y-3">
+              {viewDialog.image_url && (
+                <img src={viewDialog.image_url} alt="" className="w-full h-32 rounded-md object-cover border border-border/30" />
+              )}
               <p className="text-sm">{viewDialog.message}</p>
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div><span className="text-muted-foreground">Type:</span> {TYPES.find((t) => t.value === viewDialog.type)?.label}</div>
