@@ -8,6 +8,7 @@ import { maybeRecordRead } from "../lib/readTracking.js";
 import { checkAndAwardBadges, awardPoints, bumpGoalProgress, bumpGoalMinutes, POINTS } from "../services/gamification.service.js";
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import { getCreatorBookIds } from "../lib/creatorBooks.js";
+import { ensureReferralCode } from "../lib/referralCode.js";
 
 export const profilesRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
@@ -590,10 +591,7 @@ export const profilesRouter = router({
     }),
 
   referralInfo: protectedProcedure.query(async ({ ctx }) => {
-    const profile = await prisma.profile.findUnique({
-      where: { user_id: ctx.userId },
-      select: { referral_code: true },
-    });
+    const referralCode = await ensureReferralCode(ctx.userId!);
     const referrals = await prisma.referral.findMany({
       where: { referrer_id: ctx.userId },
       orderBy: { created_at: "desc" },
@@ -602,7 +600,7 @@ export const profilesRouter = router({
       .filter(r => r.reward_status === "paid")
       .reduce((sum, r) => sum + r.reward_amount, 0);
     return {
-      referral_code: profile?.referral_code || null,
+      referral_code: referralCode,
       total_referrals: referrals.length,
       total_earned: totalEarned,
       pending_referrals: referrals.filter(r => r.status === "pending").length,

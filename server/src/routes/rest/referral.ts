@@ -2,6 +2,7 @@ import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
 import { requireAuth, AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
+import { ensureReferralCode } from "../../lib/referralCode.js";
 
 export const referralRestRouter = Router();
 
@@ -10,8 +11,9 @@ export const referralRestRouter = Router();
 referralRestRouter.get("/info", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.auth.userId!;
-    const [profile, referrals, rewardSettings] = await Promise.all([
-      prisma.profile.findUnique({ where: { user_id: userId }, select: { referral_code: true, referred_by: true } }),
+    const [referralCode, profile, referrals, rewardSettings] = await Promise.all([
+      ensureReferralCode(userId),
+      prisma.profile.findUnique({ where: { user_id: userId }, select: { referred_by: true } }),
       prisma.referral.findMany({ where: { referrer_id: userId }, orderBy: { created_at: "desc" } }),
       prisma.platformSetting.findMany({ where: { key: { in: ["referral_signup_reward", "referral_referred_bonus"] } } }),
     ]);
@@ -19,7 +21,7 @@ referralRestRouter.get("/info", requireAuth, async (req: AuthenticatedRequest, r
     rewardSettings.forEach(s => { settingMap[s.key] = s.value; });
     const totalEarned = referrals.filter(r => r.reward_status === "paid").reduce((sum, r) => sum + r.reward_amount, 0);
     res.json({
-      referral_code: profile?.referral_code ?? null,
+      referral_code: referralCode,
       referred_by: profile?.referred_by ?? null,
       total_referrals: referrals.length,
       completed_referrals: referrals.filter(r => r.status === "completed").length,
