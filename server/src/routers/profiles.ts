@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { resolveUrls, resolveFileUrl } from "../lib/mediaUrl.js";
 import { maybeRecordListen } from "../lib/listenTracking.js";
 import { maybeRecordRead } from "../lib/readTracking.js";
-import { checkAndAwardBadges, awardPoints, POINTS } from "../services/gamification.service.js";
+import { checkAndAwardBadges, awardPoints, bumpGoalProgress, bumpGoalMinutes, POINTS } from "../services/gamification.service.js";
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import { getCreatorBookIds } from "../lib/creatorBooks.js";
 
@@ -127,8 +127,18 @@ export const profilesRouter = router({
           ? Math.min((input.currentPage / input.totalPages) * 100, 100)
           : 0;
 
+      const existing = await prisma.readingProgress.findUnique({
+        where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
+      });
       const isNewRead = await maybeRecordRead(ctx.userId, input.bookId, input.sessionSeconds, input.sessionPagesRead);
       if (isNewRead) awardPoints(ctx.userId!, POINTS.READ_SESSION, "read_session", input.bookId).catch(() => null);
+      if (existing?.last_read_at) {
+        const deltaSeconds = (Date.now() - existing.last_read_at.getTime()) / 1000;
+        bumpGoalMinutes(ctx.userId!, "read_minutes", deltaSeconds).catch(() => null);
+      }
+      if (percentage >= 100 && (existing?.percentage ?? 0) < 100) {
+        bumpGoalProgress(ctx.userId!, "books_month", 1).catch(() => null);
+      }
 
       const result = await prisma.readingProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
@@ -168,8 +178,18 @@ export const profilesRouter = router({
         ? Math.min((input.currentPosition / input.totalDuration) * 100, 100)
         : 0;
 
+      const existingListen = await prisma.listeningProgress.findUnique({
+        where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
+      });
       const isNewListen = await maybeRecordListen(ctx.userId, input.bookId, input.currentPosition, input.totalDuration);
       if (isNewListen) awardPoints(ctx.userId!, POINTS.LISTEN_SESSION, "listen_session", input.bookId).catch(() => null);
+      if (existingListen?.last_listened_at) {
+        const deltaSeconds = (Date.now() - existingListen.last_listened_at.getTime()) / 1000;
+        bumpGoalMinutes(ctx.userId!, "listen_minutes", deltaSeconds).catch(() => null);
+      }
+      if (percentage >= 100 && (existingListen?.percentage ?? 0) < 100) {
+        bumpGoalProgress(ctx.userId!, "books_month", 1).catch(() => null);
+      }
 
       const result = await prisma.listeningProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },

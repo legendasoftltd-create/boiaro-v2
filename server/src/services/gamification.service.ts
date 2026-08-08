@@ -8,14 +8,14 @@ export interface AwardedBadge {
 
 // Point values shown (statically) on the admin Gamification Settings page's
 // "Points per Activity" card — those numbers were never actually wired up to
-// real events until now; this is where they're applied. "Goal complete" isn't
-// listed here because no reading-goal feature exists yet to trigger it from.
+// real events until now; this is where they're applied.
 export const POINTS = {
   READ_SESSION: 5,
   LISTEN_SESSION: 5,
   BADGE_UNLOCK: 10,
   STREAK_MILESTONE: 50,
   REFERRAL_SUCCESS: 30,
+  GOAL_COMPLETE: 20,
 } as const;
 
 /** Records a GamificationPoint row. Fire-and-forget — never throws. */
@@ -31,6 +31,111 @@ export async function awardPoints(
     });
   } catch (err) {
     console.error("[gamification] awardPoints failed:", err);
+  }
+}
+
+// Longest gap between two progress saves that still counts as continuous
+// activity — beyond this (tab backgrounded, app closed and reopened hours
+// later) the gap is dropped rather than credited, so resuming a stale
+// session doesn't hand out free goal progress.
+const GOAL_ACTIVITY_CAP_SECONDS = 300;
+
+function periodStartFor(period: string, now: Date): Date {
+  const d = new Date(now);
+  if (period === "weekly") {
+    d.setDate(d.getDate() - d.getDay());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (period === "monthly") {
+    d.setDate(1);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  // "daily" and any unrecognized value both fall back to a calendar-day window.
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/**
+ * Adds `amount` whole units (e.g. 1 completed book) to every active goal of
+ * `goalType` for this user, handling the daily/weekly/monthly period reset
+ * (a goal's progress only counts within its own current period — crossing
+ * into a new one starts that goal fresh) and one-time completion points.
+ */
+export async function bumpGoalProgress(userId: string, goalType: string, amount: number): Promise<void> {
+  if (amount <= 0) return;
+  try {
+    const goals = await prisma.userGoal.findMany({ where: { user_id: userId, goal_type: goalType, status: "active" } });
+    const now = new Date();
+    for (const goal of goals) {
+      const periodStart = periodStartFor(goal.period, now);
+      const inCurrentPeriod = goal.started_at != null && goal.started_at >= periodStart;
+      const previousValue = inCurrentPeriod ? goal.current_value ?? 0 : 0;
+      const wasCompleted = inCurrentPeriod && previousValue >= goal.target_value;
+      const newValue = previousValue + amount;
+      const nowCompleted = newValue >= goal.target_value;
+
+      await prisma.userGoal.update({
+        where: { id: goal.id },
+        data: {
+          current_value: newValue,
+          started_at: inCurrentPeriod ? goal.started_at! : now,
+          completed_at: nowCompleted ? (wasCompleted ? goal.completed_at : now) : null,
+        },
+      });
+
+      if (nowCompleted && !wasCompleted) {
+        awardPoints(userId, POINTS.GOAL_COMPLETE, "goal_complete", goal.id).catch(() => null);
+      }
+    }
+  } catch (err) {
+    console.error("[gamification] bumpGoalProgress failed:", err);
+  }
+}
+
+/**
+ * Same as bumpGoalProgress, but for minute-based goals (read_minutes,
+ * listen_minutes) fed by short, frequent activity bursts (page-turn
+ * debounce, 15s audio ticks) that are mostly under a minute each. Carries
+ * the sub-minute remainder in `progress_seconds` so those bursts still add
+ * up instead of rounding down to 0 every time.
+ */
+export async function bumpGoalMinutes(userId: string, goalType: string, deltaSeconds: number): Promise<void> {
+  const seconds = Math.min(Math.max(deltaSeconds, 0), GOAL_ACTIVITY_CAP_SECONDS);
+  if (seconds <= 0) return;
+  try {
+    const goals = await prisma.userGoal.findMany({ where: { user_id: userId, goal_type: goalType, status: "active" } });
+    const now = new Date();
+    for (const goal of goals) {
+      const periodStart = periodStartFor(goal.period, now);
+      const inCurrentPeriod = goal.started_at != null && goal.started_at >= periodStart;
+      const previousValue = inCurrentPeriod ? goal.current_value ?? 0 : 0;
+      const previousSeconds = inCurrentPeriod ? goal.progress_seconds : 0;
+      const wasCompleted = inCurrentPeriod && previousValue >= goal.target_value;
+
+      const totalSeconds = previousSeconds + seconds;
+      const wholeMinutes = Math.floor(totalSeconds / 60);
+      const remainderSeconds = totalSeconds - wholeMinutes * 60;
+      const newValue = previousValue + wholeMinutes;
+      const nowCompleted = newValue >= goal.target_value;
+
+      await prisma.userGoal.update({
+        where: { id: goal.id },
+        data: {
+          current_value: newValue,
+          progress_seconds: remainderSeconds,
+          started_at: inCurrentPeriod ? goal.started_at! : now,
+          completed_at: nowCompleted ? (wasCompleted ? goal.completed_at : now) : null,
+        },
+      });
+
+      if (nowCompleted && !wasCompleted) {
+        awardPoints(userId, POINTS.GOAL_COMPLETE, "goal_complete", goal.id).catch(() => null);
+      }
+    }
+  } catch (err) {
+    console.error("[gamification] bumpGoalMinutes failed:", err);
   }
 }
 

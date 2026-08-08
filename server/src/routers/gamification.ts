@@ -66,7 +66,7 @@ export const gamificationRouter = router({
     .input(z.object({ goalType: z.string(), targetValue: z.number().int().min(1), period: z.string().default("daily") }))
     .mutation(({ ctx, input }) =>
       prisma.userGoal.create({
-        data: { user_id: ctx.userId, goal_type: input.goalType, target_value: input.targetValue, period: input.period, status: "active" },
+        data: { user_id: ctx.userId, goal_type: input.goalType, target_value: input.targetValue, period: input.period, status: "active", started_at: new Date() },
       })
     ),
 

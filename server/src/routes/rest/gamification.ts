@@ -233,7 +233,7 @@ gamificationRestRouter.post("/goals", requireAuth, async (req: AuthenticatedRequ
     const schema = z.object({ goal_type: z.string(), target_value: z.number().int().min(1), period: z.enum(["daily", "weekly", "monthly"]).default("daily") });
     const input = schema.parse(req.body);
     const goal = await prisma.userGoal.create({
-      data: { user_id: req.auth.userId!, goal_type: input.goal_type, target_value: input.target_value, period: input.period, status: "active" },
+      data: { user_id: req.auth.userId!, goal_type: input.goal_type, target_value: input.target_value, period: input.period, status: "active", started_at: new Date() },
     });
     res.json(goal);
   } catch (error) {

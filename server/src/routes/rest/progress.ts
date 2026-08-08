@@ -5,7 +5,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { maybeRecordListen } from "../../lib/listenTracking.js";
 import { maybeRecordRead } from "../../lib/readTracking.js";
-import { checkAndAwardBadges, awardPoints, POINTS } from "../../services/gamification.service.js";
+import { checkAndAwardBadges, awardPoints, bumpGoalProgress, bumpGoalMinutes, POINTS } from "../../services/gamification.service.js";
 
 export const progressRestRouter = Router();
 
@@ -42,8 +42,18 @@ progressRestRouter.put("/reading", requireAuth, async (req: AuthenticatedRequest
       return;
     }
     const percentage = total_pages > 0 ? Math.min((current_page / total_pages) * 100, 100) : 0;
+    const existing = await prisma.readingProgress.findUnique({
+      where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
+    });
     const isNewRead = await maybeRecordRead(req.auth.userId, book_id, session_seconds, session_pages_read);
     if (isNewRead) awardPoints(req.auth.userId!, POINTS.READ_SESSION, "read_session", book_id).catch(() => null);
+    if (existing?.last_read_at) {
+      const deltaSeconds = (Date.now() - existing.last_read_at.getTime()) / 1000;
+      bumpGoalMinutes(req.auth.userId!, "read_minutes", deltaSeconds).catch(() => null);
+    }
+    if (percentage >= 100 && (existing?.percentage ?? 0) < 100) {
+      bumpGoalProgress(req.auth.userId!, "books_month", 1).catch(() => null);
+    }
     await prisma.readingProgress.upsert({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
       create: {
@@ -98,8 +108,18 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
     }
     const percentage = total_seconds > 0 ? Math.min((position_seconds / total_seconds) * 100, 100) : 0;
     const speedVal = playback_speed != null ? Math.min(Math.max(Number(playback_speed), 0.25), 4) : undefined;
+    const existingListen = await prisma.listeningProgress.findUnique({
+      where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
+    });
     const isNewListen = await maybeRecordListen(req.auth.userId, book_id, position_seconds, total_seconds);
     if (isNewListen) awardPoints(req.auth.userId!, POINTS.LISTEN_SESSION, "listen_session", book_id).catch(() => null);
+    if (existingListen?.last_listened_at) {
+      const deltaSeconds = (Date.now() - existingListen.last_listened_at.getTime()) / 1000;
+      bumpGoalMinutes(req.auth.userId!, "listen_minutes", deltaSeconds).catch(() => null);
+    }
+    if (percentage >= 100 && (existingListen?.percentage ?? 0) < 100) {
+      bumpGoalProgress(req.auth.userId!, "books_month", 1).catch(() => null);
+    }
     await prisma.listeningProgress.upsert({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
       create: {

@@ -18,9 +18,9 @@ import { WatchAdButton } from "@/components/WatchAdButton";
 
 const STREAK_MILESTONES = [3, 7, 14, 30, 60, 100];
 const GOAL_TYPES = [
-  { value: "read_minutes", label: "Read (minutes/day)", icon: BookOpen },
-  { value: "listen_minutes", label: "Listen (minutes/day)", icon: Headphones },
-  { value: "books_month", label: "Books per month", icon: Target },
+  { value: "read_minutes", label: "Read (minutes/day)", icon: BookOpen, period: "daily" },
+  { value: "listen_minutes", label: "Listen (minutes/day)", icon: Headphones, period: "daily" },
+  { value: "books_month", label: "Books per month", icon: Target, period: "monthly" },
 ];
 
 const categoryIcons: Record<string, any> = {
@@ -58,7 +58,8 @@ export default function GamificationPage() {
   const addGoal = () => {
     const target = parseInt(newGoalTarget);
     if (!target || target < 1) return;
-    addGoalMutation.mutate({ goalType: newGoalType, targetValue: target });
+    const period = GOAL_TYPES.find(t => t.value === newGoalType)?.period ?? "daily";
+    addGoalMutation.mutate({ goalType: newGoalType, targetValue: target, period });
   };
 
   const myRank = (leaderboard as any[]).findIndex((e: any) => e.user_id === user?.id) + 1;

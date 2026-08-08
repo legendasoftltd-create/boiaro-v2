@@ -1118,6 +1118,8 @@ model LiveSession {
   mutes             RadioMute[]
   reports           LiveReport[]
   catchup_progress  CatchupProgress[]
+  studio_session    StudioSession?
+  icecast_samples   IcecastListenerSample[]
 
   @@map("live_sessions")
 }
@@ -1134,6 +1136,9 @@ model ListenerSession {
   // fingerprint) — same convention as book view tracking's device_id.
   device_id       String?
   platform        String? // web | android | ios
+  // ISO 3166-1 alpha-2, via geoCountry.ts (CF-IPCountry header or geoip-lite
+  // fallback) — country-only, no city-level lookup (see plan for why).
+  country         String?
   joined_at       DateTime  @default(now())
   left_at         DateTime?
   created_at      DateTime  @default(now())
@@ -1319,6 +1324,7 @@ model NotificationTemplate {
   created_at DateTime @default(now())
   cta_link   String?
   cta_text   String?
+  image_url  String?
   message    String   @default("")
   name       String
   status     String   @default("active")
@@ -2011,16 +2017,22 @@ model UserCoin {
 }
 
 model UserGoal {
-  id            String   @id @default(uuid())
-  completed_at  DateTime?
-  created_at    DateTime? @default(now())
-  current_value Int?      @default(0)
-  goal_type     String   @default("reading")
-  period        String   @default("daily")
-  started_at    DateTime?
-  status        String   @default("active")
-  target_value  Int      @default(0)
-  user_id       String
+  id               String    @id @default(uuid())
+  completed_at     DateTime?
+  created_at       DateTime? @default(now())
+  current_value    Int?      @default(0)
+  goal_type        String    @default("reading")
+  period           String    @default("daily")
+  // Sub-minute carry for minute-based goals (read_minutes/listen_minutes) —
+  // progress arrives as short activity bursts (page-turn debounce, 15s audio
+  // ticks) that are mostly under a minute each; without this, most bursts
+  // would round down to 0 and current_value would rarely move. Not used by
+  // whole-unit goal types like books_month.
+  progress_seconds Int       @default(0)
+  started_at       DateTime?
+  status           String    @default("active")
+  target_value     Int       @default(0)
+  user_id          String
 
   @@map("user_goals")
 }
@@ -2284,4 +2296,83 @@ model AuditLog {
   @@index([actor_id, created_at])
   @@index([action])
   @@map("audit_logs")
+}
+
+// ── BoiAro On Air — Hybrid Studio (LiveKit WebRTC room side) ─────────────────
+// StudioSession is the WebRTC-room-side concept (who's in the room, what
+// role). When a broadcast actually goes live, it feeds the existing
+// LiveSession/Icecast/listener pipeline as its audio source rather than
+// duplicating it — live_session_id links the two once broadcast starts.
+model StudioSession {
+  id                String    @id @default(uuid())
+  room_name         String    @unique
+  show_schedule_id  String?
+  host_user_id      String
+  status            String    @default("scheduled") // scheduled | live | ended
+  started_at        DateTime?
+  ended_at          DateTime?
+  created_at        DateTime  @default(now())
+  media_type        String    @default("audio") // audio | video — video reserved for future use
+  live_session_id   String?   @unique
+
+  // Higher-quality recording tapped at the Bridge Relay before Icecast's
+  // 128kbps compression — separate from LiveSession's existing MP3-from-
+  // Icecast catch-up recording, which is untouched by this.
+  master_recording_url    String?
+  master_recording_status String? // recording | processing | completed | failed
+
+  live_session  LiveSession?         @relation(fields: [live_session_id], references: [id])
+  participants  StudioParticipant[]
+  invite_links  StudioInviteLink[]
+
+  @@map("studio_sessions")
+}
+
+model StudioParticipant {
+  id                 String    @id @default(uuid())
+  studio_session_id  String
+  user_id            String
+  role               String // host | co_host | producer | rj | guest
+  joined_at          DateTime  @default(now())
+  left_at            DateTime?
+
+  session StudioSession @relation(fields: [studio_session_id], references: [id])
+
+  @@unique([studio_session_id, user_id])
+  @@index([studio_session_id])
+  @@map("studio_participants")
+}
+
+model StudioInviteLink {
+  id                 String    @id @default(uuid())
+  studio_session_id  String
+  token              String    @unique
+  role               String // role this invite grants on redemption
+  expires_at         DateTime
+  used_at            DateTime?
+  created_by         String
+  created_at         DateTime  @default(now())
+
+  session StudioSession @relation(fields: [studio_session_id], references: [id])
+
+  @@index([studio_session_id])
+  @@map("studio_invite_links")
+}
+
+// Periodic sample of Icecast's own status-json.xsl listener count — the
+// actual stream audience, distinct from ListenerSession (Socket.IO chat/
+// reaction participants, which undercounts anyone listening without the
+// chat panel open). Sampled every minute by jobs/icecastListenerPoll.ts,
+// live_session_id is null while nothing's live so the time series has no
+// gaps to interpolate around.
+model IcecastListenerSample {
+  id              String   @id @default(uuid())
+  live_session_id String?
+  listener_count  Int
+  sampled_at      DateTime @default(now())
+
+  live_session LiveSession? @relation(fields: [live_session_id], references: [id], onDelete: SetNull)
+
+  @@index([live_session_id, sampled_at])
+  @@map("icecast_listener_samples")
 }
