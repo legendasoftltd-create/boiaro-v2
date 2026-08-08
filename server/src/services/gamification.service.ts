@@ -6,6 +6,34 @@ export interface AwardedBadge {
   coin_reward: number | null;
 }
 
+// Point values shown (statically) on the admin Gamification Settings page's
+// "Points per Activity" card — those numbers were never actually wired up to
+// real events until now; this is where they're applied. "Goal complete" isn't
+// listed here because no reading-goal feature exists yet to trigger it from.
+export const POINTS = {
+  READ_SESSION: 5,
+  LISTEN_SESSION: 5,
+  BADGE_UNLOCK: 10,
+  STREAK_MILESTONE: 50,
+  REFERRAL_SUCCESS: 30,
+} as const;
+
+/** Records a GamificationPoint row. Fire-and-forget — never throws. */
+export async function awardPoints(
+  userId: string,
+  points: number,
+  eventType: string,
+  referenceId?: string | null
+): Promise<void> {
+  try {
+    await prisma.gamificationPoint.create({
+      data: { user_id: userId, points, event_type: eventType, reference_id: referenceId ?? undefined },
+    });
+  } catch (err) {
+    console.error("[gamification] awardPoints failed:", err);
+  }
+}
+
 const DEFAULT_DAILY_REWARD_SCHEDULE = [5, 10, 15, 20, 25, 30, 50];
 
 // Admin-configurable via platform_settings key "daily_reward_schedule" — a
@@ -140,6 +168,14 @@ export async function checkAndAwardBadges(userId: string): Promise<AwardedBadge[
         }),
       ]);
     }
+    const isStreakBadge = badge.condition_type === "streak";
+    awardPoints(
+      userId,
+      isStreakBadge ? POINTS.STREAK_MILESTONE : POINTS.BADGE_UNLOCK,
+      isStreakBadge ? "streak_milestone" : "badge_unlock",
+      badge.id
+    ).catch(() => null);
+
     awarded.push({ key: badge.key, title: badge.title, coin_reward: badge.coin_reward ?? null });
   }
 

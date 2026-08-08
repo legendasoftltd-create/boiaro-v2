@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { resolveUrls, resolveFileUrl } from "../lib/mediaUrl.js";
 import { maybeRecordListen } from "../lib/listenTracking.js";
 import { maybeRecordRead } from "../lib/readTracking.js";
-import { checkAndAwardBadges } from "../services/gamification.service.js";
+import { checkAndAwardBadges, awardPoints, POINTS } from "../services/gamification.service.js";
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import { getCreatorBookIds } from "../lib/creatorBooks.js";
 
@@ -127,7 +127,8 @@ export const profilesRouter = router({
           ? Math.min((input.currentPage / input.totalPages) * 100, 100)
           : 0;
 
-      await maybeRecordRead(ctx.userId, input.bookId, input.sessionSeconds, input.sessionPagesRead);
+      const isNewRead = await maybeRecordRead(ctx.userId, input.bookId, input.sessionSeconds, input.sessionPagesRead);
+      if (isNewRead) awardPoints(ctx.userId!, POINTS.READ_SESSION, "read_session", input.bookId).catch(() => null);
 
       const result = await prisma.readingProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },
@@ -167,7 +168,8 @@ export const profilesRouter = router({
         ? Math.min((input.currentPosition / input.totalDuration) * 100, 100)
         : 0;
 
-      await maybeRecordListen(ctx.userId, input.bookId, input.currentPosition, input.totalDuration);
+      const isNewListen = await maybeRecordListen(ctx.userId, input.bookId, input.currentPosition, input.totalDuration);
+      if (isNewListen) awardPoints(ctx.userId!, POINTS.LISTEN_SESSION, "listen_session", input.bookId).catch(() => null);
 
       const result = await prisma.listeningProgress.upsert({
         where: { user_id_book_id: { user_id: ctx.userId, book_id: input.bookId } },

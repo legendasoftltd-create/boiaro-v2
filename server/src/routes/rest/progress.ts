@@ -5,7 +5,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { maybeRecordListen } from "../../lib/listenTracking.js";
 import { maybeRecordRead } from "../../lib/readTracking.js";
-import { checkAndAwardBadges } from "../../services/gamification.service.js";
+import { checkAndAwardBadges, awardPoints, POINTS } from "../../services/gamification.service.js";
 
 export const progressRestRouter = Router();
 
@@ -42,7 +42,8 @@ progressRestRouter.put("/reading", requireAuth, async (req: AuthenticatedRequest
       return;
     }
     const percentage = total_pages > 0 ? Math.min((current_page / total_pages) * 100, 100) : 0;
-    await maybeRecordRead(req.auth.userId, book_id, session_seconds, session_pages_read);
+    const isNewRead = await maybeRecordRead(req.auth.userId, book_id, session_seconds, session_pages_read);
+    if (isNewRead) awardPoints(req.auth.userId!, POINTS.READ_SESSION, "read_session", book_id).catch(() => null);
     await prisma.readingProgress.upsert({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
       create: {
@@ -97,7 +98,8 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
     }
     const percentage = total_seconds > 0 ? Math.min((position_seconds / total_seconds) * 100, 100) : 0;
     const speedVal = playback_speed != null ? Math.min(Math.max(Number(playback_speed), 0.25), 4) : undefined;
-    await maybeRecordListen(req.auth.userId, book_id, position_seconds, total_seconds);
+    const isNewListen = await maybeRecordListen(req.auth.userId, book_id, position_seconds, total_seconds);
+    if (isNewListen) awardPoints(req.auth.userId!, POINTS.LISTEN_SESSION, "listen_session", book_id).catch(() => null);
     await prisma.listeningProgress.upsert({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
       create: {

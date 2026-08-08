@@ -7,6 +7,7 @@ import { resolveDeviceSessionOnLogin, touchOrCreateDeviceSessionOnRefresh } from
 import type { DeviceLoginParams, DeviceSessionInfo } from "./deviceSession.service.js";
 import type { signInSchema } from "../schemas/auth.js";
 import type { z } from "zod";
+import { POINTS } from "./gamification.service.js";
 
 export function deviceLimitError(limit: number, devices: DeviceSessionInfo[]): TRPCError {
   return new TRPCError({
@@ -51,6 +52,9 @@ async function completePendingReferral(userId: string): Promise<void> {
       where: { user_id: userId },
       create: { user_id: userId, balance: referredBonus, total_earned: referredBonus, total_spent: 0 },
       update: { balance: { increment: referredBonus }, total_earned: { increment: referredBonus } },
+    }),
+    prisma.gamificationPoint.create({
+      data: { user_id: pending.referrer_id, points: POINTS.REFERRAL_SUCCESS, event_type: "referral_success", reference_id: pending.id },
     }),
   ]);
 }
