@@ -113,7 +113,22 @@ export default function NarratorAudiobooks() {
     if (editBook) {
       if (editBook.submission_status !== "draft") {
         const fmt = (editBook.formats || []).find((f: any) => f.format === "audiobook");
-        await submitEditRequest({ contentType: "book", contentId: editBook.id, submittedBy: "", proposedChanges: { book: form, format: { price: Number(form.price), duration: form.duration, audio_quality: form.audio_quality, format_id: fmt?.id } } });
+        const { price, duration, audio_quality, subscriber_access, ...bookChanges } = form;
+        await submitEditRequest({
+          contentType: "book",
+          contentId: editBook.id,
+          submittedBy: "",
+          proposedChanges: {
+            book: bookChanges,
+            format: {
+              format_id: fmt?.id,
+              price: form.price ? Number(form.price) : 0,
+              duration: form.duration || undefined,
+              audio_quality: form.audio_quality || "standard",
+              subscriber_access: form.subscriber_access,
+            },
+          },
+        });
         setOpen(false); return;
       }
       updateMutation.mutate({

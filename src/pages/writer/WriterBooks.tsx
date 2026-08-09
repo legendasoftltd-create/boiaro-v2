@@ -155,7 +155,24 @@ export default function WriterBooks() {
     if (editBook) {
       if (editBook.submission_status !== "draft") {
         const fmt = editBook.formats.find(f => f.format === "ebook");
-        await submitEditRequest({ contentType: "book", contentId: editBook.id, submittedBy: "", proposedChanges: { book: form, format: { price: Number(form.price), format_id: fmt?.id } } });
+        const { price, pages, chapters_count, file_url, file_size, subscriber_access, ...bookChanges } = form;
+        await submitEditRequest({
+          contentType: "book",
+          contentId: editBook.id,
+          submittedBy: "",
+          proposedChanges: {
+            book: { ...bookChanges, tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [] },
+            format: {
+              format_id: fmt?.id,
+              price: form.price ? Number(form.price) : 0,
+              pages: form.pages ? Number(form.pages) : undefined,
+              chapters_count: form.chapters_count ? Number(form.chapters_count) : undefined,
+              file_url: form.file_url || undefined,
+              file_size: form.file_size || undefined,
+              subscriber_access: form.subscriber_access,
+            },
+          },
+        });
         setOpen(false); return;
       }
       updateMutation.mutate({

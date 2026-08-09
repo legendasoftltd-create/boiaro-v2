@@ -106,7 +106,25 @@ export default function PublisherBooks() {
     if (editBook) {
       if (editBook.submission_status !== "draft") {
         const fmt = (editBook.formats || []).find((f: any) => f.format === "hardcopy");
-        await submitEditRequest({ contentType: "book", contentId: editBook.id, submittedBy: "", proposedChanges: { book: form, format: { price: Number(form.price), stock_count: Number(form.stock_count), binding: form.binding, format_id: fmt?.id } } });
+        const { price, stock_count, binding, pages, weight, dimensions, delivery_days, ...bookChanges } = form;
+        await submitEditRequest({
+          contentType: "book",
+          contentId: editBook.id,
+          submittedBy: "",
+          proposedChanges: {
+            book: { ...bookChanges, tags: form.tags ? form.tags.split(",").map(t => t.trim()).filter(Boolean) : [] },
+            format: {
+              format_id: fmt?.id,
+              price: form.price ? Number(form.price) : 0,
+              stock_count: form.stock_count ? Number(form.stock_count) : undefined,
+              binding: form.binding || undefined,
+              pages: form.pages ? Number(form.pages) : undefined,
+              weight: form.weight || undefined,
+              dimensions: form.dimensions || undefined,
+              delivery_days: form.delivery_days ? Number(form.delivery_days) : undefined,
+            },
+          },
+        });
         setOpen(false); return;
       }
       updateMutation.mutate({

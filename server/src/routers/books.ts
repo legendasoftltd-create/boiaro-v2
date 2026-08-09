@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { bookByIdSchema, bookListSchema } from "../schemas/books.js";
 import { getBookById, listBooks, getBecauseYouReadRecommendations } from "../services/books.service.js";
 import { resolveBookUrls } from "../lib/mediaUrl.js";
-import { getCreatorBookIds } from "../lib/creatorBooks.js";
+import { getCreatorBookIds, userOwnsBook } from "../lib/creatorBooks.js";
 import { maybeRecordView } from "../lib/viewTracking.js";
 
 export const booksRouter = router({
@@ -1164,7 +1164,10 @@ export const booksRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const book = await prisma.book.findUnique({ where: { id: input.bookId } });
-      if (!book || book.submitted_by !== ctx.userId) throw new TRPCError({ code: "FORBIDDEN" });
+      if (!book) throw new TRPCError({ code: "FORBIDDEN" });
+      if (book.submitted_by !== ctx.userId && !(await userOwnsBook(ctx.userId!, input.bookId, input.format))) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
       const slug = input.title.toLowerCase()
         .replace(/\s+/g, "-")
         .replace(/[^a-z0-9ঀ-৿-]/g, "");
@@ -1266,7 +1269,10 @@ export const booksRouter = router({
     .input(z.object({ bookId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const book = await prisma.book.findUnique({ where: { id: input.bookId } });
-      if (!book || book.submitted_by !== ctx.userId) throw new TRPCError({ code: "FORBIDDEN" });
+      if (!book) throw new TRPCError({ code: "FORBIDDEN" });
+      if (book.submitted_by !== ctx.userId && !(await userOwnsBook(ctx.userId!, input.bookId))) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
       return prisma.book.update({
         where: { id: input.bookId },
         data: { submission_status: "pending", submitted_by: ctx.userId },

@@ -4529,7 +4529,7 @@ export const adminRouter = router({
         "price", "original_price", "discount", "duration", "audio_quality",
         "file_url", "file_size", "pages", "chapters_count", "preview_chapters",
         "preview_percentage", "stock_count", "binding", "weight", "dimensions",
-        "delivery_days", "is_available", "in_stock", "isbn",
+        "delivery_days", "is_available", "in_stock", "isbn", "subscriber_access",
       ]);
 
       await prisma.$transaction(async (tx: any) => {
@@ -4542,6 +4542,13 @@ export const adminRouter = router({
             if (BOOK_SCALAR_FIELDS.has(k) && v !== undefined && v !== null && v !== "") {
               scalarUpdates[k] = v;
             }
+          }
+          // tags is String[] on Book, but proposedChanges is arbitrary
+          // client-submitted JSON — a raw comma-separated string here would
+          // otherwise fail Prisma validation and roll back the whole
+          // transaction, including unrelated title/description/cover edits.
+          if (typeof scalarUpdates.tags === "string") {
+            scalarUpdates.tags = scalarUpdates.tags.split(",").map((t: string) => t.trim()).filter(Boolean);
           }
 
           // Convert FK id fields to Prisma relation connect syntax

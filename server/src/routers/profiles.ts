@@ -9,6 +9,7 @@ import { checkAndAwardBadges, awardPoints, bumpGoalProgress, bumpGoalMinutes, PO
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import { getCreatorBookIds } from "../lib/creatorBooks.js";
 import { ensureReferralCode } from "../lib/referralCode.js";
+import { syncCreatorAvatar } from "../lib/creatorProfileSync.js";
 
 export const profilesRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
@@ -54,10 +55,16 @@ export const profilesRouter = router({
         }
       }
 
-      return prisma.profile.update({
+      const updated = await prisma.profile.update({
         where: { user_id: ctx.userId },
         data: profileData,
       });
+
+      if (profileData.avatar_url) {
+        await syncCreatorAvatar(ctx.userId!, profileData.avatar_url);
+      }
+
+      return updated;
     }),
 
   readingProgress: protectedProcedure.query(({ ctx }) =>

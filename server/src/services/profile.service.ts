@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { prisma } from "../lib/prisma.js";
 import { resolveUrls } from "../lib/mediaUrl.js";
+import { syncCreatorAvatar } from "../lib/creatorProfileSync.js";
 import type { profileUpdateSchema } from "../schemas/profile.js";
 import type { z } from "zod";
 
@@ -52,6 +53,10 @@ export async function updateUserProfile(
 
       if (Object.keys(profileData).length > 0) {
         await tx.profile.update({ where: { user_id: userId }, data: profileData });
+      }
+
+      if (profileData.avatar_url) {
+        await syncCreatorAvatar(userId, profileData.avatar_url, tx);
       }
     });
 

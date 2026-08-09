@@ -74,3 +74,35 @@ export async function getCreatorBookIds(userId: string, role: CreatorRole): Prom
 
   return ids;
 }
+
+/**
+ * Ownership check for direct book-mutating endpoints (updateBook,
+ * submitBookForReview) — these used to check only Book.submitted_by, which
+ * wrongly rejected legitimate owners who reached the book via a
+ * BookContributor assignment or a linked Author/Narrator/Publisher/
+ * Translator catalog entity instead (the other two sources
+ * getCreatorBookIds already unions for listing purposes). When `format` is
+ * known it narrows which role(s) are plausible; omit it to check all of
+ * them (e.g. submitBookForReview, which isn't format-specific).
+ */
+export async function userOwnsBook(
+  userId: string,
+  bookId: string,
+  format?: "ebook" | "audiobook" | "hardcopy"
+): Promise<boolean> {
+  const book = await prisma.book.findUnique({ where: { id: bookId }, select: { submitted_by: true } });
+  if (!book) return false;
+  if (book.submitted_by === userId) return true;
+
+  const candidateRoles: CreatorRole[] =
+    format === "audiobook" ? ["narrator"] :
+    format === "hardcopy" ? ["publisher"] :
+    format === "ebook" ? ["writer", "translator"] :
+    ["writer", "narrator", "publisher", "translator"];
+
+  for (const role of candidateRoles) {
+    const ids = await getCreatorBookIds(userId, role);
+    if (ids.has(bookId)) return true;
+  }
+  return false;
+}
