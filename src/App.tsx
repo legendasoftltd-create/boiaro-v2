@@ -123,6 +123,7 @@ const AdminRadio = lazy(() => import("./pages/admin/AdminRadio.tsx"));
 const AdminRadioSchedule = lazy(() => import("./pages/admin/AdminRadioSchedule.tsx"));
 const AdminReferrals = lazy(() => import("./pages/admin/AdminReferrals.tsx"));
 const AdminGamification = lazy(() => import("./pages/admin/AdminGamification.tsx"));
+const AdminMonthlyLeaderboard = lazy(() => import("./pages/admin/AdminMonthlyLeaderboard.tsx"));
 const AdminSiteSettings = lazy(() => import("./pages/admin/AdminSiteSettings.tsx"));
 const AdminUserPermissions = lazy(() => import("./pages/admin/AdminUserPermissions.tsx"));
 const AdminReadingAnalytics = lazy(() => import("./pages/admin/AdminReadingAnalytics.tsx"));
@@ -337,6 +338,7 @@ const App = () => {
                   <Route path="radio-safety" element={<AdminRadioSafety />} />
                   <Route path="referrals" element={<AdminReferrals />} />
                   <Route path="gamification" element={<AdminGamification />} />
+                  <Route path="monthly-leaderboard" element={<AdminMonthlyLeaderboard />} />
                   <Route path="system-logs" element={<AdminSystemLogs />} />
                   <Route path="creator-permissions" element={<AdminUserPermissions />} />
                   <Route path="site-settings" element={<AdminSiteSettings />} />

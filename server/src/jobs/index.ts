@@ -3,6 +3,7 @@ import { runInactivityAlerts } from "./inactivityAlerts.js";
 import { runStreakAlerts } from "./streakAlerts.js";
 import { runWeeklySummary } from "./weeklySummary.js";
 import { runCompetitionPayouts } from "./competitionPayouts.js";
+import { runMonthlyLeaderboardLock } from "./monthlyLeaderboardLock.js";
 import { runShowReminders } from "./showReminders.js";
 import { runStreamReconnectSweep } from "./streamReconnect.js";
 import { runRecordingRetentionSweep } from "./recordingRetention.js";
@@ -46,6 +47,15 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] competitionPayouts failed:", err));
   });
 
+  // Hourly, at :20 — lock the previous Dhaka calendar month's leaderboard
+  // once it's fully ended and pay out any auto-coin prizes (idempotent —
+  // skips metrics already locked, cheap no-op most hours)
+  cron.schedule("20 * * * *", () => {
+    runMonthlyLeaderboardLock()
+      .then((r) => r.locked && console.log(`[jobs] monthlyLeaderboardLock: locked ${r.locked} metric(s)`))
+      .catch((err) => console.error("[jobs] monthlyLeaderboardLock failed:", err));
+  });
+
   // Every 5 minutes — show-starting-soon reminders for followers
   cron.schedule("*/5 * * * *", () => {
     runShowReminders()
@@ -69,5 +79,5 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] recordingRetention failed:", err));
   });
 
-  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, show reminders, stream reconnect, recording retention)");
+  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention)");
 }

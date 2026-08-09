@@ -2218,6 +2218,34 @@ model Competition {
   @@map("competitions")
 }
 
+// One row per (year, month, metric, rank) — a live/draft snapshot while the
+// month is still in progress, frozen (locked_at set) once it fully ends.
+// Prizes are tied to the rank slot, not a specific user, so recalculating a
+// month preserves prize config across ranking changes.
+model MonthlyLeaderboardEntry {
+  id               String    @id @default(uuid())
+  year             Int
+  month            Int
+  metric           String
+  rank             Int
+  user_id          String
+  total_seconds    Int
+  prize_type       String    @default("manual")
+  prize_coins      Int?
+  prize_paid_at    DateTime?
+  prize_name       String?
+  prize_status     String    @default("pending")
+  winner_confirmed Boolean   @default(false)
+  confirmed_at     DateTime?
+  locked_at        DateTime?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+
+  @@unique([year, month, metric, rank])
+  @@index([year, month])
+  @@map("monthly_leaderboard_entries")
+}
+
 model UserSubscription {
   id              String   @id @default(uuid())
   amount_paid     Float?

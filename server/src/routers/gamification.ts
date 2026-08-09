@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { checkAndAwardBadges, getDailyRewardSchedule, advanceStreakForToday, projectStreakDay } from "../services/gamification.service.js";
 import { getUserWeeklyReport } from "../services/weeklyReport.service.js";
 import { getCompetitionRanking } from "../services/competition.service.js";
+import { dhakaPeriodBounds } from "../lib/timezone.js";
 
 export const gamificationRouter = router({
   streaks: protectedProcedure.query(({ ctx }) =>
@@ -92,9 +93,9 @@ export const gamificationRouter = router({
   }),
 
   // Home Screen leaderboard — separate from the points-based `leaderboard`
-  // above. Rolling windows (daily=24h, weekly=7d, monthly=30d) rather than
-  // calendar-aligned, matching the "Last N days" convention already used in
-  // admin reading analytics.
+  // above. Calendar-aligned to Asia/Dhaka (daily = today, weekly = this
+  // week starting Sunday, monthly = this calendar month) — see
+  // server/src/lib/timezone.ts.
   homeLeaderboard: publicProcedure
     .input(z.object({
       period: z.enum(["daily", "weekly", "monthly"]).default("weekly"),
@@ -104,14 +105,13 @@ export const gamificationRouter = router({
       const visibility = await prisma.platformSetting.findUnique({ where: { key: "gamification_leaderboard_visible" } });
       if (visibility?.value === "false") return [];
 
-      const days = input.period === "daily" ? 1 : input.period === "weekly" ? 7 : 30;
-      const since = new Date(Date.now() - days * 86400000);
+      const { start, end } = dhakaPeriodBounds(input.period);
 
       let rows: { user_id: string; total: number }[];
       if (input.metric === "coins") {
         const agg = await prisma.coinTransaction.groupBy({
           by: ["user_id"],
-          where: { created_at: { gte: since }, type: { in: ["earn", "bonus"] } },
+          where: { created_at: { gte: start, lte: end }, type: { in: ["earn", "bonus"] } },
           _sum: { amount: true },
           orderBy: { _sum: { amount: "desc" } },
           take: 20,
@@ -121,7 +121,7 @@ export const gamificationRouter = router({
         const format = input.metric === "reading" ? "ebook" : "audiobook";
         const agg = await prisma.contentConsumptionTime.groupBy({
           by: ["user_id"],
-          where: { created_at: { gte: since }, format },
+          where: { created_at: { gte: start, lte: end }, format },
           _sum: { seconds: true },
           orderBy: { _sum: { seconds: "desc" } },
           take: 20,

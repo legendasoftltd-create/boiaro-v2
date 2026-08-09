@@ -6,6 +6,7 @@ import { z } from "zod";
 import { checkAndAwardBadges, getDailyRewardSchedule, advanceStreakForToday, projectStreakDay } from "../../services/gamification.service.js";
 import { getUserWeeklyReport } from "../../services/weeklyReport.service.js";
 import { getCompetitionRanking } from "../../services/competition.service.js";
+import { dhakaPeriodBounds } from "../../lib/timezone.js";
 
 export const gamificationRestRouter = Router();
 
@@ -126,16 +127,15 @@ gamificationRestRouter.get("/leaderboard/home", async (req, res) => {
     const visibility = await prisma.platformSetting.findUnique({ where: { key: "gamification_leaderboard_visible" } });
     if (visibility?.value === "false") { res.json({ leaderboard: [] }); return; }
 
-    const period = ["daily", "weekly", "monthly"].includes(String(req.query.period)) ? String(req.query.period) : "weekly";
+    const period = (["daily", "weekly", "monthly"].includes(String(req.query.period)) ? String(req.query.period) : "weekly") as "daily" | "weekly" | "monthly";
     const metric = ["reading", "listening", "coins"].includes(String(req.query.metric)) ? String(req.query.metric) : "reading";
-    const days = period === "daily" ? 1 : period === "weekly" ? 7 : 30;
-    const since = new Date(Date.now() - days * 86400000);
+    const { start, end } = dhakaPeriodBounds(period);
 
     let rows: { user_id: string; total: number }[];
     if (metric === "coins") {
       const agg = await prisma.coinTransaction.groupBy({
         by: ["user_id"],
-        where: { created_at: { gte: since }, type: { in: ["earn", "bonus"] } },
+        where: { created_at: { gte: start, lte: end }, type: { in: ["earn", "bonus"] } },
         _sum: { amount: true },
         orderBy: { _sum: { amount: "desc" } },
         take: 20,
@@ -145,7 +145,7 @@ gamificationRestRouter.get("/leaderboard/home", async (req, res) => {
       const format = metric === "reading" ? "ebook" : "audiobook";
       const agg = await prisma.contentConsumptionTime.groupBy({
         by: ["user_id"],
-        where: { created_at: { gte: since }, format },
+        where: { created_at: { gte: start, lte: end }, format },
         _sum: { seconds: true },
         orderBy: { _sum: { seconds: "desc" } },
         take: 20,

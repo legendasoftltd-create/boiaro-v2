@@ -18,6 +18,7 @@ import { logRadioAction } from "../lib/radioAudit.js";
 import { stopRecording } from "../lib/liveRecorder.js";
 import { notifyFollowersOfScheduleCancelled, notifyFollowersOfScheduleRescheduled } from "../lib/radioNotify.js";
 import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSettingNumber, type RadioSettingKey } from "../lib/radioSettings.js";
+import { getMonthlyLeaderboard, recalculateMonth, upsertPrizeConfig, type LeaderboardMetric } from "../services/monthlyLeaderboard.service.js";
 import { getGaRealtimeReport } from "../lib/gaRealtime.js";
 import os from "os";
 import fs from "fs";
@@ -6591,6 +6592,52 @@ export const adminRouter = router({
   cancelCompetition: adminProcedure
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.competition.update({ where: { id: input.id }, data: { status: "cancelled" } })),
+
+  // ── Monthly Leaderboard ──────────────────────────────────────────────────────
+  listMonthlyLeaderboard: adminProcedure
+    .input(z.object({
+      year: z.number().int(),
+      month: z.number().int().min(1).max(12),
+      metric: z.enum(["reading", "listening", "combined"]),
+    }))
+    .query(({ input }) => getMonthlyLeaderboard(input.year, input.month, input.metric as LeaderboardMetric)),
+
+  recalculateMonthlyLeaderboard: adminProcedure
+    .input(z.object({
+      year: z.number().int(),
+      month: z.number().int().min(1).max(12),
+      metric: z.enum(["reading", "listening", "combined"]),
+    }))
+    .mutation(async ({ input }) => {
+      await recalculateMonth(input.year, input.month, input.metric as LeaderboardMetric);
+      return getMonthlyLeaderboard(input.year, input.month, input.metric as LeaderboardMetric);
+    }),
+
+  updateMonthlyLeaderboardPrize: adminProcedure
+    .input(z.object({
+      year: z.number().int(),
+      month: z.number().int().min(1).max(12),
+      metric: z.enum(["reading", "listening", "combined"]),
+      rank: z.number().int().min(1),
+      prizeType: z.enum(["auto", "manual"]),
+      prizeCoins: z.number().int().min(0).nullable().optional(),
+      prizeName: z.string().nullable().optional(),
+    }))
+    .mutation(({ input }) =>
+      upsertPrizeConfig(input.year, input.month, input.metric as LeaderboardMetric, input.rank, {
+        prizeType: input.prizeType,
+        prizeCoins: input.prizeCoins,
+        prizeName: input.prizeName,
+      })
+    ),
+
+  setMonthlyLeaderboardPrizeStatus: adminProcedure
+    .input(z.object({ id: z.string(), status: z.enum(["pending", "delivered"]) }))
+    .mutation(({ input }) => prisma.monthlyLeaderboardEntry.update({ where: { id: input.id }, data: { prize_status: input.status } })),
+
+  confirmMonthlyLeaderboardWinner: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.monthlyLeaderboardEntry.update({ where: { id: input.id }, data: { winner_confirmed: true, confirmed_at: new Date() } })),
 
   smsRecipientsByGroup: adminProcedure
     .input(z.object({ group: z.enum(["authors", "narrators", "publishers", "users", "rj"]) }))

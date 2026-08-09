@@ -4,7 +4,7 @@ import { useAdminPermissions } from "@/hooks/useAdminPermissions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   LayoutDashboard, BookOpen, Users, Mic2, Building2, ShoppingCart,
-  Star, Layers, ChevronLeft, ChevronRight, LogOut, CreditCard, UserCheck, DollarSign, Wallet, FileCheck, Settings, Truck, Crown, Ticket, Bell, Mail, FileText, BarChart3, PanelTop, Newspaper, Globe, ImageIcon, HeadphonesIcon, Shield, ShieldAlert, Activity, Coins, LayoutGrid, Megaphone, MonitorPlay, Sparkles, Gift, ChevronDown, Menu, AlertTriangle, MessageSquare, Package, ShieldCheck, Languages, Calendar,
+  Star, Layers, ChevronLeft, ChevronRight, LogOut, CreditCard, UserCheck, DollarSign, Wallet, FileCheck, Settings, Truck, Crown, Ticket, Bell, Mail, FileText, BarChart3, PanelTop, Newspaper, Globe, ImageIcon, HeadphonesIcon, Shield, ShieldAlert, Activity, Coins, LayoutGrid, Megaphone, MonitorPlay, Sparkles, Gift, ChevronDown, Menu, AlertTriangle, MessageSquare, Package, ShieldCheck, Languages, Calendar, Trophy,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -112,6 +112,7 @@ const navGroups: NavGroup[] = [
       { label: "Analytics Settings", path: "/admin/analytics-settings", icon: BarChart3 },
       { label: "Referrals", path: "/admin/referrals", icon: Gift },
       { label: "Gamification", path: "/admin/gamification", icon: Sparkles },
+      { label: "Monthly Leaderboard", path: "/admin/monthly-leaderboard", icon: Trophy },
     ],
   },
   {

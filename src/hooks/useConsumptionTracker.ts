@@ -37,9 +37,18 @@ export function useConsumptionTracker(
       return;
     }
 
-    // Tick every second
+    // Tick every second. For ebook reading, also require the tab to be
+    // visible — you can't be reading a backgrounded tab, so an idle-but-open
+    // reader tab stops accumulating time immediately rather than relying
+    // only on the gap-since-last-tick heuristic below. Audiobook playback is
+    // exempt: background/lock-screen playback is normal, legitimate
+    // listening (isPlaying already excludes actually-paused audio).
     const tick = () => {
       const now = Date.now();
+      if (format === "ebook" && document.visibilityState !== "visible") {
+        lastTickRef.current = now;
+        return;
+      }
       if (lastTickRef.current) {
         const delta = Math.round((now - lastTickRef.current) / 1000);
         if (delta > 0 && delta < 10) { // ignore huge gaps (tab was inactive)
