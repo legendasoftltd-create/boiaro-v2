@@ -104,6 +104,7 @@ interface RadioStation {
   description: string | null
   is_active: boolean
   sort_order: number
+  auto_recording_enabled: boolean
 }
 
 function validateStreamUrl(url: string): { valid: boolean; warning?: string } {
@@ -151,6 +152,7 @@ export default function AdminRadio() {
     artwork_url: "",
     description: "",
     is_active: true,
+    auto_recording_enabled: false,
   })
 
   useEffect(() => {
@@ -197,6 +199,7 @@ export default function AdminRadio() {
         artwork_url: s.artwork_url || "",
         description: s.description || "",
         is_active: s.is_active,
+        auto_recording_enabled: s.auto_recording_enabled ?? false,
       })
     }
     setLoading(false)
@@ -227,6 +230,7 @@ export default function AdminRadio() {
       artwork_url: form.artwork_url.trim() || null,
       description: form.description.trim() || null,
       is_active: form.is_active,
+      auto_recording_enabled: form.auto_recording_enabled,
       updated_at: new Date().toISOString(),
     }
 
@@ -244,9 +248,12 @@ export default function AdminRadio() {
           id: station.id,
           name: payload.name,
           stream_url: payload.stream_url,
+          stream_url_medium: payload.stream_url_medium,
+          stream_url_low: payload.stream_url_low,
           artwork_url: payload.artwork_url,
           description: payload.description,
           is_active: payload.is_active,
+          auto_recording_enabled: payload.auto_recording_enabled,
           sort_order: station.sort_order ?? 0,
         }) as any
       } catch (e: any) {
@@ -257,9 +264,12 @@ export default function AdminRadio() {
         savedStation = await upsertRadioStationMutation.mutateAsync({
           name: payload.name,
           stream_url: payload.stream_url,
+          stream_url_medium: payload.stream_url_medium,
+          stream_url_low: payload.stream_url_low,
           artwork_url: payload.artwork_url,
           description: payload.description,
           is_active: payload.is_active,
+          auto_recording_enabled: payload.auto_recording_enabled,
           sort_order: 0,
         }) as any
       } catch (e: any) {
@@ -434,6 +444,19 @@ export default function AdminRadio() {
           <p className="text-xs text-muted-foreground -mt-2">
             Only fill these in if your Icecast/Shoutcast server actually runs separate lower-bitrate mount points — this app can't transcode a single stream into multiple qualities on its own. Leave blank and listeners just get the main stream, no quality selector shown.
           </p>
+
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label>Auto-record RJ live sessions on this station</Label>
+              <p className="text-xs text-muted-foreground">
+                Also requires the global "Automatic Recording" toggle in Radio Safety &amp; Controls to be on.
+              </p>
+            </div>
+            <Switch
+              checked={form.auto_recording_enabled}
+              onCheckedChange={(checked) => setForm((f) => ({ ...f, auto_recording_enabled: checked }))}
+            />
+          </div>
 
           <div className="space-y-2">
             <Label>Artwork URL</Label>

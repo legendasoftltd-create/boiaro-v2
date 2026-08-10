@@ -6113,6 +6113,7 @@ export const adminRouter = router({
         description: z.string().nullable().optional(),
         is_active: z.boolean().default(true),
         sort_order: z.number().int().default(0),
+        auto_recording_enabled: z.boolean().default(false),
       })
     )
     .mutation(({ input }) => {
@@ -6125,6 +6126,7 @@ export const adminRouter = router({
         description: input.description ?? null,
         is_active: input.is_active,
         sort_order: input.sort_order,
+        auto_recording_enabled: input.auto_recording_enabled,
       };
       if (input.id) return prisma.radioStation.update({ where: { id: input.id }, data });
       return prisma.radioStation.create({ data });
@@ -6180,14 +6182,16 @@ export const adminRouter = router({
       // Conflict detection: other active schedules on the same station that
       // occupy the same day (recurring) or same calendar date (one_time) and
       // whose time range overlaps this one.
+      const dayOrDateFilter = input.schedule_type === "recurring"
+        ? { day_of_week: input.day_of_week, schedule_type: "recurring" as const }
+        : { schedule_type: "one_time" as const, specific_date: new Date(input.specific_date!) };
+
       const candidates = await prisma.showSchedule.findMany({
         where: {
           station_id: input.station_id,
           status: "active",
           id: input.id ? { not: input.id } : undefined,
-          ...(input.schedule_type === "recurring"
-            ? { day_of_week: input.day_of_week, schedule_type: "recurring" }
-            : { schedule_type: "one_time", specific_date: new Date(input.specific_date!) }),
+          ...dayOrDateFilter,
         },
       });
       const conflict = candidates.find((c) => {
@@ -6197,6 +6201,30 @@ export const adminRouter = router({
       });
       if (conflict) {
         throw new TRPCError({ code: "CONFLICT", message: `Time conflicts with "${conflict.show_title}" (${conflict.start_time}-${conflict.end_time}) on the same station` });
+      }
+
+      // Same RJ, different station — an RJ can't be double-booked across
+      // stations even though the station-scoped check above wouldn't catch it.
+      const rjCandidates = await prisma.showSchedule.findMany({
+        where: {
+          rj_user_id: input.rj_user_id,
+          station_id: { not: input.station_id },
+          status: "active",
+          id: input.id ? { not: input.id } : undefined,
+          ...dayOrDateFilter,
+        },
+        include: { station: { select: { name: true } } },
+      });
+      const rjConflict = rjCandidates.find((c) => {
+        const cStart = toMinutes(c.start_time);
+        const cEnd = toMinutes(c.end_time);
+        return startMin < cEnd && cStart < endMin;
+      });
+      if (rjConflict) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `This RJ is already scheduled for "${rjConflict.show_title}" (${rjConflict.start_time}-${rjConflict.end_time}) on ${rjConflict.station.name}`,
+        });
       }
 
       const data = {
