@@ -16,30 +16,41 @@ import { runIcecastListenerPoll } from "./icecastListenerPoll.js";
  * payout sweep, etc.), register it here rather than starting a second
  * cron instance elsewhere.
  *
- * Times are server-local. All jobs are self-contained (skip already-alerted
- * users) so a missed run or an overlapping manual invocation is harmless.
+ * Daily/weekly jobs are pinned to Asia/Dhaka (the app's audience timezone)
+ * via the `timezone` option — NOT server-local time. The host's own OS
+ * timezone can differ from Dhaka and shifts with its own DST rules, so
+ * relying on "server-local" silently drifts these jobs off their intended
+ * Dhaka wall-clock time (e.g. a "20:00 server-local" streak alert meant to
+ * land near Dhaka midnight would land an hour off once the host's DST
+ * offset changes). Sub-daily sweep jobs (every minute/5 minutes/hourly)
+ * don't need a timezone since their cadence is timezone-independent.
+ *
+ * All jobs are self-contained (skip already-alerted users) so a missed
+ * run or an overlapping manual invocation is harmless.
  */
+const DHAKA = { timezone: "Asia/Dhaka" };
+
 export function startScheduledJobs(): void {
-  // Daily at 10:00 — inactivity alerts
+  // Daily at 10:00 Dhaka — inactivity alerts
   cron.schedule("0 10 * * *", () => {
     runInactivityAlerts()
       .then((r) => r.sent && console.log(`[jobs] inactivityAlerts: sent ${r.sent}`))
       .catch((err) => console.error("[jobs] inactivityAlerts failed:", err));
-  });
+  }, DHAKA);
 
-  // Daily at 20:00 — streak-ending-soon alerts
+  // Daily at 20:00 Dhaka — streak-ending-soon alerts (streaks lapse at Dhaka midnight)
   cron.schedule("0 20 * * *", () => {
     runStreakAlerts()
       .then((r) => r.sent && console.log(`[jobs] streakAlerts: sent ${r.sent}`))
       .catch((err) => console.error("[jobs] streakAlerts failed:", err));
-  });
+  }, DHAKA);
 
-  // Weekly, Sunday at 18:00 — weekly reading report ready notification
+  // Weekly, Sunday at 18:00 Dhaka — weekly reading report ready notification
   cron.schedule("0 18 * * 0", () => {
     runWeeklySummary()
       .then((r) => r.sent && console.log(`[jobs] weeklySummary: sent ${r.sent}`))
       .catch((err) => console.error("[jobs] weeklySummary failed:", err));
-  });
+  }, DHAKA);
 
   // Hourly — pay out & close competitions whose end_at has passed
   cron.schedule("15 * * * *", () => {
@@ -72,13 +83,13 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] streamReconnect failed:", err));
   });
 
-  // Daily at 04:00 — delete draft/rejected recordings past retention, and
+  // Daily at 04:00 Dhaka — delete draft/rejected recordings past retention, and
   // published ones too if an explicit published-retention limit is set
   cron.schedule("0 4 * * *", () => {
     runRecordingRetentionSweep()
       .then((r) => (r.draftsDeleted || r.publishedDeleted) && console.log(`[jobs] recordingRetention: drafts=${r.draftsDeleted} published=${r.publishedDeleted}`))
       .catch((err) => console.error("[jobs] recordingRetention failed:", err));
-  });
+  }, DHAKA);
 
   // Every minute — sample Icecast's real listener count (see radioAnalytics'
   // peak/average, which reads these samples rather than ListenerSession)
