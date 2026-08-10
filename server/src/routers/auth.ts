@@ -91,7 +91,7 @@ export const authRouter = router({
 
   signIn: publicProcedure
     .input(signInSchema)
-    .mutation(async ({ input }) => signInUser(input)),
+    .mutation(async ({ ctx, input }) => signInUser(input, { ip: ctx.ip, userAgent: ctx.userAgent })),
 
   signInWithGoogle: publicProcedure
     .input(
@@ -103,7 +103,7 @@ export const authRouter = router({
         message: "Either idToken or accessToken is required",
       })
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const googleClientId = process.env.GOOGLE_CLIENT_ID;
       if (!googleClientId) {
         throw new TRPCError({
@@ -221,7 +221,7 @@ export const authRouter = router({
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
 
-      const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+      const deviceResult = await resolveDeviceSessionOnLogin(user.id, { ...input, ip: ctx.ip, userAgent: ctx.userAgent });
       if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
 
       const { accessToken, refreshToken } = signTokens(user.id, user.email);
@@ -239,7 +239,7 @@ export const authRouter = router({
 
   signInWithFacebook: publicProcedure
     .input(z.object({ accessToken: z.string().min(1) }).merge(deviceInfoSchema))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const appId = process.env.FACEBOOK_APP_ID;
       const appSecret = process.env.FACEBOOK_APP_SECRET;
       if (!appId || !appSecret) {
@@ -287,7 +287,7 @@ export const authRouter = router({
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
 
-      const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+      const deviceResult = await resolveDeviceSessionOnLogin(user.id, { ...input, ip: ctx.ip, userAgent: ctx.userAgent });
       if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
 
       const { accessToken, refreshToken } = signTokens(user.id, user.email);
@@ -307,7 +307,7 @@ export const authRouter = router({
         username: z.string().optional(),
       }).merge(deviceInfoSchema)
     )
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const identity = await verifyAppleIdToken(input.idToken);
       const fallbackName =
         [input.firstname, input.lastname].filter(Boolean).join(" ").trim() ||
@@ -319,7 +319,7 @@ export const authRouter = router({
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
 
-      const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+      const deviceResult = await resolveDeviceSessionOnLogin(user.id, { ...input, ip: ctx.ip, userAgent: ctx.userAgent });
       if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
 
       const { accessToken, refreshToken } = signTokens(user.id, user.email);
@@ -429,7 +429,7 @@ export const authRouter = router({
 
   verifyPhoneOtp: publicProcedure
     .input(z.object({ phone: z.string().min(6), otp: z.string().length(6) }).merge(deviceInfoSchema))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const phone = normalizeBdPhone(input.phone);
 
       const record = await prisma.phoneOtp.findFirst({
@@ -489,7 +489,7 @@ export const authRouter = router({
         }
       }
 
-      const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+      const deviceResult = await resolveDeviceSessionOnLogin(user.id, { ...input, ip: ctx.ip, userAgent: ctx.userAgent });
       if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
 
       const { accessToken, refreshToken } = signTokens(user.id, user.email);

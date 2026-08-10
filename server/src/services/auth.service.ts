@@ -59,7 +59,10 @@ async function completePendingReferral(userId: string): Promise<void> {
   ]);
 }
 
-export async function signInUser(input: z.infer<typeof signInSchema>) {
+export async function signInUser(
+  input: z.infer<typeof signInSchema>,
+  requestInfo?: { ip?: string | null; userAgent?: string | null }
+) {
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     include: { profile: true, roles: true },
@@ -95,7 +98,7 @@ export async function signInUser(input: z.infer<typeof signInSchema>) {
   // Complete any pending referral on first login (deferred from signup to prevent abuse)
   completePendingReferral(user.id).catch(() => {});
 
-  const deviceResult = await resolveDeviceSessionOnLogin(user.id, input);
+  const deviceResult = await resolveDeviceSessionOnLogin(user.id, { ...input, ...requestInfo });
   if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
 
   const { accessToken, refreshToken } = signTokens(user.id, user.email);

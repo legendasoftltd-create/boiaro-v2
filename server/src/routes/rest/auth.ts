@@ -39,8 +39,16 @@ function extractDeviceParams(body: Record<string, unknown>): DeviceLoginParams {
 
 // Throws sendHttpError-compatible TRPCError if the login should be blocked;
 // otherwise resolves with nothing (session row already created/touched).
-async function enforceDeviceLimitOrThrow(userId: string, body: Record<string, unknown>): Promise<void> {
-  const result = await resolveDeviceSessionOnLogin(userId, extractDeviceParams(body));
+async function enforceDeviceLimitOrThrow(
+  userId: string,
+  body: Record<string, unknown>,
+  req: { ip?: string; headers: Record<string, unknown> }
+): Promise<void> {
+  const result = await resolveDeviceSessionOnLogin(userId, {
+    ...extractDeviceParams(body),
+    ip: req.ip,
+    userAgent: req.headers["user-agent"] as string | undefined,
+  });
   if (result.allowed === false) throw deviceLimitError(result.limit, result.devices);
 }
 
@@ -121,7 +129,7 @@ authRestRouter.post("/signup", async (req, res) => {
 authRestRouter.post("/login", async (req, res) => {
   try {
     const input = signInSchema.parse({ ...req.body, ...extractDeviceParams(req.body) });
-    const result = await signInUser(input);
+    const result = await signInUser(input, { ip: req.ip, userAgent: req.headers["user-agent"] });
     res.json({
       access_token: result.accessToken,
       refresh_token: result.refreshToken,
@@ -402,7 +410,7 @@ async function handleGoogleLogin(req: import("express").Request, res: Response) 
       throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
     }
 
-    await enforceDeviceLimitOrThrow(user.id, req.body ?? {});
+    await enforceDeviceLimitOrThrow(user.id, req.body ?? {}, req);
 
     const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } = signTokens(user.id, user.email);
     sendSocialLoginResponse(
@@ -499,7 +507,7 @@ authRestRouter.post("/social/facebook", async (req, res) => {
       throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
     }
 
-    await enforceDeviceLimitOrThrow(user.id, req.body ?? {});
+    await enforceDeviceLimitOrThrow(user.id, req.body ?? {}, req);
 
     const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } = signTokens(
       user.id,
@@ -545,7 +553,7 @@ async function handleAppleLogin(req: import("express").Request, res: Response) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
     }
 
-    await enforceDeviceLimitOrThrow(user.id, req.body ?? {});
+    await enforceDeviceLimitOrThrow(user.id, req.body ?? {}, req);
 
     const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } = signTokens(user.id, user.email);
     sendSocialLoginResponse(
@@ -642,7 +650,7 @@ authRestRouter.post("/facebook", async (req, res) => {
       throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
     }
 
-    await enforceDeviceLimitOrThrow(user.id, req.body ?? {});
+    await enforceDeviceLimitOrThrow(user.id, req.body ?? {}, req);
 
     const { accessToken: jwtAccessToken, refreshToken: jwtRefreshToken } = signTokens(
       user.id,
@@ -769,7 +777,7 @@ authRestRouter.post("/phone/verify-otp", async (req, res) => {
       userProfile = u.profile;
     }
 
-    await enforceDeviceLimitOrThrow(userId, req.body ?? {});
+    await enforceDeviceLimitOrThrow(userId, req.body ?? {}, req);
 
     const { accessToken, refreshToken } = signTokens(userId, userEmail);
     sendSocialLoginResponse(

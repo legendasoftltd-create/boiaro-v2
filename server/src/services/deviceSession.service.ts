@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import { ACTIVE_SUBSCRIPTION_WHERE } from "./bookAccess.service.js";
 
@@ -22,6 +23,18 @@ export interface DeviceLoginParams {
   deviceName?: string;
   platform?: string;
   revokeDeviceId?: string;
+  // Only used to derive a fallback identifier when the client doesn't send
+  // deviceId (see the rollout-rule comment below) — never persisted raw.
+  ip?: string | null;
+  userAgent?: string | null;
+}
+
+// IP+UA is a coarse fallback (shared IPs/NAT or identical browser configs
+// can collide onto the same slot) — real deviceId from an updated client is
+// always preferred and used as-is when present.
+function fallbackDeviceId(ip?: string | null, userAgent?: string | null): string | undefined {
+  if (!ip || !userAgent) return undefined;
+  return "fp_" + createHash("sha256").update(`${ip}|${userAgent}`).digest("hex").slice(0, 32);
 }
 
 export type DeviceLoginResult =
@@ -47,8 +60,13 @@ export async function resolveDeviceSessionOnLogin(
   params: DeviceLoginParams
 ): Promise<DeviceLoginResult> {
   // Rollout rule: requests without a device id come from clients that don't
-  // yet know about this feature (older app/web builds) — never enforce.
-  if (!params.deviceId) return { allowed: true };
+  // yet know about this feature (older app/web builds). Rather than skip
+  // enforcement entirely (trivially bypassable by just omitting the field),
+  // fall back to a coarse IP+User-Agent fingerprint; only truly skip when
+  // even that can't be derived (e.g. IP unavailable behind some proxy).
+  const deviceId = params.deviceId ?? fallbackDeviceId(params.ip, params.userAgent);
+  if (!deviceId) return { allowed: true };
+  params = { ...params, deviceId, deviceName: params.deviceName ?? (params.deviceId ? undefined : "Unrecognized device") };
 
   if (params.revokeDeviceId) {
     await prisma.deviceSession.deleteMany({
