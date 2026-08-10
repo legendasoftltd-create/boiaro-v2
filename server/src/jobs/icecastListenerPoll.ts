@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { deriveIcecastMountPath } from "../lib/icecastMount.js";
 
 /**
  * Runs every minute (see jobs/index.ts) — polls Icecast's own status-json.xsl
@@ -11,10 +12,12 @@ import { prisma } from "../lib/prisma.js";
  * goLive), so this samples every currently-live session's own mount, not a
  * single global one — one status-json.xsl fetch per distinct Icecast host
  * (stations sharing a host only cost one fetch), matched against each
- * session's own stream_url pathname. A session whose stream_url doesn't
- * parse, or whose mount doesn't appear in that host's response (stream
- * down), still gets a 0 sample rather than being skipped — a poll gap is
- * itself meaningful for the time series, not something to silently drop.
+ * session's real Icecast mount (see icecastMount.ts — stream_url is often
+ * reverse-proxied, so the raw URL path isn't the real mount name). A
+ * session whose stream_url doesn't parse, or whose mount doesn't appear in
+ * that host's response (stream down), still gets a 0 sample rather than
+ * being skipped — a poll gap is itself meaningful for the time series, not
+ * something to silently drop.
  */
 export async function runIcecastListenerPoll(): Promise<{ sampled: number }> {
   const liveSessions = await prisma.liveSession.findMany({
@@ -23,24 +26,31 @@ export async function runIcecastListenerPoll(): Promise<{ sampled: number }> {
   });
   if (!liveSessions.length) return { sampled: 0 };
 
-  type Target = { sessionId: string; mountPath: string };
+  // mountPath (raw, with any proxy prefix like /radio-stream intact) is used
+  // to build the status-json.xsl URL so nginx still routes it correctly.
+  // realMount (prefix stripped) is what Icecast itself reports in its own
+  // listenurl — proxy prefixes are an nginx concept, invisible to Icecast —
+  // so matching must use realMount, not the raw path (see icecastMount.ts).
+  type Target = { sessionId: string; realMount: string };
   const byOrigin = new Map<string, { statusUrl: URL; targets: Target[] }>();
   const unparseable: string[] = [];
 
   for (const session of liveSessions) {
     if (!session.stream_url) { unparseable.push(session.id); continue; }
     let mountUrl: URL;
+    const realMount = deriveIcecastMountPath(session.stream_url);
     try {
       mountUrl = new URL(session.stream_url);
     } catch {
       unparseable.push(session.id);
       continue;
     }
+    if (!realMount) { unparseable.push(session.id); continue; }
     const statusUrl = new URL(mountUrl.toString());
     statusUrl.pathname = statusUrl.pathname.replace(/\/[^/]*$/, "/status-json.xsl");
     const origin = statusUrl.origin;
     if (!byOrigin.has(origin)) byOrigin.set(origin, { statusUrl, targets: [] });
-    byOrigin.get(origin)!.targets.push({ sessionId: session.id, mountPath: mountUrl.pathname });
+    byOrigin.get(origin)!.targets.push({ sessionId: session.id, realMount });
   }
 
   const samples: { live_session_id: string; listener_count: number }[] = unparseable.map((id) => ({
@@ -65,7 +75,7 @@ export async function runIcecastListenerPoll(): Promise<{ sampled: number }> {
       // Falls through with sources = [] — every target on this origin samples as 0.
     }
     for (const target of targets) {
-      const match = sources.find((s: any) => typeof s?.listenurl === "string" && s.listenurl.endsWith(target.mountPath));
+      const match = sources.find((s: any) => typeof s?.listenurl === "string" && s.listenurl.endsWith(target.realMount));
       samples.push({ live_session_id: target.sessionId, listener_count: Number(match?.listeners ?? 0) || 0 });
     }
   }

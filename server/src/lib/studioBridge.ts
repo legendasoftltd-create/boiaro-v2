@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { prisma } from "./prisma.js";
+import { deriveIcecastMountPath } from "./icecastMount.js";
 
 /**
  * Shared client for the Bridge Relay's internal control channel (see
@@ -32,14 +33,6 @@ export async function registerBridgeMount(roomName: string, mount: string) {
   }
 }
 
-function mountPathFrom(streamUrl: string): string | null {
-  try {
-    return new URL(streamUrl).pathname;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Pushes the current set of active stations' Icecast mounts to the Bridge
  * Relay so it can keep each mount's emergency-fallback wiring (silence ->
@@ -54,7 +47,7 @@ export async function syncStationMountsWithBridge(): Promise<void> {
     where: { is_active: true },
     select: { stream_url: true },
   });
-  const mounts = [...new Set(stations.map((s) => mountPathFrom(s.stream_url)).filter((m): m is string => !!m))];
+  const mounts = [...new Set(stations.map((s) => deriveIcecastMountPath(s.stream_url)).filter((m): m is string => !!m))];
   const res = await callBridgeInternal("/internal/sync-stations", { mounts });
   if (!res.ok) throw new Error(`Bridge Relay rejected station sync (${res.status})`);
 }

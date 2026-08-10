@@ -9,6 +9,7 @@ import { logRadioAction } from "../lib/radioAudit.js";
 import { shouldAutoRecord, startRecording, stopRecording } from "../lib/liveRecorder.js";
 import { notifyFollowersOfGoLive } from "../lib/radioNotify.js";
 import { registerBridgeMount } from "../lib/studioBridge.js";
+import { deriveIcecastMountPath } from "../lib/icecastMount.js";
 
 // Host capabilities are a strict superset of Co-host/RJ/Producer/Guest, so a
 // participant who is both "the RJ" and "running the room" just holds the
@@ -253,10 +254,8 @@ export const studioRouter = router({
         || "http://localhost:8000/studio-test.mp3";
       const bridgeRtmpUrl = process.env.STUDIO_BRIDGE_RTMP_URL || "rtmp://127.0.0.1:1935/live";
 
-      let mount: string;
-      try {
-        mount = new URL(streamUrl).pathname;
-      } catch {
+      const mount = deriveIcecastMountPath(streamUrl);
+      if (!mount) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Invalid stream URL configured: ${streamUrl}` });
       }
       await registerBridgeMount(session.room_name, mount);
