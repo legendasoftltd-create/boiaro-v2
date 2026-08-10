@@ -1,4 +1,8 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Keeps Icecast's per-mount emergency-fallback wiring in sync with the
@@ -16,11 +20,8 @@ import { readFile, writeFile } from "node:fs/promises";
  * untouched.
  */
 const XML_PATH = process.env.ICECAST_XML_PATH || "./icecast/icecast.xml";
-const ICECAST_HOST = process.env.ICECAST_HOST || "localhost";
-const ICECAST_PORT = process.env.ICECAST_PORT || "8000";
-const ICECAST_ADMIN_USER = process.env.ICECAST_ADMIN_USER || "admin";
-const ICECAST_ADMIN_PASSWORD = process.env.ICECAST_ADMIN_PASSWORD || "";
 const FALLBACK_MOUNT = process.env.ICECAST_FALLBACK_MOUNT || "/fallback.mp3";
+const ICECAST_COMPOSE_SERVICE = process.env.ICECAST_COMPOSE_SERVICE || "icecast";
 
 const START_MARKER = "<!-- DYNAMIC_MOUNTS_START (managed by icecastConfig.ts — do not edit by hand) -->";
 const END_MARKER = "<!-- DYNAMIC_MOUNTS_END -->";
@@ -41,12 +42,16 @@ function renderMountStanza(mount: string): string {
   ].join("\n");
 }
 
+// Icecast has no HTTP admin command for a live config reload — it re-reads
+// its config file on SIGHUP (that's what the native install's `systemctl
+// reload icecast2` / `/etc/init.d/icecast2 reload` do under the hood too).
+// Icecast runs as PID 1 inside its container here, so `docker compose kill
+// -s HUP` delivers that signal without restarting the container (no dropped
+// connections on unrelated mounts). Requires the bridge process to run
+// from the same directory as docker-compose.yml (true both in local dev
+// and the deployed layout — see exec cwd in the PM2/systemd unit).
 async function reloadIcecast(): Promise<void> {
-  const auth = Buffer.from(`${ICECAST_ADMIN_USER}:${ICECAST_ADMIN_PASSWORD}`).toString("base64");
-  const res = await fetch(`http://${ICECAST_HOST}:${ICECAST_PORT}/admin/reloadconfig`, {
-    headers: { Authorization: `Basic ${auth}` },
-  });
-  if (!res.ok) throw new Error(`Icecast reloadconfig returned ${res.status}`);
+  await execFileAsync("docker", ["compose", "kill", "-s", "HUP", ICECAST_COMPOSE_SERVICE]);
 }
 
 /**

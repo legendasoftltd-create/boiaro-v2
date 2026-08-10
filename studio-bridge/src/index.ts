@@ -97,8 +97,14 @@ const internalServer = createServer(async (req, res) => {
     res.writeHead(500).end();
   }
 });
-internalServer.listen(INTERNAL_PORT, "127.0.0.1", () => {
-  console.log(`[studio-bridge] internal control channel listening on 127.0.0.1:${INTERNAL_PORT}`);
+// Defaults to loopback-only (safe when the app server is colocated, e.g.
+// local dev). When the app server runs on a different host than the
+// bridge, set BRIDGE_INTERNAL_HOST=0.0.0.0 and firewall the port to just
+// that host's IP (shared-secret auth on the endpoint itself is the other
+// half of the protection, not a substitute for the firewall rule).
+const INTERNAL_HOST = process.env.BRIDGE_INTERNAL_HOST || "127.0.0.1";
+internalServer.listen(INTERNAL_PORT, INTERNAL_HOST, () => {
+  console.log(`[studio-bridge] internal control channel listening on ${INTERNAL_HOST}:${INTERNAL_PORT}`);
 });
 
 console.log(`[studio-bridge] RTMP ingest listening on :${RTMP_PORT}, HTTP on :${HTTP_PORT}`);
