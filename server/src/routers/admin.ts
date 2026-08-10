@@ -5022,6 +5022,7 @@ export const adminRouter = router({
         id: z.string(),
         label: z.string().min(1),
         is_enabled: z.boolean(),
+        web_enabled: z.boolean().default(true),
         mode: z.string().nullable().optional(),
         sort_priority: z.number().int().default(0),
         config: z.record(z.any()).default({}),
@@ -5034,6 +5035,7 @@ export const adminRouter = router({
         data: {
           label: input.label,
           is_enabled: input.is_enabled,
+          web_enabled: input.web_enabled,
           mode: input.mode ?? null,
           sort_priority: input.sort_priority,
           config: input.config as any,

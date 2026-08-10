@@ -17,6 +17,7 @@ interface Gateway {
   gateway_key: string;
   label: string;
   is_enabled: boolean;
+  web_enabled: boolean;
   mode: string;
   sort_priority: number;
   config: Record<string, any>;
@@ -111,6 +112,7 @@ export default function AdminPaymentGateways() {
         id: gw.id,
         label: gw.label,
         is_enabled: gw.is_enabled,
+        web_enabled: gw.web_enabled,
         mode: gw.mode || null,
         sort_priority: gw.sort_priority,
         config: gw.config,
@@ -129,6 +131,12 @@ export default function AdminPaymentGateways() {
 
   const toggleEnabled = async (gw: Gateway) => {
     const updated = { ...gw, is_enabled: !gw.is_enabled };
+    setGateways(prev => prev.map(g => g.id === gw.id ? updated : g));
+    await updateGateway(updated);
+  };
+
+  const toggleWebEnabled = async (gw: Gateway) => {
+    const updated = { ...gw, web_enabled: !gw.web_enabled };
     setGateways(prev => prev.map(g => g.id === gw.id ? updated : g));
     await updateGateway(updated);
   };
@@ -270,6 +278,15 @@ export default function AdminPaymentGateways() {
                         </Select>
                       </div>
                     )}
+                    <div>
+                      <Label className="text-xs">Show on Web Checkout</Label>
+                      <div className="mt-1 flex items-center gap-2 h-9">
+                        <Switch checked={gw.web_enabled} onCheckedChange={() => toggleWebEnabled(gw)} />
+                        <span className="text-xs text-muted-foreground">
+                          {gw.web_enabled ? "Visible on web" : "Hidden on web (app-only)"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {fields.length > 0 && (

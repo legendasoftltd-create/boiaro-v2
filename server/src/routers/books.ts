@@ -1238,6 +1238,12 @@ export const booksRouter = router({
       subscriberAccess: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      const book = await prisma.book.findUnique({ where: { id: input.bookId }, select: { submitted_by: true } });
+      if (!book) throw new TRPCError({ code: "NOT_FOUND", message: "Book not found" });
+      if (book.submitted_by !== ctx.userId && !(await userOwnsBook(ctx.userId!, input.bookId))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "You don't have permission to modify this book" });
+      }
+
       const existing = await prisma.bookFormat.findFirst({
         where: { book_id: input.bookId, format: input.format },
       });

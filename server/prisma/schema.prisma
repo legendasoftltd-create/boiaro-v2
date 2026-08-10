@@ -1492,6 +1492,10 @@ model PaymentGateway {
   notes         String?
   sort_priority Int      @default(0)
   updated_at    DateTime @updatedAt
+  // Some gateways (e.g. RevenueCat/Apple IAP) only work inside the native
+  // mobile app and have no web implementation — web checkout must never
+  // offer them. The mobile REST endpoint stays unfiltered.
+  web_enabled   Boolean  @default(true)
 
   @@map("payment_gateways")
 }

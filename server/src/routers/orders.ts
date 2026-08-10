@@ -141,9 +141,12 @@ export const ordersRouter = router({
       });
     }),
 
+  // Web-only (this tRPC surface has no mobile client) — must never offer
+  // app-only gateways like RevenueCat/Apple IAP. Mobile uses the separate
+  // REST /orders/payment-gateways endpoint, which stays unfiltered.
   paymentGateways: publicProcedure.query(() =>
     prisma.paymentGateway.findMany({
-      where: { is_enabled: true },
+      where: { is_enabled: true, web_enabled: true },
       orderBy: { sort_priority: "asc" },
     })
   ),
