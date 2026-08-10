@@ -66,6 +66,7 @@ export async function signInUser(
   const user = await prisma.user.findUnique({
     where: { email: input.email },
     include: { profile: true, roles: true },
+    omit: { password_hash: false }, // needed for the bcrypt.compare below
   });
   if (!user) {
     throw new TRPCError({

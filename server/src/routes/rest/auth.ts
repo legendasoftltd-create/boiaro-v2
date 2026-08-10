@@ -225,7 +225,10 @@ authRestRouter.post("/reset-password-confirm", async (req, res) => {
       res.status(422).json({ error: "Password must be at least 6 characters" });
       return;
     }
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({
+      where: { email },
+      omit: { reset_otp: false, reset_otp_expires: false },
+    });
     if (
       !user ||
       !user.reset_otp ||

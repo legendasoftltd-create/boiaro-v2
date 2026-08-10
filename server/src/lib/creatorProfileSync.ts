@@ -1,7 +1,7 @@
-import type { Prisma, PrismaClient } from "../generated/prisma/index.js";
+import type { Prisma } from "../generated/prisma/index.js";
 import { prisma as defaultPrisma } from "./prisma.js";
 
-type Client = PrismaClient | Prisma.TransactionClient;
+type Client = typeof defaultPrisma | Prisma.TransactionClient;
 
 /**
  * A user's own account picture lives on Profile.avatar_url, but readers

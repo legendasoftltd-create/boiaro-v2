@@ -378,7 +378,10 @@ export const authRouter = router({
   confirmPasswordReset: publicProcedure
     .input(z.object({ email: z.string().email(), otp: z.string(), password: z.string().min(6) }))
     .mutation(async ({ input }) => {
-      const user = await prisma.user.findUnique({ where: { email: input.email } });
+      const user = await prisma.user.findUnique({
+        where: { email: input.email },
+        omit: { reset_otp: false, reset_otp_expires: false },
+      });
       if (
         !user ||
         !user.reset_otp ||
