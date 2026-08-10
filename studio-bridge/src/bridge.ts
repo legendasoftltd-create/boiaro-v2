@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, promises as fs } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -81,10 +81,26 @@ function spawnFfmpeg(streamPath: string, wavPath: string): ChildProcess {
 async function notifyMasterReady(streamPath: string, wavPath: string) {
   const roomName = roomNameFromStreamPath(streamPath);
   try {
+    const stat = await fs.stat(wavPath).catch(() => null);
+    if (!stat) {
+      console.error(`[bridge] master WAV missing for ${roomName} at ${wavPath}, skipping upload`);
+      return;
+    }
+
+    // The app server and the Bridge Relay run on separate hosts in
+    // production, so the webhook can't just hand over a local path — it
+    // pushes the file itself as multipart form data. Multipart is exempted
+    // from the server's global "Content-Type must be application/json"
+    // mutation guard (server/src/index.ts), the same exemption already used
+    // for the app's other file-upload endpoints (multer/memoryStorage).
+    const buffer = await fs.readFile(wavPath);
+    const form = new FormData();
+    form.append("roomName", roomName);
+    form.append("file", new Blob([buffer], { type: "audio/wav" }), `${roomName}.wav`);
+
     const res = await fetch(`${SERVER_URL}/api/v1/studio/internal/master-ready`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         "X-Studio-Internal-Secret": INTERNAL_SECRET,
         // Server-wide CSRF middleware (server/src/index.ts) requires this on
         // any /api/v1 mutation that isn't Bearer-authenticated — this call
@@ -92,12 +108,16 @@ async function notifyMasterReady(streamPath: string, wavPath: string) {
         // the same opt-in browser requests get automatically.
         "X-Requested-With": "studio-bridge",
       },
-      body: JSON.stringify({ roomName, wavPath }),
+      body: form,
     });
     if (!res.ok) console.error(`[bridge] master-ready webhook failed for ${roomName}: ${res.status}`);
     else console.log(`[bridge] master-ready webhook sent for ${roomName}`);
   } catch (err: any) {
     console.error(`[bridge] master-ready webhook error for ${roomName}:`, err.message);
+  } finally {
+    // Only this host has the file — cleanup has to happen here, not on the
+    // (remote) app server, regardless of whether the upload succeeded.
+    await fs.unlink(wavPath).catch(() => null);
   }
 }
 

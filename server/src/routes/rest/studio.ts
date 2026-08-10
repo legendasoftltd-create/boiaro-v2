@@ -1,6 +1,6 @@
 import { Router } from "express";
+import multer from "multer";
 import { z } from "zod";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sendHttpError } from "../../lib/http.js";
@@ -76,29 +76,36 @@ studioRestRouter.post("/join/:token", requireAuth, async (req: AuthenticatedRequ
   }
 });
 
-const masterReadySchema = z.object({ roomName: z.string().min(1), wavPath: z.string().min(1) });
+// Same memoryStorage/size-limit convention as the app's other media uploads
+// (see uploadMedia in server/src/index.ts). Multipart bodies are exempt from
+// the global "Content-Type must be application/json" mutation guard, so this
+// needs no changes to shared middleware.
+const masterUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1024 * 1024 * 1024 } });
 
 // POST /api/v1/studio/internal/master-ready
 // Called by the Bridge Relay (studio-bridge/) once it's done writing a
 // session's WAV master — service-to-service, not a user session, so this is
-// gated by a shared secret header rather than requireAuth. Reads the local
-// file (same host as the Bridge Relay, per the Phase 3a plan), uploads it
-// via the same uploadWithFallback path liveRecorder.ts already uses for the
-// (separate, lower-quality) MP3 catch-up recording, and deletes the scratch
-// file afterward regardless of outcome.
-studioRestRouter.post("/internal/master-ready", async (req, res) => {
+// gated by a shared secret header rather than requireAuth. The Bridge Relay
+// and this app run on separate hosts in production, so the file itself is
+// pushed as multipart form data rather than a local path being handed over.
+// Uploads via the same uploadWithFallback path liveRecorder.ts already uses
+// for the (separate, lower-quality) MP3 catch-up recording.
+studioRestRouter.post("/internal/master-ready", masterUpload.single("file"), async (req, res) => {
   const secret = req.header("X-Studio-Internal-Secret");
   if (!secret || secret !== process.env.STUDIO_BRIDGE_INTERNAL_SECRET) {
     res.status(401).json({ message: "Unauthorized" });
     return;
   }
 
-  let wavPath: string | undefined;
   try {
-    const parsed = masterReadySchema.parse(req.body);
-    wavPath = parsed.wavPath;
+    const roomName = z.string().min(1).parse(req.body.roomName);
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ message: "Missing file" });
+      return;
+    }
 
-    const session = await prisma.studioSession.findUnique({ where: { room_name: parsed.roomName } });
+    const session = await prisma.studioSession.findUnique({ where: { room_name: roomName } });
     if (!session) {
       res.status(404).json({ message: "Studio session not found for room" });
       return;
@@ -109,17 +116,15 @@ studioRestRouter.post("/internal/master-ready", async (req, res) => {
       data: { master_recording_status: "processing" },
     });
 
-    const stat = fs.statSync(wavPath);
-    if (stat.size < 10_000) {
+    if (file.size < 10_000) {
       // Basically empty — mirrors liveRecorder.ts's same guard against publishing silence.
       await prisma.studioSession.update({ where: { id: session.id }, data: { master_recording_status: null } });
       res.json({ ok: true, skipped: "empty" });
       return;
     }
 
-    const buffer = await fs.promises.readFile(wavPath);
     const result = await uploadWithFallback(
-      buffer,
+      file.buffer,
       `${session.id}-master.wav`,
       "audio/wav",
       { hint: "audio", folder: "studio-masters" },
@@ -134,7 +139,5 @@ studioRestRouter.post("/internal/master-ready", async (req, res) => {
     res.json({ ok: true, url: result.url });
   } catch (error) {
     sendHttpError(res, error);
-  } finally {
-    if (wavPath) fs.promises.unlink(wavPath).catch(() => null);
   }
 });
