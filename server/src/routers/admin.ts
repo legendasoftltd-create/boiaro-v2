@@ -2328,7 +2328,17 @@ export const adminRouter = router({
 
   deleteNotification: adminProcedure
     .input(z.object({ id: z.string() }))
-    .mutation(({ input }) => prisma.notification.delete({ where: { id: input.id } })),
+    .mutation(async ({ input }) => {
+      const notification = await prisma.notification.findUnique({ where: { id: input.id } });
+      if (!notification) throw new TRPCError({ code: "NOT_FOUND" });
+      // Once sent, per-user UserNotification receipts exist and RESTRICT the
+      // FK — deleting the parent would erase real delivery/read history, not
+      // just fail. Blocked outright rather than cascade-deleting that data.
+      if (notification.status === "sent") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Sent notifications can't be deleted — they have real delivery history." });
+      }
+      return prisma.notification.delete({ where: { id: input.id } });
+    }),
 
   sendNotification: adminProcedure
     .input(z.object({ id: z.string() }))

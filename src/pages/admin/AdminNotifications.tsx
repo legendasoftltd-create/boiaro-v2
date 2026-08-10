@@ -141,7 +141,12 @@ export default function AdminNotifications() {
   };
 
   const deleteNotification = async (id: string) => {
-    await deleteNotificationMutation.mutateAsync({ id });
+    try {
+      await deleteNotificationMutation.mutateAsync({ id });
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to delete");
+      return;
+    }
     toast.success("Deleted");
     await utils.admin.listNotifications.invalidate();
   };
@@ -285,9 +290,9 @@ export default function AdminNotifications() {
                             <>
                               <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(n)}><Edit className="w-3.5 h-3.5" /></Button>
                               <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => sendNotification(n)}><Send className="w-3.5 h-3.5" /></Button>
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400" onClick={() => deleteNotification(n.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                             </>
                           )}
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-red-400" onClick={() => deleteNotification(n.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                         </div>
                       </TableCell>
                     </TableRow>
