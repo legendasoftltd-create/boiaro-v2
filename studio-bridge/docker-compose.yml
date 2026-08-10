@@ -7,6 +7,12 @@ name: studio-bridge-dev
 services:
   redis:
     image: redis:alpine
+    # Host networking means this is otherwise reachable on every interface
+    # the box has — Redis has no auth by default, so bind it to localhost
+    # explicitly rather than relying solely on the firewall. LiveKit/Egress
+    # only ever address it as "localhost" anyway (see livekit-config.yaml /
+    # egress-config.yaml), so this changes nothing functionally.
+    command: ["redis-server", "--bind", "127.0.0.1", "-::1"]
     network_mode: host
     restart: unless-stopped
 
