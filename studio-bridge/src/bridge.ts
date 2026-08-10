@@ -25,9 +25,26 @@ interface BridgeEntry {
   restartAttempt: number;
   restartTimer: NodeJS.Timeout | null;
   wavPath: string;
+  mount: string;
 }
 
 const sessions = new Map<string, BridgeEntry>();
+
+// Per-broadcast Icecast mount, registered by the app server (via the
+// internal HTTP endpoint in index.ts) before Egress starts publishing —
+// see server/src/routers/studio.ts's startBroadcast. Without this, every
+// concurrent broadcast would push to the same static ICECAST_MOUNT and
+// stomp on each other (only one source can hold an Icecast mount at a
+// time), which defeats running independent stations simultaneously.
+const mountRegistry = new Map<string, string>();
+
+export function registerMount(streamPath: string, mount: string) {
+  mountRegistry.set(streamPath, mount);
+}
+
+export function unregisterMount(streamPath: string) {
+  mountRegistry.delete(streamPath);
+}
 
 const RTMP_PORT = process.env.RTMP_PORT || "1935";
 const ICECAST_HOST = process.env.ICECAST_HOST || "localhost";
@@ -41,8 +58,8 @@ const MASTER_DIR = process.env.STUDIO_MASTER_DIR || "/tmp/studio-masters";
 const SERVER_URL = process.env.STUDIO_SERVER_URL || "http://localhost:3001";
 const INTERNAL_SECRET = process.env.STUDIO_BRIDGE_INTERNAL_SECRET || "";
 
-function icecastUrl() {
-  return `icecast://source:${ICECAST_PASSWORD}@${ICECAST_HOST}:${ICECAST_PORT}${ICECAST_MOUNT}`;
+function icecastUrl(mount: string) {
+  return `icecast://source:${ICECAST_PASSWORD}@${ICECAST_HOST}:${ICECAST_PORT}${mount}`;
 }
 
 function roomNameFromStreamPath(streamPath: string) {
@@ -55,7 +72,7 @@ function wavPathFor(streamPath: string) {
   return join(MASTER_DIR, `${safe}.wav`);
 }
 
-function spawnFfmpeg(streamPath: string, wavPath: string): ChildProcess {
+function spawnFfmpeg(streamPath: string, wavPath: string, mount: string): ChildProcess {
   const rtmpUrl = `rtmp://127.0.0.1:${RTMP_PORT}${streamPath}`;
   const args = [
     "-loglevel", "warning",
@@ -66,7 +83,7 @@ function spawnFfmpeg(streamPath: string, wavPath: string): ChildProcess {
     "-b:a", "128k",
     "-content_type", "audio/mpeg",
     "-f", "mp3",
-    icecastUrl(),
+    icecastUrl(mount),
     "-vn",
     "-acodec", "pcm_s16le",
     "-ar", "44100",
@@ -74,7 +91,7 @@ function spawnFfmpeg(streamPath: string, wavPath: string): ChildProcess {
     "-f", "wav",
     wavPath,
   ];
-  console.log(`[bridge] starting ffmpeg for ${streamPath} -> ${ICECAST_MOUNT} + ${wavPath}`);
+  console.log(`[bridge] starting ffmpeg for ${streamPath} -> ${mount} + ${wavPath}`);
   return spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
 }
 
@@ -127,13 +144,17 @@ export function startBridge(streamPath: string) {
     return;
   }
   mkdirSync(MASTER_DIR, { recursive: true });
-  attachAndTrack(streamPath, 0);
+  // Resolved once here (not re-looked-up on watchdog restarts) so a restart
+  // still targets the right mount even if the app server's registration
+  // already expired/was cleared in the meantime.
+  const mount = mountRegistry.get(streamPath) || ICECAST_MOUNT;
+  attachAndTrack(streamPath, 0, mount);
 }
 
-function attachAndTrack(streamPath: string, restartAttempt: number) {
+function attachAndTrack(streamPath: string, restartAttempt: number, mount: string) {
   const wavPath = wavPathFor(streamPath);
-  const proc = spawnFfmpeg(streamPath, wavPath);
-  const entry: BridgeEntry = { proc, stopping: false, startedAt: Date.now(), restartAttempt, restartTimer: null, wavPath };
+  const proc = spawnFfmpeg(streamPath, wavPath, mount);
+  const entry: BridgeEntry = { proc, stopping: false, startedAt: Date.now(), restartAttempt, restartTimer: null, wavPath, mount };
   sessions.set(streamPath, entry);
 
   proc.stderr?.on("data", (chunk) => {
@@ -167,9 +188,9 @@ function attachAndTrack(streamPath: string, restartAttempt: number) {
       `restarting in ${delay}ms (attempt ${nextAttempt + 1}) — master WAV recording restarts from scratch`
     );
     sessions.delete(streamPath);
-    const timer = setTimeout(() => attachAndTrack(streamPath, nextAttempt), delay);
+    const timer = setTimeout(() => attachAndTrack(streamPath, nextAttempt, current.mount), delay);
     // Keep a placeholder so a stopBridge() call during the backoff window can cancel the pending restart.
-    sessions.set(streamPath, { proc, stopping: false, startedAt: current.startedAt, restartAttempt: nextAttempt, restartTimer: timer, wavPath: current.wavPath });
+    sessions.set(streamPath, { proc, stopping: false, startedAt: current.startedAt, restartAttempt: nextAttempt, restartTimer: timer, wavPath: current.wavPath, mount: current.mount });
   });
 }
 

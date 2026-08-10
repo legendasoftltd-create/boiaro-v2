@@ -51,6 +51,35 @@ export function useCurrentLiveSession() {
   };
 }
 
+// Every station that's live right now, not just the single most-recently-
+// started one — several stations can be live concurrently (see
+// studio-bridge's per-station Icecast mounts).
+export function useAllLiveSessions() {
+  const query = trpc.rj.liveSession.allCurrent.useQuery(undefined, {
+    refetchInterval: 15_000,
+  });
+
+  return {
+    sessions: (query.data ?? []) as (LiveSession & { rj_profile?: RjProfile | null })[],
+    loading: query.isLoading,
+  };
+}
+
+// A specific session by id, live or already ended — for deep links
+// (go-live notifications, shared /live/:sessionId URLs) that must keep
+// pointing at the broadcast they were sent for.
+export function useLiveSessionById(sessionId: string | undefined) {
+  const query = trpc.rj.liveSession.byId.useQuery(
+    { sessionId: sessionId! },
+    { enabled: !!sessionId, refetchInterval: 15_000 }
+  );
+
+  return {
+    session: query.data as (LiveSession & { rj_profile?: RjProfile | null }) | null | undefined,
+    loading: query.isLoading,
+  };
+}
+
 // The broadcast credential required to go live — a secret distinct from the
 // RJ's login session. The plaintext token is only ever available in the
 // return value of `regenerate()`, right after generating it.

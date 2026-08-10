@@ -295,6 +295,41 @@ export const rjRouter = router({
       return { ...session, rj_profile: rjProfile };
     }),
 
+    // Every currently-live (real, non-test) session across every station —
+    // `current` above only ever surfaces one (the platform's single most-
+    // recently-started), which can't represent several stations being live
+    // at once. Used to list all of them (homepage) and to deep-link into a
+    // specific one (see byId below).
+    allCurrent: publicProcedure.query(async () => {
+      const sessions = await prisma.liveSession.findMany({
+        where: { status: { in: ["live", "reconnecting"] }, is_test: false },
+        include: { station: true },
+        orderBy: { started_at: "asc" },
+      });
+      if (!sessions.length) return [];
+      const rjProfiles = await prisma.rjProfile.findMany({
+        where: { user_id: { in: [...new Set(sessions.map((s) => s.rj_user_id))] } },
+      });
+      const profileMap = new Map(rjProfiles.map((p) => [p.user_id, p]));
+      return sessions.map((s) => ({ ...s, rj_profile: profileMap.get(s.rj_user_id) ?? null }));
+    }),
+
+    // Fetch one specific session by id, live or already ended — for
+    // deep links (go-live notifications, shared /live/:sessionId URLs)
+    // that must keep pointing at the broadcast they were sent for, not
+    // whichever session happens to be live by the time they're opened.
+    byId: publicProcedure
+      .input(z.object({ sessionId: z.string() }))
+      .query(async ({ input }) => {
+        const session = await prisma.liveSession.findUnique({
+          where: { id: input.sessionId },
+          include: { station: true },
+        });
+        if (!session || session.is_test) return null;
+        const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id } });
+        return { ...session, rj_profile: rjProfile };
+      }),
+
     // The host's own private test broadcast, if one is running — not visible
     // to anyone else. Lets the Go Live UI show test status without exposing it.
     myTestSession: protectedProcedure.query(({ ctx }) =>
@@ -379,7 +414,7 @@ export const rjRouter = router({
         });
 
         if (!input.isTest) {
-          notifyFollowersOfGoLive(ctx.userId!, profile.stage_name, input.showTitle).catch(() => null);
+          notifyFollowersOfGoLive(ctx.userId!, profile.stage_name, input.showTitle, session.id).catch(() => null);
         }
         if (!input.isTest && (await shouldAutoRecord(input.stationId, input.recordingEnabled))) {
           startRecording(session.id, input.streamUrl);

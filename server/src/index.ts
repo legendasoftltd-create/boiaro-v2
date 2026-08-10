@@ -26,6 +26,7 @@ import {
 
 import { startStorageSyncService } from "./services/storageSync.service.js";
 import { startScheduledJobs } from "./jobs/index.js";
+import { syncStationMountsWithBridge } from "./lib/studioBridge.js";
 import { applyWatermark } from "./lib/watermark.js";
 import { initLiveSocket } from "./realtime/socket.js";
 
@@ -300,6 +301,10 @@ httpServer.listen(PORT, () => {
   // Start background sync service (uploads locally-saved files to S3 when it recovers)
   startStorageSyncService();
   startScheduledJobs();
+  // Best-effort — re-pushes active stations' mounts to the Bridge Relay in
+  // case it was restarted independently and lost its in-memory fallback
+  // config (see studioBridge.ts / icecastConfig.ts).
+  syncStationMountsWithBridge().catch(() => {});
   // Apply S3 bucket policy so TTS/ambient audio folders are publicly readable
   if (s3Configured) {
     applyPublicReadPolicy()

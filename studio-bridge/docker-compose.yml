@@ -46,3 +46,10 @@ services:
     build: ./icecast
     network_mode: host
     restart: unless-stopped
+    # Read-write bind mount (not baked into the image) so the Bridge Relay
+    # running on the host can rewrite the dynamic <mount> block in place
+    # (icecastConfig.ts) and hot-reload via /admin/reloadconfig — see
+    # ICECAST_XML_PATH in studio-bridge/.env, which must point at this same
+    # host file.
+    volumes:
+      - ./icecast/icecast.xml:/etc/icecast2/icecast.xml

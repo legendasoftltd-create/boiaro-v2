@@ -2,31 +2,27 @@ import { useState, useRef, useCallback, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { Radio, Play, Pause, Loader2, WifiOff, Mic, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useRadioStation } from "@/hooks/useRadioStation"
-import { useCurrentLiveSession } from "@/hooks/useLiveSession"
+import { useRadioStations } from "@/hooks/useRadioStation"
+import { useAllLiveSessions } from "@/hooks/useLiveSession"
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
 import { stripHtml } from "@/lib/stripHtml"
 
 export function LiveRadioSection() {
-  const { data: station, isLoading } = useRadioStation()
-  const { session: liveSession } = useCurrentLiveSession()
+  const { data: stations, isLoading } = useRadioStations()
+  const { sessions } = useAllLiveSessions()
   const { get } = useSiteSettings()
   const brandName = get("brand_name", "BoiAro")
 
-  // Admin station toggle is the source of truth for homepage visibility.
+  // Admin station list is the source of truth for homepage visibility.
   if (isLoading) return null
-  if (!station) return null
+  if (!stations.length) return null
 
-  // If there's a live RJ session, show that info
-  const activeName = liveSession?.rj_profile?.stage_name
-    ? `🎙️ ${liveSession.rj_profile.stage_name} — LIVE`
-    : station?.name || `${brandName} Radio`
-  const activeDescription = liveSession?.show_title || station?.description || null
-  const activeStreamUrl = liveSession?.stream_url || station?.stream_url || ""
-  const activeArtwork = station?.artwork_url || null
-  const isRjLive = !!liveSession
+  // Several stations can be live at once — match each station to its own
+  // session (if any) rather than assuming a single platform-wide one.
+  const sessionByStation = new Map(sessions.filter((s) => s.station_id).map((s) => [s.station_id as string, s]))
+  const liveCount = sessions.length
 
   return (
     <section className="section-container" data-section="live_radio">
@@ -34,39 +30,58 @@ export function LiveRadioSection() {
         <div className="section-header flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <div className="section-icon bg-destructive/15">
-              {isRjLive ? <Mic className="w-4 h-4 md:w-5 md:h-5 text-destructive" /> : <Radio className="w-4 h-4 md:w-5 md:h-5 text-destructive" />}
+              {liveCount > 0 ? <Mic className="w-4 h-4 md:w-5 md:h-5 text-destructive" /> : <Radio className="w-4 h-4 md:w-5 md:h-5 text-destructive" />}
             </div>
             <div>
               <h2 className="text-lg md:text-2xl font-serif font-bold text-foreground">
-                Live <span className="text-destructive">{isRjLive ? "Show" : "Radio"}</span>
+                Live <span className="text-destructive">{liveCount > 0 ? "Show" : "Radio"}</span>
               </h2>
               <p className="text-xs md:text-sm text-muted-foreground">
-                {isRjLive ? `${liveSession.rj_profile?.stage_name || "RJ"} is broadcasting live` : "Listen to live streaming now"}
+                {liveCount === 1
+                  ? `${sessions[0].rj_profile?.stage_name || "An RJ"} is broadcasting live`
+                  : liveCount > 1
+                  ? `${liveCount} shows broadcasting live right now`
+                  : "Listen to live streaming now"}
               </p>
             </div>
           </div>
-          {isRjLive && (
-            <Button asChild size="sm" variant="outline" className="gap-1.5">
-              <Link to="/live"><MessageCircle className="w-3.5 h-3.5" /> Join Live Chat</Link>
-            </Button>
-          )}
         </div>
 
-        <RadioCard
-          station={{
-            id: station?.id || liveSession?.id || "live",
-            name: activeName,
-            stream_url: activeStreamUrl,
-            // Quality tiers only apply to the station's own stream — an
-            // RJ's live session only ever provides one URL (no bitrate
-            // variants for ad-hoc broadcasts), so those tiers are skipped
-            // whenever a live session is what's actually playing.
-            stream_url_medium: isRjLive ? null : station?.stream_url_medium,
-            stream_url_low: isRjLive ? null : station?.stream_url_low,
-            artwork_url: activeArtwork,
-            description: activeDescription,
-          }}
-        />
+        <div className={stations.length > 1 ? "grid grid-cols-1 md:grid-cols-2 gap-4" : undefined}>
+          {stations.map((station) => {
+            const liveSession = sessionByStation.get(station.id)
+            const isRjLive = !!liveSession
+            return (
+              <div key={station.id}>
+                {isRjLive && (
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-muted-foreground truncate">{liveSession.show_title || station.name}</span>
+                    <Button asChild size="sm" variant="outline" className="gap-1.5 shrink-0">
+                      <Link to={`/live/${liveSession.id}`}><MessageCircle className="w-3.5 h-3.5" /> Join Live Chat</Link>
+                    </Button>
+                  </div>
+                )}
+                <RadioCard
+                  station={{
+                    id: station.id,
+                    name: liveSession?.rj_profile?.stage_name
+                      ? `🎙️ ${liveSession.rj_profile.stage_name} — LIVE`
+                      : station.name || `${brandName} Radio`,
+                    stream_url: liveSession?.stream_url || station.stream_url,
+                    // Quality tiers only apply to the station's own stream — an
+                    // RJ's live session only ever provides one URL (no bitrate
+                    // variants for ad-hoc broadcasts), so those tiers are
+                    // skipped whenever a live session is what's actually playing.
+                    stream_url_medium: isRjLive ? null : station.stream_url_medium,
+                    stream_url_low: isRjLive ? null : station.stream_url_low,
+                    artwork_url: station.artwork_url,
+                    description: liveSession?.show_title || station.description,
+                  }}
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
     </section>
   )

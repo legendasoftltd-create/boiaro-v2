@@ -20,6 +20,7 @@ import { notifyFollowersOfScheduleCancelled, notifyFollowersOfScheduleReschedule
 import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSettingNumber, type RadioSettingKey } from "../lib/radioSettings.js";
 import { getMonthlyLeaderboard, recalculateMonth, upsertPrizeConfig, type LeaderboardMetric } from "../services/monthlyLeaderboard.service.js";
 import { getGaRealtimeReport } from "../lib/gaRealtime.js";
+import { syncStationMountsWithBridge } from "../lib/studioBridge.js";
 import os from "os";
 import fs from "fs";
 
@@ -6128,7 +6129,7 @@ export const adminRouter = router({
         auto_recording_enabled: z.boolean().default(false),
       })
     )
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       const data = {
         name: input.name,
         stream_url: input.stream_url,
@@ -6140,15 +6141,23 @@ export const adminRouter = router({
         sort_order: input.sort_order,
         auto_recording_enabled: input.auto_recording_enabled,
       };
-      if (input.id) return prisma.radioStation.update({ where: { id: input.id }, data });
-      return prisma.radioStation.create({ data });
+      const result = input.id
+        ? await prisma.radioStation.update({ where: { id: input.id }, data })
+        : await prisma.radioStation.create({ data });
+      // Keeps the Bridge Relay's per-mount emergency-fallback wiring current
+      // (see icecastConfig.ts) — best-effort, a broadcast's own mount
+      // registration doesn't depend on this having succeeded.
+      syncStationMountsWithBridge().catch((err) => console.error("[admin] syncStationMountsWithBridge failed:", err));
+      return result;
     }),
 
   setRadioStationActive: adminProcedure
     .input(z.object({ id: z.string(), is_active: z.boolean() }))
-    .mutation(({ input }) =>
-      prisma.radioStation.update({ where: { id: input.id }, data: { is_active: input.is_active } })
-    ),
+    .mutation(async ({ input }) => {
+      const result = await prisma.radioStation.update({ where: { id: input.id }, data: { is_active: input.is_active } });
+      syncStationMountsWithBridge().catch((err) => console.error("[admin] syncStationMountsWithBridge failed:", err));
+      return result;
+    }),
 
   // ── Show Schedule (EPG) ─────────────────────────────────────────────────
   listShowSchedules: adminProcedure.query(async () => {

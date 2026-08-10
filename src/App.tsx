@@ -246,6 +246,7 @@ const App = () => {
                 <Route path="/dashboard" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
                 <Route path="/book/:slug" element={<BookDetail />} />
                 <Route path="/live" element={<LiveShow />} />
+                <Route path="/live/:sessionId" element={<LiveShow />} />
                 <Route path="/schedule" element={<RadioSchedule />} />
                 <Route path="/host/:userId" element={<PublicRjProfile />} />
                 <Route path="/catchup" element={<RadioCatchup />} />

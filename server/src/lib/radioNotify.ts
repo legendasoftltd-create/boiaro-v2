@@ -5,14 +5,17 @@ import { notifyUser } from "./notify.js";
 // to get notified whenever they go live — no separate favorite-show model.
 // Shared by both the tRPC (rj.ts) and REST (rest/radio.ts) go-live paths so
 // mobile clients using the REST endpoint get the same follower push as web.
-export async function notifyFollowersOfGoLive(rjUserId: string, stageName: string, showTitle?: string): Promise<void> {
+export async function notifyFollowersOfGoLive(rjUserId: string, stageName: string, showTitle: string | undefined, liveSessionId: string): Promise<void> {
   const followers = await prisma.follow.findMany({ where: { followee_id: rjUserId }, select: { follower_id: true } });
   for (const f of followers) {
     await notifyUser(f.follower_id, {
       title: `🎙️ ${stageName} BoiAro On Air-এ লাইভে এসেছেন!`,
       message: showTitle ? `"${showTitle}" এখনই শুনুন।` : "এখনই লাইভ শুনুন।",
       type: "rj_live",
-      link: "/live",
+      // Points at this exact broadcast, not just "/live" — several stations
+      // can be live at once, so a generic link can't be trusted to still
+      // land on the right one by the time the follower opens it.
+      link: `/live/${liveSessionId}`,
       preferenceKey: "reminder_enabled",
     }).catch(() => null);
   }

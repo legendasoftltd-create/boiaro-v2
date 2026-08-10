@@ -7,20 +7,30 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useAuth } from "@/contexts/AuthContext"
-import { useCurrentLiveSession } from "@/hooks/useLiveSession"
+import { useCurrentLiveSession, useLiveSessionById } from "@/hooks/useLiveSession"
 import { useLiveSocket } from "@/hooks/useLiveSocket"
 import { useCallInAudio } from "@/hooks/useCallInAudio"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
 import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX } from "lucide-react"
-import { Link } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 const REACTION_EMOJIS = ["❤️", "🔥", "👏", "😂", "🎉"]
 
 export default function LiveShow() {
   const { user } = useAuth()
-  const { session, loading } = useCurrentLiveSession()
+  const { sessionId } = useParams<{ sessionId?: string }>()
+
+  // /live/:sessionId deep-links (go-live notifications, shared links) to
+  // that exact broadcast — several stations can be live at once, so
+  // "whichever's live" (the no-param fallback below) can't be assumed to
+  // be the one the link was actually sent for.
+  const byId = useLiveSessionById(sessionId)
+  const fallback = useCurrentLiveSession()
+  const { session, loading } = sessionId ? byId : fallback
+  const hasEnded = !!session && !["live", "reconnecting"].includes(session.status)
+
   const isHost = !!user && !!session && session.rj_user_id === user.id
 
   useEffect(() => {
@@ -40,6 +50,16 @@ export default function LiveShow() {
             <h1 className="text-xl font-serif font-bold">এখন কোনো লাইভ শো চলছে না</h1>
             <p className="text-muted-foreground text-sm mt-1">পরে আবার চেষ্টা করুন, অথবা হোম পেজে ফিরে যান।</p>
             <Button asChild className="mt-4"><Link to="/">হোম পেজে যান</Link></Button>
+          </div>
+        ) : hasEnded ? (
+          <div className="text-center py-20">
+            <Radio className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+            <h1 className="text-xl font-serif font-bold">এই শো শেষ হয়ে গেছে</h1>
+            <p className="text-muted-foreground text-sm mt-1">{session.show_title || "এই সম্প্রচার"} আর লাইভ নেই — ক্যাচ-আপে রেকর্ডিং থাকতে পারে।</p>
+            <div className="flex gap-2 justify-center mt-4">
+              <Button asChild variant="outline"><Link to="/catchup">ক্যাচ-আপ দেখুন</Link></Button>
+              <Button asChild><Link to="/">হোম পেজে যান</Link></Button>
+            </div>
           </div>
         ) : (
           <LiveShowRoom sessionId={session.id} showTitle={session.show_title} rjName={session.rj_profile?.stage_name} rjUserId={session.rj_user_id} isHost={isHost} callinEnabled={!!session.callin_enabled} />

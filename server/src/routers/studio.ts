@@ -8,6 +8,7 @@ import { prisma } from "../lib/prisma.js";
 import { logRadioAction } from "../lib/radioAudit.js";
 import { shouldAutoRecord, startRecording, stopRecording } from "../lib/liveRecorder.js";
 import { notifyFollowersOfGoLive } from "../lib/radioNotify.js";
+import { registerBridgeMount } from "../lib/studioBridge.js";
 
 // Host capabilities are a strict superset of Co-host/RJ/Producer/Guest, so a
 // participant who is both "the RJ" and "running the room" just holds the
@@ -220,9 +221,45 @@ export const studioRouter = router({
         throw new TRPCError({ code: "CONFLICT", message: "This studio session is already live" });
       }
 
-      const streamUrlSetting = await prisma.siteSetting.findUnique({ where: { key: "radio_public_stream_url" } });
-      const streamUrl = streamUrlSetting?.value || process.env.LIVEKIT_DEV_ICECAST_STREAM_URL || "http://localhost:8000/studio-test.mp3";
+      // Real (non-test) broadcasts: no two RJs live on the same station at
+      // once — mirrors the identical check in the traditional (external
+      // encoder) rj.ts goLive flow. Checked against LiveSession directly so
+      // it also catches a clash against a traditional-flow broadcast on the
+      // same station, not just other Studio ones.
+      let station: { id: string; stream_url: string } | null = null;
+      if (input.stationId) {
+        const clash = await prisma.liveSession.findFirst({
+          where: { station_id: input.stationId, is_test: false, status: { in: ["live", "reconnecting"] } },
+        });
+        if (clash) throw new TRPCError({ code: "CONFLICT", message: "Another host is already live on this station" });
+
+        station = await prisma.radioStation.findUnique({
+          where: { id: input.stationId },
+          select: { id: true, stream_url: true },
+        });
+        if (!station) throw new TRPCError({ code: "NOT_FOUND", message: "Station not found" });
+      }
+
+      // Each station has its own Icecast mount (station.stream_url, same
+      // field the traditional broadcast flow points listeners at) — reused
+      // here as the bridge's push target too, so concurrent stations land
+      // on separate mounts instead of colliding on one shared mount.
+      const streamUrlSetting = station
+        ? null
+        : await prisma.siteSetting.findUnique({ where: { key: "radio_public_stream_url" } });
+      const streamUrl = station?.stream_url
+        || streamUrlSetting?.value
+        || process.env.LIVEKIT_DEV_ICECAST_STREAM_URL
+        || "http://localhost:8000/studio-test.mp3";
       const bridgeRtmpUrl = process.env.STUDIO_BRIDGE_RTMP_URL || "rtmp://127.0.0.1:1935/live";
+
+      let mount: string;
+      try {
+        mount = new URL(streamUrl).pathname;
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Invalid stream URL configured: ${streamUrl}` });
+      }
+      await registerBridgeMount(session.room_name, mount);
 
       const liveSession = await prisma.liveSession.create({
         data: {
@@ -260,7 +297,7 @@ export const studioRouter = router({
       }
       const hostProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.host_user_id } });
       if (hostProfile) {
-        notifyFollowersOfGoLive(session.host_user_id, hostProfile.stage_name, input.showTitle).catch(() => null);
+        notifyFollowersOfGoLive(session.host_user_id, hostProfile.stage_name, input.showTitle, liveSession.id).catch(() => null);
       }
       await logRadioAction(ctx.userId!, "studio_broadcast_started", { sessionId: session.id, liveSessionId: liveSession.id });
       return updated;

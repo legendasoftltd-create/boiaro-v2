@@ -669,7 +669,7 @@ radioRestRouter.post("/rj/live/start", requireAuth, async (req: AuthenticatedReq
       },
     });
     if (!input.is_test) {
-      notifyFollowersOfGoLive(userId, profile.stage_name, input.show_title).catch(() => null);
+      notifyFollowersOfGoLive(userId, profile.stage_name, input.show_title, session.id).catch(() => null);
     }
     if (!input.is_test && (await shouldAutoRecord(input.station_id, input.recording_enabled))) {
       startRecording(session.id, input.stream_url);

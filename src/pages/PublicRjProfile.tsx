@@ -7,6 +7,7 @@ import { FollowButton } from "@/components/FollowButton"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
 import { stripHtml } from "@/lib/stripHtml"
+import { useAllLiveSessions } from "@/hooks/useLiveSession"
 import { Mic, Clock, Calendar } from "lucide-react"
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
@@ -15,10 +16,14 @@ export default function PublicRjProfile() {
   const { userId } = useParams<{ userId: string }>()
   const { data: rj, isLoading } = trpc.rj.profileById.useQuery({ userId: userId! }, { enabled: !!userId })
   const { data: allSchedules = [] } = trpc.rj.showSchedules.useQuery()
-  const { data: liveSession } = trpc.rj.liveSession.current.useQuery()
+  // Several RJs can be live at once (different stations) — find THIS RJ's
+  // own session rather than assuming whichever session is platform-wide
+  // most-recent belongs to them.
+  const { sessions: liveSessions } = useAllLiveSessions()
+  const liveSession = liveSessions.find((s) => s.rj_user_id === userId)
 
   const mySchedules = (allSchedules as any[]).filter((s) => s.rj_user_id === userId)
-  const isLiveNow = liveSession?.rj_user_id === userId
+  const isLiveNow = !!liveSession
 
   if (isLoading) {
     return (
@@ -60,8 +65,8 @@ export default function PublicRjProfile() {
             {rj.bio && <p className="text-sm text-muted-foreground mt-3 max-w-xl">{stripHtml(rj.bio)}</p>}
             <div className="mt-4 flex items-center gap-2 justify-center md:justify-start">
               <FollowButton profileId={rj.user_id} profileType="rj" showCount />
-              {isLiveNow && (
-                <Link to="/live" className="inline-flex items-center rounded-full bg-destructive text-destructive-foreground px-2.5 py-0.5 text-xs font-semibold hover:bg-destructive/80 transition-colors">
+              {isLiveNow && liveSession && (
+                <Link to={`/live/${liveSession.id}`} className="inline-flex items-center rounded-full bg-destructive text-destructive-foreground px-2.5 py-0.5 text-xs font-semibold hover:bg-destructive/80 transition-colors">
                   Listen Live Now
                 </Link>
               )}
