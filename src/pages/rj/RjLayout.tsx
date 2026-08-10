@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useUserRole } from "@/hooks/useUserRole"
 import { useRjProfile } from "@/hooks/useLiveSession"
 import { trpc } from "@/lib/trpc"
-import { Radio, LayoutDashboard, User, LogOut, Calendar, Menu } from "lucide-react"
+import { Radio, LayoutDashboard, User, LogOut, Calendar, Menu, Mic } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { useState, useEffect } from "react"
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 
 const navItems = [
   { label: "Dashboard", path: "/rj", icon: LayoutDashboard },
+  { label: "Studio", path: "/rj/studio", icon: Mic },
   { label: "Schedule", path: "/rj/schedule", icon: Calendar },
   { label: "Profile", path: "/rj/profile", icon: User },
 ]

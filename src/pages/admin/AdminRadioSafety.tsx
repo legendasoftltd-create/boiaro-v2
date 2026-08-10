@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -223,7 +223,11 @@ function AdminRadioSafetyToggles() {
 const STAT_LABELS: { key: string; label: string }[] = [
   { key: "totalSessions", label: "Total Sessions" },
   { key: "uniqueListeners", label: "Unique Listeners" },
-  { key: "peakConcurrentListeners", label: "Peak Concurrent" },
+  { key: "returningListeners", label: "Returning Listeners" },
+  { key: "newListeners", label: "New Listeners" },
+  { key: "peakConcurrentListeners", label: "Peak Concurrent (Chat)" },
+  { key: "icecastPeakListeners", label: "Stream Peak (Icecast)" },
+  { key: "icecastAverageListeners", label: "Stream Avg (Icecast)" },
   { key: "totalListeningMinutes", label: "Total Listening (min)" },
   { key: "averageListeningMinutes", label: "Avg. Listening (min)" },
   { key: "newFollowers", label: "New Followers" },
@@ -236,10 +240,20 @@ const STAT_LABELS: { key: string; label: string }[] = [
   { key: "catchupCompletionRatePct", label: "Catch-up Completion %" },
 ]
 
+const GROUP_BY_LABEL: Record<"none" | "rj" | "station" | "show", string> = {
+  none: "Nothing", rj: "RJ", station: "STATION", show: "Program",
+}
+
 function AdminRadioSafetyAnalytics() {
   const [range, setRange] = useState<"7" | "30" | "90">("30")
-  const [groupBy, setGroupBy] = useState<"none" | "rj" | "station">("none")
-  const from = new Date(Date.now() - Number(range) * 24 * 60 * 60 * 1000).toISOString()
+  const [groupBy, setGroupBy] = useState<"none" | "rj" | "station" | "show">("none")
+  // Memoized on `range` only — recomputing this fresh on every render (as a
+  // bare `new Date(...)` below the hook) was producing a brand-new `from`
+  // string each render, which changed the query key, refetched, re-rendered,
+  // and recomputed `from` again: an infinite refetch loop (verified live —
+  // hundreds of requests/sec). Only needs to change when the user actually
+  // picks a different range.
+  const from = useMemo(() => new Date(Date.now() - Number(range) * 24 * 60 * 60 * 1000).toISOString(), [range])
   const { data, isLoading } = trpc.admin.radioAnalytics.useQuery({ from, groupBy })
 
   return (
@@ -249,8 +263,8 @@ function AdminRadioSafetyAnalytics() {
           <Button key={r} size="sm" variant={range === r ? "default" : "outline"} onClick={() => setRange(r)} className="text-xs">Last {r}d</Button>
         ))}
         <span className="text-muted-foreground text-xs mx-1">Group by:</span>
-        {(["none", "rj", "station"] as const).map((g) => (
-          <Button key={g} size="sm" variant={groupBy === g ? "default" : "outline"} onClick={() => setGroupBy(g)} className="text-xs capitalize">{g === "none" ? "Nothing" : g.toUpperCase()}</Button>
+        {(["none", "rj", "station", "show"] as const).map((g) => (
+          <Button key={g} size="sm" variant={groupBy === g ? "default" : "outline"} onClick={() => setGroupBy(g)} className="text-xs">{GROUP_BY_LABEL[g]}</Button>
         ))}
       </div>
 
@@ -278,36 +292,57 @@ function AdminRadioSafetyAnalytics() {
             </Card>
           )}
 
-          {data.groups && (
+          {data.summary.countryBreakdown && Object.keys(data.summary.countryBreakdown).length > 0 && (
             <Card>
-              <CardHeader><CardTitle className="text-base">By {groupBy === "rj" ? "RJ" : "Station"}</CardTitle></CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{groupBy === "rj" ? "RJ" : "Station"}</TableHead>
-                      <TableHead className="text-right">Sessions</TableHead>
-                      <TableHead className="text-right">Unique Listeners</TableHead>
-                      <TableHead className="text-right">Peak</TableHead>
-                      <TableHead className="text-right">Avg. Min</TableHead>
-                      <TableHead className="text-right">Chat</TableHead>
-                      <TableHead className="text-right">Catch-up %</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(data.groups as any[]).map((g) => (
-                      <TableRow key={g.key}>
-                        <TableCell className="font-medium">{g.label}</TableCell>
-                        <TableCell className="text-right">{g.totalSessions}</TableCell>
-                        <TableCell className="text-right">{g.uniqueListeners}</TableCell>
-                        <TableCell className="text-right">{g.peakConcurrentListeners}</TableCell>
-                        <TableCell className="text-right">{g.averageListeningMinutes}</TableCell>
-                        <TableCell className="text-right">{g.chatCount}</TableCell>
-                        <TableCell className="text-right">{g.catchupCompletionRatePct}%</TableCell>
+              <CardHeader><CardTitle className="text-base">Country Breakdown</CardTitle></CardHeader>
+              <CardContent className="flex gap-4 flex-wrap">
+                {Object.entries(data.summary.countryBreakdown).map(([country, count]) => (
+                  <div key={country} className="text-sm"><span className="font-medium">{country}</span>: {count as number}</div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {data.groups && data.groups.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">By {GROUP_BY_LABEL[groupBy]}</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-md px-3 py-2">
+                  🏆 Top {GROUP_BY_LABEL[groupBy]} this period: <span className="font-semibold">{(data.groups as any[])[0].label}</span>
+                  {" "}({(data.groups as any[])[0].uniqueListeners} unique listeners)
+                </p>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{GROUP_BY_LABEL[groupBy]}</TableHead>
+                        <TableHead className="text-right">Sessions</TableHead>
+                        <TableHead className="text-right">Unique Listeners</TableHead>
+                        <TableHead className="text-right">Peak (Chat)</TableHead>
+                        <TableHead className="text-right">Stream Peak</TableHead>
+                        <TableHead className="text-right">Stream Avg</TableHead>
+                        <TableHead className="text-right">Avg. Min</TableHead>
+                        <TableHead className="text-right">Chat</TableHead>
+                        <TableHead className="text-right">Catch-up %</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {(data.groups as any[]).map((g) => (
+                        <TableRow key={g.key}>
+                          <TableCell className="font-medium">{g.label}</TableCell>
+                          <TableCell className="text-right">{g.totalSessions}</TableCell>
+                          <TableCell className="text-right">{g.uniqueListeners}</TableCell>
+                          <TableCell className="text-right">{g.peakConcurrentListeners}</TableCell>
+                          <TableCell className="text-right">{g.icecastPeakListeners}</TableCell>
+                          <TableCell className="text-right">{g.icecastAverageListeners}</TableCell>
+                          <TableCell className="text-right">{g.averageListeningMinutes}</TableCell>
+                          <TableCell className="text-right">{g.chatCount}</TableCell>
+                          <TableCell className="text-right">{g.catchupCompletionRatePct}%</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           )}

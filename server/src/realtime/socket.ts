@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
 import { logRadioAction } from "../lib/radioAudit.js";
 import { checkMessageSafety } from "../lib/chatSafety.js";
+import { detectCountryCode } from "../lib/geoCountry.js";
 
 interface AuthedSocket extends Socket {
   userId?: string;
@@ -101,8 +102,9 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       joinedSessionId = sessionId;
       emitListenerCount(sessionId);
 
+      const country = detectCountryCode({ headers: socket.handshake.headers, ip: socket.handshake.address });
       const row = await prisma.listenerSession
-        .create({ data: { live_session_id: sessionId, user_id: userId, platform: platform ?? "web" } })
+        .create({ data: { live_session_id: sessionId, user_id: userId, platform: platform ?? "web", country } })
         .catch(() => null);
       if (row) listenerSessionRows.set(socket.id, row.id);
     });

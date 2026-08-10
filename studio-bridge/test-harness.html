@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Studio Bridge — Phase 1 test harness</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  label { display: block; margin-top: 12px; font-size: 14px; }
+  input { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+  button { margin-top: 16px; padding: 10px 18px; font-size: 15px; cursor: pointer; }
+  #log { margin-top: 20px; padding: 12px; background: #f0f0f0; font-family: monospace; font-size: 12px; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+  #status { margin-top: 12px; font-weight: bold; }
+</style>
+</head>
+<body>
+<h2>Studio Bridge — Phase 1 test harness</h2>
+<p>Not part of the real app. Joins a LiveKit room with your mic and publishes audio, so you can manually verify the
+   LiveKit → Egress → Bridge Relay → Icecast chain with a real browser/microphone (as opposed to the file-based
+   <code>lk</code> CLI publishers used for automated verification).</p>
+
+<label>LiveKit URL <input id="url" value="ws://localhost:7880" /></label>
+<label>Room <input id="room" value="studio-test" /></label>
+<label>Identity <input id="identity" value="browser-guest" /></label>
+<label>Access token (mint one via <code>npm run mint-token -- &lt;room&gt; &lt;identity&gt;</code> in studio-bridge/,
+  or <code>POST /api/v1/studio/dev-token</code> once the main server is running)
+  <input id="token" placeholder="paste JWT here" />
+</label>
+
+<button id="join">Join &amp; publish mic</button>
+<button id="leave" disabled>Leave</button>
+<div id="status">Not connected</div>
+<div id="log"></div>
+
+<script type="module">
+  import { Room, RoomEvent } from "https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.esm.mjs";
+
+  const log = (msg) => {
+    const el = document.getElementById("log");
+    el.textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`;
+    el.scrollTop = el.scrollHeight;
+  };
+
+  let room;
+
+  document.getElementById("join").addEventListener("click", async () => {
+    const url = document.getElementById("url").value.trim();
+    const token = document.getElementById("token").value.trim();
+    if (!token) return alert("Paste an access token first");
+
+    room = new Room();
+    room.on(RoomEvent.Connected, () => {
+      document.getElementById("status").textContent = "Connected";
+      log("connected to room");
+    });
+    room.on(RoomEvent.Disconnected, (reason) => {
+      document.getElementById("status").textContent = "Disconnected";
+      log(`disconnected: ${reason}`);
+    });
+    room.on(RoomEvent.ParticipantConnected, (p) => log(`participant joined: ${p.identity}`));
+    room.on(RoomEvent.LocalTrackPublished, (pub) => log(`published local track: ${pub.trackSid}`));
+
+    try {
+      await room.connect(url, token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      document.getElementById("join").disabled = true;
+      document.getElementById("leave").disabled = false;
+    } catch (err) {
+      log(`ERROR: ${err.message}`);
+      alert(`Join failed: ${err.message}`);
+    }
+  });
+
+  document.getElementById("leave").addEventListener("click", async () => {
+    await room?.disconnect();
+    document.getElementById("join").disabled = false;
+    document.getElementById("leave").disabled = true;
+  });
+</script>
+</body>
+</html>

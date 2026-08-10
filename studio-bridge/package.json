@@ -1,0 +1,21 @@
+{
+  "name": "studio-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "mint-token": "tsx src/mintToken.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "livekit-server-sdk": "^2.9.2",
+    "node-media-server": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

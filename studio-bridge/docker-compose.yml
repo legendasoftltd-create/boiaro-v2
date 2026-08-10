@@ -1,0 +1,42 @@
+name: studio-bridge-dev
+
+# All services use host networking — the simplest correct way to run LiveKit
+# locally on Linux (avoids Docker NAT fighting WebRTC's dynamic UDP media
+# ports) and lets everything, including the Bridge Relay running directly on
+# the host, address everything else via plain "localhost".
+services:
+  redis:
+    image: redis:alpine
+    network_mode: host
+    restart: unless-stopped
+
+  livekit:
+    image: livekit/livekit-server:latest
+    network_mode: host
+    command: ["--config", "/etc/livekit.yaml"]
+    volumes:
+      - ./livekit-config.yaml:/etc/livekit.yaml:ro
+    restart: unless-stopped
+    depends_on:
+      - redis
+
+  egress:
+    image: livekit/egress:latest
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    volumes:
+      - ./egress-config.yaml:/etc/egress.yaml:ro
+    # Egress needs elevated privileges + real /dev/shm for its bundled Chrome compositor
+    cap_add:
+      - SYS_ADMIN
+    shm_size: "1gb"
+    depends_on:
+      - redis
+      - livekit
+
+  icecast:
+    build: ./icecast
+    network_mode: host
+    restart: unless-stopped

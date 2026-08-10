@@ -5832,18 +5832,23 @@ export const adminRouter = router({
 
   // Radio dashboard overview — live status, today's activity, and archive
   // size. "Stream health" per the spec is scoped to what this app can
-  // actually observe (its own DB + in-memory socket rooms) — it has no
-  // visibility into the Icecast/Shoutcast server's own uptime/bitrate.
+  // actually observe (its own DB + in-memory socket rooms) — still no
+  // visibility into Icecast's own uptime/bitrate, though real listener
+  // *counts* are now sampled separately (see icecastListenerPoll.ts).
   // Deep analytics over a date range — everything the spec's "Complete
   // Analytics" list asks for that radioMetrics (a lightweight today-only
-  // snapshot) doesn't cover: unique/peak listeners, average duration,
-  // chat/reaction/request totals, catch-up performance, device breakdown,
-  // and optional per-RJ or per-station grouping.
+  // snapshot) doesn't cover: unique/peak/returning-vs-new listeners,
+  // real Icecast stream-audience peak/average (distinct from the
+  // chat/reaction-participant peak below — see icecastSamples), average
+  // duration, chat/reaction/request totals, catch-up performance, device
+  // and country breakdown, and optional per-RJ, per-station, or per-show
+  // (Top Program) grouping — groups come back sorted by uniqueListeners
+  // descending, so groups[0] is the top RJ/station/show for the range.
   radioAnalytics: adminProcedure
     .input(z.object({
       from: z.string().optional(),
       to: z.string().optional(),
-      groupBy: z.enum(["none", "rj", "station"]).default("none"),
+      groupBy: z.enum(["none", "rj", "station", "show"]).default("none"),
     }))
     .query(async ({ input }) => {
       const from = input.from ? new Date(input.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -5858,10 +5863,10 @@ export const adminRouter = router({
       });
       const sessionIds = sessionsInRange.map((s) => s.id);
 
-      const [listenerRows, chatRows, requestCount, newFollowers, catchupRows, stations, rjProfiles] = await Promise.all([
+      const [listenerRows, chatRows, requestCount, newFollowers, catchupRows, stations, rjProfiles, icecastSamples] = await Promise.all([
         prisma.listenerSession.findMany({
           where: { live_session_id: { in: sessionIds } },
-          select: { live_session_id: true, user_id: true, device_id: true, platform: true, joined_at: true, left_at: true },
+          select: { live_session_id: true, user_id: true, device_id: true, platform: true, country: true, joined_at: true, left_at: true },
         }),
         prisma.liveChatMessage.findMany({ where: { live_session_id: { in: sessionIds } }, select: { live_session_id: true, user_id: true } }),
         prisma.songRequest.count({ where: { live_session_id: { in: sessionIds } } }),
@@ -5869,10 +5874,35 @@ export const adminRouter = router({
         prisma.catchupProgress.findMany({ where: { live_session_id: { in: sessionIds } }, select: { live_session_id: true, user_id: true, completed: true } }),
         prisma.radioStation.findMany({ select: { id: true, name: true } }),
         prisma.rjProfile.findMany({ select: { user_id: true, stage_name: true } }),
+        // Real stream audience (Icecast's own count), distinct from
+        // listenerRows above (Socket.IO chat/reaction participants only —
+        // see icecastListenerPoll.ts for why these are tracked separately).
+        prisma.icecastListenerSample.findMany({
+          where: { live_session_id: { in: sessionIds } },
+          select: { live_session_id: true, listener_count: true },
+        }),
       ]);
 
       const stationName = new Map(stations.map((s) => [s.id, s.name]));
       const rjName = new Map(rjProfiles.map((r) => [r.user_id, r.stage_name]));
+
+      // Returning vs new: of the visitors seen in this range, how many also
+      // have a ListenerSession from *before* `from` (any station/session)?
+      const rangeUserIds = [...new Set(listenerRows.map((r) => r.user_id).filter((v): v is string => !!v))];
+      const rangeDeviceIds = [...new Set(listenerRows.map((r) => r.device_id).filter((v): v is string => !!v))];
+      const priorVisitors = (rangeUserIds.length || rangeDeviceIds.length)
+        ? await prisma.listenerSession.findMany({
+            where: {
+              joined_at: { lt: from },
+              OR: [
+                ...(rangeUserIds.length ? [{ user_id: { in: rangeUserIds } }] : []),
+                ...(rangeDeviceIds.length ? [{ device_id: { in: rangeDeviceIds } }] : []),
+              ],
+            },
+            select: { user_id: true, device_id: true },
+          })
+        : [];
+      const returningKeys = new Set(priorVisitors.map((r) => r.user_id ?? `device:${r.device_id}`));
 
       // Peak concurrent listeners — sweep-line over join/leave events.
       const now = Date.now();
@@ -5890,13 +5920,29 @@ export const adminRouter = router({
       const deviceBreakdown: Record<string, number> = {};
       listenerRows.forEach((r) => { const p = r.platform ?? "unknown"; deviceBreakdown[p] = (deviceBreakdown[p] ?? 0) + 1; });
 
+      const countryBreakdown: Record<string, number> = {};
+      listenerRows.forEach((r) => { const c = r.country ?? "unknown"; countryBreakdown[c] = (countryBreakdown[c] ?? 0) + 1; });
+
       const catchupUniqueListeners = new Set(catchupRows.map((r) => `${r.live_session_id}:${r.user_id}`)).size;
       const catchupCompleted = catchupRows.filter((r) => r.completed).length;
+
+      // Real stream audience, from Icecast's own status-json.xsl samples —
+      // see the icecastSamples query above for why this is separate from
+      // peakConcurrentListeners (which is chat/reaction participants only).
+      const icecastCounts = icecastSamples.map((s) => s.listener_count);
+      const icecastPeakListeners = icecastCounts.length ? Math.max(...icecastCounts) : 0;
+      const icecastAverageListeners = icecastCounts.length
+        ? Math.round((icecastCounts.reduce((a, b) => a + b, 0) / icecastCounts.length) * 10) / 10
+        : 0;
 
       const summary = {
         totalSessions: sessionsInRange.length,
         uniqueListeners: uniqueListenerKeys.size,
+        returningListeners: returningKeys.size,
+        newListeners: uniqueListenerKeys.size - returningKeys.size,
         peakConcurrentListeners: peakConcurrent,
+        icecastPeakListeners,
+        icecastAverageListeners,
         totalListeningMinutes: Math.round(totalListeningSeconds / 60),
         averageListeningMinutes: listenerRows.length ? Math.round((totalListeningSeconds / listenerRows.length) / 60 * 10) / 10 : 0,
         newFollowers,
@@ -5908,12 +5954,15 @@ export const adminRouter = router({
         catchupUniqueListeners,
         catchupCompletionRatePct: catchupRows.length ? Math.round((catchupCompleted / catchupRows.length) * 1000) / 10 : 0,
         deviceBreakdown,
+        countryBreakdown,
       };
 
       let groups: Array<{ key: string; label: string } & typeof summary> | null = null;
       if (input.groupBy !== "none") {
-        const keyOf = (s: (typeof sessionsInRange)[number]) => input.groupBy === "rj" ? s.rj_user_id : (s.station_id ?? "none");
-        const labelOf = (key: string) => input.groupBy === "rj" ? (rjName.get(key) ?? "Unknown RJ") : (stationName.get(key) ?? "No station");
+        const keyOf = (s: (typeof sessionsInRange)[number]) =>
+          input.groupBy === "rj" ? s.rj_user_id : input.groupBy === "show" ? (s.show_title ?? "Untitled") : (s.station_id ?? "none");
+        const labelOf = (key: string) =>
+          input.groupBy === "rj" ? (rjName.get(key) ?? "Unknown RJ") : input.groupBy === "show" ? key : (stationName.get(key) ?? "No station");
         const keys = [...new Set(sessionsInRange.map(keyOf))];
         groups = keys.map((key) => {
           const groupSessionIds = new Set(sessionsInRange.filter((s) => keyOf(s) === key).map((s) => s.id));
@@ -5921,16 +5970,23 @@ export const adminRouter = router({
           const gChat = chatRows.filter((r) => groupSessionIds.has(r.live_session_id));
           const gCatchup = catchupRows.filter((r) => groupSessionIds.has(r.live_session_id));
           const gSessions = sessionsInRange.filter((s) => groupSessionIds.has(s.id));
+          const gIcecast = icecastSamples.filter((s) => s.live_session_id && groupSessionIds.has(s.live_session_id)).map((s) => s.listener_count);
           const gSeconds = gListener.reduce((sum, r) => sum + Math.max(0, ((r.left_at?.getTime() ?? now) - r.joined_at.getTime()) / 1000), 0);
           const gEvents = gListener.flatMap((r) => [{ t: r.joined_at.getTime(), d: 1 }, { t: (r.left_at ?? new Date(now)).getTime(), d: -1 }]).sort((a, b) => a.t - b.t);
           let gRunning = 0, gPeak = 0;
           for (const e of gEvents) { gRunning += e.d; if (gRunning > gPeak) gPeak = gRunning; }
           const gCompleted = gCatchup.filter((r) => r.completed).length;
+          const gCountryBreakdown: Record<string, number> = {};
+          gListener.forEach((r) => { const c = r.country ?? "unknown"; gCountryBreakdown[c] = (gCountryBreakdown[c] ?? 0) + 1; });
           return {
             key, label: labelOf(key),
             totalSessions: gSessions.length,
             uniqueListeners: new Set(gListener.map((r) => r.user_id ?? `device:${r.device_id}`)).size,
+            returningListeners: 0, // not split per-group to keep this one query; see summary for the overall figure
+            newListeners: 0,
             peakConcurrentListeners: gPeak,
+            icecastPeakListeners: gIcecast.length ? Math.max(...gIcecast) : 0,
+            icecastAverageListeners: gIcecast.length ? Math.round((gIcecast.reduce((a, b) => a + b, 0) / gIcecast.length) * 10) / 10 : 0,
             totalListeningMinutes: Math.round(gSeconds / 60),
             averageListeningMinutes: gListener.length ? Math.round((gSeconds / gListener.length) / 60 * 10) / 10 : 0,
             newFollowers: 0, // per-group follower attribution isn't meaningful for station grouping; see summary for the overall figure
@@ -5942,6 +5998,7 @@ export const adminRouter = router({
             catchupUniqueListeners: new Set(gCatchup.map((r) => r.user_id)).size,
             catchupCompletionRatePct: gCatchup.length ? Math.round((gCompleted / gCatchup.length) * 1000) / 10 : 0,
             deviceBreakdown: {},
+            countryBreakdown: gCountryBreakdown,
           };
         }).sort((a, b) => b.uniqueListeners - a.uniqueListeners);
       }

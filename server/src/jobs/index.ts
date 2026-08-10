@@ -7,6 +7,7 @@ import { runMonthlyLeaderboardLock } from "./monthlyLeaderboardLock.js";
 import { runShowReminders } from "./showReminders.js";
 import { runStreamReconnectSweep } from "./streamReconnect.js";
 import { runRecordingRetentionSweep } from "./recordingRetention.js";
+import { runIcecastListenerPoll } from "./icecastListenerPoll.js";
 
 /**
  * Registers all recurring background jobs. Called once at server startup
@@ -79,5 +80,11 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] recordingRetention failed:", err));
   });
 
-  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention)");
+  // Every minute — sample Icecast's real listener count (see radioAnalytics'
+  // peak/average, which reads these samples rather than ListenerSession)
+  cron.schedule("* * * * *", () => {
+    runIcecastListenerPoll().catch((err) => console.error("[jobs] icecastListenerPoll failed:", err));
+  });
+
+  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll)");
 }

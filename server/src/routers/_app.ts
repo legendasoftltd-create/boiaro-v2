@@ -13,6 +13,7 @@ import { rjRouter } from "./rj.js";
 import { contentRouter } from "./content.js";
 import { ttsRouter } from "./tts.js";
 import { devicesRouter } from "./devices.js";
+import { studioRouter } from "./studio.js";
 
 export const appRouter = router({
   auth: authRouter,
@@ -29,6 +30,7 @@ export const appRouter = router({
   content: contentRouter,
   tts: ttsRouter,
   devices: devicesRouter,
+  studio: studioRouter,
 });
 
 export type AppRouter = typeof appRouter;

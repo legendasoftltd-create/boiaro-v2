@@ -157,6 +157,11 @@ const RjLayout = lazy(() => import("./pages/rj/RjLayout.tsx"));
 const RjDashboard = lazy(() => import("./pages/rj/RjDashboard.tsx"));
 const RjProfile = lazy(() => import("./pages/rj/RjProfile.tsx"));
 const RjSchedule = lazy(() => import("./pages/rj/RjSchedule.tsx"));
+const RjStudio = lazy(() => import("./pages/rj/RjStudio.tsx"));
+
+// BoiAro On Air Studio (Hybrid LiveKit + Icecast — see studio-bridge/)
+const StudioRoom = lazy(() => import("./pages/studio/StudioRoom.tsx"));
+const StudioJoin = lazy(() => import("./pages/studio/StudioJoin.tsx"));
 
 // Admin RJ
 const AdminRjManagement = lazy(() => import("./pages/admin/AdminRjManagement.tsx"));
@@ -375,7 +380,13 @@ const App = () => {
                   <Route index element={<RjDashboard />} />
                   <Route path="profile" element={<RjProfile />} />
                   <Route path="schedule" element={<RjSchedule />} />
+                  <Route path="studio" element={<RjStudio />} />
                 </Route>
+
+                {/* BoiAro On Air Studio — Guest/Producer/Co-host may hold no
+                    platform "rj" role at all, so these need login only. */}
+                <Route path="/studio/join/:token" element={<ProtectedRoute><StudioJoin /></ProtectedRoute>} />
+                <Route path="/studio/:sessionId" element={<ProtectedRoute><StudioRoom /></ProtectedRoute>} />
 
                 {/* Legacy redirects */}
                 <Route path="/writer/*" element={<RedirectToCreator />} />

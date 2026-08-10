@@ -35,6 +35,7 @@ import { gamificationRestRouter } from "./gamification.js";
 import { referralRestRouter } from "./referral.js";
 import { shareRestRouter } from "./share.js";
 import { radioRestRouter } from "./radio.js";
+import { studioRestRouter } from "./studio.js";
 import { pushRestRouter } from "./push.js";
 import { supportRestRouter } from "./support.js";
 
@@ -78,3 +79,4 @@ restRouter.use("/gamification", gamificationRestRouter);
 restRouter.use("/referral", referralRestRouter);
 restRouter.use("/share", shareRestRouter);
 restRouter.use("/radio", radioRestRouter);
+restRouter.use("/studio", studioRestRouter);
