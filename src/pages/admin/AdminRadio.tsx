@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Radio, Save, Loader2, AlertTriangle, CheckCircle2, Antenna } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Radio, Save, Loader2, AlertTriangle, CheckCircle2, Antenna, Plus, Pencil, Rss } from "lucide-react"
 import { toast } from "sonner"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
 
@@ -56,14 +57,15 @@ function BroadcastSetupCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Antenna className="w-5 h-5 text-red-400" />
-          Broadcast Setup (for RJs)
+          Default Broadcast Setup
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-xs text-muted-foreground">
-          Non-secret Icecast connection details shown to RJs on their dashboard so they know where to
-          point BUTT/Mixxx. The Icecast source password is NOT stored here — hand it out to approved
-          RJs yourself, out of band.
+          Fallback Icecast connection details for an RJ who hasn't been pointed at a specific station yet
+          (e.g. an ad-hoc test broadcast). Once a station is selected in the Go Live form, that station's own
+          Stream URL below is what's actually used — this is only the default shown before one is picked.
+          The Icecast source password is NOT stored here — hand it out to approved RJs yourself, out of band.
         </p>
         {([
           ["radio_broadcast_host", "Icecast Host"],
@@ -109,111 +111,71 @@ interface RadioStation {
 
 function validateStreamUrl(url: string): { valid: boolean; warning?: string } {
   if (!url.trim()) return { valid: false, warning: "Stream URL is required" }
-  
+
   try {
     const parsed = new URL(url.trim())
     if (!["http:", "https:"].includes(parsed.protocol)) {
       return { valid: false, warning: "URL must start with http:// or https://" }
     }
-    
+
     const ext = parsed.pathname.toLowerCase()
     const supportedExts = [".mp3", ".aac", ".ogg", ".m3u8", ".pls", ".m4a"]
-    const looksLikeStream = supportedExts.some(e => ext.includes(e)) || 
+    const looksLikeStream = supportedExts.some(e => ext.includes(e)) ||
                            ext.includes("/stream") || ext.includes("/live") ||
                            parsed.searchParams.has("stream") ||
                            parsed.hostname.includes("stream") ||
                            parsed.hostname.includes("radio") ||
                            parsed.hostname.includes("icecast") ||
                            parsed.hostname.includes("shoutcast")
-    
+
     if (!looksLikeStream) {
       return { valid: true, warning: "This URL might not be a valid audio stream. Supported formats: MP3, AAC, OGG, HLS (m3u8)" }
     }
-    
+
     return { valid: true }
   } catch {
     return { valid: false, warning: "Invalid URL format" }
   }
 }
 
-export default function AdminRadio() {
-  const utils = trpc.useUtils()
+const EMPTY_FORM = {
+  name: "",
+  stream_url: "",
+  stream_url_medium: "",
+  stream_url_low: "",
+  artwork_url: "",
+  description: "",
+  is_active: true,
+  auto_recording_enabled: false,
+}
+
+/** Create (station === null) or edit (station set) — same form either way. */
+function StationFormDialog({ station, onClose, onSaved }: { station: RadioStation | null; onClose: () => void; onSaved: () => void }) {
   const upsertRadioStationMutation = trpc.admin.upsertRadioStation.useMutation()
-  const setRadioStationActiveMutation = trpc.admin.setRadioStationActive.useMutation()
-  const [station, setStation] = useState<RadioStation | null>(null)
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [urlValidation, setUrlValidation] = useState<{ valid: boolean; warning?: string }>({ valid: true })
-  const [form, setForm] = useState({
-    name: "",
-    stream_url: "",
-    stream_url_medium: "",
-    stream_url_low: "",
-    artwork_url: "",
-    description: "",
-    is_active: true,
-    auto_recording_enabled: false,
-  })
+  const [form, setForm] = useState(EMPTY_FORM)
 
   useEffect(() => {
-    loadStation()
-  }, [])
+    setForm(station ? {
+      name: station.name,
+      stream_url: station.stream_url,
+      stream_url_medium: station.stream_url_medium || "",
+      stream_url_low: station.stream_url_low || "",
+      artwork_url: station.artwork_url || "",
+      description: station.description || "",
+      is_active: station.is_active,
+      auto_recording_enabled: station.auto_recording_enabled ?? false,
+    } : EMPTY_FORM)
+  }, [station])
 
   useEffect(() => {
-    if (form.stream_url) {
-      setUrlValidation(validateStreamUrl(form.stream_url))
-    } else {
-      setUrlValidation({ valid: true })
-    }
+    setUrlValidation(form.stream_url ? validateStreamUrl(form.stream_url) : { valid: true })
   }, [form.stream_url])
 
-  const loadStation = async () => {
-    setLoading(true)
-    // staleTime: 0 forces a fresh fetch — loadStation also runs right after
-    // handleSave, so cached (pre-save) data would otherwise be served until
-    // the global 30s staleTime expires.
-    const rows = await utils.admin.listRadioStations.fetch(undefined, { staleTime: 0 })
-
-    if (rows && rows.length > 1) {
-      console.warn("[AdminRadio] Multiple radio_stations rows detected", {
-        rowCount: rows.length,
-        rowIds: rows.map((r) => r.id),
-      })
-    }
-
-    const data = rows?.[0]
-
-    if (data) {
-      const s = data as RadioStation
-      console.info("[AdminRadio] Fresh station fetch", {
-        frontendFetchedValue: s.is_active,
-        stationId: s.id,
-        streamUrl: s.stream_url,
-      })
-      setStation(s)
-      setForm({
-        name: s.name,
-        stream_url: s.stream_url,
-        stream_url_medium: s.stream_url_medium || "",
-        stream_url_low: s.stream_url_low || "",
-        artwork_url: s.artwork_url || "",
-        description: s.description || "",
-        is_active: s.is_active,
-        auto_recording_enabled: s.auto_recording_enabled ?? false,
-      })
-    }
-    setLoading(false)
-  }
-
   const handleSave = async () => {
-    if (!form.name.trim()) {
-      toast.error("Station name is required")
-      return
-    }
-    if (!form.stream_url.trim()) {
-      toast.error("Stream URL is required")
-      return
-    }
+    if (!form.name.trim()) { toast.error("Station name is required"); return }
+    if (!form.stream_url.trim()) { toast.error("Stream URL is required"); return }
 
     const validation = validateStreamUrl(form.stream_url)
     if (!validation.valid) {
@@ -231,163 +193,42 @@ export default function AdminRadio() {
       description: form.description.trim() || null,
       is_active: form.is_active,
       auto_recording_enabled: form.auto_recording_enabled,
-      updated_at: new Date().toISOString(),
     }
 
-    console.info("[AdminRadio] Save requested", {
-      formStateValue: form.is_active,
-      mutationPayload: payload,
-      stationId: station?.id ?? null,
-    })
-
-    let error
-    let savedStation: RadioStation | null = null
-    if (station) {
-      try {
-        savedStation = await upsertRadioStationMutation.mutateAsync({
-          id: station.id,
-          name: payload.name,
-          stream_url: payload.stream_url,
-          stream_url_medium: payload.stream_url_medium,
-          stream_url_low: payload.stream_url_low,
-          artwork_url: payload.artwork_url,
-          description: payload.description,
-          is_active: payload.is_active,
-          auto_recording_enabled: payload.auto_recording_enabled,
-          sort_order: station.sort_order ?? 0,
-        }) as any
-      } catch (e: any) {
-        error = e
-      }
-    } else {
-      try {
-        savedStation = await upsertRadioStationMutation.mutateAsync({
-          name: payload.name,
-          stream_url: payload.stream_url,
-          stream_url_medium: payload.stream_url_medium,
-          stream_url_low: payload.stream_url_low,
-          artwork_url: payload.artwork_url,
-          description: payload.description,
-          is_active: payload.is_active,
-          auto_recording_enabled: payload.auto_recording_enabled,
-          sort_order: 0,
-        }) as any
-      } catch (e: any) {
-        error = e
-      }
+    try {
+      await upsertRadioStationMutation.mutateAsync({
+        ...(station ? { id: station.id } : {}),
+        ...payload,
+        sort_order: station?.sort_order ?? 0,
+      } as any)
+      toast.success(station ? "Station updated" : "Station created")
+      onSaved()
+    } catch (e: any) {
+      toast.error("Failed to save: " + (e.message || "unknown error"))
+    } finally {
+      setSaving(false)
     }
-
-    setSaving(false)
-    if (error) {
-      toast.error("Failed to save: " + (error as any).message)
-    } else {
-      if (savedStation) {
-        const s = savedStation as RadioStation
-        console.info("[AdminRadio] Save verification", {
-          databaseSavedValue: s.is_active,
-          frontendFetchedValue: s.is_active,
-          stationId: s.id,
-        })
-      }
-
-      toast.success(form.is_active ? "Radio station is now LIVE on your website!" : "Radio station saved (currently OFF)")
-      loadStation()
-    }
-  }
-
-  const handleToggle = async (active: boolean) => {
-    setForm(f => ({ ...f, is_active: active }))
-    
-    // If station exists, immediately save the toggle
-    if (station) {
-      const payload = { is_active: active, updated_at: new Date().toISOString() }
-      console.info("[AdminRadio] Toggle requested", {
-        formStateValue: active,
-        mutationPayload: payload,
-        stationId: station.id,
-      })
-
-      let updatedRow: RadioStation | null = null
-      let error: any = null
-      try {
-        updatedRow = await setRadioStationActiveMutation.mutateAsync({ id: station.id, is_active: active }) as any
-      } catch (e: any) {
-        error = e
-      }
-      
-      if (error) {
-        toast.error("Failed to toggle: " + error.message)
-        setForm(f => ({ ...f, is_active: !active }))
-      } else {
-        const s = updatedRow as RadioStation
-        console.info("[AdminRadio] Toggle verification", {
-          databaseSavedValue: s.is_active,
-          frontendFetchedValue: s.is_active,
-          stationId: s.id,
-        })
-
-        if (s.is_active !== active) {
-          toast.error("Toggle did not persist. Please try again.")
-          setForm(f => ({ ...f, is_active: s.is_active }))
-          setStation(s)
-          return
-        }
-
-        setForm(f => ({ ...f, is_active: s.is_active }))
-        setStation(s)
-
-        toast.success(active ? "BoiAro On Air is now ON — visible on website" : "BoiAro On Air is now OFF — hidden from website")
-      }
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">BoiAro On Air</h1>
-          <p className="text-muted-foreground text-sm">Configure and control your live radio stream</p>
-        </div>
-        {station && (
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-            form.is_active 
-              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" 
-              : "bg-muted text-muted-foreground border border-border"
-          }`}>
-            <span className={`w-2 h-2 rounded-full ${form.is_active ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"}`} />
-            {form.is_active ? "LIVE ON WEBSITE" : "OFF"}
-          </div>
-        )}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <Radio className="w-5 h-5 text-red-400" />
-            Radio Station Settings
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {/* ON/OFF Toggle — prominent */}
+            {station ? `Edit "${station.name}"` : "Add Station"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-5 pt-2">
           <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
             <div>
               <Label className="text-base font-medium">Station Active</Label>
               <p className="text-sm text-muted-foreground">
-                {form.is_active ? "Radio is visible on the website — users can listen live" : "Radio is hidden from the website"}
+                {form.is_active ? "Visible on the website — users can listen live" : "Hidden from the website"}
               </p>
             </div>
-            <Switch
-              checked={form.is_active}
-              onCheckedChange={handleToggle}
-            />
+            <Switch checked={form.is_active} onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))} />
           </div>
 
           <div className="space-y-2">
@@ -442,7 +283,7 @@ export default function AdminRadio() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Only fill these in if your Icecast/Shoutcast server actually runs separate lower-bitrate mount points — this app can't transcode a single stream into multiple qualities on its own. Leave blank and listeners just get the main stream, no quality selector shown.
+            Only fill these in if this station's Icecast/Shoutcast server actually runs separate lower-bitrate mount points — this app can't transcode a single stream into multiple qualities on its own. Leave blank and listeners just get the main stream, no quality selector shown.
           </p>
 
           <div className="flex items-center justify-between rounded-lg border p-4">
@@ -477,28 +318,146 @@ export default function AdminRadio() {
             />
           </div>
 
-          <Button onClick={handleSave} disabled={saving || (!urlValidation.valid && !!form.stream_url)} className="w-full sm:w-auto">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-            {station ? "Update Station" : "Create Station"}
+          {form.stream_url.trim() && (
+            <div className="space-y-2">
+              <Label>Test Stream</Label>
+              <audio controls src={form.stream_url} className="w-full" preload="none" />
+              <p className="text-xs text-muted-foreground">
+                Click play above to test the stream. If it doesn't work here, it won't work on the website either.
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving || (!urlValidation.valid && !!form.stream_url)}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+              {station ? "Update Station" : "Create Station"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export default function AdminRadio() {
+  const utils = trpc.useUtils()
+  const setRadioStationActiveMutation = trpc.admin.setRadioStationActive.useMutation()
+  const [stations, setStations] = useState<RadioStation[]>([])
+  const [loading, setLoading] = useState(true)
+  // null = dialog closed, "new" = create flow, a station = edit flow
+  const [dialogTarget, setDialogTarget] = useState<RadioStation | "new" | null>(null)
+
+  useEffect(() => {
+    loadStations()
+  }, [])
+
+  const loadStations = async () => {
+    setLoading(true)
+    // staleTime: 0 forces a fresh fetch — this also runs right after a
+    // create/update/toggle, so cached (pre-change) data would otherwise be
+    // served until the global 30s staleTime expires.
+    const rows = await utils.admin.listRadioStations.fetch(undefined, { staleTime: 0 })
+    setStations((rows || []) as RadioStation[])
+    setLoading(false)
+  }
+
+  const handleToggleActive = async (s: RadioStation, active: boolean) => {
+    // Optimistic UI, reverted on failure — same pattern as the old single-station toggle.
+    setStations((rows) => rows.map((r) => (r.id === s.id ? { ...r, is_active: active } : r)))
+    try {
+      await setRadioStationActiveMutation.mutateAsync({ id: s.id, is_active: active })
+      toast.success(active ? `"${s.name}" is now visible on the website` : `"${s.name}" is now hidden`)
+    } catch (e: any) {
+      setStations((rows) => rows.map((r) => (r.id === s.id ? { ...r, is_active: !active } : r)))
+      toast.error("Failed to toggle: " + (e.message || "unknown error"))
+    }
+  }
+
+  const activeCount = stations.filter((s) => s.is_active).length
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">BoiAro On Air</h1>
+          <p className="text-muted-foreground text-sm">Manage stations for live radio — each one broadcasts independently</p>
+        </div>
+        {stations.length > 0 && (
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+            activeCount > 0
+              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+              : "bg-muted text-muted-foreground border border-border"
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${activeCount > 0 ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"}`} />
+            {activeCount} / {stations.length} station{stations.length === 1 ? "" : "s"} visible
+          </div>
+        )}
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="flex items-center gap-2">
+            <Rss className="w-5 h-5 text-red-400" />
+            Stations
+          </CardTitle>
+          <Button size="sm" onClick={() => setDialogTarget("new")} className="gap-1.5">
+            <Plus className="w-4 h-4" /> Add Station
           </Button>
+        </CardHeader>
+        <CardContent>
+          {stations.length === 0 ? (
+            <div className="text-center py-10">
+              <Radio className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground mb-4">No stations yet — add one to turn on BoiAro On Air.</p>
+              <Button onClick={() => setDialogTarget("new")} className="gap-1.5">
+                <Plus className="w-4 h-4" /> Add Station
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {stations.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/50 bg-muted/20">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium truncate">{s.name}</p>
+                      {s.auto_recording_enabled && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">auto-record</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate">{s.stream_url}</p>
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <Switch checked={s.is_active} onCheckedChange={(v) => handleToggleActive(s, v)} />
+                    <Button size="icon" variant="ghost" onClick={() => setDialogTarget(s)} title="Edit station">
+                      <Pencil className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {station && form.stream_url && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Test Stream</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <audio controls src={form.stream_url} className="w-full" preload="none" />
-            <p className="text-xs text-muted-foreground mt-2">
-              Click play above to test the stream. If it doesn't work here, it won't work on the website either.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
       <BroadcastSetupCard />
+
+      {dialogTarget !== null && (
+        <StationFormDialog
+          station={dialogTarget === "new" ? null : dialogTarget}
+          onClose={() => setDialogTarget(null)}
+          onSaved={() => { setDialogTarget(null); loadStations() }}
+        />
+      )}
     </div>
   )
 }
