@@ -27,7 +27,7 @@ export default function LiveShow() {
   // "whichever's live" (the no-param fallback below) can't be assumed to
   // be the one the link was actually sent for.
   const byId = useLiveSessionById(sessionId)
-  const fallback = useCurrentLiveSession()
+  const fallback = useCurrentLiveSession({ enabled: !sessionId })
   const { session, loading } = sessionId ? byId : fallback
   const hasEnded = !!session && !["live", "reconnecting"].includes(session.status)
 

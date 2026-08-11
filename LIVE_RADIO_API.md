@@ -12,18 +12,26 @@ reconnect handling). Base URL and auth headers: see [REST_API.md](REST_API.md).
 REST endpoints below are under `/api/v1`; the real-time layer is a separate
 Socket.IO connection (see below).
 
-**Broadcasting audio itself (RJ → server) is external-encoder based, not
-in-app.** RJs push their stream to the Icecast/Shoutcast mount from OBS,
-Mixxx, BUTT, or any compatible encoder — see section 8a. There's no
-in-browser/in-app "record and upload live" studio; building one (with
-mixing, ducking, jingles) was scoped out in favor of RJs using tools built
-for exactly this. **Listener call-in audio (a caller ↔ host, not RJ →
-server) is real WebRTC**, peer-to-peer, signaled over the existing
-Socket.IO connection — see section 9. A self-hosted coturn TURN relay on
-the production server covers callers behind strict/symmetric NAT; clients
-fetch STUN+TURN with time-limited credentials from
-`GET /radio/callin/ice-servers` (or tRPC `rj.callIn.iceServers`) right
-before creating the peer connection.
+**Broadcasting audio (RJ → server) works two ways** — an external encoder
+(OBS/Mixxx/BUTT push to an Icecast mount, see section 8a), or **BoiAro On
+Air Studio**, an in-browser/in-app multi-person option (web only right
+now, no mobile client — not covered here). Either way, the result is the
+same kind of `LiveSession` from a listening client's point of view:
+nothing about this doc's endpoints changes based on which one a host used.
+
+**Multiple stations can be live at the same time, on either path,
+completely independently** — different RJs, different Studio sessions,
+different listeners/chat/analytics per station. Going live on one station
+has no effect on any other station's broadcast; the only exclusivity rule
+is *one live (non-test) broadcast per station at a time* (`409 Conflict`
+if you try to start a second one on a station that's already live).
+
+**Listener call-in audio (a caller ↔ host, not RJ → server) is real
+WebRTC**, peer-to-peer, signaled over the existing Socket.IO connection —
+see section 9. A self-hosted coturn TURN relay on the production server
+covers callers behind strict/symmetric NAT; clients fetch STUN+TURN with
+time-limited credentials from `GET /radio/callin/ice-servers` (or tRPC
+`rj.callIn.iceServers`) right before creating the peer connection.
 
 ---
 
@@ -63,6 +71,15 @@ giving up; keep playing/showing the player as normal, optionally show a
 subtle "reconnecting" badge (see `session:reconnecting` socket event).
 `live` is `null` when nobody's broadcasting — fall back to the station's
 own `stream_url`.
+
+> **Known gap — multiple concurrent stations.** This endpoint returns only
+> the platform's single most-recently-started live session, even when
+> several stations are live at once — it was never updated for
+> multi-station concurrency, and there's no REST alternative yet either
+> (web has an internal fix; mobile doesn't). If you need "what's live on
+> *this* station" or "every station that's live right now," ask backend
+> for a REST endpoint that returns all current sessions rather than
+> working around it client-side.
 
 ### Playback notes
 - Streams may be plain MP3/AAC/OGG (play directly) or HLS (`.m3u8`). Use
@@ -369,7 +386,11 @@ accepted. Body:
 - `callin_enabled: true` is rejected (`403`) unless the platform toggle
   `radio_callin_enabled` is also on.
 - Fails with `409 Conflict` if another (non-test) session is already live on
-  the same `station_id` — only one host per station at a time.
+  the same `station_id` — only one host per station at a time. Different
+  stations impose **no** such restriction on each other — as many stations
+  as exist can be simultaneously live, each with its own host, listeners,
+  and chat room. This same check also catches a clash against a Studio
+  (web-only) broadcast already live on that station, and vice versa.
 - Fails with `403` if your RJ account is suspended/deactivated, or your
   token/terms aren't current.
 
@@ -393,20 +414,8 @@ the stream is actually fine** — it isn't optional.
 
 ## 8a. Broadcasting the show itself — external encoder (feasibility + setup)
 
-**Why not in-browser/in-app broadcasting?** A browser can *capture* a mic
-via `getUserMedia`, but Icecast/Shoutcast (what this platform's stream
-infrastructure speaks) expects a "source client" talking the Icecast
-source protocol — browsers don't speak that natively, and there's no
-standard way to push a MediaRecorder blob to it as a continuous live
-stream. The real alternative would be a server-side WebRTC-to-Icecast
-bridge (an SFU that decodes the browser's WebRTC audio and re-encodes it
-into the Icecast mount) — extra always-on infrastructure, added latency,
-and real CPU/bandwidth cost on a server this project is deliberately
-keeping lean (see section 11 / server cost control). Every mainstream
-internet radio operation — professional or hobbyist — broadcasts with a
-dedicated encoder for exactly this reason, so that's the path this
-platform uses too, rather than reinventing a worse version of tools that
-already do this well.
+This is the path any RJ can use regardless of platform, including from a
+mobile device paired with encoder software running elsewhere.
 
 **Recommended tools** (either works; pick based on whether you also want
 a mixer):
@@ -450,11 +459,9 @@ a mixer):
    real — it behaves identically but never appears publicly or notifies
    followers.
 
-This is a genuinely manual, external-tool-dependent flow — there's no way
-to shrink it to a single in-app button without building the bridge
-described above. If real usage shows this is too much friction for RJs,
-building that bridge (or shipping a bundled, pre-configured BUTT profile)
-would be the next investment, not a quick add-on.
+This is a genuinely manual, external-tool-dependent flow — there's no
+in-app alternative on mobile today (Studio, the web-only in-browser
+option, isn't covered by this doc).
 
 ---
 
@@ -538,19 +545,3 @@ New `type` values on notifications delivered via the existing FCM pipeline:
 | `catchup_published` | A followed RJ's recording became available in catch-up |
 | `competition_won`, etc. | Unrelated — see GAMIFICATION_RETENTION_API.md |
 
----
-
-## 11. Everything else (tRPC only — no REST mirror yet)
-
-- `rj.myProfile` / `createProfile` / `updateProfile` — self-service profile
-- `rj.mySessions` — session history
-- `rj.approvalHistory` — your own approve/reject/suspend/reactivate timeline
-- `rj.attachRecording` `{ sessionId, recordingUrl }` — enables catch-up for that session (https URLs only)
-- `rj.myShowSchedules` — read-only view of admin-assigned slots
-- `rj.requestScheduleChange` `{ scheduleId, requestType: "cancel"|"reschedule", proposedDayOfWeek?, proposedStartTime?, proposedEndTime?, proposedSpecificDate?, reason? }` — propose a change to your own slot; admin reviews it
-- `rj.myScheduleChangeRequests` — your own change requests and their `pending`/`approved`/`rejected` status
-- `rj.pendingRecordings` / `approveRecording` / `rejectRecording` / `publishRecording` / `unpublishRecording` / `deleteRecording` — recording review workflow (tRPC form of the REST `recording/:action` endpoint in section 5)
-- `rj.myCatchupProgress` / `recordCatchupPlay` / `saveCatchupProgress` / `myCatchupHistory` — tRPC form of the catch-up progress endpoints in section 5
-- `rj.liveSession.mutedUsers` `{ sessionId }` — host/moderator's view of who's currently muted or banned
-- `admin.radioAnalytics` `{ from?, to?, groupBy?: "none"|"rj"|"station" }` — admin-only. Unique/peak-concurrent/average listeners, total listening minutes, new followers, chat/reaction/request counts, catch-up plays/unique listeners/completion rate, device breakdown, optionally broken down per RJ or per station. Surfaced in the admin "Radio Safety & Controls" → Analytics tab, not exposed to mobile.
-- `admin.serverMetrics` — admin-only. CPU/memory/disk plus radio-specific storage/bandwidth estimates and cost-alert thresholds (70/85/95%) for the server cost control requirements.

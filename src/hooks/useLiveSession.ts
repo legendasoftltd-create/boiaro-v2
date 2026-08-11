@@ -39,9 +39,10 @@ export function useRjProfile() {
   return { profile: query.data as RjProfile | null | undefined, loading: query.isLoading };
 }
 
-export function useCurrentLiveSession() {
+export function useCurrentLiveSession(options?: { enabled?: boolean }) {
   const query = trpc.rj.liveSession.current.useQuery(undefined, {
     refetchInterval: 15_000,
+    enabled: options?.enabled ?? true,
   });
 
   return {

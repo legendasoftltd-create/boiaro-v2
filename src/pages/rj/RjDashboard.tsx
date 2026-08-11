@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { Link } from "react-router-dom"
 import { useRjProfile, useMyLiveSession, useBroadcastToken, useRjTerms } from "@/hooks/useLiveSession"
+import { useRadioStations } from "@/hooks/useRadioStation"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck, Antenna } from "lucide-react"
 import { toast } from "sonner"
 
@@ -17,12 +19,14 @@ export default function RjDashboard() {
   const { status: tokenStatus, regenerate: regenerateToken, revoke: revokeToken, isRegenerating } = useBroadcastToken()
   const { status: termsStatus, accept: acceptTerms, isAccepting } = useRjTerms()
   const { get: getSetting, isLoading: settingsLoading } = useSiteSettings()
+  const { data: stations } = useRadioStations()
 
   const broadcastHost = getSetting("radio_broadcast_host")
   const broadcastPort = getSetting("radio_broadcast_port")
   const broadcastMount = getSetting("radio_broadcast_mount")
   const publicStreamUrl = getSetting("radio_public_stream_url")
 
+  const [stationId, setStationId] = useState("")
   const [streamUrl, setStreamUrl] = useState("")
   const [showTitle, setShowTitle] = useState("")
   const [broadcastToken, setBroadcastToken] = useState("")
@@ -38,9 +42,29 @@ export default function RjDashboard() {
     return () => { document.title = "BoiAro" }
   }, [])
 
+  // Default to the first active station once the list loads, so a
+  // fresh RJ doesn't have to know to pick one — falls back to the old
+  // single-station behavior (platform's public stream URL, no station
+  // attached) only when there are no stations configured at all.
   useEffect(() => {
-    if (!streamUrl && publicStreamUrl) setStreamUrl(publicStreamUrl)
-  }, [publicStreamUrl])
+    if (stationId || streamUrl) return
+    if (stations && stations.length > 0) {
+      setStationId(stations[0].id)
+      setStreamUrl(stations[0].stream_url)
+    } else if (publicStreamUrl) {
+      setStreamUrl(publicStreamUrl)
+    }
+  }, [stations, publicStreamUrl])
+
+  const handleStationChange = (value: string) => {
+    if (value === "__none__") {
+      setStationId("")
+      return
+    }
+    setStationId(value)
+    const station = stations?.find((s) => s.id === value)
+    if (station) setStreamUrl(station.stream_url)
+  }
 
   const handleGenerateToken = async () => {
     try {
@@ -85,6 +109,7 @@ export default function RjDashboard() {
       await goLive({
         streamUrl: streamUrl.trim(),
         showTitle: showTitle.trim() || undefined,
+        stationId: stationId || undefined,
         broadcastToken: broadcastToken.trim(),
         isTest: isTestBroadcast,
       })
@@ -257,6 +282,22 @@ export default function RjDashboard() {
                 </div>
               )}
 
+              {stations && stations.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Station</Label>
+                  <Select value={stationId || "__none__"} onValueChange={handleStationChange}>
+                    <SelectTrigger disabled={!profile?.is_approved}><SelectValue placeholder="Select a station" /></SelectTrigger>
+                    <SelectContent>
+                      {stations.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                      <SelectItem value="__none__">No station (custom stream)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Which station this broadcast goes out on — picking one fills in its stream URL below and stops another host going live on the same station while you're on air.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label>Stream URL *</Label>
                 <Input
@@ -266,7 +307,9 @@ export default function RjDashboard() {
                   disabled={!profile?.is_approved}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  {publicStreamUrl
+                  {stationId
+                    ? "Filled in from the selected station — only change this if your encoder pushes somewhere else."
+                    : publicStreamUrl
                     ? "Pre-filled with the platform's public listener URL — only change this if you're broadcasting to a different stream."
                     : "Enter your Icecast, Shoutcast, or any audio stream URL"}
                 </p>

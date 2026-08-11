@@ -4,10 +4,12 @@ import { useAuth } from "@/contexts/AuthContext"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, LogOut } from "lucide-react"
 import { toast } from "sonner"
 import { useStudioRoom } from "@/hooks/useStudioRoom"
 import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl } from "@/hooks/useStudioSession"
+import { useRadioStations } from "@/hooks/useRadioStation"
 
 const MODERATOR_ROLES = ["host", "co_host"]
 const BROADCAST_ROLES = ["host", "rj"]
@@ -31,7 +33,17 @@ export default function StudioRoom() {
   const { participants, refetch } = useStudioParticipants(sessionId)
   const { promoteToPublish, removeParticipant } = useStudioModeration(sessionId!)
   const { startBroadcast, endBroadcast, isStarting, isEnding } = useBroadcastControl(sessionId!)
+  const { data: stations } = useRadioStations()
+  const [stationId, setStationId] = useState("")
+  // No session-status query wired up here yet — tracked locally from this
+  // component's own start/end actions, same limitation the rest of this
+  // page has (e.g. a page refresh mid-broadcast loses this).
+  const [isLive, setIsLive] = useState(false)
   const connecting = useRef(false)
+
+  useEffect(() => {
+    if (!stationId && stations && stations.length > 0) setStationId(stations[0].id)
+  }, [stations])
 
   const me = participants.find((p) => p.user_id === user?.id)
   const myRole = me?.role
@@ -62,7 +74,8 @@ export default function StudioRoom() {
 
   const handleStart = async () => {
     try {
-      await startBroadcast()
+      await startBroadcast({ stationId: stationId || undefined })
+      setIsLive(true)
       toast.success("সম্প্রচার শুরু হয়েছে")
     } catch (err: any) {
       toast.error(err.message || "সম্প্রচার শুরু করা যায়নি")
@@ -72,6 +85,7 @@ export default function StudioRoom() {
   const handleEnd = async () => {
     try {
       await endBroadcast()
+      setIsLive(false)
       toast.success("সম্প্রচার শেষ হয়েছে")
     } catch (err: any) {
       toast.error(err.message || "সম্প্রচার শেষ করা যায়নি")
@@ -127,13 +141,22 @@ export default function StudioRoom() {
 
           {room.state === "connected" && (
             <>
+              {canControlBroadcast && !isLive && stations && stations.length > 0 && (
+                <Select value={stationId} onValueChange={setStationId}>
+                  <SelectTrigger className="h-9 text-[13px] w-full sm:w-64"><SelectValue placeholder="কোন Station-এ সম্প্রচার হবে?" /></SelectTrigger>
+                  <SelectContent>
+                    {stations.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+
               <div className="flex items-center gap-2">
                 <Button size="sm" variant={room.micOn ? "default" : "outline"} onClick={room.toggleMic} className="gap-1.5">
                   {room.micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
                   {room.micOn ? "মাইক চালু" : "মাইক বন্ধ"}
                 </Button>
 
-                {canControlBroadcast && (
+                {canControlBroadcast && !isLive && (
                   <Button
                     size="sm"
                     variant="destructive"
@@ -145,7 +168,7 @@ export default function StudioRoom() {
                     সম্প্রচার শুরু
                   </Button>
                 )}
-                {canControlBroadcast && (
+                {canControlBroadcast && isLive && (
                   <Button size="sm" variant="outline" disabled={isStarting || isEnding} onClick={handleEnd} className="gap-1.5">
                     {isEnding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PhoneOff className="w-3.5 h-3.5" />}
                     সম্প্রচার শেষ
