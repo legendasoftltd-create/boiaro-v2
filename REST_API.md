@@ -1,6 +1,6 @@
 # BoiAro REST API — Mobile Reference
 
-**Version:** 2.2  
+**Version:** 2.3  
 **Base URL (local):** `http://localhost:3001/api/v1`  
 **Base URL (production):** `https://boiaro.com/api/v1`
 
@@ -1557,6 +1557,77 @@ Get full order details with items. 🔒 Auth required.
 
 ---
 
+### `PATCH /orders/:order_id`
+
+Cancel an order. 🔒 Auth required. Only the owning user can cancel their own order.
+
+**Request body:**
+```json
+{
+  "status": "cancelled",
+  "note": "Changed my mind"
+}
+```
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| status | string | ✅ | Must be exactly `"cancelled"` — this endpoint only cancels, nothing else |
+| note | string | ❌ | Optional reason, stored on the order's status history |
+
+**What cancelling does (all automatic, no extra calls needed):**
+- Cancels the RedX courier parcel, if one was created.
+- If the order had already granted digital access (`ebook`/`audiobook` items on a `confirmed` /
+  `access_granted` / `paid` order), revokes that access — the book disappears from the user's
+  library.
+- If the order was paid with wallet coins, refunds the exact number of coins spent back to the
+  user's balance.
+- Reverses any contributor earnings already calculated for the order.
+- Sends the user an in-app + push notification confirming the cancellation.
+- Sets `order.status` to `"cancelled"` and appends an entry to the order's status history.
+
+**Cancellation policy — when a user can self-cancel:**
+
+| Order contains | Self-cancel allowed while... | Blocked once... |
+| :--- | :--- | :--- |
+| Hardcopy item | `pending`, `confirmed`, `processing`, `ready_for_pickup` | courier has picked it up (`pickup_received`, `in_transit`, `shipped`) |
+| Digital item (ebook/audiobook) | the book has never been opened (no reading/listening progress saved for it) | the user has opened/started it at least once |
+| Any format | — | order status is already `delivered`, `returned`, `cancelled`, or `refunded` |
+
+If an order mixes hardcopy and digital items, **both** rules apply — the whole order is blocked
+if either condition fails. Once blocked, direct the user to support (admin can still cancel from
+the admin panel, e.g. for a dispute or mistake — there's no separate "request cancellation" flow
+for the mobile app to build).
+
+**Success (200):**
+```json
+{ "success": true }
+```
+
+**Error (400) — validation:**
+```json
+{ "error": "Only status=cancelled is allowed via this endpoint" }
+```
+
+**Error (400) — blocked by policy:**
+```json
+{ "error": "Cannot cancel an order with status: delivered" }
+```
+```json
+{ "error": "This order has already shipped and can no longer be self-cancelled. Please contact support." }
+```
+```json
+{ "error": "You've already started reading this book, so it can no longer be self-cancelled. Please contact support." }
+```
+```json
+{ "error": "You've already started listening to this audiobook, so it can no longer be self-cancelled. Please contact support." }
+```
+Show whichever message comes back verbatim — it already explains why and what to do next; no
+need for the client to special-case each string.
+
+**Error (404):** `{ "error": "Order not found" }`
+
+---
+
 ### `POST /payments/initiate`
 
 Initiate SSLCommerz payment for an order (real gateway initialization). 🔒 Auth required.
@@ -1772,6 +1843,7 @@ Mark notifications as read. 🔒 Auth required.
 | GET | `/api/v1/library/continue-listening` | Yes | Continue listening list |
 | POST | `/api/v1/orders` | Yes | Create order |
 | GET | `/api/v1/orders/:order_id` | Yes | Get order details |
+| PATCH | `/api/v1/orders/:order_id` | Yes | Cancel order (`{"status":"cancelled"}`) |
 | POST | `/api/v1/payments/initiate` | Yes | Initiate SSLCommerz payment |
 | ALL | `/api/v1/payments/sslcommerz/success` | No (Gateway callback) | SSLCommerz success callback |
 | ALL | `/api/v1/payments/sslcommerz/fail` | No (Gateway callback) | SSLCommerz fail callback |
@@ -1844,6 +1916,16 @@ On receiving HTTP 401:
 4. Open WebView with `gateway_url`
 5. Handle callback redirect
 6. `GET /library/purchases` → Verify purchase
+
+### Flow 4b: Cancel an Order
+1. `GET /orders/:id` → Check `status` client-side against the cancellation policy table in
+   §10 (hardcopy: before courier pickup; digital: before it's been opened) to decide whether to
+   show a "Cancel Order" action at all.
+2. `PATCH /orders/:id` with `{ "status": "cancelled" }` → Cancel. The server re-checks the policy
+   authoritatively — a blocked cancel returns 400 with a ready-to-display message, so treat step 1
+   as a UI hint only, not the real gate.
+3. On success, refresh `GET /orders/:id` and `GET /library/purchases` — a cancelled digital order
+   loses its library access immediately, and any spent wallet coins are back in `GET /wallet`.
 
 ### Flow 5: Coin Unlock
 1. `GET /wallet` → Check balance
