@@ -22,7 +22,14 @@ export default function PublicRjProfile() {
   const { sessions: liveSessions } = useAllLiveSessions()
   const liveSession = liveSessions.find((s) => s.rj_user_id === userId)
 
-  const mySchedules = (allSchedules as any[]).filter((s) => s.rj_user_id === userId)
+  // Recurring slots always apply; a one-time slot only while its date
+  // hasn't passed yet — otherwise this ends up showing an already-happened
+  // one-off broadcast mislabeled as a standing weekly show (its day_of_week
+  // is incidental, not what the show actually recurs on).
+  const mySchedules = (allSchedules as any[]).filter((s) =>
+    s.rj_user_id === userId &&
+    (s.schedule_type !== "one_time" || (s.specific_date && new Date(s.specific_date) >= new Date(new Date().toDateString())))
+  )
   const isLiveNow = !!liveSession
 
   if (isLoading) {
@@ -85,7 +92,9 @@ export default function PublicRjProfile() {
                   <div key={s.id} className="flex items-center justify-between p-2.5 rounded-lg bg-secondary/10">
                     <div>
                       <p className="text-[13px] font-medium">{s.show_title}</p>
-                      <p className="text-[11px] text-muted-foreground">{DAY_NAMES[s.day_of_week]} · {s.station?.name}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {s.schedule_type === "one_time" ? new Date(s.specific_date).toLocaleDateString() : DAY_NAMES[s.day_of_week]} · {s.station?.name}
+                      </p>
                     </div>
                     <Badge variant="outline" className="gap-1"><Clock className="w-3 h-3" /> {s.start_time}-{s.end_time}</Badge>
                   </div>

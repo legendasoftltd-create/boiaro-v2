@@ -39,6 +39,11 @@ export default function RadioSchedule() {
           <div className="flex justify-center py-20"><div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" /></div>
         ) : schedules.length === 0 ? (
           <p className="text-center text-muted-foreground py-16">এখনো কোনো শো নির্ধারণ করা হয়নি।</p>
+        ) : upcoming.length === 0 && byDay.every((d) => d.shows.length === 0) ? (
+          // Schedules exist, but every one-time slot's date has already
+          // passed and there are no recurring slots — without this, the
+          // page below silently renders nothing.
+          <p className="text-center text-muted-foreground py-16">এই মুহূর্তে কোনো আসন্ন শো নেই।</p>
         ) : (
           <div className="space-y-5">
             {upcoming.length > 0 && (
