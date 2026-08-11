@@ -10,6 +10,7 @@ import { startRecording, stopRecording, shouldAutoRecord } from "../lib/liveReco
 import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished } from "../lib/radioNotify.js";
 import { deleteFromS3 } from "../lib/s3.js";
 import { getCallInIceServers } from "../lib/turnCredentials.js";
+import { PUBLIC_RJ_PROFILE_SELECT } from "../lib/rjProfile.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
   if (userId === session.rj_user_id) return;
@@ -291,7 +292,7 @@ export const rjRouter = router({
         orderBy: { started_at: "desc" },
       });
       if (!session) return null;
-      const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id } });
+      const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id }, select: PUBLIC_RJ_PROFILE_SELECT });
       return { ...session, rj_profile: rjProfile };
     }),
 
@@ -309,6 +310,7 @@ export const rjRouter = router({
       if (!sessions.length) return [];
       const rjProfiles = await prisma.rjProfile.findMany({
         where: { user_id: { in: [...new Set(sessions.map((s) => s.rj_user_id))] } },
+        select: PUBLIC_RJ_PROFILE_SELECT,
       });
       const profileMap = new Map(rjProfiles.map((p) => [p.user_id, p]));
       return sessions.map((s) => ({ ...s, rj_profile: profileMap.get(s.rj_user_id) ?? null }));
@@ -326,7 +328,7 @@ export const rjRouter = router({
           include: { station: true },
         });
         if (!session || session.is_test) return null;
-        const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id } });
+        const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id }, select: PUBLIC_RJ_PROFILE_SELECT });
         return { ...session, rj_profile: rjProfile };
       }),
 
@@ -718,13 +720,17 @@ export const rjRouter = router({
     prisma.rjProfile.findMany({
       where: { is_active: true, is_approved: true },
       orderBy: { created_at: "desc" },
+      select: PUBLIC_RJ_PROFILE_SELECT,
     })
   ),
 
   profileById: publicProcedure
     .input(z.object({ userId: z.string() }))
     .query(({ input }) =>
-      prisma.rjProfile.findFirst({ where: { user_id: input.userId, is_active: true, is_approved: true } })
+      prisma.rjProfile.findFirst({
+        where: { user_id: input.userId, is_active: true, is_approved: true },
+        select: PUBLIC_RJ_PROFILE_SELECT,
+      })
     ),
 
   // Public weekly EPG — every active slot, grouped by day on the client.

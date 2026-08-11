@@ -11,6 +11,7 @@ import { startRecording, stopRecording, shouldAutoRecord } from "../../lib/liveR
 import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished } from "../../lib/radioNotify.js";
 import { getCallInIceServers } from "../../lib/turnCredentials.js";
 import { deleteFromS3 } from "../../lib/s3.js";
+import { PUBLIC_RJ_PROFILE_SELECT } from "../../lib/rjProfile.js";
 
 export const radioRestRouter = Router();
 
@@ -59,7 +60,7 @@ radioRestRouter.get("/live", async (req: AuthenticatedRequest, res) => {
       orderBy: { started_at: "desc" },
     });
     if (!session) { res.json({ live: null }); return; }
-    const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id } });
+    const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id }, select: PUBLIC_RJ_PROFILE_SELECT });
 
     const guestAllowed = await getRadioSettingBool("radio_guest_listening_enabled");
     const isAuthed = !!req.auth?.userId;
@@ -397,7 +398,7 @@ radioRestRouter.get("/catchup", async (req, res) => {
 // ── GET /api/v1/radio/rj/profiles ──────────────────────────────────────────────
 radioRestRouter.get("/rj/profiles", async (_req, res) => {
   try {
-    const profiles = await prisma.rjProfile.findMany({ where: { is_active: true, is_approved: true }, orderBy: { created_at: "desc" } });
+    const profiles = await prisma.rjProfile.findMany({ where: { is_active: true, is_approved: true }, orderBy: { created_at: "desc" }, select: PUBLIC_RJ_PROFILE_SELECT });
     res.json({ profiles });
   } catch (error) {
     sendHttpError(res, error);
