@@ -1,7 +1,9 @@
 import { prisma } from "../lib/prisma.js";
 import { resolveFileUrl } from "../lib/mediaUrl.js";
 
-export const searchBooks = async (q: string, limit = 20, offset = 0) => {
+export type SearchBookFormat = "ebook" | "audiobook" | "hardcopy";
+
+export const searchBooks = async (q: string, limit = 20, offset = 0, format?: SearchBookFormat) => {
   const where = {
     submission_status: "approved",
     is_active: true,
@@ -9,6 +11,10 @@ export const searchBooks = async (q: string, limit = 20, offset = 0) => {
       { title: { contains: q, mode: "insensitive" as const } },
       { title_en: { contains: q, mode: "insensitive" as const } },
     ],
+    // Matches the format filter's shape on every other list endpoint
+    // (category-sections, /books, /categories/:id/books) — a book only
+    // matches if it has an available, approved format row of this type.
+    ...(format ? { formats: { some: { format, is_available: true, submission_status: "approved" } } } : {}),
   };
 
   const [books, total] = await Promise.all([
