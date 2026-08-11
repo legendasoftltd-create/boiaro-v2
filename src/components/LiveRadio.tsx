@@ -77,6 +77,7 @@ export function LiveRadioSection() {
                     artwork_url: station.artwork_url,
                     description: liveSession?.show_title || station.description,
                   }}
+                  isLive={isRjLive}
                 />
               </div>
             )
@@ -91,7 +92,7 @@ type StreamStatus = "idle" | "loading" | "playing" | "error"
 
 type Quality = "high" | "medium" | "low"
 
-function RadioCard({ station }: { station: { id: string; name: string; stream_url: string; stream_url_medium?: string | null; stream_url_low?: string | null; artwork_url: string | null; description: string | null } }) {
+function RadioCard({ station, isLive }: { station: { id: string; name: string; stream_url: string; stream_url_medium?: string | null; stream_url_low?: string | null; artwork_url: string | null; description: string | null }; isLive: boolean }) {
   const { book, isPlaying, togglePlay, loadBook, pause } = useAudioPlayer()
   const { get } = useSiteSettings()
   const brandName = get("brand_name", "BoiAro")
@@ -304,7 +305,11 @@ function RadioCard({ station }: { station: { id: string; name: string; stream_ur
             <Radio className="w-8 h-8 text-destructive" />
           </div>
         )}
-        {!hasError && (
+        {/* Only shown when an RJ is actually broadcasting right now — this used
+            to show for every station regardless of live status, which meant
+            an idle station's card claimed to be "LIVE" whenever its stream
+            just hadn't errored yet. */}
+        {isLive && !hasError && (
           <div className="absolute top-1 right-1 flex items-center gap-1 bg-destructive text-destructive-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full">
             <span className="w-1.5 h-1.5 bg-destructive-foreground rounded-full animate-pulse" />
             LIVE
