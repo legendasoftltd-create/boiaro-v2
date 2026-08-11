@@ -143,6 +143,11 @@ export const profilesRouter = router({
       if (existing?.last_read_at) {
         const deltaSeconds = (Date.now() - existing.last_read_at.getTime()) / 1000;
         bumpGoalMinutes(ctx.userId!, "read_minutes", deltaSeconds).catch(() => null);
+      } else if (input.sessionSeconds) {
+        // First save of a fresh reading session for this book — no prior
+        // last_read_at to diff against, so without this a short test session
+        // (a page-turn or two) silently credits zero goal minutes.
+        bumpGoalMinutes(ctx.userId!, "read_minutes", input.sessionSeconds).catch(() => null);
       }
       if (percentage >= 100 && (existing?.percentage ?? 0) < 100) {
         bumpGoalProgress(ctx.userId!, "books_month", 1).catch(() => null);
@@ -179,6 +184,7 @@ export const profilesRouter = router({
         totalDuration: z.number(),
         currentTrack: z.number().int().optional(),
         playbackSpeed: z.number().min(0.25).max(4).optional(),
+        sessionSeconds: z.number().min(0).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -194,6 +200,11 @@ export const profilesRouter = router({
       if (existingListen?.last_listened_at) {
         const deltaSeconds = (Date.now() - existingListen.last_listened_at.getTime()) / 1000;
         bumpGoalMinutes(ctx.userId!, "listen_minutes", deltaSeconds).catch(() => null);
+      } else if (input.sessionSeconds) {
+        // Same first-save gap as reading — the client saves on a fixed
+        // interval, so without this the first tick of every new listening
+        // session for a book credits zero goal minutes.
+        bumpGoalMinutes(ctx.userId!, "listen_minutes", input.sessionSeconds).catch(() => null);
       }
       if (percentage >= 100 && (existingListen?.percentage ?? 0) < 100) {
         bumpGoalProgress(ctx.userId!, "books_month", 1).catch(() => null);

@@ -108,6 +108,11 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   // MP3/AAC/OGG radio streams) still goes through plain audio.src.
   const hlsRef = useRef<Hls | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Elapsed-since-open timer for the current book's listening session — the
+  // backend uses this to credit goal minutes on the very first periodic
+  // save, which otherwise has no prior last_listened_at to diff against and
+  // silently credits zero (see updateListeningProgress).
+  const sessionStartRef = useRef<number>(Date.now())
   const loadRequestRef = useRef(0)
   const pendingSeekRef = useRef<number | null>(null)
   // Track whether play was triggered by user gesture
@@ -565,6 +570,10 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     loadTrackSource(state.currentTrackIndex, shouldPlay)
   }, [state.currentTrackIndex, state.book?.id, state.tracks, loadTrackSource])
 
+  useEffect(() => {
+    sessionStartRef.current = Date.now()
+  }, [state.book?.id])
+
   // Save progress periodically
   useEffect(() => {
     if (saveTimerRef.current) clearInterval(saveTimerRef.current)
@@ -588,6 +597,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       totalDuration: Math.floor(audio?.duration || 0),
       currentTrack: state.currentTrackIndex + 1,
       playbackSpeed: state.playbackRate,
+      sessionSeconds: (Date.now() - sessionStartRef.current) / 1000,
     }).catch(() => {}) // silent — progress save is best-effort
   }, [user, state.book, state.currentTime, state.currentTrackIndex, state.playbackRate])
 

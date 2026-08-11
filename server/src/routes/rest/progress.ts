@@ -50,6 +50,13 @@ progressRestRouter.put("/reading", requireAuth, async (req: AuthenticatedRequest
     if (existing?.last_read_at) {
       const deltaSeconds = (Date.now() - existing.last_read_at.getTime()) / 1000;
       bumpGoalMinutes(req.auth.userId!, "read_minutes", deltaSeconds).catch(() => null);
+    } else if (session_seconds) {
+      // First save of a fresh reading session for this book — there's no
+      // prior last_read_at to diff against, so without this the whole
+      // session (e.g. someone testing with a page-turn or two) silently
+      // credits zero goal minutes. session_seconds is the client's own
+      // elapsed-since-open timer, the best available stand-in here.
+      bumpGoalMinutes(req.auth.userId!, "read_minutes", Number(session_seconds)).catch(() => null);
     }
     if (percentage >= 100 && (existing?.percentage ?? 0) < 100) {
       bumpGoalProgress(req.auth.userId!, "books_month", 1).catch(() => null);
@@ -101,7 +108,7 @@ progressRestRouter.get("/listening", requireAuth, async (req: AuthenticatedReque
 
 progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
-    const { book_id, track_number = 1, position_seconds = 0, total_seconds = 0, playback_speed } = req.body;
+    const { book_id, track_number = 1, position_seconds = 0, total_seconds = 0, playback_speed, session_seconds } = req.body;
     if (!book_id) {
       res.status(400).json({ error: "book_id is required" });
       return;
@@ -116,6 +123,11 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
     if (existingListen?.last_listened_at) {
       const deltaSeconds = (Date.now() - existingListen.last_listened_at.getTime()) / 1000;
       bumpGoalMinutes(req.auth.userId!, "listen_minutes", deltaSeconds).catch(() => null);
+    } else if (session_seconds) {
+      // Same first-save gap as reading above — the client saves on a fixed
+      // interval, so without this the first tick of every new listening
+      // session for a book credits zero goal minutes.
+      bumpGoalMinutes(req.auth.userId!, "listen_minutes", Number(session_seconds)).catch(() => null);
     }
     if (percentage >= 100 && (existingListen?.percentage ?? 0) < 100) {
       bumpGoalProgress(req.auth.userId!, "books_month", 1).catch(() => null);
