@@ -11,6 +11,7 @@ import { sendMail, sendNotificationEmail, testSmtpConnection } from "../lib/mail
 import { sendSslWirelessSms } from "../lib/sms.js";
 import { sendPushToTokens, testFirebaseCredentials, invalidateFirebaseCache } from "../lib/firebase.js";
 import { notifyUser } from "../lib/notify.js";
+import { cancelOrder, OrderCancelError } from "../services/orderCancel.service.js";
 import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClipsForFormat } from "../lib/audioPreview.js";
@@ -1156,22 +1157,20 @@ export const adminRouter = router({
       const order = await prisma.order.findUnique({ where: { id: input.orderId } });
       if (!order) throw new TRPCError({ code: "NOT_FOUND" });
 
-      // Cancel RedX parcel when order is cancelled
-      if (input.status === "cancelled" && order.redx_tracking_id) {
+      // Cancelling reverses everything placeOrder may have granted (digital
+      // access, spent wallet coins, contributor earnings) plus the RedX
+      // parcel and customer notification — same logic the customer-facing
+      // cancel endpoints use, see orderCancel.service.ts.
+      if (input.status === "cancelled") {
         try {
-          const { cancelParcel } = await import("../services/redx.service.js");
-          await cancelParcel(order.redx_tracking_id, "Cancelled by admin");
+          const updated = await cancelOrder(input.orderId, { changedBy: ctx.userId, note: input.note, actor: "admin" });
+          return updated;
         } catch (err) {
-          console.error("[RedX] parcel cancellation failed for order", order.order_number, err);
+          if (err instanceof OrderCancelError) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+          }
+          throw err;
         }
-      }
-
-      // Reverse contributor earnings when cancelling a previously-confirmed order
-      if (input.status === "cancelled" && order.status === "confirmed") {
-        await prisma.contributorEarning.updateMany({
-          where: { order_id: input.orderId, status: { not: "reversed" } },
-          data: { status: "reversed" },
-        });
       }
 
       return prisma.$transaction([

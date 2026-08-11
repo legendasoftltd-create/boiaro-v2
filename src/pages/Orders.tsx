@@ -1,16 +1,34 @@
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowLeft, Package, Clock, Truck, CheckCircle, ShoppingBag, CreditCard, AlertCircle, FileText, BookOpen, Headphones, BookCopy, MapPin, Loader2 } from "lucide-react"
+import { ArrowLeft, Package, Clock, Truck, CheckCircle, ShoppingBag, CreditCard, AlertCircle, FileText, BookOpen, Headphones, BookCopy, MapPin, Loader2, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Navbar } from "@/components/Navbar"
 import { Footer } from "@/components/Footer"
 import { useAuth } from "@/contexts/AuthContext"
 import { trpc } from "@/lib/trpc"
 import { OrderInvoice } from "@/components/admin/OrderInvoice"
 import { toMediaUrl } from "@/lib/mediaUrl"
+import { toast } from "sonner"
+
+// Mirrors the server-enforced policy in orderCancel.service.ts: customers can
+// self-cancel up through "ready_for_pickup" (before the courier has the
+// parcel) or while a digital order is still unopened. The button shows
+// optimistically here; the server has the real, authoritative check (it also
+// knows whether the customer has started reading/listening).
+const CANCELLABLE_STATUSES = ["pending", "awaiting_payment", "confirmed", "access_granted", "paid", "processing", "ready_for_pickup"]
 
 function TrackingDialog({ trackingId, open, onClose }: { trackingId: string; open: boolean; onClose: () => void }) {
   const { data, isLoading, error } = trpc.shipping.redx.trackParcel.useQuery(
@@ -124,11 +142,23 @@ export default function Orders() {
   const [invoiceOrder, setInvoiceOrder] = useState<any>(null)
   const [invoiceItems, setInvoiceItems] = useState<any[]>([])
   const [trackingId, setTrackingId] = useState<string | null>(null)
+  const [cancelOrderId, setCancelOrderId] = useState<string | null>(null)
 
-  const { data: ordersData, isLoading: loading } = trpc.orders.myOrders.useQuery(
+  const { data: ordersData, isLoading: loading, refetch } = trpc.orders.myOrders.useQuery(
     { limit: 100 },
     { enabled: !!user }
   )
+
+  const cancelMutation = trpc.orders.cancel.useMutation({
+    onSuccess: () => {
+      toast.success("Order cancelled")
+      refetch()
+    },
+    onError: (err) => {
+      toast.error(err.message || "Failed to cancel order")
+    },
+    onSettled: () => setCancelOrderId(null),
+  })
 
   const userEmail = user?.email ?? ""
 
@@ -264,6 +294,16 @@ export default function Orders() {
                             <FileText className="w-3 h-3" /> Invoice
                           </Button>
                         )}
+                        {CANCELLABLE_STATUSES.includes(order.status || "pending") && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1 text-xs h-7 text-destructive hover:text-destructive"
+                            onClick={() => setCancelOrderId(order.id)}
+                          >
+                            <XCircle className="w-3 h-3" /> Cancel
+                          </Button>
+                        )}
                         <span className="text-lg font-bold text-primary font-serif">৳{order.total_amount}</span>
                       </div>
                     </div>
@@ -328,6 +368,29 @@ export default function Orders() {
           onClose={() => setTrackingId(null)}
         />
       )}
+
+      {/* Cancel Order Confirmation */}
+      <AlertDialog open={!!cancelOrderId} onOpenChange={(open) => !open && setCancelOrderId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will cancel the order and, if any digital content was already unlocked, revoke access to it.
+              Any wallet coins spent on this order will be refunded. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelMutation.isPending}>Keep Order</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={cancelMutation.isPending}
+              onClick={() => cancelOrderId && cancelMutation.mutate({ orderId: cancelOrderId })}
+            >
+              {cancelMutation.isPending ? "Cancelling..." : "Cancel Order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </main>
   )
 }

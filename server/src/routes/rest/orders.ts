@@ -6,6 +6,7 @@ import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings } from "../../lib/earnings.js";
 import * as redx from "../../services/redx.service.js";
 import { resolveFileUrl } from "../../lib/mediaUrl.js";
+import { cancelOrder, OrderCancelError } from "../../services/orderCancel.service.js";
 
 type GatewayConfig = Record<string, unknown>;
 
@@ -320,6 +321,7 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
             amount: item.price ?? 0,
             payment_method,
             status: "active",
+            order_id: order.id,
           },
         });
         await prisma.contentUnlock.upsert({
@@ -556,7 +558,7 @@ ordersRestRouter.get("/:order_id/tracking", requireAuth, async (req: Authenticat
   }
 });
 
-// PATCH /orders/:order_id — cancel an order (user-initiated; cancels RedX parcel too)
+// PATCH /orders/:order_id — cancel an order (user-initiated; reverses access/coins/RedX)
 ordersRestRouter.patch("/:order_id", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { status, note } = req.body;
@@ -566,36 +568,19 @@ ordersRestRouter.patch("/:order_id", requireAuth, async (req: AuthenticatedReque
     }
     const order = await prisma.order.findFirst({
       where: { id: String(req.params.order_id), user_id: req.auth.userId! },
+      select: { id: true },
     });
     if (!order) {
       res.status(404).json({ error: "Order not found" });
       return;
     }
-    if (["delivered", "returned", "cancelled"].includes(order.status ?? "")) {
-      res.status(400).json({ error: `Cannot cancel an order with status: ${order.status}` });
-      return;
-    }
-    if (order.redx_tracking_id) {
-      try {
-        await redx.cancelParcel(order.redx_tracking_id, note || "Cancelled by customer");
-      } catch (err) {
-        console.error("[RedX] parcel cancellation failed for order", order.order_number, err);
-      }
-    }
-    await prisma.$transaction([
-      prisma.order.update({ where: { id: order.id }, data: { status: "cancelled" } }),
-      prisma.orderStatusHistory.create({
-        data: {
-          order_id: order.id,
-          old_status: order.status,
-          new_status: "cancelled",
-          changed_by: req.auth.userId!,
-          note: note || null,
-        },
-      }),
-    ]);
+    await cancelOrder(order.id, { changedBy: req.auth.userId!, note, actor: "customer" });
     res.json({ success: true });
   } catch (error) {
+    if (error instanceof OrderCancelError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
     sendHttpError(res, error);
   }
 });

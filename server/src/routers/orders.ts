@@ -4,6 +4,7 @@ import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
 import * as redx from "../services/redx.service.js";
+import { cancelOrder, OrderCancelError } from "../services/orderCancel.service.js";
 
 type GatewayConfig = Record<string, unknown>;
 
@@ -408,7 +409,7 @@ export const ordersRouter = router({
 
         for (const item of digitalItems) {
           await prisma.userPurchase.create({
-            data: { user_id: userId, book_id: item.bookId, format: item.format, amount: item.price, payment_method: input.paymentMethod, status: "active" },
+            data: { user_id: userId, book_id: item.bookId, format: item.format, amount: item.price, payment_method: input.paymentMethod, status: "active", order_id: order.id },
           });
           await prisma.contentUnlock.upsert({
             where: { user_id_book_id_format: { user_id: userId, book_id: item.bookId, format: item.format } },
@@ -615,5 +616,25 @@ export const ordersRouter = router({
       }
 
       return { orderId: order.id, gatewayUrl: null as string | null };
+    }),
+
+  // Web (tRPC) equivalent of the mobile REST PATCH /orders/:order_id cancel endpoint.
+  cancel: protectedProcedure
+    .input(z.object({ orderId: z.string(), note: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const order = await prisma.order.findFirst({
+        where: { id: input.orderId, user_id: ctx.userId },
+        select: { id: true },
+      });
+      if (!order) throw new TRPCError({ code: "NOT_FOUND" });
+      try {
+        await cancelOrder(order.id, { changedBy: ctx.userId, note: input.note, actor: "customer" });
+      } catch (err) {
+        if (err instanceof OrderCancelError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err.message });
+        }
+        throw err;
+      }
+      return { success: true };
     }),
 });
