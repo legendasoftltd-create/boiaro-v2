@@ -53,14 +53,17 @@ export default function AdminRjManagement() {
       // staleTime: 0 forces a fresh network fetch — this runs right after
       // approve/reject/suspend/reactivate mutations, so cached (pre-mutation)
       // data would otherwise be served until the global 30s staleTime expires.
-      const [rjData, liveData, recentData, usersResponse] = await Promise.all([
+      const [rjData, liveData, recentData] = await Promise.all([
         utils.admin.listRjProfiles.fetch(undefined, { staleTime: 0 }),
         utils.admin.listLiveSessions.fetch({ status: "live", limit: 20 }, { staleTime: 0 }),
         utils.admin.listLiveSessions.fetch({ limit: 20 }, { staleTime: 0 }),
-        utils.admin.listUsers.fetch({ limit: 500 }, { staleTime: 0 }),
       ])
 
-      const users = usersResponse?.users ?? []
+      // Targeted lookup by exactly the RJs' own user_ids — listUsers's most-
+      // recent-500 window silently misses any account older than that,
+      // which on a platform with real signup history is most RJs.
+      const rjUserIds = [...new Set(((rjData || []) as RjRow[]).map((rj) => rj.user_id))]
+      const users = rjUserIds.length ? await utils.admin.getUsersByIds.fetch({ userIds: rjUserIds }, { staleTime: 0 }) : []
       const userLabelMap = new Map(
         users.map((u: any) => [
           u.id,

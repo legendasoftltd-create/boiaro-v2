@@ -825,6 +825,20 @@ export const adminRouter = router({
     }),
 
   // ── Users ───────────────────────────────────────────────────────────────────
+  // Batch lookup by exact id — for resolving a known, specific set of user_ids
+  // (e.g. RJ Management's "User" column) without relying on listUsers' most-
+  // recent-N window, which silently misses any user outside that page once
+  // the platform has more users than the requested limit.
+  getUsersByIds: adminProcedure
+    .input(z.object({ userIds: z.array(z.string()) }))
+    .query(({ input }) => {
+      if (!input.userIds.length) return [];
+      return prisma.user.findMany({
+        where: { id: { in: input.userIds } },
+        select: { id: true, email: true, profile: { select: { display_name: true } } },
+      });
+    }),
+
   listUsers: adminProcedure
     .input(z.object({ limit: z.number().default(50), cursor: z.string().optional(), search: z.string().optional() }))
     .query(async ({ input }) => {
