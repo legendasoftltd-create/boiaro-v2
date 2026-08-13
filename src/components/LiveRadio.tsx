@@ -388,7 +388,7 @@ function RadioCard({ station, isLive }: { station: { id: string; name: string; s
               ? "bg-amber-500 hover:bg-amber-500/90 text-white"
               : "bg-foreground text-background hover:bg-foreground/90"
           }`}
-          onClick={isCurrentlyPlaying ? handlePause : handlePlay}
+          onClick={() => (isCurrentlyPlaying ? handlePause() : handlePlay())}
           disabled={isBuffering}
         >
           {isBuffering ? (
