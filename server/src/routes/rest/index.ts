@@ -38,6 +38,9 @@ import { radioRestRouter } from "./radio.js";
 import { studioRestRouter } from "./studio.js";
 import { pushRestRouter } from "./push.js";
 import { supportRestRouter } from "./support.js";
+import { pagesRestRouter } from "./pages.js";
+import { blogRestRouter } from "./blog.js";
+import { teamRestRouter } from "./team.js";
 
 export const restRouter = Router();
 
@@ -80,3 +83,6 @@ restRouter.use("/referral", referralRestRouter);
 restRouter.use("/share", shareRestRouter);
 restRouter.use("/radio", radioRestRouter);
 restRouter.use("/studio", studioRestRouter);
+restRouter.use("/pages", pagesRestRouter);
+restRouter.use("/blog", blogRestRouter);
+restRouter.use("/team", teamRestRouter);

@@ -761,6 +761,13 @@ export const booksRouter = router({
       prisma.blogPost.findUnique({ where: { slug: input.slug } })
     ),
 
+  teamMembers: publicProcedure.query(() =>
+    prisma.teamMember.findMany({
+      where: { status: "active" },
+      orderBy: [{ sort_order: "asc" }, { created_at: "asc" }],
+    })
+  ),
+
   recentlyViewed: protectedProcedure
     .input(z.object({ limit: z.number().min(1).max(20).default(10) }).optional())
     .query(async ({ ctx, input }) => {

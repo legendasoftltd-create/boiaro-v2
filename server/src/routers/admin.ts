@@ -3436,6 +3436,41 @@ export const adminRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.blogPost.delete({ where: { id: input.id } })),
 
+  // ── Team Members ──────────────────────────────────────────────────────────────
+  listTeamMembers: adminProcedure.query(() =>
+    prisma.teamMember.findMany({ orderBy: [{ sort_order: "asc" }, { created_at: "asc" }] })
+  ),
+
+  createTeamMember: adminProcedure
+    .input(z.object({
+      name: z.string().min(1), role_title: z.string().min(1), photo_url: z.string().optional(),
+      bio: z.string().optional(), facebook_url: z.string().optional(), linkedin_url: z.string().optional(),
+      twitter_url: z.string().optional(), sort_order: z.number().int().default(0), status: z.string().default("active"),
+    }))
+    .mutation(({ input }) => prisma.teamMember.create({
+      data: {
+        name: input.name, role_title: input.role_title, photo_url: input.photo_url ?? null,
+        bio: input.bio ?? null, facebook_url: input.facebook_url ?? null, linkedin_url: input.linkedin_url ?? null,
+        twitter_url: input.twitter_url ?? null, sort_order: input.sort_order, status: input.status,
+      },
+    })),
+
+  updateTeamMember: adminProcedure
+    .input(z.object({
+      id: z.string(), name: z.string().min(1).optional(), role_title: z.string().min(1).optional(),
+      photo_url: z.string().optional(), bio: z.string().optional(), facebook_url: z.string().optional(),
+      linkedin_url: z.string().optional(), twitter_url: z.string().optional(), sort_order: z.number().int().optional(),
+      status: z.string().optional(),
+    }))
+    .mutation(({ input }) => {
+      const { id, ...data } = input;
+      return prisma.teamMember.update({ where: { id }, data });
+    }),
+
+  deleteTeamMember: adminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => prisma.teamMember.delete({ where: { id: input.id } })),
+
   // ── Roles list ────────────────────────────────────────────────────────────────
   listRoles: adminProcedure.query(() =>
     prisma.userRole.groupBy({

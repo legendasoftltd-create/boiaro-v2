@@ -12,6 +12,7 @@ const quickLinks = [
   { label: "Narrators", href: "/narrators" },
   { label: "Translators", href: "/translators" },
   { label: "Categories", href: "/#categories" },
+  { label: "BoiAro সম্পর্কে", href: "/about" },
 ];
 
 const POLICY_KEYS = [

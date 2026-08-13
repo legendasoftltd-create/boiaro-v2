@@ -638,6 +638,23 @@ model CmsPage {
   @@map("cms_pages")
 }
 
+model TeamMember {
+  id           String   @id @default(uuid())
+  name         String
+  role_title   String
+  photo_url    String?
+  bio          String?
+  facebook_url String?
+  linkedin_url String?
+  twitter_url  String?
+  sort_order   Int      @default(0)
+  status       String   @default("active")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@map("team_members")
+}
+
 model CoinPackage {
   id          String   @id @default(uuid())
   bonus_coins Int      @default(0)

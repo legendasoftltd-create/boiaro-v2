@@ -57,6 +57,9 @@ const TranslatorProfile = lazy(() => import("./pages/TranslatorProfile.tsx"));
 const CmsPage = lazy(() => import("./pages/CmsPage.tsx"));
 const BlogList = lazy(() => import("./pages/BlogList.tsx"));
 const BlogPost = lazy(() => import("./pages/BlogPost.tsx"));
+const AboutHub = lazy(() => import("./pages/AboutHub.tsx"));
+const TeamPage = lazy(() => import("./pages/TeamPage.tsx"));
+const AppInfoPage = lazy(() => import("./pages/AppInfoPage.tsx"));
 const SupportPage = lazy(() => import("./pages/SupportPage.tsx"));
 const SupportTicketDetail = lazy(() => import("./pages/SupportTicketDetail.tsx"));
 const RewardCenter = lazy(() => import("./pages/RewardCenter.tsx"));
@@ -101,6 +104,7 @@ const AdminFinancialReports = lazy(() => import("./pages/admin/AdminFinancialRep
 const AdminInvestorReport = lazy(() => import("./pages/admin/AdminInvestorReport.tsx"));
 const AdminCmsPages = lazy(() => import("./pages/admin/AdminCmsPages.tsx"));
 const AdminBlog = lazy(() => import("./pages/admin/AdminBlog.tsx"));
+const AdminTeam = lazy(() => import("./pages/admin/AdminTeam.tsx"));
 const AdminHomepageSections = lazy(() => import("./pages/admin/AdminHomepageSections.tsx"));
 const AdminBanners = lazy(() => import("./pages/admin/AdminBanners.tsx"));
 const AdminTickets = lazy(() => import("./pages/admin/AdminTickets.tsx"));
@@ -275,6 +279,9 @@ const App = () => {
                 <Route path="/page/:slug" element={<CmsPage />} />
                 <Route path="/blog" element={<BlogList />} />
                 <Route path="/blog/:slug" element={<BlogPost />} />
+                <Route path="/about" element={<AboutHub />} />
+                <Route path="/team" element={<TeamPage />} />
+                <Route path="/app-info" element={<AppInfoPage />} />
                 <Route path="/support" element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
                 <Route path="/support/tickets/:id" element={<ProtectedRoute><SupportTicketDetail /></ProtectedRoute>} />
                 <Route path="/rewards" element={<ProtectedRoute><RewardCenter /></ProtectedRoute>} />
@@ -321,6 +328,7 @@ const App = () => {
                   <Route path="analytics" element={<AdminAnalytics />} />
                   <Route path="pages" element={<AdminCmsPages />} />
                   <Route path="blog" element={<AdminBlog />} />
+                  <Route path="team" element={<AdminTeam />} />
                   <Route path="homepage-sections" element={<AdminHomepageSections />} />
                   <Route path="banners" element={<AdminBanners />} />
                   <Route path="tickets" element={<AdminTickets />} />

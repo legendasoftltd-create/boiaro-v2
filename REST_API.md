@@ -1,6 +1,6 @@
 # BoiAro REST API — Mobile Reference
 
-**Version:** 2.3  
+**Version:** 2.4  
 **Base URL (local):** `http://localhost:3001/api/v1`  
 **Base URL (production):** `https://boiaro.com/api/v1`
 
@@ -1882,6 +1882,10 @@ Mark notifications as read. 🔒 Auth required.
 | POST | `/api/v1/radio/live/:id/recording` | Yes | Attach a catch-up recording (host/mod) |
 | GET | `/api/v1/radio/catchup` | No | Podcast-style recorded show archive |
 | GET | `/api/v1/radio/rj/profiles` | No | List approved RJ/host profiles |
+| GET | `/api/v1/pages/:slug` | No | Static CMS page (About, Privacy, Terms, FAQ, etc. — see `ABOUT_API.md`) |
+| GET | `/api/v1/blog` | No | List blog/article posts, `?category=` filter |
+| GET | `/api/v1/blog/:slug` | No | Single blog/article post |
+| GET | `/api/v1/team` | No | Active team members, in display order |
 
 ---
 

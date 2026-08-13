@@ -121,6 +121,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: "Pages", path: "/admin/pages", icon: Globe },
       { label: "Blog", path: "/admin/blog", icon: Newspaper },
+      { label: "Team", path: "/admin/team", icon: Users },
       { label: "Homepage", path: "/admin/homepage-sections", icon: PanelTop },
       { label: "BoiAro On Air", path: "/admin/radio", icon: HeadphonesIcon },
       { label: "Show Schedule", path: "/admin/radio-schedule", icon: Calendar },
