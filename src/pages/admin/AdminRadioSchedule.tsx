@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Calendar, Plus, Edit, Trash2, Clock, Inbox, Check, X } from "lucide-react"
 import { toast } from "sonner"
+import { SiteImageUpload } from "@/components/admin/SiteImageUpload"
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -190,9 +191,14 @@ export default function AdminRadioSchedule() {
                 <div><Label className="text-[12px]">Start</Label><Input type="time" value={form.start_time} onChange={(e) => setForm({ ...form, start_time: e.target.value })} className="h-9 text-[13px]" /></div>
                 <div><Label className="text-[12px]">End</Label><Input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} className="h-9 text-[13px]" /></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label className="text-[12px]">Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Music, Talk, News..." className="h-9 text-[13px]" /></div>
-                <div><Label className="text-[12px]">Cover image URL</Label><Input value={form.cover_image_url} onChange={(e) => setForm({ ...form, cover_image_url: e.target.value })} className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12px]">Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Music, Talk, News..." className="h-9 text-[13px]" /></div>
+              <div>
+                <Label className="text-[12px]">Cover Image</Label>
+                <SiteImageUpload
+                  value={form.cover_image_url}
+                  onChange={(url) => setForm({ ...form, cover_image_url: url })}
+                  fieldKey="show-cover"
+                />
               </div>
               <Button onClick={save} disabled={saveMutation.isPending} className="w-full">{saveMutation.isPending ? "Saving..." : "Save"}</Button>
             </div>

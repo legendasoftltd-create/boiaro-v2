@@ -52,6 +52,7 @@ export const rjRouter = router({
       stageName: z.string().min(1),
       bio: z.string().optional(),
       specialty: z.string().optional(),
+      avatarUrl: z.string().optional(),
     }))
     .mutation(({ ctx, input }) =>
       prisma.rjProfile.update({
@@ -60,6 +61,7 @@ export const rjRouter = router({
           stage_name: input.stageName,
           bio: input.bio ?? null,
           specialty: input.specialty ?? null,
+          avatar_url: input.avatarUrl ?? null,
         },
       })
     ),

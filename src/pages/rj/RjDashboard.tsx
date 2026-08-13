@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck, Antenna } from "lucide-react"
 import { toast } from "sonner"
+import { AudioFileUpload } from "@/components/admin/AudioFileUpload"
 
 export default function RjDashboard() {
   const { profile } = useRjProfile()
@@ -411,20 +412,20 @@ function RecentSessionsList() {
             s.recording_url ? (
               <p className="text-xs text-emerald-400">✓ Recording attached — available as catch-up audio</p>
             ) : (
-              <div className="flex items-center gap-2">
-                <Input
+              <div className="space-y-1.5">
+                <AudioFileUpload
                   value={recordingInputs[s.id] || ""}
-                  onChange={(e) => setRecordingInputs((prev) => ({ ...prev, [s.id]: e.target.value }))}
-                  placeholder="Paste recording URL to enable catch-up audio"
-                  className="h-8 text-xs"
+                  onChange={(url) => setRecordingInputs((prev) => ({ ...prev, [s.id]: url }))}
+                  fieldKey={`recording-${s.id}`}
+                  placeholder="Upload a file or paste a recording URL"
                 />
                 <Button
                   size="sm"
-                  className="h-8 text-xs shrink-0"
+                  className="h-8 text-xs w-full"
                   disabled={attachMutation.isPending || !recordingInputs[s.id]?.trim()}
                   onClick={() => attachMutation.mutate({ sessionId: s.id, recordingUrl: recordingInputs[s.id].trim() })}
                 >
-                  Attach
+                  Attach as Catch-up Audio
                 </Button>
               </div>
             )

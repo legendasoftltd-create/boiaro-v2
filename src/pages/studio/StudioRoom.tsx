@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, LogOut } from "lucide-react"
+import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, LogOut, MessageCircle } from "lucide-react"
 import { toast } from "sonner"
 import { useStudioRoom } from "@/hooks/useStudioRoom"
 import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl } from "@/hooks/useStudioSession"
@@ -39,6 +39,10 @@ export default function StudioRoom() {
   // component's own start/end actions, same limitation the rest of this
   // page has (e.g. a page refresh mid-broadcast loses this).
   const [isLive, setIsLive] = useState(false)
+  // Chat/song-requests live on a separate page (/live/:id) keyed by the
+  // LiveSession this broadcast creates, not the Studio session id — needs
+  // capturing from startBroadcast's response since nothing else here knows it.
+  const [liveSessionId, setLiveSessionId] = useState<string | null>(null)
   const connecting = useRef(false)
 
   useEffect(() => {
@@ -74,8 +78,9 @@ export default function StudioRoom() {
 
   const handleStart = async () => {
     try {
-      await startBroadcast({ stationId: stationId || undefined })
+      const result = await startBroadcast({ stationId: stationId || undefined })
       setIsLive(true)
+      setLiveSessionId((result as { live_session_id: string | null })?.live_session_id ?? null)
       toast.success("সম্প্রচার শুরু হয়েছে")
     } catch (err: any) {
       toast.error(err.message || "সম্প্রচার শুরু করা যায়নি")
@@ -86,6 +91,7 @@ export default function StudioRoom() {
     try {
       await endBroadcast()
       setIsLive(false)
+      setLiveSessionId(null)
       toast.success("সম্প্রচার শেষ হয়েছে")
     } catch (err: any) {
       toast.error(err.message || "সম্প্রচার শেষ করা যায়নি")
@@ -172,6 +178,14 @@ export default function StudioRoom() {
                   <Button size="sm" variant="outline" disabled={isStarting || isEnding} onClick={handleEnd} className="gap-1.5">
                     {isEnding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PhoneOff className="w-3.5 h-3.5" />}
                     সম্প্রচার শেষ
+                  </Button>
+                )}
+
+                {isLive && liveSessionId && (
+                  <Button asChild size="sm" variant="outline" className="gap-1.5">
+                    <a href={`/live/${liveSessionId}`} target="_blank" rel="noopener noreferrer">
+                      <MessageCircle className="w-3.5 h-3.5" /> Chat ও Song Request দেখুন
+                    </a>
                   </Button>
                 )}
 

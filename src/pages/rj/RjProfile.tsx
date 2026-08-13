@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Save, Loader2, User } from "lucide-react"
 import { toast } from "sonner"
+import { AvatarUpload } from "@/components/admin/AvatarUpload"
 
 export default function RjProfile() {
   const { profile, loading } = useRjProfile()
@@ -16,6 +17,7 @@ export default function RjProfile() {
     stage_name: "",
     bio: "",
     specialty: "",
+    avatar_url: "",
   })
 
   useEffect(() => {
@@ -24,6 +26,7 @@ export default function RjProfile() {
         stage_name: profile.stage_name || "",
         bio: profile.bio || "",
         specialty: profile.specialty || "",
+        avatar_url: profile.avatar_url || "",
       })
     }
   }, [profile])
@@ -46,6 +49,7 @@ export default function RjProfile() {
       stageName: form.stage_name.trim(),
       bio: form.bio.trim() || undefined,
       specialty: form.specialty.trim() || undefined,
+      avatarUrl: form.avatar_url.trim() || undefined,
     })
   }
 
@@ -76,6 +80,11 @@ export default function RjProfile() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <AvatarUpload
+            currentUrl={form.avatar_url}
+            onUrlChange={(url) => setForm(f => ({ ...f, avatar_url: url }))}
+            label="Profile Photo"
+          />
           <div className="space-y-2">
             <Label>Stage Name *</Label>
             <Input

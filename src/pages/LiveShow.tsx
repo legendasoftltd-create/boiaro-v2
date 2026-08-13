@@ -10,9 +10,11 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useCurrentLiveSession, useLiveSessionById } from "@/hooks/useLiveSession"
 import { useLiveSocket } from "@/hooks/useLiveSocket"
 import { useCallInAudio } from "@/hooks/useCallInAudio"
+import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
+import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
-import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX } from "lucide-react"
+import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2 } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -62,7 +64,7 @@ export default function LiveShow() {
             </div>
           </div>
         ) : (
-          <LiveShowRoom sessionId={session.id} showTitle={session.show_title} rjName={session.rj_profile?.stage_name} rjUserId={session.rj_user_id} isHost={isHost} callinEnabled={!!session.callin_enabled} />
+          <LiveShowRoom sessionId={session.id} showTitle={session.show_title} rjName={session.rj_profile?.stage_name} rjUserId={session.rj_user_id} isHost={isHost} callinEnabled={!!session.callin_enabled} streamUrl={session.stream_url} artworkUrl={session.rj_profile?.avatar_url} />
         )}
       </main>
       <Footer />
@@ -70,13 +72,93 @@ export default function LiveShow() {
   )
 }
 
-function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEnabled }: { sessionId: string; showTitle: string | null; rjName?: string; rjUserId: string; isHost: boolean; callinEnabled: boolean }) {
+function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEnabled, streamUrl, artworkUrl }: { sessionId: string; showTitle: string | null; rjName?: string; rjUserId: string; isHost: boolean; callinEnabled: boolean; streamUrl?: string | null; artworkUrl?: string | null }) {
   const { user } = useAuth()
   const {
     connected, listenerCount, messages, reactions, songRequests,
     sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus,
     setMessages, setSongRequests, getSocket,
   } = useLiveSocket(sessionId)
+
+  // Listening the actual audio here is a separate concern from the chat
+  // socket above — this page is the deep-link destination for "go live"
+  // notifications/shared links, so it needs its own way to start playback
+  // rather than assuming the listener already pressed play from the
+  // homepage's Live Radio card. Mirrors LiveRadio.tsx's RadioCard, minus
+  // the quality-tier switching (a live session only ever has one URL).
+  const { book, isPlaying, togglePlay, loadBook } = useAudioPlayer()
+  const isRadioActive = book?.id === `radio-live-${sessionId}`
+  const [streamStatus, setStreamStatus] = useState<"idle" | "loading" | "playing" | "error">("idle")
+  const testAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (testAudioRef.current) {
+        testAudioRef.current.src = ""
+        testAudioRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isRadioActive && isPlaying) setStreamStatus("playing")
+    else if (isRadioActive && !isPlaying && streamStatus === "playing") setStreamStatus("idle")
+  }, [isRadioActive, isPlaying])
+
+  const handleListenToggle = () => {
+    if (isRadioActive) {
+      togglePlay()
+      return
+    }
+    if (!streamUrl) {
+      toast.error("এই সম্প্রচারের স্ট্রিম এখন পাওয়া যাচ্ছে না")
+      return
+    }
+
+    setStreamStatus("loading")
+
+    const radioBook: MasterBook = {
+      id: `radio-live-${sessionId}`, title: showTitle || rjName || "BoiAro On Air", titleEn: "",
+      slug: `radio-live-${sessionId}`, cover: artworkUrl || "/placeholder.svg",
+      description: showTitle || "BoiAro On Air — live", descriptionBn: showTitle || "",
+      language: "bn", isFeatured: false, isBestseller: false, isNew: false, isFree: true,
+      rating: 0, reviewsCount: 0, totalReads: "0", publishedDate: "", tags: [],
+      author: { id: "", name: rjName || "BoiAro Radio", nameEn: "", avatar: "", bio: "", genre: "", booksCount: 0, followers: "0", isFeatured: false },
+      category: { id: "", name: "Radio", nameBn: "রেডিও", icon: "", count: "0", color: "" },
+      publisher: { id: "", name: "", nameEn: "", logo: "", description: "", booksCount: 0, isVerified: false },
+      formats: { audiobook: { available: true, price: 0, duration: "Live", narrator: { id: "", name: rjName || "BoiAro Radio", nameEn: "", avatar: "", bio: "", specialty: "", audiobooksCount: 0, listeners: "0", rating: 0, isFeatured: false }, chapters: 1, quality: "standard" } },
+    }
+    const radioAudiobook: AudiobookFormat = {
+      available: true, price: 0, duration: "Live",
+      narrator: { id: "", name: rjName || "BoiAro Radio", nameEn: "", avatar: "", bio: "", specialty: "", audiobooksCount: 0, listeners: "0", rating: 0, isFeatured: false },
+      chapters: 1, quality: "standard",
+    }
+    const radioTrack = { id: sessionId, trackNumber: 1, title: radioBook.title, duration: "Live", audioUrl: streamUrl, isPreview: false, isActive: true }
+
+    loadBook(radioBook, radioAudiobook, [radioTrack])
+
+    // Reachability check before flipping to "playing" — same pattern as
+    // RadioCard, so a dead stream surfaces as an error instead of silently
+    // sitting in "loading" forever.
+    const testAudio = new Audio()
+    testAudio.preload = "none"
+    const cleanup = () => {
+      testAudio.removeEventListener("canplay", onCanPlay)
+      testAudio.removeEventListener("error", onError)
+      testAudio.src = ""
+    }
+    const onCanPlay = () => { cleanup(); setStreamStatus("playing"); setTimeout(() => togglePlay(), 100) }
+    const onError = () => { cleanup(); setStreamStatus("error") }
+    testAudio.addEventListener("canplay", onCanPlay, { once: true })
+    testAudio.addEventListener("error", onError, { once: true })
+    testAudio.src = streamUrl
+    testAudio.load()
+    testAudioRef.current = testAudio
+
+    setTimeout(() => {
+      if (testAudioRef.current === testAudio) { cleanup(); setStreamStatus("playing"); togglePlay() }
+    }, 15000)
+  }
 
   const { data: history } = trpc.rj.liveSession.chatHistory.useQuery({ sessionId }, { enabled: !!sessionId })
   const { data: hostQueue } = trpc.rj.liveSession.songRequests.useQuery({ sessionId }, { enabled: isHost })
@@ -116,11 +198,36 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
             </p>
           )}
         </div>
-        <Badge variant="outline" className="gap-1.5">
-          <Users className="w-3.5 h-3.5" /> {listenerCount} জন শুনছেন
-          {!connected && <span className="text-[10px] text-muted-foreground">(সংযুক্ত হচ্ছে...)</span>}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {!isHost && (
+            <Button
+              size="sm"
+              variant={streamStatus === "playing" ? "default" : "outline"}
+              className="gap-1.5"
+              onClick={handleListenToggle}
+              disabled={streamStatus === "loading"}
+            >
+              {streamStatus === "loading" ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : streamStatus === "playing" ? (
+                <Pause className="w-3.5 h-3.5" />
+              ) : (
+                <Play className="w-3.5 h-3.5" />
+              )}
+              {streamStatus === "playing" ? "প্লে হচ্ছে" : streamStatus === "loading" ? "সংযুক্ত হচ্ছে..." : "শুনুন"}
+            </Button>
+          )}
+          <Badge variant="outline" className="gap-1.5">
+            <Users className="w-3.5 h-3.5" /> {listenerCount} জন শুনছেন
+            {!connected && <span className="text-[10px] text-muted-foreground">(সংযুক্ত হচ্ছে...)</span>}
+          </Badge>
+        </div>
       </div>
+      {!isHost && streamStatus === "error" && (
+        <p className="text-xs text-destructive flex items-center gap-1.5">
+          <Volume2 className="w-3.5 h-3.5" /> স্ট্রিম লোড করা যায়নি — আবার চেষ্টা করুন
+        </p>
+      )}
 
       {/* Floating reactions overlay */}
       <div className="relative h-0">

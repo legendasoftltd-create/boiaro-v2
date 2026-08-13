@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Radio, Save, Loader2, AlertTriangle, CheckCircle2, Antenna, Plus, Pencil, Rss } from "lucide-react"
 import { toast } from "sonner"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
+import { SiteImageUpload } from "@/components/admin/SiteImageUpload"
 
 const BROADCAST_SETTING_KEYS = [
   "radio_broadcast_host",
@@ -300,11 +301,11 @@ function StationFormDialog({ station, onClose, onSaved }: { station: RadioStatio
           </div>
 
           <div className="space-y-2">
-            <Label>Artwork URL</Label>
-            <Input
+            <Label>Artwork</Label>
+            <SiteImageUpload
               value={form.artwork_url}
-              onChange={(e) => setForm((f) => ({ ...f, artwork_url: e.target.value }))}
-              placeholder="https://example.com/radio-cover.jpg"
+              onChange={(url) => setForm((f) => ({ ...f, artwork_url: url }))}
+              fieldKey="station-artwork"
             />
           </div>
 
