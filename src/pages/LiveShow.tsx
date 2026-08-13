@@ -281,9 +281,16 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
 
         {/* Song request / host queue */}
         <div className="border border-border/30 rounded-xl bg-card/60 flex flex-col h-[500px]">
-          <div className="p-3 border-b border-border/20 flex items-center gap-2">
-            <Music className="w-4 h-4 text-primary" />
-            <span className="text-[13px] font-semibold">{isHost ? "অনুরোধের তালিকা" : "গান/টপিক অনুরোধ করুন"}</span>
+          <div className="p-3 border-b border-border/20">
+            <div className="flex items-center gap-2">
+              <Music className="w-4 h-4 text-primary" />
+              <span className="text-[13px] font-semibold">{isHost ? "অনুরোধের তালিকা" : "গান/টপিক অনুরোধ করুন"}</span>
+            </div>
+            {isHost && (
+              <p className="text-[10.5px] text-muted-foreground mt-1 leading-snug">
+                এখান থেকে সরাসরি গান বাজে না — অনুরোধ পড়ে আপনার নিজের এনকোডার/ডিভাইস থেকে গানটি বাজান, তারপর এখানে "Played" চেপে জানিয়ে দিন।
+              </p>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {(isHost ? songRequests : songRequests.filter((r) => r.user_id === user?.id)).map((r) => (

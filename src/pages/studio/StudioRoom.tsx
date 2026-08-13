@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, LogOut, MessageCircle } from "lucide-react"
 import { toast } from "sonner"
 import { useStudioRoom } from "@/hooks/useStudioRoom"
-import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl } from "@/hooks/useStudioSession"
+import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl, useMyStudioSessions } from "@/hooks/useStudioSession"
 import { useRadioStations } from "@/hooks/useRadioStation"
+import { trpc } from "@/lib/trpc"
 
+const HEARTBEAT_INTERVAL_MS = 20_000
 const MODERATOR_ROLES = ["host", "co_host"]
 const BROADCAST_ROLES = ["host", "rj"]
 const ROLE_LABEL: Record<string, string> = {
@@ -44,6 +46,39 @@ export default function StudioRoom() {
   // capturing from startBroadcast's response since nothing else here knows it.
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null)
   const connecting = useRef(false)
+  const heartbeatMutation = trpc.rj.liveSession.heartbeat.useMutation()
+
+  // Restores isLive/liveSessionId from the server on mount (and after a
+  // refresh mid-broadcast, which previously lost this state entirely and —
+  // combined with there being no heartbeat at all — silently stopped the
+  // session from ever being recognized as live again).
+  const { sessions: myStudioSessions } = useMyStudioSessions()
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (restoredRef.current || !sessionId || myStudioSessions.length === 0) return
+    const current = myStudioSessions.find((s) => s.id === sessionId)
+    if (current?.status === "live") {
+      setIsLive(true)
+      setLiveSessionId(current.live_session_id)
+    }
+    restoredRef.current = true
+  }, [sessionId, myStudioSessions])
+
+  // Without this, every Studio broadcast silently drifts into "reconnecting"
+  // (jobs/streamReconnect.ts) after ~2 minutes and auto-ends ~10 minutes
+  // after that — REGARDLESS of whether the mic/WebRTC connection is fine —
+  // because nothing was ever telling the backend "this broadcast is still
+  // actually running". The external-encoder flow already does this (see
+  // useLiveSession.ts); Studio never had it.
+  useEffect(() => {
+    if (!isLive || !liveSessionId) return
+    const id = liveSessionId
+    const timer = setInterval(() => {
+      heartbeatMutation.mutate({ sessionId: id })
+    }, HEARTBEAT_INTERVAL_MS)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, liveSessionId])
 
   useEffect(() => {
     if (!stationId && stations && stations.length > 0) setStationId(stations[0].id)
