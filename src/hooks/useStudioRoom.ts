@@ -32,6 +32,14 @@ export function useStudioRoom() {
   const syncParticipants = useCallback((room: Room) => {
     const speaking = new Set(room.activeSpeakers.map((p) => p.identity));
     const list: StudioParticipantInfo[] = [];
+    // room.remoteParticipants excludes the local participant by design (it's
+    // a separate room.localParticipant) — without adding it here too, the
+    // host never sees their own speaking indicator light up, with nothing
+    // else in the UI confirming their mic is actually being captured.
+    const local = room.localParticipant;
+    if (local) {
+      list.push({ identity: local.identity, isSpeaking: speaking.has(local.identity), isMicOn: local.isMicrophoneEnabled });
+    }
     room.remoteParticipants.forEach((p: RemoteParticipant) => {
       list.push({ identity: p.identity, isSpeaking: speaking.has(p.identity), isMicOn: p.isMicrophoneEnabled });
     });
@@ -74,6 +82,7 @@ export function useStudioRoom() {
         await room.localParticipant.setMicrophoneEnabled(true);
         setMicOn(true);
       }
+      syncParticipants(room);
     } catch (err) {
       setState("failed");
       throw err;
@@ -86,7 +95,8 @@ export function useStudioRoom() {
     const next = !micOn;
     await room.localParticipant.setMicrophoneEnabled(next);
     setMicOn(next);
-  }, [micOn]);
+    syncParticipants(room);
+  }, [micOn, syncParticipants]);
 
   const disconnect = useCallback(() => {
     audioElsRef.current.forEach((el) => el.remove());
