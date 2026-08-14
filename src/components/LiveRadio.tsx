@@ -34,7 +34,7 @@ export function LiveRadioSection() {
             </div>
             <div>
               <h2 className="text-lg md:text-2xl font-serif font-bold text-foreground">
-                Live <span className="text-destructive">{liveCount > 0 ? "Show" : "Radio"}</span>
+                BoiAro <span className="text-destructive">On Air</span>
               </h2>
               <p className="text-xs md:text-sm text-muted-foreground">
                 {liveCount === 1

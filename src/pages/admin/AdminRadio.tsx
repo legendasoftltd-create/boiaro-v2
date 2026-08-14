@@ -391,7 +391,7 @@ export default function AdminRadio() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">BoiAro On Air</h1>
-          <p className="text-muted-foreground text-sm">Manage stations for live radio — each one broadcasts independently</p>
+          <p className="text-muted-foreground text-sm">Manage stations for BoiAro On Air — each one broadcasts independently</p>
         </div>
         {stations.length > 0 && (
           <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${

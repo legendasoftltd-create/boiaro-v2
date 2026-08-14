@@ -8,6 +8,7 @@ import { runShowReminders } from "./showReminders.js";
 import { runStreamReconnectSweep } from "./streamReconnect.js";
 import { runRecordingRetentionSweep } from "./recordingRetention.js";
 import { runIcecastListenerPoll } from "./icecastListenerPoll.js";
+import { runDatabaseBackup } from "./databaseBackup.js";
 
 /**
  * Registers all recurring background jobs. Called once at server startup
@@ -97,5 +98,15 @@ export function startScheduledJobs(): void {
     runIcecastListenerPoll().catch((err) => console.error("[jobs] icecastListenerPoll failed:", err));
   });
 
-  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll)");
+  // Daily at 03:00 Dhaka — full database backup to S3/R2 (see
+  // AdminBackupStatus.tsx for the real catalog this feeds). Runs before the
+  // 04:00 recording-retention sweep so a backup always reflects what's about
+  // to be cleaned up, not after.
+  cron.schedule("0 3 * * *", () => {
+    runDatabaseBackup()
+      .then((r) => console.log(`[jobs] databaseBackup: uploaded ${r.key} (${(r.sizeBytes / 1024 / 1024).toFixed(1)} MB), ${r.deletedExpired} expired cleaned up`))
+      .catch((err) => console.error("[jobs] databaseBackup failed:", err));
+  }, DHAKA);
+
+  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll, database backup)");
 }

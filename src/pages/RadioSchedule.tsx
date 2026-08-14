@@ -56,8 +56,9 @@ export default function RadioSchedule() {
                         <div>
                           <p className="text-sm font-medium">{s.show_title}</p>
                           <p className="text-xs text-muted-foreground">
-                            <Link to={`/host/${s.rj_user_id}`} className="hover:text-foreground hover:underline">{s.rj_stage_name || "RJ"}</Link> · {s.station?.name} · {new Date(s.specific_date).toLocaleDateString()}
+                            <Link to={`/host/${s.rj_user_id}`} className="hover:text-foreground hover:underline">{s.rj_stage_name || "RJ"}</Link> · {s.station?.name} · {new Date(s.specific_date).toLocaleDateString(undefined, { timeZone: "Asia/Dhaka" })}
                           </p>
+                          {s.description && <p className="text-xs text-muted-foreground/80 mt-1">{s.description}</p>}
                         </div>
                         <Badge variant="outline" className="gap-1 shrink-0"><Clock className="w-3 h-3" /> {s.start_time} - {s.end_time}</Badge>
                       </CardContent>

@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -41,7 +42,7 @@ function ScheduleChangeRequests() {
               <p className="font-medium">{r.schedule.show_title} <span className="text-muted-foreground font-normal">by {r.rj_stage_name}</span></p>
               {r.request_type === "reschedule" && (
                 <p className="text-[11px] text-muted-foreground">
-                  New: {r.proposed_specific_date ? new Date(r.proposed_specific_date).toLocaleDateString() : (r.proposed_day_of_week != null ? DAY_NAMES[r.proposed_day_of_week] : r.schedule.day_of_week != null ? DAY_NAMES[r.schedule.day_of_week] : "")}{" "}
+                  New: {r.proposed_specific_date ? new Date(r.proposed_specific_date).toLocaleDateString(undefined, { timeZone: "Asia/Dhaka" }) : (r.proposed_day_of_week != null ? DAY_NAMES[r.proposed_day_of_week] : r.schedule.day_of_week != null ? DAY_NAMES[r.schedule.day_of_week] : "")}{" "}
                   {r.proposed_start_time ?? r.schedule.start_time}-{r.proposed_end_time ?? r.schedule.end_time}
                 </p>
               )}
@@ -75,7 +76,7 @@ export default function AdminRadioSchedule() {
   const [form, setForm] = useState({
     station_id: "", rj_user_id: "", show_title: "", schedule_type: "recurring" as "recurring" | "one_time",
     day_of_week: "0", specific_date: "", start_time: "18:00", end_time: "19:00",
-    category: "", cover_image_url: "", status: "active" as "active" | "cancelled" | "rescheduled",
+    category: "", description: "", cover_image_url: "", status: "active" as "active" | "cancelled" | "rescheduled",
   })
 
   const approvedRjs = (rjProfiles as any[]).filter((r) => r.is_approved)
@@ -85,7 +86,7 @@ export default function AdminRadioSchedule() {
     setForm({
       station_id: (stations as any[])[0]?.id || "", rj_user_id: approvedRjs[0]?.user_id || "", show_title: "",
       schedule_type: "recurring", day_of_week: "0", specific_date: "", start_time: "18:00", end_time: "19:00",
-      category: "", cover_image_url: "", status: "active",
+      category: "", description: "", cover_image_url: "", status: "active",
     })
     setOpen(true)
   }
@@ -97,7 +98,7 @@ export default function AdminRadioSchedule() {
       schedule_type: s.schedule_type || "recurring", day_of_week: String(s.day_of_week),
       specific_date: s.specific_date ? String(s.specific_date).slice(0, 10) : "",
       start_time: s.start_time, end_time: s.end_time,
-      category: s.category || "", cover_image_url: s.cover_image_url || "", status: s.status || "active",
+      category: s.category || "", description: s.description || "", cover_image_url: s.cover_image_url || "", status: s.status || "active",
     })
     setOpen(true)
   }
@@ -117,13 +118,17 @@ export default function AdminRadioSchedule() {
       rj_user_id: form.rj_user_id,
       show_title: form.show_title,
       schedule_type: form.schedule_type,
-      day_of_week: form.schedule_type === "one_time" ? new Date(form.specific_date).getDay() : Number(form.day_of_week),
+      // getUTCDay(), not getDay() — specific_date is constructed below as UTC
+      // midnight of the picked calendar date; reading it back with the local
+      // getDay() can land on the wrong weekday for anyone west of UTC.
+      day_of_week: form.schedule_type === "one_time" ? new Date(`${form.specific_date}T00:00:00.000Z`).getUTCDay() : Number(form.day_of_week),
       specific_date: form.schedule_type === "one_time" ? new Date(`${form.specific_date}T00:00:00.000Z`).toISOString() : undefined,
       start_time: form.start_time,
       end_time: form.end_time,
       is_active: form.status !== "cancelled",
       status: form.status,
       category: form.category || undefined,
+      description: form.description || undefined,
       cover_image_url: form.cover_image_url || undefined,
     })
   }
@@ -192,6 +197,7 @@ export default function AdminRadioSchedule() {
                 <div><Label className="text-[12px]">End</Label><Input type="time" value={form.end_time} onChange={(e) => setForm({ ...form, end_time: e.target.value })} className="h-9 text-[13px]" /></div>
               </div>
               <div><Label className="text-[12px]">Category</Label><Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Music, Talk, News..." className="h-9 text-[13px]" /></div>
+              <div><Label className="text-[12px]">Description</Label><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What's this show about?" rows={2} className="text-[13px]" /></div>
               <div>
                 <Label className="text-[12px]">Cover Image</Label>
                 <SiteImageUpload
@@ -215,7 +221,7 @@ export default function AdminRadioSchedule() {
           (schedules as any[]).map((s) => (
             <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/20 bg-secondary/10">
               <Badge variant="outline" className="w-24 justify-center shrink-0">
-                {s.schedule_type === "one_time" && s.specific_date ? new Date(s.specific_date).toLocaleDateString() : DAY_NAMES[s.day_of_week].slice(0, 3)}
+                {s.schedule_type === "one_time" && s.specific_date ? new Date(s.specific_date).toLocaleDateString(undefined, { timeZone: "Asia/Dhaka" }) : DAY_NAMES[s.day_of_week].slice(0, 3)}
               </Badge>
               <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-medium">{s.show_title}</p>

@@ -1822,6 +1822,7 @@ model ShowSchedule {
   specific_date   DateTime? // set when schedule_type = one_time; day_of_week still derived/stored for display
   status          String    @default("active") // active | cancelled | rescheduled
   category        String?
+  description     String?
   cover_image_url String?
   cancel_reason   String?
 

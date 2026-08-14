@@ -79,7 +79,7 @@ export default function RjSchedule() {
                 <div className="min-w-0">
                   <p className="text-sm font-medium">{s.show_title}</p>
                   <p className="text-xs text-muted-foreground">
-                    {s.schedule_type === "one_time" && s.specific_date ? new Date(s.specific_date).toLocaleDateString() : DAY_NAMES[s.day_of_week]} · {s.station?.name}
+                    {s.schedule_type === "one_time" && s.specific_date ? new Date(s.specific_date).toLocaleDateString(undefined, { timeZone: "Asia/Dhaka" }) : DAY_NAMES[s.day_of_week]} · {s.station?.name}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

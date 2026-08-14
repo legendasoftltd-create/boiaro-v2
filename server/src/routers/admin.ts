@@ -6237,10 +6237,14 @@ export const adminRouter = router({
       is_active: z.boolean().default(true),
       status: z.enum(["active", "cancelled", "rescheduled"]).default("active"),
       category: z.string().optional().nullable(),
+      description: z.string().optional().nullable(),
       cover_image_url: z.string().optional().nullable(),
       cancel_reason: z.string().optional().nullable(),
     }))
     .mutation(async ({ input }) => {
+      // Needed to detect a status *transition* below — notifying on every
+      // save of an already-cancelled show would spam followers.
+      const previous = input.id ? await prisma.showSchedule.findUnique({ where: { id: input.id }, select: { status: true } }) : null;
       if (input.schedule_type === "one_time" && !input.specific_date) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "specific_date is required for one-time shows" });
       }
@@ -6309,11 +6313,29 @@ export const adminRouter = router({
         is_active: input.is_active,
         status: input.status,
         category: input.category || null,
+        description: input.description || null,
         cover_image_url: input.cover_image_url || null,
         cancel_reason: input.cancel_reason || null,
       };
-      if (input.id) return prisma.showSchedule.update({ where: { id: input.id }, data });
-      return prisma.showSchedule.create({ data });
+      const result = input.id
+        ? await prisma.showSchedule.update({ where: { id: input.id }, data })
+        : await prisma.showSchedule.create({ data });
+
+      // Direct admin edits (as opposed to an approved RJ change-request,
+      // which already notifies via reviewScheduleChangeRequest above) never
+      // notified followers before — same cancel/reschedule status, just a
+      // different door into it, and it was silently skipping the notification.
+      const statusChanged = previous && previous.status !== input.status;
+      if (statusChanged && input.status === "cancelled") {
+        await notifyFollowersOfScheduleCancelled(input.rj_user_id, input.show_title, input.cancel_reason ?? null);
+      } else if (statusChanged && input.status === "rescheduled") {
+        const newWhen = input.specific_date
+          ? `${new Date(input.specific_date).toLocaleDateString()} ${input.start_time}`
+          : `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][input.day_of_week]} ${input.start_time}`;
+        await notifyFollowersOfScheduleRescheduled(input.rj_user_id, input.show_title, newWhen);
+      }
+
+      return result;
     }),
 
   deleteShowSchedule: adminProcedure
