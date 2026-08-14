@@ -613,7 +613,7 @@ export const rjRouter = router({
         if (!input.consentGiven) throw new TRPCError({ code: "BAD_REQUEST", message: "Recording consent is required to request to speak" });
 
         const existing = await prisma.callInRequest.findFirst({
-          where: { live_session_id: input.sessionId, user_id: ctx.userId, status: { in: ["requested", "waiting", "accepted", "on_air", "muted"] } },
+          where: { live_session_id: input.sessionId, user_id: ctx.userId, status: { in: ["requested", "waiting", "accepted", "previewing", "on_air", "muted"] } },
         });
         if (existing) return existing;
 
@@ -638,7 +638,7 @@ export const rjRouter = router({
         if (!session) throw new TRPCError({ code: "NOT_FOUND" });
         await assertHostOrModerator(ctx.userId!, session);
         const calls = await prisma.callInRequest.findMany({
-          where: { live_session_id: input.sessionId, status: { in: ["requested", "waiting", "accepted", "on_air", "muted"] } },
+          where: { live_session_id: input.sessionId, status: { in: ["requested", "waiting", "accepted", "previewing", "on_air", "muted"] } },
           orderBy: { requested_at: "asc" },
         });
         const userIds = [...new Set(calls.map((c) => c.user_id))];
@@ -672,8 +672,31 @@ export const rjRouter = router({
       }),
 
     // Signals the caller's browser to begin the WebRTC handshake (send an
-    // offer) — going "on air" is the moment audio actually starts flowing,
-    // not just a queue-position label like the earlier statuses.
+    // offer) so the host can listen before deciding whether to send the
+    // caller to air — same handshake trigger as goOnAir below, just under a
+    // status that doesn't count toward radio_callin_max_concurrent and that
+    // the frontend labels "previewing (not on air)" rather than live.
+    // NOTE: this app has no server-side audio mixing — the broadcast itself
+    // is produced by whatever encoder software the RJ runs outside this app
+    // (see RjDashboard's "Broadcast Setup" card). Whether a preview is truly
+    // inaudible to listeners depends on the RJ routing this preview audio to
+    // a device their encoder isn't capturing — the frontend must make that
+    // caveat explicit, since the backend cannot enforce it.
+    previewCall: protectedProcedure
+      .input(z.object({ callId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true, id: true } } } });
+        if (!call) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertHostOrModerator(ctx.userId!, call.session);
+        const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "previewing", responded_at: new Date() } });
+        emitToUserInSession(call.session.id, call.user_id, "callin:status", { callId: call.id, status: "previewing", hostUserId: call.session.rj_user_id });
+        return updated;
+      }),
+
+    // Signals the caller's browser to begin the WebRTC handshake (send an
+    // offer) if it hasn't already during a preview — going "on air" is the
+    // moment audio is meant to be live in the broadcast, not just a
+    // queue-position label like the earlier statuses.
     goOnAir: protectedProcedure
       .input(z.object({ callId: z.string() }))
       .mutation(async ({ ctx, input }) => {

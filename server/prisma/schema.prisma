@@ -1238,7 +1238,7 @@ model CallInRequest {
   id               String    @id @default(uuid())
   live_session_id  String
   user_id          String
-  // requested | waiting | accepted | rejected | on_air | muted | removed | ended
+  // requested | waiting | accepted | rejected | previewing | on_air | muted | removed | ended
   status           String    @default("requested")
   requested_at     DateTime  @default(now())
   responded_at     DateTime?

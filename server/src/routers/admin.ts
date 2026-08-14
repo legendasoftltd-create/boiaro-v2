@@ -6144,6 +6144,23 @@ export const adminRouter = router({
       return session;
     }),
 
+  // Cross-station visibility for the emergency-disconnect control below —
+  // rj.callIn.queue only covers one session at a time and requires being
+  // the host/moderator of it, so admin needs its own platform-wide view.
+  activeCallIns: adminProcedure.query(async () => {
+    const calls = await prisma.callInRequest.findMany({
+      where: { status: { in: ["waiting", "previewing", "on_air", "muted"] } },
+      include: { session: { select: { id: true, show_title: true, rj_user_id: true } } },
+      orderBy: { requested_at: "asc" },
+    });
+    const userIds = [...new Set(calls.map((c) => c.user_id))];
+    const profiles = userIds.length
+      ? await prisma.profile.findMany({ where: { user_id: { in: userIds } }, select: { user_id: true, display_name: true } })
+      : [];
+    const pMap = new Map(profiles.map((p) => [p.user_id, p]));
+    return calls.map((c) => ({ ...c, display_name: pMap.get(c.user_id)?.display_name ?? null }));
+  }),
+
   // Emergency disconnect for a listener call-in — ends it and signals both
   // the caller and host to tear down their WebRTC connection immediately.
   emergencyEndCallIn: adminProcedure

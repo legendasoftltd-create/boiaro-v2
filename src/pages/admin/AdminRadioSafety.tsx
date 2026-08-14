@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   ShieldAlert, Activity, Cpu, MemoryStick, HardDrive, Users, Radio,
-  AlertTriangle, RefreshCw, Flag, ScrollText, SlidersHorizontal, CheckCircle2, BarChart3,
+  AlertTriangle, RefreshCw, Flag, ScrollText, SlidersHorizontal, CheckCircle2, BarChart3, PhoneOff,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -19,6 +19,7 @@ const TABS = [
   { value: "health", label: "Server Health", icon: Activity },
   { value: "analytics", label: "Analytics", icon: BarChart3 },
   { value: "toggles", label: "Feature Toggles", icon: SlidersHorizontal },
+  { value: "callins", label: "Call-ins", icon: PhoneOff },
   { value: "reports", label: "Reports", icon: Flag },
   { value: "audit", label: "Audit Log", icon: ScrollText },
 ] as const
@@ -353,6 +354,77 @@ function AdminRadioSafetyAnalytics() {
   )
 }
 
+function AdminRadioSafetyCallIns() {
+  const utils = trpc.useUtils()
+  const { data: calls = [], isLoading } = trpc.admin.activeCallIns.useQuery(undefined, { refetchInterval: 5_000 })
+  const emergencyEndMutation = trpc.admin.emergencyEndCallIn.useMutation({
+    onSuccess: () => { utils.admin.activeCallIns.invalidate(); toast.success("Caller disconnected") },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const statusBadge = (s: string) => {
+    const c: Record<string, string> = {
+      waiting: "bg-secondary text-muted-foreground",
+      previewing: "bg-amber-500/15 text-amber-500",
+      on_air: "bg-destructive/15 text-destructive",
+      muted: "bg-blue-500/15 text-blue-400",
+    }
+    return <Badge className={c[s] || "bg-secondary"}>{s}</Badge>
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Active Call-ins — All Stations</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 justify-center"><RefreshCw className="w-4 h-4 animate-spin" /> Loading...</div>
+        ) : calls.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-10">No active call-ins right now.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Caller</TableHead>
+                <TableHead>Show</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Requested</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(calls as any[]).map((c) => (
+                <TableRow key={c.id}>
+                  <TableCell className="text-sm">{c.display_name || "Anonymous"}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{c.session?.show_title || "Untitled"}</TableCell>
+                  <TableCell>{statusBadge(c.status)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{new Date(c.requested_at).toLocaleTimeString()}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 text-[11px]"
+                      disabled={emergencyEndMutation.isPending}
+                      onClick={() => {
+                        if (window.confirm("Immediately disconnect this caller from the broadcast?")) {
+                          emergencyEndMutation.mutate({ callId: c.id })
+                        }
+                      }}
+                    >
+                      <PhoneOff className="w-3 h-3 mr-1" /> Emergency Disconnect
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function AdminRadioSafetyReports() {
   const utils = trpc.useUtils()
   const [status, setStatus] = useState<string>("pending")
@@ -497,6 +569,7 @@ export default function AdminRadioSafety() {
       {tab === "health" && <AdminRadioSafetyHealth />}
       {tab === "analytics" && <AdminRadioSafetyAnalytics />}
       {tab === "toggles" && <AdminRadioSafetyToggles />}
+      {tab === "callins" && <AdminRadioSafetyCallIns />}
       {tab === "reports" && <AdminRadioSafetyReports />}
       {tab === "audit" && <AdminRadioSafetyAudit />}
     </div>

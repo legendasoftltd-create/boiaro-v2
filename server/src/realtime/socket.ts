@@ -268,7 +268,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       if (!session) return false;
       if (session.rj_user_id === participantUserId) return true;
       const call = await prisma.callInRequest.findFirst({
-        where: { live_session_id: sessionId, user_id: participantUserId, status: { in: ["waiting", "accepted", "on_air", "muted"] } },
+        where: { live_session_id: sessionId, user_id: participantUserId, status: { in: ["waiting", "accepted", "previewing", "on_air", "muted"] } },
       });
       return !!call;
     };
