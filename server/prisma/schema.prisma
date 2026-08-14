@@ -2378,9 +2378,16 @@ model StudioSession {
   master_recording_url    String?
   master_recording_status String? // recording | processing | completed | failed
 
-  live_session  LiveSession?         @relation(fields: [live_session_id], references: [id])
-  participants  StudioParticipant[]
-  invite_links  StudioInviteLink[]
+  // Whether the master recording captures the full mix (mic + mixer music/
+  // jingles) or just the host's mic — see studio-bridge's dual-tap. Chosen
+  // per broadcast; the live Icecast stream always carries the full mix
+  // regardless of this setting.
+  recording_mode String @default("voice_only") // mixed | voice_only
+
+  live_session   LiveSession?          @relation(fields: [live_session_id], references: [id])
+  participants   StudioParticipant[]
+  invite_links   StudioInviteLink[]
+  playlist_items StudioPlaylistItem[]
 
   @@map("studio_sessions")
 }
@@ -2414,6 +2421,45 @@ model StudioInviteLink {
 
   @@index([studio_session_id])
   @@map("studio_invite_links")
+}
+
+// Background music / jingle / SFX library for the Studio mixer (§14).
+// owner_user_id null = admin-curated, platform-wide, available to every RJ.
+// owner_user_id set = one RJ's own upload, self-certified via
+// license_acknowledged_at (same convention as the broadcaster terms
+// checkbox in rj.acceptTerms) rather than admin-reviewed.
+model StudioAudioAsset {
+  id                      String    @id @default(uuid())
+  owner_user_id           String?
+  category                String // music | jingle | sfx
+  title                   String
+  file_url                String
+  duration_seconds        Int?
+  license_acknowledged_at DateTime?
+  created_at              DateTime  @default(now())
+
+  playlist_items StudioPlaylistItem[]
+
+  @@index([owner_user_id, category])
+  @@map("studio_audio_assets")
+}
+
+// The live playlist queue for one Studio broadcast — ordered by position,
+// advanced (played_at set) as the mixer plays through it. Deleted with the
+// session since a queue only ever makes sense for the broadcast it belongs to.
+model StudioPlaylistItem {
+  id                String    @id @default(uuid())
+  studio_session_id String
+  audio_asset_id    String
+  position          Int
+  played_at         DateTime?
+  created_at        DateTime  @default(now())
+
+  session StudioSession   @relation(fields: [studio_session_id], references: [id], onDelete: Cascade)
+  asset   StudioAudioAsset @relation(fields: [audio_asset_id], references: [id])
+
+  @@index([studio_session_id, position])
+  @@map("studio_playlist_items")
 }
 
 // Periodic sample of Icecast's own status-json.xsl listener count — the

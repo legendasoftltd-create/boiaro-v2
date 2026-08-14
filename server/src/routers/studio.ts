@@ -361,6 +361,115 @@ export const studioRouter = router({
       await logRadioAction(ctx.userId!, "studio_broadcast_ended", { sessionId: session.id });
       return updated;
     }),
+
+  // ── §14 Mixer: music/jingle/SFX library ─────────────────────────────────
+  // owner_user_id null = admin-curated, platform-wide; set = one RJ's own
+  // self-certified upload. One procedure serves both admin and RJ uploads
+  // (platformWide:true requires an admin/moderator role and skips the
+  // license checkbox, since platform assets are admin-cleared already).
+  libraryList: protectedProcedure
+    .input(z.object({ category: z.enum(["music", "jingle", "sfx"]).optional() }))
+    .query(({ ctx, input }) =>
+      prisma.studioAudioAsset.findMany({
+        where: {
+          ...(input.category ? { category: input.category } : {}),
+          OR: [{ owner_user_id: null }, { owner_user_id: ctx.userId }],
+        },
+        orderBy: { created_at: "desc" },
+      })
+    ),
+
+  libraryUpload: protectedProcedure
+    .input(z.object({
+      title: z.string().min(1).max(200),
+      category: z.enum(["music", "jingle", "sfx"]),
+      fileUrl: z.string().url(),
+      durationSeconds: z.number().int().positive().optional(),
+      licenseAcknowledged: z.boolean().default(false),
+      platformWide: z.boolean().default(false),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.platformWide) {
+        const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
+        if (!role) throw new TRPCError({ code: "FORBIDDEN", message: "Only an admin can add to the platform library" });
+      } else if (!input.licenseAcknowledged) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "You must confirm you own or are licensed to use this audio" });
+      }
+      return prisma.studioAudioAsset.create({
+        data: {
+          owner_user_id: input.platformWide ? null : ctx.userId,
+          category: input.category,
+          title: input.title,
+          file_url: input.fileUrl,
+          duration_seconds: input.durationSeconds ?? null,
+          license_acknowledged_at: input.platformWide ? null : new Date(),
+        },
+      });
+    }),
+
+  libraryDelete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const asset = await prisma.studioAudioAsset.findUnique({ where: { id: input.id } });
+      if (!asset) throw new TRPCError({ code: "NOT_FOUND" });
+      if (asset.owner_user_id !== ctx.userId) {
+        const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
+        if (!role) throw new TRPCError({ code: "FORBIDDEN" });
+      }
+      await prisma.studioAudioAsset.delete({ where: { id: input.id } });
+      return { deleted: true };
+    }),
+
+  // ── §14 Mixer: live playlist queue ──────────────────────────────────────
+  playlist: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await assertModerator(input.sessionId, ctx.userId!);
+      return prisma.studioPlaylistItem.findMany({
+        where: { studio_session_id: input.sessionId },
+        include: { asset: true },
+        orderBy: { position: "asc" },
+      });
+    }),
+
+  addToPlaylist: protectedProcedure
+    .input(z.object({ sessionId: z.string(), audioAssetId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertModerator(input.sessionId, ctx.userId!);
+      const last = await prisma.studioPlaylistItem.findFirst({
+        where: { studio_session_id: input.sessionId },
+        orderBy: { position: "desc" },
+      });
+      return prisma.studioPlaylistItem.create({
+        data: { studio_session_id: input.sessionId, audio_asset_id: input.audioAssetId, position: (last?.position ?? -1) + 1 },
+      });
+    }),
+
+  removeFromPlaylist: protectedProcedure
+    .input(z.object({ sessionId: z.string(), itemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertModerator(input.sessionId, ctx.userId!);
+      await prisma.studioPlaylistItem.deleteMany({ where: { id: input.itemId, studio_session_id: input.sessionId } });
+      return { removed: true };
+    }),
+
+  // Marks the current queue head played and returns whatever's next — called
+  // by the mixer's onended handler so a page refresh resumes at the right
+  // queue position instead of silently losing playback state.
+  advancePlaylist: protectedProcedure
+    .input(z.object({ sessionId: z.string(), itemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertModerator(input.sessionId, ctx.userId!);
+      await prisma.studioPlaylistItem.updateMany({
+        where: { id: input.itemId, studio_session_id: input.sessionId },
+        data: { played_at: new Date() },
+      });
+      return prisma.studioPlaylistItem.findFirst({
+        where: { studio_session_id: input.sessionId, played_at: null },
+        include: { asset: true },
+        orderBy: { position: "asc" },
+      });
+    }),
 });
 
 export { mintToken, DEFAULT_CAN_PUBLISH, getSession };
