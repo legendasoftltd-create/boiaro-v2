@@ -163,6 +163,7 @@ const RjProfile = lazy(() => import("./pages/rj/RjProfile.tsx"));
 const RjSchedule = lazy(() => import("./pages/rj/RjSchedule.tsx"));
 const RjStudio = lazy(() => import("./pages/rj/RjStudio.tsx"));
 const RjRecordings = lazy(() => import("./pages/rj/RjRecordings.tsx"));
+const RjAnalytics = lazy(() => import("./pages/rj/RjAnalytics.tsx"));
 
 // BoiAro On Air Studio (Hybrid LiveKit + Icecast — see studio-bridge/)
 const StudioRoom = lazy(() => import("./pages/studio/StudioRoom.tsx"));
@@ -394,6 +395,7 @@ const App = () => {
                   <Route path="schedule" element={<RjSchedule />} />
                   <Route path="studio" element={<RjStudio />} />
                   <Route path="recordings" element={<RjRecordings />} />
+                  <Route path="analytics" element={<RjAnalytics />} />
                 </Route>
 
                 {/* BoiAro On Air Studio — Guest/Producer/Co-host may hold no

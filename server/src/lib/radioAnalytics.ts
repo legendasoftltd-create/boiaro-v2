@@ -1,0 +1,164 @@
+import { prisma } from "./prisma.js";
+
+export interface RadioAnalyticsInput {
+  from?: string;
+  to?: string;
+  groupBy?: "none" | "rj" | "station" | "show";
+  /** Locks the whole computation to one RJ's own sessions — used by rj.myAnalytics. Never client-supplied for the admin (platform-wide) path. */
+  rjUserId?: string;
+}
+
+// Shared by admin.radioAnalytics (platform-wide) and rj.myAnalytics
+// (self-scoped) — see either call site's comment for the field-by-field
+// meaning of the returned summary/groups shape.
+export async function computeRadioAnalytics(input: RadioAnalyticsInput) {
+  const from = input.from ? new Date(input.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const to = input.to ? new Date(input.to) : new Date();
+  const groupBy = input.groupBy ?? "none";
+
+  const sessionsInRange = await prisma.liveSession.findMany({
+    where: {
+      started_at: { gte: from, lte: to },
+      is_test: false,
+      ...(input.rjUserId ? { rj_user_id: input.rjUserId } : {}),
+    },
+    select: {
+      id: true, rj_user_id: true, station_id: true, show_title: true, category: true,
+      reaction_count: true, catchup_play_count: true, started_at: true, ended_at: true,
+    },
+  });
+  const sessionIds = sessionsInRange.map((s) => s.id);
+
+  const [listenerRows, chatRows, requestCount, newFollowers, catchupRows, stations, rjProfiles, icecastSamples] = await Promise.all([
+    prisma.listenerSession.findMany({
+      where: { live_session_id: { in: sessionIds } },
+      select: { live_session_id: true, user_id: true, device_id: true, platform: true, country: true, joined_at: true, left_at: true },
+    }),
+    prisma.liveChatMessage.findMany({ where: { live_session_id: { in: sessionIds } }, select: { live_session_id: true, user_id: true } }),
+    prisma.songRequest.count({ where: { live_session_id: { in: sessionIds } } }),
+    prisma.follow.count({ where: { created_at: { gte: from, lte: to }, followee_id: { in: [...new Set(sessionsInRange.map((s) => s.rj_user_id))] } } }),
+    prisma.catchupProgress.findMany({ where: { live_session_id: { in: sessionIds } }, select: { live_session_id: true, user_id: true, completed: true } }),
+    prisma.radioStation.findMany({ select: { id: true, name: true } }),
+    prisma.rjProfile.findMany({ select: { user_id: true, stage_name: true } }),
+    prisma.icecastListenerSample.findMany({
+      where: { live_session_id: { in: sessionIds } },
+      select: { live_session_id: true, listener_count: true },
+    }),
+  ]);
+
+  const stationName = new Map(stations.map((s) => [s.id, s.name]));
+  const rjName = new Map(rjProfiles.map((r) => [r.user_id, r.stage_name]));
+
+  const rangeUserIds = [...new Set(listenerRows.map((r) => r.user_id).filter((v): v is string => !!v))];
+  const rangeDeviceIds = [...new Set(listenerRows.map((r) => r.device_id).filter((v): v is string => !!v))];
+  const priorVisitors = (rangeUserIds.length || rangeDeviceIds.length)
+    ? await prisma.listenerSession.findMany({
+        where: {
+          joined_at: { lt: from },
+          OR: [
+            ...(rangeUserIds.length ? [{ user_id: { in: rangeUserIds } }] : []),
+            ...(rangeDeviceIds.length ? [{ device_id: { in: rangeDeviceIds } }] : []),
+          ],
+        },
+        select: { user_id: true, device_id: true },
+      })
+    : [];
+  const returningKeys = new Set(priorVisitors.map((r) => r.user_id ?? `device:${r.device_id}`));
+
+  const now = Date.now();
+  const events = listenerRows.flatMap((r) => [
+    { t: r.joined_at.getTime(), d: 1 },
+    { t: (r.left_at ?? new Date(now)).getTime(), d: -1 },
+  ]).sort((a, b) => a.t - b.t);
+  let running = 0, peakConcurrent = 0;
+  for (const e of events) { running += e.d; if (running > peakConcurrent) peakConcurrent = running; }
+
+  const totalListeningSeconds = listenerRows.reduce((sum, r) => sum + Math.max(0, ((r.left_at?.getTime() ?? now) - r.joined_at.getTime()) / 1000), 0);
+  const uniqueListenerKeys = new Set(listenerRows.map((r) => r.user_id ?? `device:${r.device_id}`));
+  const uniqueChatUsers = new Set(chatRows.map((r) => r.user_id));
+
+  const deviceBreakdown: Record<string, number> = {};
+  listenerRows.forEach((r) => { const p = r.platform ?? "unknown"; deviceBreakdown[p] = (deviceBreakdown[p] ?? 0) + 1; });
+
+  const countryBreakdown: Record<string, number> = {};
+  listenerRows.forEach((r) => { const c = r.country ?? "unknown"; countryBreakdown[c] = (countryBreakdown[c] ?? 0) + 1; });
+
+  const catchupUniqueListeners = new Set(catchupRows.map((r) => `${r.live_session_id}:${r.user_id}`)).size;
+  const catchupCompleted = catchupRows.filter((r) => r.completed).length;
+
+  const icecastCounts = icecastSamples.map((s) => s.listener_count);
+  const icecastPeakListeners = icecastCounts.length ? Math.max(...icecastCounts) : 0;
+  const icecastAverageListeners = icecastCounts.length
+    ? Math.round((icecastCounts.reduce((a, b) => a + b, 0) / icecastCounts.length) * 10) / 10
+    : 0;
+
+  const summary = {
+    totalSessions: sessionsInRange.length,
+    uniqueListeners: uniqueListenerKeys.size,
+    returningListeners: returningKeys.size,
+    newListeners: uniqueListenerKeys.size - returningKeys.size,
+    peakConcurrentListeners: peakConcurrent,
+    icecastPeakListeners,
+    icecastAverageListeners,
+    totalListeningMinutes: Math.round(totalListeningSeconds / 60),
+    averageListeningMinutes: listenerRows.length ? Math.round((totalListeningSeconds / listenerRows.length) / 60 * 10) / 10 : 0,
+    newFollowers,
+    chatCount: chatRows.length,
+    uniqueChatUsers: uniqueChatUsers.size,
+    reactionCount: sessionsInRange.reduce((sum, s) => sum + s.reaction_count, 0),
+    requestCount,
+    catchupPlays: sessionsInRange.reduce((sum, s) => sum + s.catchup_play_count, 0),
+    catchupUniqueListeners,
+    catchupCompletionRatePct: catchupRows.length ? Math.round((catchupCompleted / catchupRows.length) * 1000) / 10 : 0,
+    deviceBreakdown,
+    countryBreakdown,
+  };
+
+  let groups: Array<{ key: string; label: string } & typeof summary> | null = null;
+  if (groupBy !== "none") {
+    const keyOf = (s: (typeof sessionsInRange)[number]) =>
+      groupBy === "rj" ? s.rj_user_id : groupBy === "show" ? (s.show_title ?? "Untitled") : (s.station_id ?? "none");
+    const labelOf = (key: string) =>
+      groupBy === "rj" ? (rjName.get(key) ?? "Unknown RJ") : groupBy === "show" ? key : (stationName.get(key) ?? "No station");
+    const keys = [...new Set(sessionsInRange.map(keyOf))];
+    groups = keys.map((key) => {
+      const groupSessionIds = new Set(sessionsInRange.filter((s) => keyOf(s) === key).map((s) => s.id));
+      const gListener = listenerRows.filter((r) => groupSessionIds.has(r.live_session_id));
+      const gChat = chatRows.filter((r) => groupSessionIds.has(r.live_session_id));
+      const gCatchup = catchupRows.filter((r) => groupSessionIds.has(r.live_session_id));
+      const gSessions = sessionsInRange.filter((s) => groupSessionIds.has(s.id));
+      const gIcecast = icecastSamples.filter((s) => s.live_session_id && groupSessionIds.has(s.live_session_id)).map((s) => s.listener_count);
+      const gSeconds = gListener.reduce((sum, r) => sum + Math.max(0, ((r.left_at?.getTime() ?? now) - r.joined_at.getTime()) / 1000), 0);
+      const gEvents = gListener.flatMap((r) => [{ t: r.joined_at.getTime(), d: 1 }, { t: (r.left_at ?? new Date(now)).getTime(), d: -1 }]).sort((a, b) => a.t - b.t);
+      let gRunning = 0, gPeak = 0;
+      for (const e of gEvents) { gRunning += e.d; if (gRunning > gPeak) gPeak = gRunning; }
+      const gCompleted = gCatchup.filter((r) => r.completed).length;
+      const gCountryBreakdown: Record<string, number> = {};
+      gListener.forEach((r) => { const c = r.country ?? "unknown"; gCountryBreakdown[c] = (gCountryBreakdown[c] ?? 0) + 1; });
+      return {
+        key, label: labelOf(key),
+        totalSessions: gSessions.length,
+        uniqueListeners: new Set(gListener.map((r) => r.user_id ?? `device:${r.device_id}`)).size,
+        returningListeners: 0,
+        newListeners: 0,
+        peakConcurrentListeners: gPeak,
+        icecastPeakListeners: gIcecast.length ? Math.max(...gIcecast) : 0,
+        icecastAverageListeners: gIcecast.length ? Math.round((gIcecast.reduce((a, b) => a + b, 0) / gIcecast.length) * 10) / 10 : 0,
+        totalListeningMinutes: Math.round(gSeconds / 60),
+        averageListeningMinutes: gListener.length ? Math.round((gSeconds / gListener.length) / 60 * 10) / 10 : 0,
+        newFollowers: 0,
+        chatCount: gChat.length,
+        uniqueChatUsers: new Set(gChat.map((r) => r.user_id)).size,
+        reactionCount: gSessions.reduce((sum, s) => sum + s.reaction_count, 0),
+        requestCount: 0,
+        catchupPlays: gSessions.reduce((sum, s) => sum + s.catchup_play_count, 0),
+        catchupUniqueListeners: new Set(gCatchup.map((r) => r.user_id)).size,
+        catchupCompletionRatePct: gCatchup.length ? Math.round((gCompleted / gCatchup.length) * 1000) / 10 : 0,
+        deviceBreakdown: {},
+        countryBreakdown: gCountryBreakdown,
+      };
+    }).sort((a, b) => b.uniqueListeners - a.uniqueListeners);
+  }
+
+  return { from, to, summary, groups };
+}
