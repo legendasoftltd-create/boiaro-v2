@@ -7,6 +7,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import multer from "multer";
+import helmet from "helmet";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers/_app.js";
 import { createContext } from "./context.js";
@@ -28,6 +29,7 @@ import { startStorageSyncService } from "./services/storageSync.service.js";
 import { startScheduledJobs } from "./jobs/index.js";
 import { syncStationMountsWithBridge } from "./lib/studioBridge.js";
 import { applyWatermark } from "./lib/watermark.js";
+import { verifyFileHeader } from "./lib/fileValidation.js";
 import { initLiveSocket } from "./realtime/socket.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,6 +38,13 @@ const app = express();
 
 // Trust nginx reverse proxy so X-Forwarded-For is used for rate limiting
 app.set("trust proxy", 1);
+
+// Baseline security headers (HSTS, X-Frame-Options, X-Content-Type-Options,
+// etc). CSP and cross-origin-resource-policy are left off — this API serves
+// media/uploads to the frontend's own origin and to S3/CDN, and a default
+// CSP/CORP here would need real tuning against those to avoid silently
+// breaking image/audio loading rather than actually being safer.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false, crossOriginEmbedderPolicy: false }));
 
 const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:8080")
   .split(",")
@@ -167,6 +176,10 @@ const uploadMedia = multer({
 // /upload — images (covers, banners, avatars, site images)
 app.post("/upload", uploadImage.single("file"), async (req, res) => {
   if (!req.file) { res.status(400).json({ error: "No file provided" }); return; }
+  if (!verifyFileHeader(req.file.buffer, req.file.mimetype)) {
+    res.status(400).json({ error: "File content doesn't match its declared type" });
+    return;
+  }
   try {
     const hint = (req.query.type as string | undefined) as "avatar" | "cover" | "image" | undefined;
 
@@ -198,6 +211,10 @@ app.post("/upload", uploadImage.single("file"), async (req, res) => {
 // /upload/media — ebooks (EPUB/PDF), audiobook tracks (MP3/AAC/WAV), large images
 app.post("/upload/media", uploadMedia.single("file"), async (req, res) => {
   if (!req.file) { res.status(400).json({ error: "No file provided" }); return; }
+  if (!verifyFileHeader(req.file.buffer, req.file.mimetype)) {
+    res.status(400).json({ error: "File content doesn't match its declared type" });
+    return;
+  }
   try {
     const mime = req.file.mimetype;
     const ext = path.extname(req.file.originalname).toLowerCase();

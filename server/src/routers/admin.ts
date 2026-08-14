@@ -12,7 +12,8 @@ import { sendSslWirelessSms } from "../lib/sms.js";
 import { sendPushToTokens, testFirebaseCredentials, invalidateFirebaseCache } from "../lib/firebase.js";
 import { notifyUser } from "../lib/notify.js";
 import { cancelOrder, OrderCancelError } from "../services/orderCancel.service.js";
-import { createPresignedDownloadUrl, isS3Url } from "../lib/s3.js";
+import { createPresignedDownloadUrl, isS3Url, s3Client } from "../lib/s3.js";
+import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClipsForFormat } from "../lib/audioPreview.js";
 import { logRadioAction } from "../lib/radioAudit.js";
@@ -6582,6 +6583,27 @@ export const adminRouter = router({
       estimatedMonthlyCost,
       bandwidthNote: "Estimate only — configured bitrate × actual listener-seconds over the last 30 days, not a measured network counter",
       alerts,
+    };
+  }),
+
+  // Real backup catalog read straight from object storage — not a DB table,
+  // since a backup listing needs to survive the database itself being lost.
+  // See server/scripts/backup-database.ts for what actually writes these.
+  backupStatus: adminProcedure.query(async () => {
+    const bucket = process.env.AWS_S3_BUCKET;
+    if (!bucket) {
+      return { configured: false, backups: [], lastBackupAt: null, retentionDays: Number(process.env.DB_BACKUP_RETENTION_DAYS || 14) };
+    }
+    const list = await s3Client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: "backups/" }));
+    const backups = (list.Contents || [])
+      .filter((o) => o.Key && o.LastModified)
+      .map((o) => ({ key: o.Key!, sizeBytes: o.Size ?? 0, lastModified: o.LastModified!.toISOString() }))
+      .sort((a, b) => b.lastModified.localeCompare(a.lastModified));
+    return {
+      configured: true,
+      backups,
+      lastBackupAt: backups[0]?.lastModified ?? null,
+      retentionDays: Number(process.env.DB_BACKUP_RETENTION_DAYS || 14),
     };
   }),
 

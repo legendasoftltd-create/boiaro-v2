@@ -12,6 +12,13 @@ interface AuthedSocket extends Socket {
 }
 
 const lastMessageAt = new Map<string, number>();
+// Reactions and song requests had no rate limit at all before this — a
+// connected listener could spam either at socket speed. Simple fixed
+// per-user cooldowns, same pattern as chat's slow mode.
+const lastReactionAt = new Map<string, number>();
+const REACTION_COOLDOWN_MS = 1000;
+const lastSongRequestAt = new Map<string, number>();
+const SONG_REQUEST_COOLDOWN_MS = 5000;
 // socketId -> ListenerSession row id, so leave/disconnect can close it out.
 const listenerSessionRows = new Map<string, string>();
 // userId -> last callin:offer/answer/ice-candidate timestamp, so a
@@ -166,6 +173,9 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
 
     socket.on("reaction:send", async ({ sessionId, emoji }: { sessionId: string; emoji: string }) => {
       if (!sessionId || !emoji) return;
+      const now = Date.now();
+      if (now - (lastReactionAt.get(userId) ?? 0) < REACTION_COOLDOWN_MS) return;
+      lastReactionAt.set(userId, now);
       if (!(await getRadioSettingBool("radio_reactions_enabled"))) return;
       // Ephemeral — no per-reaction DB write, purely a broadcast for the
       // floating-reaction animation. The running total is still tracked
@@ -177,6 +187,13 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     socket.on("song_request:send", async ({ sessionId, requestText }: { sessionId: string; requestText: string }) => {
       const text = (requestText || "").trim().slice(0, 200);
       if (!sessionId || !text) return;
+
+      const now = Date.now();
+      if (now - (lastSongRequestAt.get(userId) ?? 0) < SONG_REQUEST_COOLDOWN_MS) {
+        socket.emit("error", { message: "You're sending requests too fast" });
+        return;
+      }
+      lastSongRequestAt.set(userId, now);
 
       if (!(await getRadioSettingBool("radio_requests_enabled"))) {
         socket.emit("error", { message: "Song requests are currently disabled" });
@@ -274,6 +291,8 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       await closeListenerSessionRow();
       lastMessageAt.delete(userId);
       lastCallInSignalAt.delete(userId);
+      lastReactionAt.delete(userId);
+      lastSongRequestAt.delete(userId);
     });
   });
 
