@@ -39,6 +39,7 @@ export default function StudioRoom() {
   const { data: stations } = useRadioStations()
   const [stationId, setStationId] = useState("")
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettingsValue>(DEFAULT_BROADCAST_SETTINGS)
+  const [recordingMode, setRecordingMode] = useState<"mixed" | "voice_only">("voice_only")
   // No session-status query wired up here yet — tracked locally from this
   // component's own start/end actions, same limitation the rest of this
   // page has (e.g. a page refresh mid-broadcast loses this).
@@ -125,6 +126,7 @@ export default function StudioRoom() {
         requestsEnabled: broadcastSettings.requestsEnabled,
         recordingEnabled: broadcastSettings.recordingEnabled,
         callinEnabled: broadcastSettings.callinEnabled,
+        recordingMode,
       })
       setIsLive(true)
       setLiveSessionId((result as { live_session_id: string | null })?.live_session_id ?? null)
@@ -205,6 +207,35 @@ export default function StudioRoom() {
 
               {canControlBroadcast && !isLive && (
                 <BroadcastSettingsForm value={broadcastSettings} onChange={setBroadcastSettings} />
+              )}
+
+              {canControlBroadcast && !isLive && (
+                <div className="p-3 rounded-lg bg-muted/30 border border-border/30 space-y-1.5">
+                  <p className="text-xs font-medium">রেকর্ডিং</p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={recordingMode === "voice_only" ? "default" : "outline"}
+                      className="text-xs flex-1"
+                      onClick={() => setRecordingMode("voice_only")}
+                    >
+                      শুধু কণ্ঠস্বর
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={recordingMode === "mixed" ? "default" : "outline"}
+                      className="text-xs flex-1"
+                      onClick={() => setRecordingMode("mixed")}
+                    >
+                      মিক্স (কণ্ঠ + মিউজিক)
+                    </Button>
+                  </div>
+                  <p className="text-[10.5px] text-muted-foreground leading-snug">
+                    সরাসরি সম্প্রচারে সবসময় মাইক + মিউজিক/জিঙ্গেল একসাথে যায় — এটা শুধু ক্যাচ-আপ রেকর্ডিং কী ধারণ করবে তা ঠিক করে।
+                  </p>
+                </div>
               )}
 
               <div className="flex items-center gap-2">

@@ -44,8 +44,10 @@ nms.run();
 // Internal control channel — the app server calls these. Same shared-secret
 // auth as the reverse "master-ready" webhook in bridge.ts.
 //   POST /internal/register-mount  — right before Egress starts publishing,
-//     which Icecast mount this specific broadcast should land on (see
-//     server/src/routers/studio.ts's startBroadcast).
+//     which Icecast mount (if any) and whether to write a master WAV this
+//     specific stream path should use — one broadcast can register two
+//     (a primary and, for a voice-only master recording, a mic-only tap)
+//     (see server/src/routers/studio.ts's startBroadcast).
 //   POST /internal/sync-stations   — after any RadioStation is added,
 //     edited, or (de)activated, the full current list of station mounts,
 //     so Icecast's per-mount fallback wiring stays current (icecastConfig.ts).
@@ -73,13 +75,18 @@ const internalServer = createServer(async (req, res) => {
     const payload = await readJsonBody(req);
 
     if (req.url === "/internal/register-mount") {
-      const { streamPath, mount } = payload;
-      if (typeof streamPath !== "string" || !streamPath || typeof mount !== "string" || !mount) {
+      const { streamPath, mount, toIcecast, toWav } = payload;
+      if (
+        typeof streamPath !== "string" || !streamPath ||
+        (mount !== undefined && typeof mount !== "string") ||
+        typeof toIcecast !== "boolean" || typeof toWav !== "boolean" ||
+        (toIcecast && (typeof mount !== "string" || !mount))
+      ) {
         res.writeHead(400).end();
         return;
       }
-      registerMount(streamPath, mount);
-      console.log(`[bridge] registered mount ${mount} for ${streamPath}`);
+      registerMount(streamPath, { mount, toIcecast, toWav });
+      console.log(`[bridge] registered ${streamPath} -> toIcecast=${toIcecast}${mount ? ` (${mount})` : ""} toWav=${toWav}`);
       res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ ok: true }));
       return;
     }

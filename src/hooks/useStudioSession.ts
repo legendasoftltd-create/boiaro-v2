@@ -88,6 +88,7 @@ export function useBroadcastControl(sessionId: string) {
       requestsEnabled?: boolean;
       recordingEnabled?: boolean;
       callinEnabled?: boolean;
+      recordingMode?: "mixed" | "voice_only";
     }) => startMutation.mutateAsync({ sessionId, ...opts }),
     endBroadcast: () => endMutation.mutateAsync({ sessionId }),
     isStarting: startMutation.isPending,

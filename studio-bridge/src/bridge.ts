@@ -18,6 +18,12 @@ import { join } from "node:path";
  * for keeping this simple — the live Icecast stream (the critical path) is
  * unaffected either way.
  */
+interface StreamConfig {
+  mount?: string;
+  toIcecast: boolean;
+  toWav: boolean;
+}
+
 interface BridgeEntry {
   proc: ChildProcess;
   stopping: boolean;
@@ -25,21 +31,25 @@ interface BridgeEntry {
   restartAttempt: number;
   restartTimer: NodeJS.Timeout | null;
   wavPath: string;
-  mount: string;
+  config: StreamConfig;
 }
 
 const sessions = new Map<string, BridgeEntry>();
 
-// Per-broadcast Icecast mount, registered by the app server (via the
+// Per-broadcast stream config, registered by the app server (via the
 // internal HTTP endpoint in index.ts) before Egress starts publishing —
-// see server/src/routers/studio.ts's startBroadcast. Without this, every
-// concurrent broadcast would push to the same static ICECAST_MOUNT and
-// stomp on each other (only one source can hold an Icecast mount at a
-// time), which defeats running independent stations simultaneously.
-const mountRegistry = new Map<string, string>();
+// see server/src/routers/studio.ts's startBroadcast. Without a registered
+// mount, every concurrent broadcast would push to the same static
+// ICECAST_MOUNT and stomp on each other (only one source can hold an
+// Icecast mount at a time). toIcecast/toWav let one broadcast register two
+// independent taps under different stream paths — a primary (always
+// toIcecast:true) and, for a voice-only master recording, a second
+// mic-only tap (toIcecast:false, toWav:true) — see §14 recording_mode.
+const mountRegistry = new Map<string, StreamConfig>();
+const DEFAULT_CONFIG: StreamConfig = { toIcecast: true, toWav: true };
 
-export function registerMount(streamPath: string, mount: string) {
-  mountRegistry.set(streamPath, mount);
+export function registerMount(streamPath: string, config: StreamConfig) {
+  mountRegistry.set(streamPath, config);
 }
 
 export function unregisterMount(streamPath: string) {
@@ -63,8 +73,19 @@ function icecastUrl(mount: string) {
 }
 
 function roomNameFromStreamPath(streamPath: string) {
-  // streamPath looks like "/live/<room_name>" — strip to the bare room name.
+  // streamPath looks like "/live/<room_name>" (or "/live/<room_name>-voice"
+  // for the §14 voice-only recording tap) — strip to a filesystem-safe,
+  // per-stream-path identifier. Kept distinct per tap (not deduped to the
+  // bare room name) so the primary and voice-only taps never collide on
+  // the same WAV file if both happened to write one concurrently.
   return streamPath.replace(/^\/live\//, "");
+}
+
+// The actual StudioSession.room_name the master-ready webhook needs to look
+// the session up by — always the bare room name, regardless of which tap
+// (primary or voice-only) produced this particular WAV.
+function webhookRoomName(streamPath: string) {
+  return roomNameFromStreamPath(streamPath).replace(/-voice$/, "");
 }
 
 function wavPathFor(streamPath: string) {
@@ -72,31 +93,26 @@ function wavPathFor(streamPath: string) {
   return join(MASTER_DIR, `${safe}.wav`);
 }
 
-function spawnFfmpeg(streamPath: string, wavPath: string, mount: string): ChildProcess {
+function spawnFfmpeg(streamPath: string, wavPath: string, config: StreamConfig): ChildProcess {
   const rtmpUrl = `rtmp://127.0.0.1:${RTMP_PORT}${streamPath}`;
-  const args = [
-    "-loglevel", "warning",
-    "-re",
-    "-i", rtmpUrl,
-    "-vn",
-    "-acodec", "libmp3lame",
-    "-b:a", "128k",
-    "-content_type", "audio/mpeg",
-    "-f", "mp3",
-    icecastUrl(mount),
-    "-vn",
-    "-acodec", "pcm_s16le",
-    "-ar", "44100",
-    "-y",
-    "-f", "wav",
-    wavPath,
-  ];
-  console.log(`[bridge] starting ffmpeg for ${streamPath} -> ${mount} + ${wavPath}`);
+  const args = ["-loglevel", "warning", "-re", "-i", rtmpUrl];
+  const targets: string[] = [];
+  if (config.toIcecast) {
+    const mount = config.mount || ICECAST_MOUNT;
+    args.push("-vn", "-acodec", "libmp3lame", "-b:a", "128k", "-content_type", "audio/mpeg", "-f", "mp3", icecastUrl(mount));
+    targets.push(mount);
+  }
+  if (config.toWav) {
+    args.push("-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-y", "-f", "wav", wavPath);
+    targets.push(wavPath);
+  }
+  console.log(`[bridge] starting ffmpeg for ${streamPath} -> ${targets.join(" + ")}`);
   return spawn("ffmpeg", args, { stdio: ["ignore", "ignore", "pipe"] });
 }
 
-async function notifyMasterReady(streamPath: string, wavPath: string) {
-  const roomName = roomNameFromStreamPath(streamPath);
+async function notifyMasterReady(streamPath: string, wavPath: string, toWav: boolean) {
+  if (!toWav) return; // this tap never wrote a WAV (e.g. an Icecast-only primary in voice_only mode)
+  const roomName = webhookRoomName(streamPath);
   try {
     const stat = await fs.stat(wavPath).catch(() => null);
     if (!stat) {
@@ -145,16 +161,16 @@ export function startBridge(streamPath: string) {
   }
   mkdirSync(MASTER_DIR, { recursive: true });
   // Resolved once here (not re-looked-up on watchdog restarts) so a restart
-  // still targets the right mount even if the app server's registration
+  // still targets the right config even if the app server's registration
   // already expired/was cleared in the meantime.
-  const mount = mountRegistry.get(streamPath) || ICECAST_MOUNT;
-  attachAndTrack(streamPath, 0, mount);
+  const config = mountRegistry.get(streamPath) || DEFAULT_CONFIG;
+  attachAndTrack(streamPath, 0, config);
 }
 
-function attachAndTrack(streamPath: string, restartAttempt: number, mount: string) {
+function attachAndTrack(streamPath: string, restartAttempt: number, config: StreamConfig) {
   const wavPath = wavPathFor(streamPath);
-  const proc = spawnFfmpeg(streamPath, wavPath, mount);
-  const entry: BridgeEntry = { proc, stopping: false, startedAt: Date.now(), restartAttempt, restartTimer: null, wavPath, mount };
+  const proc = spawnFfmpeg(streamPath, wavPath, config);
+  const entry: BridgeEntry = { proc, stopping: false, startedAt: Date.now(), restartAttempt, restartTimer: null, wavPath, config };
   sessions.set(streamPath, entry);
 
   proc.stderr?.on("data", (chunk) => {
@@ -175,7 +191,7 @@ function attachAndTrack(streamPath: string, restartAttempt: number, mount: strin
     if (current.stopping) {
       sessions.delete(streamPath);
       console.log(`[bridge] ${streamPath} stopped cleanly`);
-      notifyMasterReady(streamPath, current.wavPath);
+      notifyMasterReady(streamPath, current.wavPath, current.config.toWav);
       return;
     }
 
@@ -188,9 +204,9 @@ function attachAndTrack(streamPath: string, restartAttempt: number, mount: strin
       `restarting in ${delay}ms (attempt ${nextAttempt + 1}) — master WAV recording restarts from scratch`
     );
     sessions.delete(streamPath);
-    const timer = setTimeout(() => attachAndTrack(streamPath, nextAttempt, current.mount), delay);
+    const timer = setTimeout(() => attachAndTrack(streamPath, nextAttempt, current.config), delay);
     // Keep a placeholder so a stopBridge() call during the backoff window can cancel the pending restart.
-    sessions.set(streamPath, { proc, stopping: false, startedAt: current.startedAt, restartAttempt: nextAttempt, restartTimer: timer, wavPath: current.wavPath, mount: current.mount });
+    sessions.set(streamPath, { proc, stopping: false, startedAt: current.startedAt, restartAttempt: nextAttempt, restartTimer: timer, wavPath: current.wavPath, config: current.config });
   });
 }
 

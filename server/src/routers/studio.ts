@@ -2,7 +2,7 @@ import { z } from "zod";
 import { randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { AccessToken, RoomServiceClient, EgressClient } from "livekit-server-sdk";
-import { StreamOutput, StreamProtocol } from "@livekit/protocol";
+import { StreamOutput, StreamProtocol, TrackSource } from "@livekit/protocol";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { logRadioAction } from "../lib/radioAudit.js";
@@ -227,6 +227,11 @@ export const studioRouter = router({
       requestsEnabled: z.boolean().default(true),
       recordingEnabled: z.boolean().default(true),
       callinEnabled: z.boolean().default(false),
+      // §14 mixer: whether the master recording captures the full mix (mic
+      // + mixer music/jingles) or just the host's mic. The live Icecast
+      // stream always carries the full mix either way — see the dual Egress
+      // taps below.
+      recordingMode: z.enum(["mixed", "voice_only"]).default("voice_only"),
     }))
     .mutation(async ({ ctx, input }) => {
       const session = await assertBroadcastControl(input.sessionId, ctx.userId!);
@@ -274,7 +279,25 @@ export const studioRouter = router({
       if (!mount) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `Invalid stream URL configured: ${streamUrl}` });
       }
-      await registerBridgeMount(session.room_name, mount);
+
+      // voice_only needs the host's mic track id *before* Egress starts, so
+      // resolve it first and fail fast (with a clear message) rather than
+      // going live and silently falling back to no voice-only tap.
+      let hostMicTrackSid: string | undefined;
+      if (input.recordingMode === "voice_only") {
+        const { httpUrl: rsUrl, apiKey: rsKey, apiSecret: rsSecret } = livekitEnv();
+        const roomService = new RoomServiceClient(rsUrl, rsKey, rsSecret);
+        const hostParticipant = await roomService.getParticipant(session.room_name, session.host_user_id).catch(() => null);
+        hostMicTrackSid = hostParticipant?.tracks.find((t) => t.source === TrackSource.MICROPHONE)?.sid;
+        if (!hostMicTrackSid) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Turn your mic on before going live with voice-only recording, or switch to mixed recording",
+          });
+        }
+      }
+
+      await registerBridgeMount(`/live/${session.room_name}`, { mount, toIcecast: true, toWav: input.recordingMode === "mixed" });
 
       const liveSession = await prisma.liveSession.create({
         data: {
@@ -302,7 +325,23 @@ export const studioRouter = router({
         protocol: StreamProtocol.RTMP,
         urls: [`${bridgeRtmpUrl}/${session.room_name}`],
       });
+      // Always runs — this is what listeners actually hear, full mix
+      // (mic + any mixer music/jingles) regardless of recordingMode.
       await egress.startRoomCompositeEgress(session.room_name, { stream: output }, { audioOnly: true });
+
+      // voice_only: a second, independent Egress job scoped to just the
+      // host's mic track — Icecast never sees this one (registered with
+      // toIcecast:false above/below), it only exists to produce a
+      // voice-only master WAV. Uses a distinct RTMP path (…-voice) so the
+      // Bridge Relay's per-stream-path ffmpeg taps don't collide.
+      if (input.recordingMode === "voice_only" && hostMicTrackSid) {
+        const voiceOutput = new StreamOutput({
+          protocol: StreamProtocol.RTMP,
+          urls: [`${bridgeRtmpUrl}/${session.room_name}-voice`],
+        });
+        await registerBridgeMount(`/live/${session.room_name}-voice`, { toIcecast: false, toWav: true });
+        await egress.startTrackCompositeEgress(session.room_name, { stream: voiceOutput }, { audioTrackId: hostMicTrackSid });
+      }
 
       const updated = await prisma.studioSession.update({
         where: { id: session.id },
@@ -311,6 +350,7 @@ export const studioRouter = router({
           started_at: new Date(),
           live_session_id: liveSession.id,
           master_recording_status: "recording",
+          recording_mode: input.recordingMode,
         },
       });
 

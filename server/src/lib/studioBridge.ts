@@ -23,9 +23,20 @@ async function callBridgeInternal(path: string, body: unknown): Promise<Response
  * stream should land on, before Egress starts publishing. Without this,
  * every concurrent Studio broadcast falls back to the bridge's single
  * static ICECAST_MOUNT and stomps on each other.
+ *
+ * `toIcecast`/`toWav` let a broadcast register two independent taps of the
+ * same room under different stream paths (§14 recording_mode): the primary
+ * always goes to Icecast (toIcecast:true) and writes the master WAV only
+ * when recording_mode is "mixed"; a second, mic-only TrackCompositeEgress
+ * stream (registered separately, toIcecast:false/toWav:true) is what
+ * produces a true voice-only master when recording_mode is "voice_only" —
+ * see startBroadcast in routers/studio.ts.
  */
-export async function registerBridgeMount(roomName: string, mount: string) {
-  const res = await callBridgeInternal("/internal/register-mount", { streamPath: `/live/${roomName}`, mount }).catch((err) => {
+export async function registerBridgeMount(
+  streamPath: string,
+  opts: { mount?: string; toIcecast: boolean; toWav: boolean }
+) {
+  const res = await callBridgeInternal("/internal/register-mount", { streamPath, ...opts }).catch((err) => {
     throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: `Could not reach the Bridge Relay: ${err.message}` });
   });
   if (!res.ok) {
