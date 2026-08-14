@@ -109,5 +109,11 @@ export function useStudioRoom() {
 
   useEffect(() => () => disconnect(), [disconnect]);
 
-  return { state, participants, micOn, connect, toggleMic, disconnect };
+  // Lazily read the current Room instance — used by useStudioMixer, which
+  // publishes a second (music/jingle/SFX) track into this same room rather
+  // than opening a separate connection. Same lazy-accessor pattern as
+  // useLiveSocket's getSocket(), used by useCallInAudio.
+  const getRoom = useCallback(() => roomRef.current, []);
+
+  return { state, participants, micOn, connect, toggleMic, disconnect, getRoom };
 }
