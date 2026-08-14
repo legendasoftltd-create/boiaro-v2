@@ -4,6 +4,7 @@ import { Radio, Play, Pause, Loader2, WifiOff, Mic, MessageCircle } from "lucide
 import { Button } from "@/components/ui/button"
 import { useRadioStations } from "@/hooks/useRadioStation"
 import { useAllLiveSessions } from "@/hooks/useLiveSession"
+import { useLiveSocket } from "@/hooks/useLiveSocket"
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { useSiteSettings } from "@/hooks/useSiteSettings"
@@ -78,6 +79,7 @@ export function LiveRadioSection() {
                     description: liveSession?.show_title || station.description,
                   }}
                   isLive={isRjLive}
+                  liveSessionId={liveSession?.id}
                 />
               </div>
             )
@@ -92,7 +94,7 @@ type StreamStatus = "idle" | "loading" | "playing" | "error"
 
 type Quality = "high" | "medium" | "low"
 
-function RadioCard({ station, isLive }: { station: { id: string; name: string; stream_url: string; stream_url_medium?: string | null; stream_url_low?: string | null; artwork_url: string | null; description: string | null }; isLive: boolean }) {
+function RadioCard({ station, isLive, liveSessionId }: { station: { id: string; name: string; stream_url: string; stream_url_medium?: string | null; stream_url_low?: string | null; artwork_url: string | null; description: string | null }; isLive: boolean; liveSessionId?: string }) {
   const { book, isPlaying, togglePlay, loadBook, pause } = useAudioPlayer()
   const { get } = useSiteSettings()
   const brandName = get("brand_name", "BoiAro")
@@ -112,6 +114,17 @@ function RadioCard({ station, isLive }: { station: { id: string; name: string; s
   const streamAudioRef = useRef<HTMLAudioElement | null>(null)
   const retryCountRef = useRef(0)
   const maxRetries = 2
+
+  // Homepage playback previously never joined the socket room, so anyone
+  // listening from here (not the dedicated /live/:sessionId chat page) was
+  // invisible to the listener badge and every persisted analytic. Track
+  // exactly while this card is the one actively playing a live RJ session —
+  // undefined otherwise, which makes useLiveSocket leave/disconnect.
+  const [trackedSessionId, setTrackedSessionId] = useState<string | undefined>(undefined)
+  useLiveSocket(trackedSessionId)
+  useEffect(() => {
+    setTrackedSessionId(isRadioActive && isPlaying && liveSessionId ? liveSessionId : undefined)
+  }, [isRadioActive, isPlaying, liveSessionId])
 
   // Clean up on unmount
   useEffect(() => {

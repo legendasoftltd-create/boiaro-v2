@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 import { Capacitor } from "@capacitor/core";
 import { useAuth } from "@/contexts/AuthContext";
+import { getOrCreateDeviceId } from "@/lib/deviceId";
 import { toast } from "sonner";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
@@ -37,6 +38,11 @@ export interface SongRequestItem {
  * rejects them). Chat history before joining comes from a separate REST
  * call (GET /live/:sessionId/chat) — the socket only carries what happens
  * after you connect.
+ *
+ * Signed-out visitors can connect too (as long as radio_guest_listening_enabled
+ * is on) so they're counted in the listener badge and persisted analytics —
+ * the server rejects their chat/reaction/request/moderation attempts with a
+ * friendly "sign in to..." error instead of silently dropping them.
  */
 export function useLiveSocket(sessionId: string | undefined) {
   const { user } = useAuth();
@@ -48,24 +54,28 @@ export function useLiveSocket(sessionId: string | undefined) {
   const [songRequests, setSongRequests] = useState<SongRequestItem[]>([]);
 
   useEffect(() => {
-    if (!sessionId || !user) return;
+    if (!sessionId) return;
     const token = localStorage.getItem("access_token");
-    if (!token) return;
 
     const socket = io(API_BASE || window.location.origin, {
       path: "/socket.io",
-      auth: { token },
+      auth: token ? { token } : {},
       transports: ["websocket", "polling"],
     });
     socketRef.current = socket;
 
-    socket.on("connect", () => {
+    socket.on("connect", async () => {
       setConnected(true);
       // Was always defaulting to "web" server-side — nothing here ever sent
-      // a real value, even from the Android/iOS app shell.
-      socket.emit("join_session", { sessionId, platform: Capacitor.getPlatform() });
+      // a real value, even from the Android/iOS app shell. deviceId is only
+      // used server-side when there's no token (guest) — see socket.ts.
+      const deviceId = await getOrCreateDeviceId();
+      socket.emit("join_session", { sessionId, platform: Capacitor.getPlatform(), deviceId });
     });
     socket.on("disconnect", () => setConnected(false));
+    // A rejected connection (e.g. guest listening disabled) shouldn't keep
+    // retrying forever — audio playback itself never depended on this socket.
+    socket.on("connect_error", () => socket.disconnect());
 
     socket.on("listener_count", (data: { sessionId: string; count: number }) => {
       if (data.sessionId === sessionId) setListenerCount(data.count);

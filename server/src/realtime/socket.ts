@@ -9,6 +9,7 @@ import { detectCountryCode } from "../lib/geoCountry.js";
 
 interface AuthedSocket extends Socket {
   userId?: string;
+  isGuest?: boolean;
 }
 
 const lastMessageAt = new Map<string, number>();
@@ -63,12 +64,21 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     },
   });
 
-  io.use((socket: AuthedSocket, next) => {
-    // Auth is required to connect at all — anonymous stream listening still
-    // works over plain HTTP audio playback; the socket is only for the
-    // interactive layer (chat, reactions, requests, listener count).
+  io.use(async (socket: AuthedSocket, next) => {
+    // A missing token is allowed through as a guest (join_session/listener
+    // tracking only) when radio_guest_listening_enabled is on — matches the
+    // REST layer's existing "signed-out visitors get a playable stream URL"
+    // behavior, extended to also cover the socket/analytics layer. A
+    // present-but-invalid token is always rejected outright, never silently
+    // downgraded to guest — that would mask real auth bugs.
     const token = socket.handshake.auth?.token as string | undefined;
-    if (!token) return next(new Error("Authentication required"));
+    if (!token) {
+      if (!(await getRadioSettingBool("radio_guest_listening_enabled"))) {
+        return next(new Error("Authentication required"));
+      }
+      socket.isGuest = true;
+      return next();
+    }
     try {
       const payload = jwt.verify(token, process.env.JWT_SECRET!) as { sub: string };
       socket.userId = payload.sub;
@@ -79,7 +89,11 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
   });
 
   io.on("connection", (socket: AuthedSocket) => {
-    const userId = socket.userId!;
+    // Guests (see middleware above) have no userId — every handler below
+    // that writes to a user-attributed table (chat, reactions, requests,
+    // moderation, call-in) must explicitly reject them; only join/leave
+    // (listener tracking) works without one.
+    const userId = socket.userId;
     let joinedSessionId: string | null = null;
 
     const emitListenerCount = (sessionId: string) => {
@@ -94,9 +108,14 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       await prisma.listenerSession.update({ where: { id: rowId }, data: { left_at: new Date() } }).catch(() => null);
     };
 
-    socket.on("join_session", async ({ sessionId, platform }: { sessionId: string; platform?: string }) => {
+    socket.on("join_session", async ({ sessionId, platform, deviceId }: { sessionId: string; platform?: string; deviceId?: string }) => {
       if (!sessionId) return;
-      const restriction = await activeRestriction(sessionId, userId);
+      // Mutes/bans are user-attributed only — there's no device-id ban list,
+      // so a guest can't be individually restricted today (a real gap, but
+      // one that needs its own moderation feature, not a silent skip risk
+      // here since guests can't chat/react/request anyway — see the guards
+      // on those handlers below).
+      const restriction = userId ? await activeRestriction(sessionId, userId) : null;
       if (restriction === "ban") {
         socket.emit("error", { message: "You've been banned from this room" });
         return;
@@ -121,8 +140,19 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       emitListenerCount(sessionId);
 
       const country = detectCountryCode({ headers: socket.handshake.headers, ip: socket.handshake.address });
+      // Mutually exclusive, same convention as anonymous book-view tracking
+      // (viewTracking.ts): a real user gets user_id, a guest gets a
+      // privacy-safe client-generated device_id (never a device fingerprint).
       const row = await prisma.listenerSession
-        .create({ data: { live_session_id: sessionId, user_id: userId, platform: platform ?? "web", country } })
+        .create({
+          data: {
+            live_session_id: sessionId,
+            user_id: userId ?? null,
+            device_id: userId ? null : (deviceId ?? null),
+            platform: platform ?? "web",
+            country,
+          },
+        })
         .catch(() => null);
       if (row) listenerSessionRows.set(socket.id, row.id);
     });
@@ -138,6 +168,10 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     socket.on("chat:send", async ({ sessionId, message }: { sessionId: string; message: string }) => {
       const text = (message || "").trim().slice(0, 500);
       if (!sessionId || !text) return;
+      if (!userId) {
+        socket.emit("error", { message: "Sign in to send a message" });
+        return;
+      }
 
       if (!(await getRadioSettingBool("radio_chat_enabled"))) {
         socket.emit("error", { message: "Chat is currently disabled" });
@@ -183,7 +217,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     socket.on("reaction:send", async ({ sessionId, emoji }: { sessionId: string; emoji: string }) => {
-      if (!sessionId || !emoji) return;
+      if (!sessionId || !emoji || !userId) return;
       const now = Date.now();
       if (now - (lastReactionAt.get(userId) ?? 0) < REACTION_COOLDOWN_MS) return;
       lastReactionAt.set(userId, now);
@@ -198,6 +232,10 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     socket.on("song_request:send", async ({ sessionId, requestText }: { sessionId: string; requestText: string }) => {
       const text = (requestText || "").trim().slice(0, 200);
       if (!sessionId || !text) return;
+      if (!userId) {
+        socket.emit("error", { message: "Sign in to send a request" });
+        return;
+      }
 
       const now = Date.now();
       if (now - (lastSongRequestAt.get(userId) ?? 0) < SONG_REQUEST_COOLDOWN_MS) {
@@ -235,7 +273,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     socket.on("moderation:delete_message", async ({ sessionId, messageId }: { sessionId: string; messageId: string }) => {
-      if (!sessionId || !messageId) return;
+      if (!sessionId || !messageId || !userId) return;
       const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { rj_user_id: true } });
       if (!session || !(await isHostOrModerator(userId, session))) {
         socket.emit("error", { message: "Not authorized to moderate this session" });
@@ -247,7 +285,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     socket.on("song_request:update_status", async ({ sessionId, requestId, status }: { sessionId: string; requestId: string; status: string }) => {
-      if (!sessionId || !requestId || !["pending", "played", "rejected"].includes(status)) return;
+      if (!sessionId || !requestId || !userId || !["pending", "played", "rejected"].includes(status)) return;
       const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { rj_user_id: true } });
       if (!session || !(await isHostOrModerator(userId, session))) {
         socket.emit("error", { message: "Not authorized to manage requests for this session" });
@@ -275,7 +313,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
 
     for (const evt of ["callin:offer", "callin:answer", "callin:ice-candidate"] as const) {
       socket.on(evt, async ({ sessionId, targetUserId, payload }: { sessionId: string; targetUserId: string; payload: unknown }) => {
-        if (!sessionId || !targetUserId) return;
+        if (!sessionId || !targetUserId || !userId) return;
         const lastAt = lastCallInSignalAt.get(userId) ?? 0;
         if (Date.now() - lastAt < CALLIN_SIGNAL_MIN_INTERVAL_MS) return;
         lastCallInSignalAt.set(userId, Date.now());
@@ -292,7 +330,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     }
 
     socket.on("callin:hangup", async ({ sessionId, targetUserId }: { sessionId: string; targetUserId: string }) => {
-      if (!sessionId || !targetUserId) return;
+      if (!sessionId || !targetUserId || !userId) return;
       if (!(await isCallInParticipant(sessionId, userId)) || !(await isCallInParticipant(sessionId, targetUserId))) return;
       emitToUserInSession(sessionId, targetUserId, "callin:hangup", { sessionId, fromUserId: userId });
     });
@@ -300,10 +338,12 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     socket.on("disconnect", async () => {
       if (joinedSessionId) emitListenerCount(joinedSessionId);
       await closeListenerSessionRow();
-      lastMessageAt.delete(userId);
-      lastCallInSignalAt.delete(userId);
-      lastReactionAt.delete(userId);
-      lastSongRequestAt.delete(userId);
+      if (userId) {
+        lastMessageAt.delete(userId);
+        lastCallInSignalAt.delete(userId);
+        lastReactionAt.delete(userId);
+        lastSongRequestAt.delete(userId);
+      }
     });
   });
 
