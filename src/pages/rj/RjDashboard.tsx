@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck, Antenna } from "lucide-react"
 import { toast } from "sonner"
 import { AudioFileUpload } from "@/components/admin/AudioFileUpload"
+import { BroadcastSettingsForm, DEFAULT_BROADCAST_SETTINGS, type BroadcastSettingsValue } from "@/components/rj/BroadcastSettingsForm"
 
 export default function RjDashboard() {
   const { profile } = useRjProfile()
@@ -29,7 +30,7 @@ export default function RjDashboard() {
 
   const [stationId, setStationId] = useState("")
   const [streamUrl, setStreamUrl] = useState("")
-  const [showTitle, setShowTitle] = useState("")
+  const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettingsValue>(DEFAULT_BROADCAST_SETTINGS)
   const [broadcastToken, setBroadcastToken] = useState("")
   const [isTestBroadcast, setIsTestBroadcast] = useState(false)
   const [isGoingLive, setIsGoingLive] = useState(false)
@@ -109,10 +110,17 @@ export default function RjDashboard() {
     try {
       await goLive({
         streamUrl: streamUrl.trim(),
-        showTitle: showTitle.trim() || undefined,
+        showTitle: broadcastSettings.showTitle.trim() || undefined,
+        description: broadcastSettings.description.trim() || undefined,
+        coverImageUrl: broadcastSettings.coverImageUrl.trim() || undefined,
+        category: broadcastSettings.category.trim() || undefined,
         stationId: stationId || undefined,
         broadcastToken: broadcastToken.trim(),
         isTest: isTestBroadcast,
+        chatEnabled: broadcastSettings.chatEnabled,
+        requestsEnabled: broadcastSettings.requestsEnabled,
+        recordingEnabled: broadcastSettings.recordingEnabled,
+        callinEnabled: broadcastSettings.callinEnabled,
       })
       toast.success(isTestBroadcast ? "🔧 Test broadcast started (private — not visible to listeners)" : "🎙️ You are now LIVE!")
     } catch (err: any) {
@@ -327,15 +335,11 @@ export default function RjDashboard() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Show Title (optional)</Label>
-                <Input
-                  value={showTitle}
-                  onChange={(e) => setShowTitle(e.target.value)}
-                  placeholder="Evening Poetry Reading"
-                  disabled={!profile?.is_approved}
-                />
-              </div>
+              <BroadcastSettingsForm
+                value={broadcastSettings}
+                onChange={setBroadcastSettings}
+                disabled={!profile?.is_approved}
+              />
 
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
                 <div>

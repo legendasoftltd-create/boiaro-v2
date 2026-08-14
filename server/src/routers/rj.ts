@@ -37,6 +37,14 @@ export const rjRouter = router({
     prisma.rjProfile.findUnique({ where: { user_id: ctx.userId } })
   ),
 
+  // Whether the platform-wide call-in toggle (Admin → Radio Safety &
+  // Controls) is on — the Go Live form's call-in switch is only meaningful
+  // to show/enable when this is true, since the start mutation rejects
+  // callinEnabled:true otherwise anyway.
+  callinAvailable: protectedProcedure.query(async () => ({
+    enabled: await getRadioSettingBool("radio_callin_enabled"),
+  })),
+
   createProfile: protectedProcedure
     .input(z.object({ stageName: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
@@ -358,6 +366,8 @@ export const rjRouter = router({
       .input(z.object({
         streamUrl: z.string().min(1),
         showTitle: z.string().optional(),
+        description: z.string().optional(),
+        coverImageUrl: z.string().optional(),
         stationId: z.string().optional(),
         category: z.string().optional(),
         broadcastToken: z.string().min(1),
@@ -405,6 +415,8 @@ export const rjRouter = router({
             station_id: input.stationId ?? null,
             stream_url: input.streamUrl,
             show_title: input.showTitle ?? null,
+            description: input.description ?? null,
+            cover_image_url: input.coverImageUrl ?? null,
             category: input.category ?? null,
             status: "live",
             started_at: new Date(),

@@ -78,8 +78,17 @@ export function useBroadcastControl(sessionId: string) {
   const endMutation = trpc.studio.endBroadcast.useMutation({ onSuccess: invalidate });
 
   return {
-    startBroadcast: (opts?: { stationId?: string; showTitle?: string }) =>
-      startMutation.mutateAsync({ sessionId, ...opts }),
+    startBroadcast: (opts?: {
+      stationId?: string;
+      showTitle?: string;
+      description?: string;
+      coverImageUrl?: string;
+      category?: string;
+      chatEnabled?: boolean;
+      requestsEnabled?: boolean;
+      recordingEnabled?: boolean;
+      callinEnabled?: boolean;
+    }) => startMutation.mutateAsync({ sessionId, ...opts }),
     endBroadcast: () => endMutation.mutateAsync({ sessionId }),
     isStarting: startMutation.isPending,
     isEnding: endMutation.isPending,

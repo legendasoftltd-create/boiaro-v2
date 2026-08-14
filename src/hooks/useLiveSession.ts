@@ -10,6 +10,8 @@ export interface LiveSession {
   station_id: string | null;
   stream_url: string | null;
   show_title: string | null;
+  description?: string | null;
+  cover_image_url?: string | null;
   status: string;
   started_at: string;
   ended_at: string | null;
@@ -123,6 +125,8 @@ export function useRjTerms() {
 export interface GoLiveOptions {
   streamUrl: string;
   showTitle?: string;
+  description?: string;
+  coverImageUrl?: string;
   stationId?: string;
   category?: string;
   broadcastToken: string;
@@ -173,6 +177,8 @@ export function useMyLiveSession() {
     return startMutation.mutateAsync({
       streamUrl: opts.streamUrl,
       showTitle: opts.showTitle,
+      description: opts.description,
+      coverImageUrl: opts.coverImageUrl,
       stationId: opts.stationId,
       category: opts.category,
       broadcastToken: opts.broadcastToken,

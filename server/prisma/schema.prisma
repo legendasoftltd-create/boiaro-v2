@@ -1094,6 +1094,8 @@ model LiveSession {
   ended_at          DateTime?
   rj_user_id        String
   show_title        String?
+  description       String?
+  cover_image_url   String?
   started_at        DateTime @default(now())
   station_id        String?
   // scheduled | preparing | testing | live | reconnecting | ended

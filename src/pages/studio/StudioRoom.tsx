@@ -11,6 +11,7 @@ import { useStudioRoom } from "@/hooks/useStudioRoom"
 import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl, useMyStudioSessions } from "@/hooks/useStudioSession"
 import { useRadioStations } from "@/hooks/useRadioStation"
 import { trpc } from "@/lib/trpc"
+import { BroadcastSettingsForm, DEFAULT_BROADCAST_SETTINGS, type BroadcastSettingsValue } from "@/components/rj/BroadcastSettingsForm"
 
 const HEARTBEAT_INTERVAL_MS = 20_000
 const MODERATOR_ROLES = ["host", "co_host"]
@@ -37,6 +38,7 @@ export default function StudioRoom() {
   const { startBroadcast, endBroadcast, isStarting, isEnding } = useBroadcastControl(sessionId!)
   const { data: stations } = useRadioStations()
   const [stationId, setStationId] = useState("")
+  const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettingsValue>(DEFAULT_BROADCAST_SETTINGS)
   // No session-status query wired up here yet — tracked locally from this
   // component's own start/end actions, same limitation the rest of this
   // page has (e.g. a page refresh mid-broadcast loses this).
@@ -113,7 +115,17 @@ export default function StudioRoom() {
 
   const handleStart = async () => {
     try {
-      const result = await startBroadcast({ stationId: stationId || undefined })
+      const result = await startBroadcast({
+        stationId: stationId || undefined,
+        showTitle: broadcastSettings.showTitle.trim() || undefined,
+        description: broadcastSettings.description.trim() || undefined,
+        coverImageUrl: broadcastSettings.coverImageUrl.trim() || undefined,
+        category: broadcastSettings.category.trim() || undefined,
+        chatEnabled: broadcastSettings.chatEnabled,
+        requestsEnabled: broadcastSettings.requestsEnabled,
+        recordingEnabled: broadcastSettings.recordingEnabled,
+        callinEnabled: broadcastSettings.callinEnabled,
+      })
       setIsLive(true)
       setLiveSessionId((result as { live_session_id: string | null })?.live_session_id ?? null)
       toast.success("সম্প্রচার শুরু হয়েছে")
@@ -189,6 +201,10 @@ export default function StudioRoom() {
                     {stations.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
+              )}
+
+              {canControlBroadcast && !isLive && (
+                <BroadcastSettingsForm value={broadcastSettings} onChange={setBroadcastSettings} />
               )}
 
               <div className="flex items-center gap-2">

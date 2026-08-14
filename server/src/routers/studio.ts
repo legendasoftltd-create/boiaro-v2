@@ -10,6 +10,7 @@ import { shouldAutoRecord, startRecording, stopRecording } from "../lib/liveReco
 import { notifyFollowersOfGoLive } from "../lib/radioNotify.js";
 import { registerBridgeMount } from "../lib/studioBridge.js";
 import { deriveIcecastMountPath } from "../lib/icecastMount.js";
+import { getRadioSettingBool } from "../lib/radioSettings.js";
 
 // Host capabilities are a strict superset of Co-host/RJ/Producer/Guest, so a
 // participant who is both "the RJ" and "running the room" just holds the
@@ -215,11 +216,26 @@ export const studioRouter = router({
     }),
 
   startBroadcast: protectedProcedure
-    .input(z.object({ sessionId: z.string(), stationId: z.string().optional(), showTitle: z.string().optional() }))
+    .input(z.object({
+      sessionId: z.string(),
+      stationId: z.string().optional(),
+      showTitle: z.string().optional(),
+      description: z.string().optional(),
+      coverImageUrl: z.string().optional(),
+      category: z.string().optional(),
+      chatEnabled: z.boolean().default(true),
+      requestsEnabled: z.boolean().default(true),
+      recordingEnabled: z.boolean().default(true),
+      callinEnabled: z.boolean().default(false),
+    }))
     .mutation(async ({ ctx, input }) => {
       const session = await assertBroadcastControl(input.sessionId, ctx.userId!);
       if (session.status === "live") {
         throw new TRPCError({ code: "CONFLICT", message: "This studio session is already live" });
+      }
+
+      if (input.callinEnabled && !(await getRadioSettingBool("radio_callin_enabled"))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Call-in is not enabled on this platform" });
       }
 
       // Real (non-test) broadcasts: no two RJs live on the same station at
@@ -266,10 +282,17 @@ export const studioRouter = router({
           station_id: input.stationId ?? null,
           stream_url: streamUrl,
           show_title: input.showTitle ?? null,
+          description: input.description ?? null,
+          cover_image_url: input.coverImageUrl ?? null,
+          category: input.category ?? null,
           status: "live",
           started_at: new Date(),
           last_heartbeat_at: new Date(),
           is_test: false,
+          chat_enabled: input.chatEnabled,
+          requests_enabled: input.requestsEnabled,
+          recording_enabled: input.recordingEnabled,
+          callin_enabled: input.callinEnabled,
         },
       });
 
