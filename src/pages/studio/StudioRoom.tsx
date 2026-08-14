@@ -5,13 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, LogOut, MessageCircle } from "lucide-react"
+import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, LogOut, MessageCircle, Music } from "lucide-react"
 import { toast } from "sonner"
 import { useStudioRoom } from "@/hooks/useStudioRoom"
 import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl, useMyStudioSessions } from "@/hooks/useStudioSession"
 import { useRadioStations } from "@/hooks/useRadioStation"
 import { trpc } from "@/lib/trpc"
 import { BroadcastSettingsForm, DEFAULT_BROADCAST_SETTINGS, type BroadcastSettingsValue } from "@/components/rj/BroadcastSettingsForm"
+import { StudioMixerPanel } from "@/components/studio/StudioMixerPanel"
 
 const HEARTBEAT_INTERVAL_MS = 20_000
 const MODERATOR_ROLES = ["host", "co_host"]
@@ -48,6 +49,7 @@ export default function StudioRoom() {
   // LiveSession this broadcast creates, not the Studio session id — needs
   // capturing from startBroadcast's response since nothing else here knows it.
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null)
+  const [mixerOpen, setMixerOpen] = useState(false)
   const connecting = useRef(false)
   const heartbeatMutation = trpc.rj.liveSession.heartbeat.useMutation()
 
@@ -271,10 +273,24 @@ export default function StudioRoom() {
                   </Button>
                 )}
 
+                {(canControlBroadcast || isModerator) && (
+                  <Button size="sm" variant={mixerOpen ? "default" : "outline"} onClick={() => setMixerOpen((v) => !v)} className="gap-1.5">
+                    <Music className="w-3.5 h-3.5" /> Mixer
+                  </Button>
+                )}
+
                 <Button size="sm" variant="ghost" onClick={handleLeave} className="gap-1.5 ml-auto">
                   <LogOut className="w-3.5 h-3.5" /> Leave
                 </Button>
               </div>
+
+              {mixerOpen && (canControlBroadcast || isModerator) && (
+                <StudioMixerPanel
+                  sessionId={sessionId}
+                  getRoom={room.getRoom}
+                  isSpeaking={!!room.participants.find((p) => p.identity === user?.id)?.isSpeaking}
+                />
+              )}
 
               <div className="space-y-2">
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Participants</p>
