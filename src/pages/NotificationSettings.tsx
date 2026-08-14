@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Bell, Mail, Megaphone, ShoppingCart, HeadphonesIcon, Clock } from "lucide-react";
+import { Bell, Mail, Megaphone, ShoppingCart, HeadphonesIcon, Clock, Radio } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
@@ -17,6 +17,7 @@ interface Preferences {
   reminder_enabled: boolean;
   order_enabled: boolean;
   support_enabled: boolean;
+  radio_enabled: boolean;
 }
 
 const defaults: Preferences = {
@@ -26,6 +27,7 @@ const defaults: Preferences = {
   reminder_enabled: true,
   order_enabled: true,
   support_enabled: true,
+  radio_enabled: true,
 };
 
 export default function NotificationSettings() {
@@ -48,6 +50,7 @@ export default function NotificationSettings() {
         reminder_enabled: data.reminder_enabled,
         order_enabled: data.order_enabled,
         support_enabled: data.support_enabled,
+        radio_enabled: data.radio_enabled,
       });
     }
   }, [data]);
@@ -57,6 +60,7 @@ export default function NotificationSettings() {
     { key: "email_enabled" as const, label: "ইমেইল নোটিফিকেশন", desc: "গুরুত্বপূর্ণ আপডেট ইমেইলে পান", icon: Mail },
     { key: "promotional_enabled" as const, label: "প্রোমোশনাল বার্তা", desc: "নতুন বই, অফার ও ক্যাম্পেইন সম্পর্কে জানুন", icon: Megaphone },
     { key: "reminder_enabled" as const, label: "রিমাইন্ডার", desc: "পড়া চালিয়ে যান, সাবস্ক্রিপশন রিনিউ ইত্যাদি", icon: Clock },
+    { key: "radio_enabled" as const, label: "BoiAro On Air", desc: "RJ লাইভে এলে, শো শুরুর আগে, ক্যানসেল/রিশিডিউল ও নতুন ক্যাচ-আপ প্রকাশ হলে", icon: Radio },
     { key: "order_enabled" as const, label: "অর্ডার আপডেট", desc: "অর্ডার কনফার্মেশন ও শিপিং আপডেট", icon: ShoppingCart },
     { key: "support_enabled" as const, label: "সাপোর্ট আপডেট", desc: "টিকেটের উত্তর ও সাপোর্ট সম্পর্কিত বার্তা", icon: HeadphonesIcon },
   ];

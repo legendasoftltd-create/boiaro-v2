@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
+import { Capacitor } from "@capacitor/core";
 import { useAuth } from "@/contexts/AuthContext";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
@@ -59,7 +60,9 @@ export function useLiveSocket(sessionId: string | undefined) {
 
     socket.on("connect", () => {
       setConnected(true);
-      socket.emit("join_session", { sessionId });
+      // Was always defaulting to "web" server-side — nothing here ever sent
+      // a real value, even from the Android/iOS app shell.
+      socket.emit("join_session", { sessionId, platform: Capacitor.getPlatform() });
     });
     socket.on("disconnect", () => setConnected(false));
 

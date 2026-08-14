@@ -101,6 +101,17 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
         socket.emit("error", { message: "You've been banned from this room" });
         return;
       }
+      // radio_max_concurrent_listeners was a stored admin setting nothing
+      // ever enforced. This checks it against socket-room size — the same
+      // number "current listeners" already reports — which only covers
+      // users with the chat/player socket open, not raw Icecast stream
+      // connections this app has no visibility into. A real cap on actual
+      // stream audience would need to live at the Icecast/nginx layer.
+      const maxListeners = await getRadioSettingNumber("radio_max_concurrent_listeners");
+      if (maxListeners && maxListeners > 0 && getListenerCount(sessionId) >= maxListeners) {
+        socket.emit("error", { message: "This show is at capacity — please try again shortly" });
+        return;
+      }
       if (joinedSessionId) {
         socket.leave(room(joinedSessionId));
         await closeListenerSessionRow();

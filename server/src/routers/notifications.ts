@@ -50,6 +50,7 @@ export const notificationsRouter = router({
         promotional_enabled: z.boolean().optional(),
         reminder_enabled: z.boolean().optional(),
         support_enabled: z.boolean().optional(),
+        radio_enabled: z.boolean().optional(),
       })
     )
     .mutation(({ ctx, input }) =>

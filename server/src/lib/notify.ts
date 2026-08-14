@@ -7,7 +7,7 @@ interface NotifyOptions {
   type: string;
   link?: string | null;
   /** Which NotificationPreference column gates push delivery for this type (defaults to push_enabled only). */
-  preferenceKey?: "order_enabled" | "promotional_enabled" | "reminder_enabled" | "support_enabled";
+  preferenceKey?: "order_enabled" | "promotional_enabled" | "reminder_enabled" | "support_enabled" | "radio_enabled";
 }
 
 /**

@@ -54,7 +54,7 @@ export async function runShowReminders(): Promise<{ sent: number }> {
           message: `${show.start_time}-এ ${show.station.name}-এ শুনুন।`,
           type: window.type,
           link: reminderLink,
-          preferenceKey: "reminder_enabled",
+          preferenceKey: "radio_enabled",
         }).catch(() => null);
         sent++;
       }

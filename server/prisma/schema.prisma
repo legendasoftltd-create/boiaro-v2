@@ -1331,6 +1331,7 @@ model NotificationPreference {
   push_enabled        Boolean  @default(true)
   reminder_enabled    Boolean  @default(true)
   support_enabled     Boolean  @default(true)
+  radio_enabled       Boolean  @default(true)
   updated_at          DateTime @updatedAt
   user_id             String   @unique
 

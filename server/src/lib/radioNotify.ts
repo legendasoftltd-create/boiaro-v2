@@ -16,7 +16,7 @@ export async function notifyFollowersOfGoLive(rjUserId: string, stageName: strin
       // can be live at once, so a generic link can't be trusted to still
       // land on the right one by the time the follower opens it.
       link: `/live/${liveSessionId}`,
-      preferenceKey: "reminder_enabled",
+      preferenceKey: "radio_enabled",
     }).catch(() => null);
   }
 }
@@ -29,7 +29,7 @@ export async function notifyFollowersOfScheduleCancelled(rjUserId: string, showT
       message: reason ? reason : "এই শোটি বাতিল করা হয়েছে।",
       type: "show_cancelled",
       link: "/schedule",
-      preferenceKey: "reminder_enabled",
+      preferenceKey: "radio_enabled",
     }).catch(() => null);
   }
 }
@@ -42,7 +42,7 @@ export async function notifyFollowersOfScheduleRescheduled(rjUserId: string, sho
       message: `নতুন সময়: ${newWhen}`,
       type: "show_rescheduled",
       link: "/schedule",
-      preferenceKey: "reminder_enabled",
+      preferenceKey: "radio_enabled",
     }).catch(() => null);
   }
 }
@@ -55,7 +55,7 @@ export async function notifyFollowersOfCatchupPublished(rjUserId: string, showTi
       message: "যেকোনো সময় শুনুন — ক্যাচ-আপে গিয়ে দেখুন।",
       type: "catchup_published",
       link: "/catchup",
-      preferenceKey: "reminder_enabled",
+      preferenceKey: "radio_enabled",
     }).catch(() => null);
   }
 }
