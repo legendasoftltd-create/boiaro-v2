@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useAuth } from "@/contexts/AuthContext"
+import { useUserRole } from "@/hooks/useUserRole"
 import { useCurrentLiveSession, useLiveSessionById } from "@/hooks/useLiveSession"
 import { useLiveSocket } from "@/hooks/useLiveSocket"
 import { useCallInAudio } from "@/hooks/useCallInAudio"
@@ -14,7 +15,8 @@ import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
-import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2 } from "lucide-react"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2, MoreVertical, VolumeX, Ban, Flag, ShieldOff } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -74,6 +76,12 @@ export default function LiveShow() {
 
 function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEnabled, streamUrl, artworkUrl }: { sessionId: string; showTitle: string | null; rjName?: string; rjUserId: string; isHost: boolean; callinEnabled: boolean; streamUrl?: string | null; artworkUrl?: string | null }) {
   const { user } = useAuth()
+  const { hasRole } = useUserRole()
+  // The backend's assertHostOrModerator already grants admins/moderators the
+  // same rights as the RJ host — mirror that here so moderation controls
+  // show up for them too, not just the broadcasting RJ.
+  const isModerator = hasRole("admin") || hasRole("moderator")
+  const isHostOrMod = isHost || isModerator
   const {
     connected, listenerCount, messages, reactions, songRequests,
     sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus,
@@ -162,6 +170,40 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
 
   const { data: history } = trpc.rj.liveSession.chatHistory.useQuery({ sessionId }, { enabled: !!sessionId })
   const { data: hostQueue } = trpc.rj.liveSession.songRequests.useQuery({ sessionId }, { enabled: isHost })
+  const utils = trpc.useUtils()
+  const { data: mutedUsers = [] } = trpc.rj.liveSession.mutedUsers.useQuery({ sessionId }, { enabled: isHostOrMod })
+
+  const muteMutation = trpc.rj.liveSession.muteUser.useMutation({
+    onSuccess: () => utils.rj.liveSession.mutedUsers.invalidate({ sessionId }),
+    onError: (e) => toast.error(e.message),
+  })
+  const unmuteMutation = trpc.rj.liveSession.unmuteUser.useMutation({
+    onSuccess: () => { utils.rj.liveSession.mutedUsers.invalidate({ sessionId }); toast.success("আনমিউট করা হয়েছে") },
+    onError: (e) => toast.error(e.message),
+  })
+  const reportMutation = trpc.rj.liveSession.reportContent.useMutation({
+    onSuccess: () => toast.success("রিপোর্ট পাঠানো হয়েছে"),
+    onError: (e) => toast.error(e.message),
+  })
+
+  const handleMute = (targetUserId: string, type: "mute" | "ban") => {
+    const reason = window.prompt(type === "ban" ? "ব্যান করার কারণ (ঐচ্ছিক):" : "মিউট করার কারণ (ঐচ্ছিক):") || undefined
+    let durationMinutes: number | undefined
+    if (type === "mute") {
+      const raw = window.prompt("কত মিনিটের জন্য মিউট? (স্থায়ীভাবে মিউট করতে খালি রাখুন):")
+      if (raw && raw.trim()) {
+        const n = Number(raw.trim())
+        if (!Number.isNaN(n) && n > 0) durationMinutes = n
+      }
+    }
+    muteMutation.mutate({ sessionId, userId: targetUserId, reason, durationMinutes, type })
+  }
+
+  const handleReport = (targetId: string) => {
+    const reason = window.prompt("রিপোর্ট করার কারণ লিখুন:")
+    if (!reason || !reason.trim()) return
+    reportMutation.mutate({ sessionId, targetType: "chat_message", targetId, reason: reason.trim() })
+  }
 
   useEffect(() => { if (history) setMessages(history as any) }, [history])
   useEffect(() => { if (hostQueue) setSongRequests(hostQueue as any) }, [hostQueue])
@@ -252,10 +294,34 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
                   <span className="text-[12px] font-medium">{m.display_name || "Anonymous"}</span>
                   <span className="text-[13px] ml-2 break-words">{m.message}</span>
                 </div>
-                {isHost && (
-                  <button onClick={() => deleteMessage(m.id)} className="opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Trash2 className="w-3 h-3 text-destructive" />
-                  </button>
+                {user && m.user_id !== user.id && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {isHostOrMod && (
+                        <DropdownMenuItem onClick={() => deleteMessage(m.id)} className="text-destructive">
+                          <Trash2 className="w-3.5 h-3.5 mr-2" /> মুছে ফেলুন
+                        </DropdownMenuItem>
+                      )}
+                      {isHostOrMod && (
+                        <DropdownMenuItem onClick={() => handleMute(m.user_id, "mute")}>
+                          <VolumeX className="w-3.5 h-3.5 mr-2" /> মিউট করুন
+                        </DropdownMenuItem>
+                      )}
+                      {isHostOrMod && (
+                        <DropdownMenuItem onClick={() => handleMute(m.user_id, "ban")} className="text-destructive">
+                          <Ban className="w-3.5 h-3.5 mr-2" /> ব্যান করুন
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem onClick={() => handleReport(m.id)}>
+                        <Flag className="w-3.5 h-3.5 mr-2" /> রিপোর্ট করুন
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
             ))}
@@ -324,6 +390,29 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
           )}
         </div>
       </div>
+
+      {isHostOrMod && mutedUsers.length > 0 && (
+        <div className="border border-border/30 rounded-xl bg-card/60 p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldOff className="w-4 h-4 text-destructive" />
+            <span className="text-[13px] font-semibold">মিউট/ব্যান করা ইউজার ({mutedUsers.length})</span>
+          </div>
+          <div className="space-y-1.5">
+            {(mutedUsers as any[]).map((mu) => (
+              <div key={mu.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/20 text-[12px]">
+                <div>
+                  <span className="font-medium">{mu.type === "ban" ? "🚫 ব্যান" : "🔇 মিউট"}</span>
+                  <span className="text-muted-foreground ml-2">{mu.reason || "কারণ উল্লেখ করা হয়নি"}</span>
+                  {mu.expires_at && <span className="text-muted-foreground ml-2">· {new Date(mu.expires_at).toLocaleTimeString()} পর্যন্ত</span>}
+                </div>
+                <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => unmuteMutation.mutate({ sessionId, userId: mu.user_id })} disabled={unmuteMutation.isPending}>
+                  আনমিউট
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {callinEnabled && (
         <CallInPanel sessionId={sessionId} isHost={isHost} hostUserId={rjUserId} getSocket={getSocket} />

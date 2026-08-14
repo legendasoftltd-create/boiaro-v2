@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react"
+import { Link } from "react-router-dom"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -405,7 +406,12 @@ function AdminRadioSafetyReports() {
                     <TableCell className="text-xs max-w-xs truncate">{r.reason}</TableCell>
                     <TableCell>{statusBadge(r.status)}</TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-end items-center gap-1">
+                        {r.live_session_id && (
+                          <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
+                            <Link to={`/live/${r.live_session_id}`} target="_blank">View Room</Link>
+                          </Button>
+                        )}
                         <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, status: "reviewed" })}>Reviewed</Button>
                         <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, status: "dismissed" })}>Dismiss</Button>
                         <Button size="sm" variant="ghost" className="h-7 text-[11px] text-emerald-500" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, status: "actioned" })}>Actioned</Button>

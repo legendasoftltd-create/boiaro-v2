@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 import { Capacitor } from "@capacitor/core";
 import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
@@ -82,6 +83,11 @@ export function useLiveSocket(sessionId: string | undefined) {
     socket.on("song_request:updated", ({ id, status }: { id: string; status: SongRequestItem["status"] }) =>
       setSongRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)))
     );
+    // Muted/banned users get rejected here silently otherwise — the server
+    // reuses this generic event for every socket-level rejection.
+    socket.on("error", (data: { message?: string }) => {
+      if (data?.message) toast.error(data.message);
+    });
 
     return () => {
       socket.emit("leave_session");
