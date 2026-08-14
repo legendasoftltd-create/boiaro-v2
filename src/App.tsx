@@ -162,6 +162,7 @@ const RjDashboard = lazy(() => import("./pages/rj/RjDashboard.tsx"));
 const RjProfile = lazy(() => import("./pages/rj/RjProfile.tsx"));
 const RjSchedule = lazy(() => import("./pages/rj/RjSchedule.tsx"));
 const RjStudio = lazy(() => import("./pages/rj/RjStudio.tsx"));
+const RjRecordings = lazy(() => import("./pages/rj/RjRecordings.tsx"));
 
 // BoiAro On Air Studio (Hybrid LiveKit + Icecast — see studio-bridge/)
 const StudioRoom = lazy(() => import("./pages/studio/StudioRoom.tsx"));
@@ -169,6 +170,7 @@ const StudioJoin = lazy(() => import("./pages/studio/StudioJoin.tsx"));
 
 // Admin RJ
 const AdminRjManagement = lazy(() => import("./pages/admin/AdminRjManagement.tsx"));
+const AdminRecordings = lazy(() => import("./pages/admin/AdminRecordings.tsx"));
 const AdminRadioSafety = lazy(() => import("./pages/admin/AdminRadioSafety.tsx"));
 const AdminSms = lazy(() => import("./pages/admin/AdminSms.tsx"));
 const TtsDemo = lazy(() => import("./pages/TtsDemo.tsx"));
@@ -349,6 +351,7 @@ const App = () => {
                   <Route path="radio" element={<AdminRadio />} />
                   <Route path="radio-schedule" element={<AdminRadioSchedule />} />
                   <Route path="rj-management" element={<AdminRjManagement />} />
+                  <Route path="recordings" element={<AdminRecordings />} />
                   <Route path="radio-safety" element={<AdminRadioSafety />} />
                   <Route path="referrals" element={<AdminReferrals />} />
                   <Route path="gamification" element={<AdminGamification />} />
@@ -390,6 +393,7 @@ const App = () => {
                   <Route path="profile" element={<RjProfile />} />
                   <Route path="schedule" element={<RjSchedule />} />
                   <Route path="studio" element={<RjStudio />} />
+                  <Route path="recordings" element={<RjRecordings />} />
                 </Route>
 
                 {/* BoiAro On Air Studio — Guest/Producer/Co-host may hold no

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { Link } from "react-router-dom"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -171,11 +172,13 @@ export default function AdminRjManagement() {
             <p className="text-xl font-bold">{metrics.scheduledShows}</p>
             <p className="text-[11px] text-muted-foreground">Scheduled Shows</p>
           </CardContent></Card>
-          <Card className="border-border/30"><CardContent className="p-4 text-center">
-            <Headphones className="w-5 h-5 mx-auto text-amber-500 mb-1" />
-            <p className="text-xl font-bold">{metrics.catchupCount}</p>
-            <p className="text-[11px] text-muted-foreground">Catch-up Recordings</p>
-          </CardContent></Card>
+          <Link to="/admin/recordings">
+            <Card className="border-border/30 hover:border-amber-500/40 transition-colors"><CardContent className="p-4 text-center">
+              <Headphones className="w-5 h-5 mx-auto text-amber-500 mb-1" />
+              <p className="text-xl font-bold">{metrics.catchupCount}</p>
+              <p className="text-[11px] text-muted-foreground">Catch-up Recordings</p>
+            </CardContent></Card>
+          </Link>
           <Card className="border-border/30"><CardContent className="p-4 text-center">
             <UserCheck className="w-5 h-5 mx-auto text-primary mb-1" />
             <p className="text-xl font-bold">{metrics.approvedRjs}</p>
