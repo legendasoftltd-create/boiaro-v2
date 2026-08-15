@@ -43,7 +43,14 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
 
   const ensureContext = useCallback(() => {
     if (audioCtxRef.current) return audioCtxRef.current;
-    const ctx = new AudioContext();
+    // Pinned to 48000 (WebRTC's standard rate) rather than whatever the
+    // local audio device's native rate happens to be (commonly 44100, or
+    // lower on some Bluetooth/USB devices) — a MediaStreamAudioDestinationNode
+    // track published at a non-48kHz context rate isn't reliably resampled
+    // by the browser's WebRTC pipeline the way a plain getUserMedia mic
+    // track is, and the receiving end decodes it at the wrong rate, which
+    // sounds like slow/low-pitched playback.
+    const ctx = new AudioContext({ sampleRate: 48000 });
     const musicGain = ctx.createGain();
     const duckGain = ctx.createGain();
     const destination = ctx.createMediaStreamDestination();
