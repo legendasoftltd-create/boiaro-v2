@@ -173,6 +173,21 @@ export function useMyLiveSession() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mySession?.id, mySession?.status]);
 
+  // Closing or navigating away from this tab silently stops the heartbeat
+  // above with no warning — the RJ has no way to know listeners are about
+  // to go quiet until the grace period expires. Browsers ignore any custom
+  // message and show their own generic wording, but triggering the native
+  // confirmation at all is the part that matters.
+  useEffect(() => {
+    if (!mySession || mySession.status === "ended") return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [mySession?.id, mySession?.status]);
+
   const goLive = async (opts: GoLiveOptions) => {
     return startMutation.mutateAsync({
       streamUrl: opts.streamUrl,
