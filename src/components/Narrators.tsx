@@ -48,7 +48,7 @@ export function Narrators() {
                 <div className="flex items-center justify-center gap-3 text-[11px]">
                   <span className="flex items-center gap-0.5 text-muted-foreground" title="Audiobooks"><Headphones className="w-3 h-3" />{narrator.audiobooksCount}</span>
                   <span className="flex items-center gap-0.5 text-muted-foreground" title="Rating"><Star className="w-3 h-3 fill-primary text-primary" />{narrator.rating}</span>
-                  <span className="text-blue-400 font-medium" title="Followers">{narrator.listeners}</span>
+                  <span className="text-blue-400 font-medium" title="Listens">{narrator.listeners}</span>
                 </div>
                </div>
             </Link>

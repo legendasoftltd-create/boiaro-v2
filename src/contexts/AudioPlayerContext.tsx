@@ -5,6 +5,7 @@ import { useSecureContent } from "@/hooks/useSecureContent"
 import { recordPlaybackError } from "@/hooks/useSecureContent"
 import { usePresence } from "@/hooks/usePresence"
 import { useConsumptionTracker } from "@/hooks/useConsumptionTracker"
+import { useActivityTracker } from "@/hooks/useActivityTracker"
 import { trpc } from "@/lib/trpc"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { toast } from "sonner"
@@ -97,6 +98,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const { getSecureUrl, prefetchBatchUrls } = useSecureContent()
   const { setActivity } = usePresence()
+  const { trackListeningProgress } = useActivityTracker()
   const utils = trpc.useUtils()
   const updateListeningProgressMutation = trpc.profiles.updateListeningProgress.useMutation()
   const updateListeningProgressRef = useRef(updateListeningProgressMutation.mutateAsync)
@@ -591,15 +593,25 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const saveProgress = useCallback(async () => {
     if (!user || !state.book) return
     const audio = audioRef.current
+    const duration = Math.floor(audio?.duration || 0)
     await updateListeningProgressRef.current({
       bookId: state.book.id,
       currentPosition: Math.floor(state.currentTime),
-      totalDuration: Math.floor(audio?.duration || 0),
+      totalDuration: duration,
       currentTrack: state.currentTrackIndex + 1,
       playbackSpeed: state.playbackRate,
       sessionSeconds: (Date.now() - sessionStartRef.current) / 1000,
     }).catch(() => {}) // silent — progress save is best-effort
-  }, [user, state.book, state.currentTime, state.currentTrackIndex, state.playbackRate])
+
+    // Real audiobooks only — radio/catch-up reuse this same player with
+    // synthetic ids ("radio-…"/"catchup-…") that don't exist in the Book
+    // table; this feeds the admin Reading Analytics "Active Listeners"
+    // widget and daily/monthly audiobook column, which should only reflect
+    // real audiobook listening, not live radio.
+    if (!state.book.id.startsWith("radio-") && !state.book.id.startsWith("catchup-")) {
+      trackListeningProgress(state.book.id, duration, duration > 0 ? Math.round((state.currentTime / duration) * 100) : 0)
+    }
+  }, [user, state.book, state.currentTime, state.currentTrackIndex, state.playbackRate, trackListeningProgress])
 
   const loadBook = useCallback((book: MasterBook, audiobook: AudiobookFormat, tracks?: AudioTrack[], autoPlay?: boolean, startTrackId?: string) => {
     const finalTracks: AudioTrack[] = (tracks || [])

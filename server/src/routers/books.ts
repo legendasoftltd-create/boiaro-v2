@@ -500,7 +500,12 @@ export const booksRouter = router({
     return narrators.map((n) => {
       const bookIds = [...(bookIdsByNarrator[n.id] || [])];
       const totalListens = bookIds.reduce((sum, id) => sum + (listensByBookId.get(id) || 0), 0);
-      return { ...n, audiobooksCount: bookIds.length, listeners: 0, totalListens };
+      // No real narrator-follow feature exists (Follow is a generic
+      // user-to-user relation, and Narrator isn't always a User) — this was
+      // hardcoded to 0 rather than a fabricated follower count. totalListens
+      // is real, already computed above, and is what the individual
+      // narrator profile page (narratorById) already shows.
+      return { ...n, audiobooksCount: bookIds.length, listeners: totalListens, totalListens };
     });
   }),
 
