@@ -23,6 +23,11 @@ const SUBCATEGORY_LABEL: Record<Subcategory, string> = {
   station_id: "Station ID", intro: "Intro", outro: "Outro",
   commercial: "Commercial", transition: "Transition", applause: "Applause",
 }
+type LicenseType = "royalty_free" | "creative_commons" | "purchased" | "original" | "other"
+const LICENSE_TYPE_LABEL: Record<LicenseType, string> = {
+  royalty_free: "Royalty-free", creative_commons: "Creative Commons",
+  purchased: "Purchased", original: "নিজের তৈরি", other: "অন্যান্য",
+}
 
 export function StudioMixerPanel({ sessionId, getRoom, isSpeaking }: { sessionId: string; getRoom: () => Room | null; isSpeaking: boolean }) {
   const mixer = useStudioMixer(getRoom, isSpeaking)
@@ -278,6 +283,8 @@ function MixerUploadForm({ category, onUploaded }: { category: Category; onUploa
   const [title, setTitle] = useState("")
   const [fileUrl, setFileUrl] = useState("")
   const [subcategory, setSubcategory] = useState<Subcategory | "none">("none")
+  const [rightsHolder, setRightsHolder] = useState("")
+  const [licenseType, setLicenseType] = useState<LicenseType>("original")
   const [licenseAcknowledged, setLicenseAcknowledged] = useState(false)
 
   const uploadMutation = trpc.studio.libraryUpload.useMutation({
@@ -285,6 +292,8 @@ function MixerUploadForm({ category, onUploaded }: { category: Category; onUploa
       setTitle("")
       setFileUrl("")
       setSubcategory("none")
+      setRightsHolder("")
+      setLicenseType("original")
       setLicenseAcknowledged(false)
       onUploaded()
       toast.success("যোগ করা হয়েছে")
@@ -297,6 +306,10 @@ function MixerUploadForm({ category, onUploaded }: { category: Category; onUploa
       toast.error("শিরোনাম ও অডিও ফাইল দরকার")
       return
     }
+    if (!rightsHolder.trim()) {
+      toast.error("স্বত্বাধিকারীর নাম দরকার")
+      return
+    }
     if (!licenseAcknowledged) {
       toast.error("এই অডিও ব্যবহারের অধিকার আছে তা নিশ্চিত করুন")
       return
@@ -304,6 +317,7 @@ function MixerUploadForm({ category, onUploaded }: { category: Category; onUploa
     uploadMutation.mutate({
       title: title.trim(), category, fileUrl: fileUrl.trim(), licenseAcknowledged: true,
       subcategory: category !== "music" && subcategory !== "none" ? subcategory : undefined,
+      rightsHolder: rightsHolder.trim(), licenseType,
     })
   }
 
@@ -323,6 +337,15 @@ function MixerUploadForm({ category, onUploaded }: { category: Category; onUploa
         </Select>
       )}
       <AudioFileUpload value={fileUrl} onChange={setFileUrl} fieldKey="studio-mixer-upload" placeholder="ফাইল আপলোড করুন বা URL দিন" />
+      <Input value={rightsHolder} onChange={(e) => setRightsHolder(e.target.value)} placeholder="স্বত্বাধিকারী (rights holder)" className="h-8 text-xs" />
+      <Select value={licenseType} onValueChange={(v) => setLicenseType(v as LicenseType)}>
+        <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {(Object.keys(LICENSE_TYPE_LABEL) as LicenseType[]).map((t) => (
+            <SelectItem key={t} value={t}>{LICENSE_TYPE_LABEL[t]}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <label className="flex items-start gap-2 text-[10.5px] text-muted-foreground">
         <Checkbox checked={licenseAcknowledged} onCheckedChange={(v) => setLicenseAcknowledged(!!v)} className="mt-0.5" />
         আমি নিশ্চিত করছি এই অডিও ব্যবহারের অধিকার আমার আছে এবং কপিরাইট লঙ্ঘন করছি না।

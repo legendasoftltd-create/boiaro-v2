@@ -486,6 +486,13 @@ export const studioRouter = router({
       durationSeconds: z.number().int().positive().optional(),
       licenseAcknowledged: z.boolean().default(false),
       platformWide: z.boolean().default(false),
+      // Copyright metadata — required for every upload, platform-curated
+      // included. For a platform upload this doubles as the actual review
+      // step (an admin previously bypassed any diligence check entirely).
+      rightsHolder: z.string().min(1).max(200),
+      licenseType: z.enum(["royalty_free", "creative_commons", "purchased", "original", "other"]),
+      licenseDocumentUrl: z.string().url().optional(),
+      allowedUsage: z.string().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (!(await getRadioSettingBool("radio_mixer_enabled"))) {
@@ -540,6 +547,10 @@ export const studioRouter = router({
           file_url: input.fileUrl,
           duration_seconds: input.durationSeconds ?? null,
           license_acknowledged_at: input.platformWide ? null : new Date(),
+          rights_holder: input.rightsHolder,
+          license_type: input.licenseType,
+          license_document_url: input.licenseDocumentUrl ?? null,
+          allowed_usage: input.allowedUsage ?? null,
         },
       });
     }),

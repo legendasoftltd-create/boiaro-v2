@@ -2489,6 +2489,16 @@ model StudioAudioAsset {
   file_url                String
   duration_seconds        Int?
   license_acknowledged_at DateTime?
+  // Copyright metadata — required for every upload (platform-curated
+  // included, not just RJ self-uploads): who holds the rights, what kind
+  // of license covers it, an optional document backing that up, and any
+  // usage restriction beyond the platform's own. Filling these in is the
+  // actual review step for admin uploads (which otherwise auto-approve —
+  // see libraryUpload), replacing what used to be a pure bypass.
+  rights_holder           String?
+  license_type            String? // royalty_free | creative_commons | purchased | original | other
+  license_document_url    String?
+  allowed_usage           String?
   created_at              DateTime  @default(now())
 
   playlist_items StudioPlaylistItem[]

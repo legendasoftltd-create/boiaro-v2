@@ -11,8 +11,13 @@ import { Music, Trash2, Loader2, Disc3, CheckCircle2, XCircle, EyeOff, Eye, Cloc
 import { toast } from "sonner"
 
 type Category = "music" | "jingle" | "sfx"
+type LicenseType = "royalty_free" | "creative_commons" | "purchased" | "original" | "other"
 
 const CATEGORY_LABEL: Record<Category, string> = { music: "Music", jingle: "Jingle", sfx: "SFX" }
+const LICENSE_TYPE_LABEL: Record<LicenseType, string> = {
+  royalty_free: "Royalty-free", creative_commons: "Creative Commons",
+  purchased: "Purchased", original: "Original", other: "Other",
+}
 
 export default function AdminStudioLibrary() {
   const utils = trpc.useUtils()
@@ -23,12 +28,20 @@ export default function AdminStudioLibrary() {
   const [title, setTitle] = useState("")
   const [category, setCategory] = useState<Category>("music")
   const [fileUrl, setFileUrl] = useState("")
+  const [rightsHolder, setRightsHolder] = useState("")
+  const [licenseType, setLicenseType] = useState<LicenseType>("royalty_free")
+  const [licenseDocumentUrl, setLicenseDocumentUrl] = useState("")
+  const [allowedUsage, setAllowedUsage] = useState("")
 
   const uploadMutation = trpc.studio.libraryUpload.useMutation({
     onSuccess: () => {
       utils.studio.libraryList.invalidate()
       setTitle("")
       setFileUrl("")
+      setRightsHolder("")
+      setLicenseType("royalty_free")
+      setLicenseDocumentUrl("")
+      setAllowedUsage("")
       toast.success("Added to the platform library")
     },
     onError: (e) => toast.error(e.message),
@@ -53,7 +66,16 @@ export default function AdminStudioLibrary() {
       toast.error("Title and audio file are required")
       return
     }
-    uploadMutation.mutate({ title: title.trim(), category, fileUrl: fileUrl.trim(), platformWide: true })
+    if (!rightsHolder.trim()) {
+      toast.error("Rights holder is required")
+      return
+    }
+    uploadMutation.mutate({
+      title: title.trim(), category, fileUrl: fileUrl.trim(), platformWide: true,
+      rightsHolder: rightsHolder.trim(), licenseType,
+      licenseDocumentUrl: licenseDocumentUrl.trim() || undefined,
+      allowedUsage: allowedUsage.trim() || undefined,
+    })
   }
 
   return (
@@ -87,6 +109,33 @@ export default function AdminStudioLibrary() {
             <Label>Audio File</Label>
             <AudioFileUpload value={fileUrl} onChange={setFileUrl} fieldKey="studio-library-upload" placeholder="Upload a file or paste an audio URL" />
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Rights holder</Label>
+              <Input value={rightsHolder} onChange={(e) => setRightsHolder(e.target.value)} placeholder="Who owns this track" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>License type</Label>
+              <Select value={licenseType} onValueChange={(v) => setLicenseType(v as LicenseType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(LICENSE_TYPE_LABEL) as LicenseType[]).map((t) => (
+                    <SelectItem key={t} value={t}>{LICENSE_TYPE_LABEL[t]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>License document URL (optional)</Label>
+              <Input value={licenseDocumentUrl} onChange={(e) => setLicenseDocumentUrl(e.target.value)} placeholder="Link to a license/purchase receipt" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Allowed usage (optional)</Label>
+              <Input value={allowedUsage} onChange={(e) => setAllowedUsage(e.target.value)} placeholder="e.g. broadcast only, no resale" />
+            </div>
+          </div>
           <Button size="sm" onClick={handleAdd} disabled={uploadMutation.isPending}>
             {uploadMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
             Add to Library
@@ -101,7 +150,13 @@ export default function AdminStudioLibrary() {
             {pending.map((a: any) => (
               <div key={a.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 text-sm">
                 <Badge variant="secondary" className="text-[10px] shrink-0">{CATEGORY_LABEL[a.category as Category]}</Badge>
-                <span className="flex-1 font-medium truncate">{a.title}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{a.title}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {a.rights_holder || "—"} · {a.license_type ? LICENSE_TYPE_LABEL[a.license_type as LicenseType] ?? a.license_type : "—"}
+                    {a.allowed_usage ? ` · ${a.allowed_usage}` : ""}
+                  </p>
+                </div>
                 <audio controls src={a.file_url} className="h-8 max-w-[200px]" preload="none" />
                 <Button size="sm" variant="outline" className="h-7 text-xs gap-1" disabled={moderateMutation.isPending} onClick={() => moderateMutation.mutate({ assetId: a.id, action: "approve" })}>
                   <CheckCircle2 className="w-3.5 h-3.5" /> Approve
@@ -134,7 +189,12 @@ export default function AdminStudioLibrary() {
             platformAssets.map((a: any) => (
               <div key={a.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 text-sm">
                 <Badge variant="secondary" className="text-[10px] shrink-0">{CATEGORY_LABEL[a.category as Category]}</Badge>
-                <span className="flex-1 font-medium truncate">{a.title}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{a.title}</p>
+                  <p className="text-[11px] text-muted-foreground truncate">
+                    {a.rights_holder || "—"} · {a.license_type ? LICENSE_TYPE_LABEL[a.license_type as LicenseType] ?? a.license_type : "—"}
+                  </p>
+                </div>
                 {a.status === "unpublished" && <Badge variant="outline" className="text-[9px] shrink-0">unpublished</Badge>}
                 <audio controls src={a.file_url} className="h-8 max-w-[200px]" preload="none" />
                 <Button
