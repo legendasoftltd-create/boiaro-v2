@@ -6413,6 +6413,19 @@ export const adminRouter = router({
         where: { id: input.id },
         data: { status: input.status, reviewed_by: ctx.userId, reviewed_at: new Date() },
       });
+      // Upholding a copyright (or any other) complaint against a specific
+      // recording immediately pulls it from the public catch-up archive —
+      // the whole point of a "recording" report, unlike the other target
+      // types which are moderation-only and never touch the underlying
+      // content. target_id is the same as live_session_id for this type
+      // (see rj.ts's reportContent) — the report is about the whole
+      // recording, not a moment in it.
+      if (input.status === "actioned" && report.target_type === "recording") {
+        await prisma.liveSession.updateMany({
+          where: { id: report.target_id, recording_status: "published" },
+          data: { recording_status: "rejected" },
+        });
+      }
       await logRadioAction(ctx.userId!, "report_reviewed", { reportId: input.id, status: input.status });
       return report;
     }),

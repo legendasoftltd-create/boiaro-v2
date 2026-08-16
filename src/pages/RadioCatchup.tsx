@@ -4,12 +4,21 @@ import { Navbar } from "@/components/Navbar"
 import { Footer } from "@/components/Footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 import { useAuth } from "@/contexts/AuthContext"
 import { trpc } from "@/lib/trpc"
 import { useAudioPlayer } from "@/contexts/AudioPlayerContext"
 import { toMediaUrl } from "@/lib/mediaUrl"
-import { Headphones, Play, Pause, Radio, Share2, History, CheckCircle2 } from "lucide-react"
+import { Headphones, Play, Pause, Radio, Share2, History, CheckCircle2, Flag } from "lucide-react"
 import { toast } from "sonner"
+
+const REPORT_REASONS = [
+  { value: "copyright", label: "কপিরাইট লঙ্ঘন" },
+  { value: "inappropriate", label: "আপত্তিকর কনটেন্ট" },
+  { value: "other", label: "অন্যান্য" },
+]
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 
 export default function RadioCatchup() {
@@ -88,6 +97,24 @@ export default function RadioCatchup() {
     }, 300)
   }
 
+  const [reportTarget, setReportTarget] = useState<{ id: string; title: string } | null>(null)
+  const [reportReason, setReportReason] = useState("copyright")
+  const [reportDetails, setReportDetails] = useState("")
+  const reportMutation = trpc.rj.liveSession.reportContent.useMutation({
+    onSuccess: () => { toast.success("রিপোর্ট জমা দেওয়া হয়েছে — ধন্যবাদ"); setReportTarget(null); setReportDetails("") },
+    onError: (e) => toast.error(e.message),
+  })
+  const submitReport = () => {
+    if (!reportTarget) return
+    const label = REPORT_REASONS.find((r) => r.value === reportReason)?.label ?? reportReason
+    reportMutation.mutate({
+      sessionId: reportTarget.id,
+      targetType: "recording",
+      targetId: reportTarget.id,
+      reason: reportDetails.trim() ? `${label}: ${reportDetails.trim()}` : label,
+    })
+  }
+
   const handleShare = async (sessionId: string, showTitle: string) => {
     const url = `${window.location.origin}/catchup?session=${sessionId}`
     if (navigator.share) {
@@ -144,6 +171,11 @@ export default function RadioCatchup() {
                       <Button size="icon" variant="ghost" className="shrink-0 text-muted-foreground" onClick={() => handleShare(s.id, s.show_title || "Recorded Show")}>
                         <Share2 className="w-4 h-4" />
                       </Button>
+                      {user && (
+                        <Button size="icon" variant="ghost" className="shrink-0 text-muted-foreground" onClick={() => setReportTarget({ id: s.id, title: s.show_title || "Recorded Show" })}>
+                          <Flag className="w-4 h-4" />
+                        </Button>
+                      )}
                     </CardContent>
                   </Card>
                 )
@@ -195,6 +227,34 @@ export default function RadioCatchup() {
         )}
       </main>
       <Footer />
+
+      <Dialog open={!!reportTarget} onOpenChange={(open) => { if (!open) setReportTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>রিপোর্ট করুন</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">{reportTarget?.title}</p>
+            <Select value={reportReason} onValueChange={setReportReason}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {REPORT_REASONS.map((r) => <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Textarea
+              value={reportDetails}
+              onChange={(e) => setReportDetails(e.target.value)}
+              placeholder="বিস্তারিত লিখুন (ঐচ্ছিক)"
+              rows={3}
+              maxLength={500}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setReportTarget(null)} disabled={reportMutation.isPending}>বাতিল</Button>
+            <Button size="sm" onClick={submitReport} disabled={reportMutation.isPending}>জমা দিন</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

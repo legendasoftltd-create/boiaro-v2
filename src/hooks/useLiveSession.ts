@@ -117,7 +117,7 @@ export function useRjTerms() {
   return {
     status: statusQuery.data,
     loading: statusQuery.isLoading,
-    accept: () => acceptMutation.mutateAsync(),
+    accept: (clauses: string[]) => acceptMutation.mutateAsync({ clauses: clauses as any }),
     isAccepting: acceptMutation.isPending,
   };
 }

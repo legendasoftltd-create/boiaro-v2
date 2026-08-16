@@ -571,12 +571,16 @@ function AdminRadioSafetyReports() {
                       <div className="flex justify-end items-center gap-1">
                         {r.live_session_id && (
                           <Button asChild size="sm" variant="outline" className="h-7 text-[11px]">
-                            <Link to={`/live/${r.live_session_id}`} target="_blank">View Room</Link>
+                            <Link to={r.target_type === "recording" ? `/catchup?session=${r.live_session_id}` : `/live/${r.live_session_id}`} target="_blank">
+                              {r.target_type === "recording" ? "View Recording" : "View Room"}
+                            </Link>
                           </Button>
                         )}
                         <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, status: "reviewed" })}>Reviewed</Button>
                         <Button size="sm" variant="ghost" className="h-7 text-[11px]" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, status: "dismissed" })}>Dismiss</Button>
-                        <Button size="sm" variant="ghost" className="h-7 text-[11px] text-emerald-500" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, status: "actioned" })}>Actioned</Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-[11px] text-emerald-500" disabled={reviewMutation.isPending} onClick={() => reviewMutation.mutate({ id: r.id, status: "actioned" })}>
+                          {r.target_type === "recording" ? "Unpublish" : "Actioned"}
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>

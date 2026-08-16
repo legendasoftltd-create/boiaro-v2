@@ -15,6 +15,17 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { AudioFileUpload } from "@/components/admin/AudioFileUpload"
 import { BroadcastSettingsForm, DEFAULT_BROADCAST_SETTINGS, type BroadcastSettingsValue } from "@/components/rj/BroadcastSettingsForm"
+import { Checkbox } from "@/components/ui/checkbox"
+
+// Keep in sync with server/src/lib/rjTermsClauses.ts's RJ_TERMS_CLAUSE_KEYS —
+// itemized broadcaster-terms clauses, replacing one blanket checkbox.
+const TERMS_CLAUSES: { key: string; label: string }[] = [
+  { key: "prohibited_content", label: "I will only broadcast music/content I own or am licensed to play, and I'm responsible for copyright compliance." },
+  { key: "recording_consent", label: "I consent to the platform recording my broadcasts for catch-up playback." },
+  { key: "callin_consent", label: "I understand listener call-ins (where enabled) may be recorded and are subject to moderation." },
+  { key: "complaint_system", label: "I understand listeners and rights-holders can file complaints against my content through the platform's reporting system." },
+  { key: "unpublish_on_complaint", label: "I understand a recording may be unpublished without prior notice if a complaint against it is upheld." },
+]
 
 export default function RjDashboard() {
   const { profile } = useRjProfile()
@@ -80,10 +91,14 @@ export default function RjDashboard() {
     }
   }
 
+  const [checkedClauses, setCheckedClauses] = useState<Record<string, boolean>>({})
+  const allClausesChecked = TERMS_CLAUSES.every((c) => checkedClauses[c.key])
+
   const handleAcceptTerms = async () => {
     try {
-      await acceptTerms()
+      await acceptTerms(TERMS_CLAUSES.map((c) => c.key))
       toast.success("Broadcaster terms accepted")
+      setCheckedClauses({})
     } catch (err: any) {
       toast.error(err.message || "Failed to accept terms")
     }
@@ -164,12 +179,23 @@ export default function RjDashboard() {
               <ShieldCheck className="w-4 h-4" /> Broadcaster terms require your acceptance
             </div>
             <p className="text-xs text-muted-foreground">
-              You must confirm you own or are licensed to broadcast any music/content you play, and accept
-              responsibility for copyright compliance, before you can go live.
+              Please read and individually confirm each of the following before you can go live:
             </p>
-            <Button size="sm" onClick={handleAcceptTerms} disabled={isAccepting}>
+            <div className="space-y-2.5">
+              {TERMS_CLAUSES.map((c) => (
+                <label key={c.key} className="flex items-start gap-2.5 text-xs cursor-pointer">
+                  <Checkbox
+                    checked={!!checkedClauses[c.key]}
+                    onCheckedChange={(v) => setCheckedClauses((prev) => ({ ...prev, [c.key]: !!v }))}
+                    className="mt-0.5"
+                  />
+                  <span className="text-muted-foreground">{c.label}</span>
+                </label>
+              ))}
+            </div>
+            <Button size="sm" onClick={handleAcceptTerms} disabled={isAccepting || !allClausesChecked}>
               {isAccepting ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
-              I Accept the Broadcaster Terms
+              I Accept All of the Above
             </Button>
           </CardContent>
         </Card>

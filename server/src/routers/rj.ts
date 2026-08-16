@@ -15,6 +15,7 @@ import { computeRadioAnalytics, computeRadioAnalyticsSeries } from "../lib/radio
 import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
 import { isRecordingStorageBudgetAvailable, isBandwidthBudgetAvailable } from "../lib/radioCostControl.js";
 import { getStreamHealth } from "../lib/streamHealth.js";
+import { RJ_TERMS_CLAUSE_KEYS } from "../lib/rjTermsClauses.js";
 import { dhakaWallClock, fromDhakaShifted } from "../lib/timezone.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
@@ -131,18 +132,27 @@ export const rjRouter = router({
       currentVersion,
       acceptedVersion: profile?.terms_accepted_version ?? null,
       acceptedAt: profile?.terms_accepted_at ?? null,
+      acceptedClauses: (profile?.terms_accepted_clauses as string[] | null) ?? [],
+      requiredClauses: RJ_TERMS_CLAUSE_KEYS,
       needsAcceptance: profile?.terms_accepted_version !== currentVersion,
     };
   }),
 
-  acceptTerms: protectedProcedure.mutation(async ({ ctx }) => {
-    const version = await getRadioSetting("radio_terms_version");
-    await prisma.rjProfile.update({
-      where: { user_id: ctx.userId },
-      data: { terms_accepted_at: new Date(), terms_accepted_version: version },
-    });
-    return { accepted: true, version };
-  }),
+  acceptTerms: protectedProcedure
+    .input(z.object({ clauses: z.array(z.enum(RJ_TERMS_CLAUSE_KEYS)) }))
+    .mutation(async ({ ctx, input }) => {
+      const accepted = new Set(input.clauses);
+      const missing = RJ_TERMS_CLAUSE_KEYS.filter((k) => !accepted.has(k));
+      if (missing.length > 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `You must accept every clause before continuing (missing: ${missing.join(", ")})` });
+      }
+      const version = await getRadioSetting("radio_terms_version");
+      await prisma.rjProfile.update({
+        where: { user_id: ctx.userId },
+        data: { terms_accepted_at: new Date(), terms_accepted_version: version, terms_accepted_clauses: [...RJ_TERMS_CLAUSE_KEYS] },
+      });
+      return { accepted: true, version };
+    }),
 
   // Self-service version of admin.radioAnalytics — same computation, but
   // rj_user_id is locked to ctx.userId server-side (never client-supplied)
@@ -734,7 +744,12 @@ export const rjRouter = router({
     reportContent: protectedProcedure
       .input(z.object({
         sessionId: z.string(),
-        targetType: z.enum(["chat_message", "song_request", "call_in"]),
+        // "recording" targets a published catch-up episode (target_id is
+        // the same as sessionId — the report is about the whole recording,
+        // not a moment in it) — the one target_type that isn't scoped to a
+        // live room, since a catch-up recording is reported well after the
+        // session has ended.
+        targetType: z.enum(["chat_message", "song_request", "call_in", "recording"]),
         targetId: z.string(),
         reason: z.string().min(1).max(500),
       }))

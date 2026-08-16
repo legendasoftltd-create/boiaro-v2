@@ -1224,7 +1224,7 @@ model LiveReport {
   id              String    @id @default(uuid())
   live_session_id String
   reporter_id     String
-  target_type     String // chat_message | song_request | call_in
+  target_type     String // chat_message | song_request | call_in | recording
   target_id       String
   reason          String
   status          String    @default("pending") // pending | reviewed | dismissed | actioned
@@ -1747,6 +1747,12 @@ model RjProfile {
   // going live — copyright/content-responsibility acknowledgement.
   terms_accepted_at      DateTime?
   terms_accepted_version String?
+  // Which individual clause keys were checked (see lib/rjTermsClauses.ts) —
+  // itemized record of what was actually agreed to, rather than one
+  // blanket checkbox. All clauses are required, so in practice this is
+  // always the full canonical set at acceptance time, but recording them
+  // explicitly is the point: a durable, per-clause consent record.
+  terms_accepted_clauses Json?
 
   // Admin-level per-RJ call-in gate — e.g. an RJ who's had abuse reports
   // can be blocked from offering call-in without touching the whole
