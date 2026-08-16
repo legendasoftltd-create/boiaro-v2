@@ -16,15 +16,25 @@ export function useCallInBridge(getRoom: () => Room | null) {
   const setCallerStream = useCallback(async (stream: MediaStream | null) => {
     const room = getRoom();
     if (!room) return;
+    const nextTrack = stream?.getAudioTracks()[0] ?? null;
+    if (nextTrack === publishedTrackRef.current) return; // already publishing this exact track — avoid unpublish/republish churn
     if (publishedTrackRef.current) {
-      await room.localParticipant.unpublishTrack(publishedTrackRef.current).catch(() => null);
+      // stopOnUnpublish defaults to true in livekit-client, which calls
+      // track.stop() on the raw MediaStreamTrack — this track is *shared*
+      // with useCallInAudio's remoteStream (same object feeds the RJ's own
+      // <audio> preview element and the caller's connection). Letting
+      // LiveKit stop it here permanently kills the caller's audio for
+      // everyone, not just this room — that track's lifecycle belongs to
+      // the WebRTC peer connection/hangup, not to this bridge. Reproduced
+      // in production: a caller went silent for the RJ, listeners, and any
+      // future republish attempt within seconds of going on-air.
+      await room.localParticipant.unpublishTrack(publishedTrackRef.current, false).catch(() => null);
       publishedTrackRef.current = null;
       setIsPublished(false);
     }
-    const track = stream?.getAudioTracks()[0];
-    if (track) {
-      await room.localParticipant.publishTrack(track, { name: "callin-caller", source: Track.Source.Unknown });
-      publishedTrackRef.current = track;
+    if (nextTrack) {
+      await room.localParticipant.publishTrack(nextTrack, { name: "callin-caller", source: Track.Source.Unknown });
+      publishedTrackRef.current = nextTrack;
       setIsPublished(true);
     }
   }, [getRoom]);
@@ -32,7 +42,7 @@ export function useCallInBridge(getRoom: () => Room | null) {
   useEffect(() => () => {
     const room = getRoom();
     if (room && publishedTrackRef.current) {
-      room.localParticipant.unpublishTrack(publishedTrackRef.current).catch(() => null);
+      room.localParticipant.unpublishTrack(publishedTrackRef.current, false).catch(() => null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

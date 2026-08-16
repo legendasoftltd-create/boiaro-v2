@@ -67,12 +67,19 @@ export function CallInPanel({ sessionId, isHost, hostUserId, getSocket, onRemote
   // Host: tell the embedding page about the connected caller's stream, but
   // only once they're genuinely on_air/muted — during "previewing" the RJ
   // is listening privately and it must not leak into the broadcast.
+  //
+  // Depends on the derived status *string*, not the queue array itself —
+  // the queue re-polls every 4s and react-query returns a new array
+  // reference each time even when nothing changed, which was re-firing this
+  // effect (and re-publishing the LiveKit track) every 4s, causing constant
+  // unpublish/republish churn that made the caller's audio choppy or
+  // effectively inaudible on both the broadcast and the RJ's own preview.
+  const activeCallStatus = (queue as any[]).find((c) => c.user_id === peerUserId)?.status ?? null
   useEffect(() => {
     if (!isHost || !onRemoteStreamChange) return
-    const activeCall = (queue as any[]).find((c) => c.user_id === peerUserId)
-    const isBroadcastable = activeCall?.status === "on_air" || activeCall?.status === "muted"
+    const isBroadcastable = activeCallStatus === "on_air" || activeCallStatus === "muted"
     onRemoteStreamChange(remoteStream && isBroadcastable ? remoteStream : null)
-  }, [isHost, onRemoteStreamChange, remoteStream, peerUserId, queue])
+  }, [isHost, onRemoteStreamChange, remoteStream, activeCallStatus])
 
   // Host preview: list available output devices (Chrome/Edge only — see
   // canPickOutput) so the RJ can route the preview to headphones instead of
