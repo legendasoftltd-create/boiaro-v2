@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
+import { AvatarUpload } from "@/components/admin/AvatarUpload";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Users } from "lucide-react";
 
@@ -116,7 +117,7 @@ export default function AdminTeam() {
               <div><label className="text-sm font-medium">Name</label><Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} /></div>
               <div><label className="text-sm font-medium">Role / Title</label><Input value={form.role_title} onChange={e => setForm(f => ({ ...f, role_title: e.target.value }))} placeholder="e.g. Founder & CEO" /></div>
             </div>
-            <div><label className="text-sm font-medium">Photo URL</label><Input value={form.photo_url} onChange={e => setForm(f => ({ ...f, photo_url: e.target.value }))} /></div>
+            <AvatarUpload currentUrl={form.photo_url} onUrlChange={url => setForm(f => ({ ...f, photo_url: url }))} label="Photo" />
             <div><label className="text-sm font-medium">Bio</label><Textarea rows={4} value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} /></div>
             <div className="grid grid-cols-3 gap-4">
               <div><label className="text-sm font-medium">Facebook URL</label><Input value={form.facebook_url} onChange={e => setForm(f => ({ ...f, facebook_url: e.target.value }))} /></div>
