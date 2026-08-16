@@ -416,21 +416,49 @@ export const studioRouter = router({
   // (platformWide:true requires an admin/moderator role and skips the
   // license checkbox, since platform assets are admin-cleared already).
   libraryList: protectedProcedure
-    .input(z.object({ category: z.enum(["music", "jingle", "sfx"]).optional() }))
-    .query(({ ctx, input }) =>
-      prisma.studioAudioAsset.findMany({
-        where: {
-          ...(input.category ? { category: input.category } : {}),
-          OR: [{ owner_user_id: null }, { owner_user_id: ctx.userId }],
-        },
-        orderBy: { created_at: "desc" },
-      })
-    ),
+    .input(z.object({
+      category: z.enum(["music", "jingle", "sfx"]).optional(),
+      subcategory: z.enum(["station_id", "intro", "outro", "commercial", "transition", "applause"]).optional(),
+      search: z.string().max(200).optional(),
+      favoritesOnly: z.boolean().default(false),
+    }))
+    .query(async ({ ctx, input }) => {
+      const [assets, favoriteRows] = await Promise.all([
+        prisma.studioAudioAsset.findMany({
+          where: {
+            ...(input.category ? { category: input.category } : {}),
+            ...(input.subcategory ? { subcategory: input.subcategory } : {}),
+            ...(input.search ? { title: { contains: input.search, mode: "insensitive" } } : {}),
+            OR: [{ owner_user_id: null }, { owner_user_id: ctx.userId }],
+          },
+          orderBy: { created_at: "desc" },
+        }),
+        prisma.studioAssetFavorite.findMany({ where: { user_id: ctx.userId }, select: { audio_asset_id: true } }),
+      ]);
+      const favoriteIds = new Set(favoriteRows.map((f) => f.audio_asset_id));
+      const withFavorite = assets.map((a) => ({ ...a, isFavorite: favoriteIds.has(a.id) }));
+      return input.favoritesOnly ? withFavorite.filter((a) => a.isFavorite) : withFavorite;
+    }),
+
+  toggleFavorite: protectedProcedure
+    .input(z.object({ assetId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.studioAssetFavorite.findUnique({
+        where: { user_id_audio_asset_id: { user_id: ctx.userId!, audio_asset_id: input.assetId } },
+      });
+      if (existing) {
+        await prisma.studioAssetFavorite.delete({ where: { id: existing.id } });
+        return { favorited: false };
+      }
+      await prisma.studioAssetFavorite.create({ data: { user_id: ctx.userId!, audio_asset_id: input.assetId } });
+      return { favorited: true };
+    }),
 
   libraryUpload: protectedProcedure
     .input(z.object({
       title: z.string().min(1).max(200),
       category: z.enum(["music", "jingle", "sfx"]),
+      subcategory: z.enum(["station_id", "intro", "outro", "commercial", "transition", "applause"]).optional(),
       fileUrl: z.string().url(),
       durationSeconds: z.number().int().positive().optional(),
       licenseAcknowledged: z.boolean().default(false),
@@ -447,6 +475,7 @@ export const studioRouter = router({
         data: {
           owner_user_id: input.platformWide ? null : ctx.userId,
           category: input.category,
+          subcategory: input.category === "music" ? null : (input.subcategory ?? null),
           title: input.title,
           file_url: input.fileUrl,
           duration_seconds: input.durationSeconds ?? null,
@@ -499,6 +528,48 @@ export const studioRouter = router({
       await assertModerator(input.sessionId, ctx.userId!);
       await prisma.studioPlaylistItem.deleteMany({ where: { id: input.itemId, studio_session_id: input.sessionId } });
       return { removed: true };
+    }),
+
+  // Swaps position with the adjacent neighbor — same pattern as
+  // song_request:reorder in realtime/socket.ts.
+  reorderPlaylistItem: protectedProcedure
+    .input(z.object({ sessionId: z.string(), itemId: z.string(), direction: z.enum(["up", "down"]) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertModerator(input.sessionId, ctx.userId!);
+      const items = await prisma.studioPlaylistItem.findMany({
+        where: { studio_session_id: input.sessionId, played_at: null },
+        orderBy: { position: "asc" },
+      });
+      const idx = items.findIndex((i) => i.id === input.itemId);
+      if (idx === -1) return { reordered: false };
+      const neighborIdx = input.direction === "up" ? idx - 1 : idx + 1;
+      if (neighborIdx < 0 || neighborIdx >= items.length) return { reordered: false };
+      const current = items[idx];
+      const neighbor = items[neighborIdx];
+      await prisma.$transaction([
+        prisma.studioPlaylistItem.update({ where: { id: current.id }, data: { position: neighbor.position } }),
+        prisma.studioPlaylistItem.update({ where: { id: neighbor.id }, data: { position: current.position } }),
+      ]);
+      return { reordered: true };
+    }),
+
+  // Randomizes the up-next order once (Fisher-Yates over unplayed items) —
+  // a real "shuffle" button, distinct from the client picking a random
+  // track ad-hoc, so a page refresh still resumes the shuffled order.
+  shufflePlaylist: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertModerator(input.sessionId, ctx.userId!);
+      const items = await prisma.studioPlaylistItem.findMany({
+        where: { studio_session_id: input.sessionId, played_at: null },
+      });
+      const positions = items.map((i) => i.position);
+      for (let i = positions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [positions[i], positions[j]] = [positions[j], positions[i]];
+      }
+      await prisma.$transaction(items.map((item, i) => prisma.studioPlaylistItem.update({ where: { id: item.id }, data: { position: positions[i] } })));
+      return { shuffled: true };
     }),
 
   // Marks the current queue head played and returns whatever's next — called

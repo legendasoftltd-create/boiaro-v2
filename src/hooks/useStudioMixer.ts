@@ -32,6 +32,7 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
   const duckGainRef = useRef<GainNode | null>(null);
   const destinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const musicSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const loopEnabledRef = useRef(false);
   const publishedTrackRef = useRef<MediaStreamTrack | null>(null);
   const bufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
 
@@ -40,6 +41,7 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
   const [musicVolume, setMusicVolumeState] = useState(0.7);
   const [duckingEnabled, setDuckingEnabled] = useState(true);
   const [isDucked, setIsDucked] = useState(false);
+  const [loopEnabled, setLoopEnabledState] = useState(false);
 
   const ensureContext = useCallback(() => {
     if (audioCtxRef.current) return audioCtxRef.current;
@@ -117,7 +119,11 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
     const ctx = audioCtxRef.current!;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
+    source.loop = loopEnabledRef.current;
     source.connect(musicGainRef.current!);
+    // Never fires while source.loop is true — a looping track only "ends"
+    // via an explicit stopMusic()/playTrack() call, which already clears
+    // musicSourceRef and nowPlaying itself.
     source.onended = () => {
       if (musicSourceRef.current === source) {
         musicSourceRef.current = null;
@@ -128,6 +134,12 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
     musicSourceRef.current = source;
     setNowPlaying(asset);
   }, [ensurePublished, loadBuffer, stopMusic]);
+
+  const setLoopEnabled = useCallback((v: boolean) => {
+    setLoopEnabledState(v);
+    loopEnabledRef.current = v;
+    if (musicSourceRef.current) musicSourceRef.current.loop = v;
+  }, []);
 
   const triggerOneShot = useCallback(async (asset: MixerAsset) => {
     await ensurePublished();
@@ -168,7 +180,7 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
   useEffect(() => () => teardown(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
-    isPublished, nowPlaying, musicVolume, duckingEnabled, isDucked,
-    playTrack, stopMusic, triggerOneShot, setMusicVolume, setDuckingEnabled, teardown,
+    isPublished, nowPlaying, musicVolume, duckingEnabled, isDucked, loopEnabled,
+    playTrack, stopMusic, triggerOneShot, setMusicVolume, setDuckingEnabled, setLoopEnabled, teardown,
   };
 }

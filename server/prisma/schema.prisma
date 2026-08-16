@@ -2472,6 +2472,12 @@ model StudioAudioAsset {
   id                      String    @id @default(uuid())
   owner_user_id           String?
   category                String // music | jingle | sfx
+  // Finer taxonomy within jingle/sfx only — station_id | intro | outro |
+  // commercial | transition | applause. Null for music, and optional for
+  // jingle/sfx (an uncategorized jingle is still a valid jingle). Purely
+  // organizational — playback behavior is still driven by `category` alone
+  // (music goes through the music player, everything else is a one-shot).
+  subcategory             String?
   title                   String
   file_url                String
   duration_seconds        Int?
@@ -2479,9 +2485,24 @@ model StudioAudioAsset {
   created_at              DateTime  @default(now())
 
   playlist_items StudioPlaylistItem[]
+  favorites      StudioAssetFavorite[]
 
   @@index([owner_user_id, category])
   @@map("studio_audio_assets")
+}
+
+// Per-RJ favourite tracks — cross-session, unlike the playlist queue which
+// is scoped to one broadcast.
+model StudioAssetFavorite {
+  id             String   @id @default(uuid())
+  user_id        String
+  audio_asset_id String
+  created_at     DateTime @default(now())
+
+  asset StudioAudioAsset @relation(fields: [audio_asset_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, audio_asset_id])
+  @@map("studio_asset_favorites")
 }
 
 // The live playlist queue for one Studio broadcast — ordered by position,
