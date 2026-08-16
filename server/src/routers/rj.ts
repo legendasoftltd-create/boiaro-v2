@@ -17,6 +17,7 @@ import { isRecordingStorageBudgetAvailable, isBandwidthBudgetAvailable } from ".
 import { getStreamHealth } from "../lib/streamHealth.js";
 import { RJ_TERMS_CLAUSE_KEYS } from "../lib/rjTermsClauses.js";
 import { dhakaWallClock, fromDhakaShifted } from "../lib/timezone.js";
+import { ensureStudioEgressAlive } from "./studio.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
   if (userId === session.rj_user_id) return;
@@ -626,11 +627,19 @@ export const rjRouter = router({
     heartbeat: protectedProcedure
       .input(z.object({ sessionId: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId }, select: { rj_user_id: true, status: true } });
+        const session = await prisma.liveSession.findUnique({
+          where: { id: input.sessionId },
+          select: { rj_user_id: true, status: true, studio_session: { select: { id: true } } },
+        });
         if (!session || session.rj_user_id !== ctx.userId) throw new TRPCError({ code: "FORBIDDEN" });
         const data: { last_heartbeat_at: Date; status?: string } = { last_heartbeat_at: new Date() };
         if (session.status === "reconnecting") data.status = "live"; // recovered before the grace period expired
-        return prisma.liveSession.update({ where: { id: input.sessionId }, data });
+        const updated = await prisma.liveSession.update({ where: { id: input.sessionId }, data });
+        // Studio broadcasts only — see ensureStudioEgressAlive's own comment
+        // for why this check lives here (heartbeat is already the recurring
+        // "this broadcast is still actually running" signal).
+        if (session.studio_session) ensureStudioEgressAlive(session.studio_session.id).catch(() => null);
+        return updated;
       }),
 
     // Recent chat history for late joiners — live messages after that come

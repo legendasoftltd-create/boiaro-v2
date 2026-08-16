@@ -43,6 +43,49 @@ async function getSession(sessionId: string) {
   return session;
 }
 
+// Best-effort recovery, called from rj.ts's heartbeat (already firing every
+// 20s while a Studio broadcast is live). Observed in production: a LiveKit
+// room that briefly empties and gets recreated (e.g. the host's tab
+// reloading/reconnecting) silently ends the old Icecast-bound Egress job
+// without ever restarting it — the LiveSession stays "live", the host's own
+// room connection looks fine, but real listeners hear nothing (or the
+// dead-air fallback) until someone notices. No-ops if a healthy egress is
+// already running; never throws, so a LiveKit hiccup here can't break the
+// heartbeat itself.
+export async function ensureStudioEgressAlive(studioSessionId: string): Promise<void> {
+  try {
+    const session = await prisma.studioSession.findUnique({ where: { id: studioSessionId } });
+    if (!session || session.status !== "live" || !session.live_session_id) return;
+    const liveSession = await prisma.liveSession.findUnique({ where: { id: session.live_session_id } });
+    if (!liveSession?.stream_url) return;
+    const mount = deriveIcecastMountPath(liveSession.stream_url);
+    if (!mount) return;
+
+    const { httpUrl, apiKey, apiSecret } = livekitEnv();
+    const egress = new EgressClient(httpUrl, apiKey, apiSecret);
+    const active = await egress.listEgress({ roomName: session.room_name, active: true });
+    if (active.length > 0) return; // healthy — nothing to do
+
+    const bridgeRtmpUrl = process.env.STUDIO_BRIDGE_RTMP_URL || "rtmp://127.0.0.1:1935/live";
+    await registerBridgeMount(`/live/${session.room_name}`, { mount, toIcecast: true, toWav: session.recording_mode === "mixed" });
+    const output = new StreamOutput({ protocol: StreamProtocol.RTMP, urls: [`${bridgeRtmpUrl}/${session.room_name}`] });
+    await egress.startRoomCompositeEgress(session.room_name, { stream: output }, { audioOnly: true });
+
+    if (session.recording_mode === "voice_only") {
+      const roomService = new RoomServiceClient(httpUrl, apiKey, apiSecret);
+      const hostParticipant = await roomService.getParticipant(session.room_name, session.host_user_id).catch(() => null);
+      const hostMicTrackSid = hostParticipant?.tracks.find((t) => t.source === TrackSource.MICROPHONE)?.sid;
+      if (hostMicTrackSid) {
+        const voiceOutput = new StreamOutput({ protocol: StreamProtocol.RTMP, urls: [`${bridgeRtmpUrl}/${session.room_name}-voice`] });
+        await registerBridgeMount(`/live/${session.room_name}-voice`, { toIcecast: false, toWav: true });
+        await egress.startTrackCompositeEgress(session.room_name, { stream: voiceOutput }, { audioTrackId: hostMicTrackSid });
+      }
+    }
+  } catch {
+    // Best-effort — the next heartbeat (20s later) tries again.
+  }
+}
+
 async function getParticipant(sessionId: string, userId: string) {
   const participant = await prisma.studioParticipant.findFirst({
     where: { studio_session_id: sessionId, user_id: userId, left_at: null },
