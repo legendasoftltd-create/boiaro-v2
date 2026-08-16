@@ -51,7 +51,14 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
     peerUserIdRef.current = null;
     setPeerUserId(null);
     setRemoteStream(null);
-    setState("closed");
+    // "idle", not "closed": the caller-side auto-start effect in
+    // CallInPanel only fires startCall() when state === "idle", so without
+    // this a caller's *second* call in the same page load (their first
+    // ended, they requested to speak again) would never actually attempt
+    // to connect — every retry after the first silently did nothing until
+    // a full page refresh. Reproduced in production as a string of
+    // ~1-minute call attempts that all failed identically.
+    setState("idle");
   }, []);
 
   const ensurePeerConnection = useCallback((targetUserId: string) => {
@@ -66,6 +73,13 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
     };
     pc.ontrack = (e) => setRemoteStream(e.streams[0]);
     pc.onconnectionstatechange = () => {
+      // pc.close() (in cleanup()) queues this event asynchronously rather
+      // than firing it synchronously — without this guard, a stale event
+      // from an already-cleaned-up connection could fire *after* cleanup()
+      // has already reset state to "idle" for a new call attempt, flipping
+      // it back to "closed" and re-triggering the exact retry bug this
+      // guards against.
+      if (pcRef.current !== pc) return;
       const s = pc.connectionState;
       setState(s === "connected" ? "connected" : s === "failed" ? "failed" : s === "closed" ? "closed" : "connecting");
     };
