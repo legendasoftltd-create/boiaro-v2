@@ -29,6 +29,15 @@ const execFileAsync = promisify(execFile);
 const XML_PATH = process.env.ICECAST_XML_PATH || "/etc/icecast2/icecast.xml";
 const FALLBACK_MOUNT = process.env.ICECAST_STUDIO_FALLBACK_MOUNT || "/studio-fallback.mp3";
 
+// Mounts already hand-authored as their own static <mount> stanza in
+// icecast.xml (the simple/external-encoder flow's fixed mount, plus both
+// fallback source mounts themselves) — excluded from the dynamic block so a
+// station whose stream_url happens to derive to the same mount name (the
+// common case: the simple flow's default station literally points at
+// /live.mp3) doesn't get a second, conflicting <mount-name> stanza. Static
+// mounts keep whatever fallback wiring was hand-set for them.
+const STATICALLY_MANAGED_MOUNTS = new Set(["/live.mp3", "/fallback.mp3"]);
+
 const START_MARKER = "<!-- DYNAMIC_MOUNTS_START (managed by server/src/lib/icecastMountSync.ts — do not edit by hand) -->";
 const END_MARKER = "<!-- DYNAMIC_MOUNTS_END -->";
 
@@ -72,7 +81,7 @@ export async function syncStudioIcecastMounts(mounts: string[]): Promise<void> {
     throw new Error(`icecast.xml at ${XML_PATH} is missing the DYNAMIC_MOUNTS markers`);
   }
 
-  const unique = [...new Set(mounts)].filter((m) => m && m !== FALLBACK_MOUNT);
+  const unique = [...new Set(mounts)].filter((m) => m && m !== FALLBACK_MOUNT && !STATICALLY_MANAGED_MOUNTS.has(m));
   const block = unique.length ? unique.map(renderMountStanza).join("\n") + "\n" : "";
   const next = xml.slice(0, startIdx + START_MARKER.length) + "\n" + block + xml.slice(endIdx);
 
