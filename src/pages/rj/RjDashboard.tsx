@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck, Antenna, Megaphone } from "lucide-react"
+import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck, Antenna, Megaphone, PhoneCall } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { AudioFileUpload } from "@/components/admin/AudioFileUpload"
@@ -162,6 +162,16 @@ export default function RjDashboard() {
     { sessionId: liveSession?.id ?? "" },
     { enabled: isLive && !!liveSession?.id, refetchInterval: 20_000 }
   )
+  // Call-in requests otherwise only ever surface on the separate /live chat
+  // page — an RJ who stays on this dashboard has no way to know someone's
+  // waiting. Found live: two real requests sat unanswered indefinitely
+  // because of exactly this (confirmed via their CallInRequest rows —
+  // created, never responded to).
+  const { data: callInQueue = [] } = trpc.rj.callIn.queue.useQuery(
+    { sessionId: liveSession?.id ?? "" },
+    { enabled: isLive && !!liveSession?.id && !!liveSession?.callin_enabled, refetchInterval: 5_000 }
+  )
+  const pendingCallIns = callInQueue.filter((c: any) => c.status === "requested")
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -304,6 +314,15 @@ export default function RjDashboard() {
                     ? "Your stream isn't reaching the server — listeners may not be able to hear you. Check your encoder/connection."
                     : "Your stream connection looks unstable — some listeners may be dropping in and out."}
                 </div>
+              )}
+
+              {pendingCallIns.length > 0 && (
+                <Link to="/live" className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-500 hover:bg-amber-500/15 transition-colors animate-pulse">
+                  <PhoneCall className="w-4 h-4 shrink-0" />
+                  {pendingCallIns.length === 1
+                    ? "একজন শ্রোতা কল করতে চাইছেন — দেখতে ট্যাপ করুন"
+                    : `${pendingCallIns.length} জন শ্রোতা কল করতে চাইছেন — দেখতে ট্যাপ করুন`}
+                </Link>
               )}
 
               {!liveSession.is_test && (
