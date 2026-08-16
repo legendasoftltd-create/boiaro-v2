@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -20,6 +21,7 @@ interface RjRow {
   is_approved: boolean
   is_active: boolean
   status: "pending" | "approved" | "rejected" | "suspended" | "deactivated"
+  callin_enabled: boolean
   created_at: string
   profile_email?: string
 }
@@ -56,6 +58,7 @@ export default function AdminRjManagement() {
   const deactivateRjMutation = trpc.admin.deactivateRj.useMutation()
   const reactivateRjMutation = trpc.admin.reactivateRj.useMutation()
   const forceEndLiveSessionMutation = trpc.admin.forceEndLiveSession.useMutation()
+  const updateRjProfileMutation = trpc.admin.updateRjProfile.useMutation()
 
   const fetchAll = async () => {
     setLoading(true)
@@ -125,6 +128,10 @@ export default function AdminRjManagement() {
     runTransition(() => deactivateRjMutation.mutateAsync({ id: rj.id }), "RJ deactivated — any live session was stopped and their broadcast token revoked")
   }
   const reactivateRj = (rj: RjRow) => runTransition(() => reactivateRjMutation.mutateAsync({ id: rj.id }), "RJ reactivated!")
+  const toggleCallin = (rj: RjRow) => runTransition(
+    () => updateRjProfileMutation.mutateAsync({ id: rj.id, callin_enabled: !rj.callin_enabled }),
+    rj.callin_enabled ? "Call-in access revoked for this RJ" : "Call-in access restored for this RJ"
+  )
 
   const forceEndSession = async (session: LiveSessionRow) => {
     try {
@@ -255,6 +262,7 @@ export default function AdminRjManagement() {
                   <TableHead>User</TableHead>
                   <TableHead>Specialty</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Call-in</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -268,6 +276,9 @@ export default function AdminRjManagement() {
                       <TableCell className="text-sm">{rj.specialty || "—"}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={badge.className}>{badge.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Switch checked={rj.callin_enabled} onCheckedChange={() => toggleCallin(rj)} title="Allow this RJ to offer listener call-in" />
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1.5">

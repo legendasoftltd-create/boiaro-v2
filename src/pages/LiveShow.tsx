@@ -482,6 +482,15 @@ function CallInPanel({ sessionId, isHost, hostUserId, getSocket }: { sessionId: 
   const muteMutation = trpc.rj.callIn.muteCaller.useMutation({ onSuccess: () => utils.rj.callIn.queue.invalidate() })
   const removeMutation = trpc.rj.callIn.remove.useMutation({ onSuccess: () => { utils.rj.callIn.queue.invalidate(); hangup() } })
   const endMutation = trpc.rj.callIn.end.useMutation({ onSuccess: () => { utils.rj.callIn.myStatus.invalidate(); hangup() } })
+  const reportCallerMutation = trpc.rj.liveSession.reportContent.useMutation({
+    onSuccess: () => toast.success("রিপোর্ট পাঠানো হয়েছে"),
+    onError: (e) => toast.error(e.message),
+  })
+  const handleReportCaller = (callId: string) => {
+    const reason = window.prompt("এই কলারকে রিপোর্ট করার কারণ লিখুন:")
+    if (!reason || !reason.trim()) return
+    reportCallerMutation.mutate({ sessionId, targetType: "call_in", targetId: callId, reason: reason.trim() })
+  }
 
   // Play whatever remote audio arrives (caller hears host mixed in via their
   // own speakers/headphones already — this element is for the OTHER side).
@@ -571,6 +580,9 @@ function CallInPanel({ sessionId, isHost, hostUserId, getSocket }: { sessionId: 
                       <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => removeMutation.mutate({ callId: c.id })}><UserX className="w-3 h-3" /></Button>
                     </>
                   )}
+                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" title="রিপোর্ট করুন" onClick={() => handleReportCaller(c.id)}>
+                    <Flag className="w-3 h-3" />
+                  </Button>
                 </div>
               </div>
             ))}

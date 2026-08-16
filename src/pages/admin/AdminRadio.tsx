@@ -108,6 +108,8 @@ interface RadioStation {
   is_active: boolean
   sort_order: number
   auto_recording_enabled: boolean
+  callin_enabled: boolean
+  default_quality: "high" | "medium" | "low"
 }
 
 function validateStreamUrl(url: string): { valid: boolean; warning?: string } {
@@ -148,6 +150,8 @@ const EMPTY_FORM = {
   description: "",
   is_active: true,
   auto_recording_enabled: false,
+  callin_enabled: true,
+  default_quality: "high" as "high" | "medium" | "low",
 }
 
 /** Create (station === null) or edit (station set) — same form either way. */
@@ -167,6 +171,8 @@ function StationFormDialog({ station, onClose, onSaved }: { station: RadioStatio
       description: station.description || "",
       is_active: station.is_active,
       auto_recording_enabled: station.auto_recording_enabled ?? false,
+      callin_enabled: station.callin_enabled ?? true,
+      default_quality: station.default_quality ?? "high",
     } : EMPTY_FORM)
   }, [station])
 
@@ -194,6 +200,8 @@ function StationFormDialog({ station, onClose, onSaved }: { station: RadioStatio
       description: form.description.trim() || null,
       is_active: form.is_active,
       auto_recording_enabled: form.auto_recording_enabled,
+      callin_enabled: form.callin_enabled,
+      default_quality: form.default_quality,
     }
 
     try {
@@ -287,6 +295,26 @@ function StationFormDialog({ station, onClose, onSaved }: { station: RadioStatio
             Only fill these in if this station's Icecast/Shoutcast server actually runs separate lower-bitrate mount points — this app can't transcode a single stream into multiple qualities on its own. Leave blank and listeners just get the main stream, no quality selector shown.
           </p>
 
+          {(form.stream_url_medium.trim() || form.stream_url_low.trim()) && (
+            <div className="space-y-2">
+              <Label>Default quality</Label>
+              <div className="flex gap-2">
+                {(["high", "medium", "low"] as const).map((q) => (
+                  <Button
+                    key={q}
+                    type="button"
+                    size="sm"
+                    variant={form.default_quality === q ? "default" : "outline"}
+                    className="text-xs capitalize"
+                    onClick={() => setForm((f) => ({ ...f, default_quality: q }))}
+                  >
+                    {q}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-0.5">
               <Label>Auto-record RJ live sessions on this station</Label>
@@ -297,6 +325,19 @@ function StationFormDialog({ station, onClose, onSaved }: { station: RadioStatio
             <Switch
               checked={form.auto_recording_enabled}
               onCheckedChange={(checked) => setForm((f) => ({ ...f, auto_recording_enabled: checked }))}
+            />
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label>Allow listener call-in on this station</Label>
+              <p className="text-xs text-muted-foreground">
+                Also requires the global call-in toggle in Radio Safety &amp; Controls, and the RJ's own call-in access, to be on.
+              </p>
+            </div>
+            <Switch
+              checked={form.callin_enabled}
+              onCheckedChange={(checked) => setForm((f) => ({ ...f, callin_enabled: checked }))}
             />
           </div>
 

@@ -5900,7 +5900,7 @@ export const adminRouter = router({
     ),
 
   updateRjProfile: adminProcedure
-    .input(z.object({ id: z.string(), is_approved: z.boolean().optional(), is_active: z.boolean().optional() }))
+    .input(z.object({ id: z.string(), is_approved: z.boolean().optional(), is_active: z.boolean().optional(), callin_enabled: z.boolean().optional() }))
     .mutation(({ input }) => {
       const { id, ...data } = input;
       return prisma.rjProfile.update({ where: { id }, data });
@@ -6053,6 +6053,8 @@ export const adminRouter = router({
         is_active: z.boolean().default(true),
         sort_order: z.number().int().default(0),
         auto_recording_enabled: z.boolean().default(false),
+        callin_enabled: z.boolean().default(true),
+        default_quality: z.enum(["high", "medium", "low"]).default("high"),
       })
     )
     .mutation(async ({ input }) => {
@@ -6066,6 +6068,8 @@ export const adminRouter = router({
         is_active: input.is_active,
         sort_order: input.sort_order,
         auto_recording_enabled: input.auto_recording_enabled,
+        callin_enabled: input.callin_enabled,
+        default_quality: input.default_quality,
       };
       const result = input.id
         ? await prisma.radioStation.update({ where: { id: input.id }, data })

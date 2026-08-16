@@ -1216,7 +1216,7 @@ model LiveReport {
   id              String    @id @default(uuid())
   live_session_id String
   reporter_id     String
-  target_type     String // chat_message | song_request
+  target_type     String // chat_message | song_request | call_in
   target_id       String
   reason          String
   status          String    @default("pending") // pending | reviewed | dismissed | actioned
@@ -1627,6 +1627,16 @@ model RadioStation {
   // recording_enabled flag all say yes.
   auto_recording_enabled Boolean @default(false)
 
+  // Admin-level call-in gate for this station specifically — distinct from
+  // the platform-wide radio_callin_enabled setting and from the RJ's own
+  // per-session choice. A broadcast can only actually offer call-in when
+  // all three say yes (see lib/callinPolicy.ts).
+  callin_enabled Boolean @default(true)
+
+  // Which quality tier the listener player defaults to when this station
+  // offers more than one (stream_url_medium/low) — "high" | "medium" | "low".
+  default_quality String @default("high")
+
   live_sessions LiveSession[]
   show_schedules ShowSchedule[]
 
@@ -1729,6 +1739,11 @@ model RjProfile {
   // going live — copyright/content-responsibility acknowledgement.
   terms_accepted_at      DateTime?
   terms_accepted_version String?
+
+  // Admin-level per-RJ call-in gate — e.g. an RJ who's had abuse reports
+  // can be blocked from offering call-in without touching the whole
+  // platform or station setting. See lib/callinPolicy.ts.
+  callin_enabled Boolean @default(true)
 
   @@map("rj_profiles")
 }

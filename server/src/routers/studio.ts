@@ -11,6 +11,7 @@ import { notifyFollowersOfGoLive } from "../lib/radioNotify.js";
 import { registerBridgeMount } from "../lib/studioBridge.js";
 import { deriveIcecastMountPath } from "../lib/icecastMount.js";
 import { getRadioSettingBool } from "../lib/radioSettings.js";
+import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
 
 // Host capabilities are a strict superset of Co-host/RJ/Producer/Guest, so a
 // participant who is both "the RJ" and "running the room" just holds the
@@ -239,8 +240,8 @@ export const studioRouter = router({
         throw new TRPCError({ code: "CONFLICT", message: "This studio session is already live" });
       }
 
-      if (input.callinEnabled && !(await getRadioSettingBool("radio_callin_enabled"))) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Call-in is not enabled on this platform" });
+      if (input.callinEnabled && !(await isCallinAllowedForBroadcast(input.stationId, session.host_user_id))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Call-in is not enabled for this station/RJ" });
       }
 
       // Real (non-test) broadcasts: no two RJs live on the same station at

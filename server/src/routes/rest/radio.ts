@@ -12,6 +12,7 @@ import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished } from "../.
 import { getCallInIceServers } from "../../lib/turnCredentials.js";
 import { deleteFromS3 } from "../../lib/s3.js";
 import { PUBLIC_RJ_PROFILE_SELECT } from "../../lib/rjProfile.js";
+import { isCallinAllowedForBroadcast } from "../../lib/callinPolicy.js";
 
 export const radioRestRouter = Router();
 
@@ -647,8 +648,8 @@ radioRestRouter.post("/rj/live/start", requireAuth, async (req: AuthenticatedReq
       if (clash) { res.status(409).json({ error: "Another host is already live on this station" }); return; }
     }
 
-    if (input.callin_enabled && !(await getRadioSettingBool("radio_callin_enabled"))) {
-      res.status(403).json({ error: "Call-in is not enabled on this platform" });
+    if (input.callin_enabled && !(await isCallinAllowedForBroadcast(input.station_id, userId))) {
+      res.status(403).json({ error: "Call-in is not enabled for this station/RJ" });
       return;
     }
 

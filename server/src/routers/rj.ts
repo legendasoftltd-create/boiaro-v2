@@ -12,6 +12,7 @@ import { deleteFromS3 } from "../lib/s3.js";
 import { getCallInIceServers } from "../lib/turnCredentials.js";
 import { PUBLIC_RJ_PROFILE_SELECT } from "../lib/rjProfile.js";
 import { computeRadioAnalytics } from "../lib/radioAnalytics.js";
+import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
   if (userId === session.rj_user_id) return;
@@ -38,13 +39,15 @@ export const rjRouter = router({
     prisma.rjProfile.findUnique({ where: { user_id: ctx.userId } })
   ),
 
-  // Whether the platform-wide call-in toggle (Admin → Radio Safety &
-  // Controls) is on — the Go Live form's call-in switch is only meaningful
-  // to show/enable when this is true, since the start mutation rejects
-  // callinEnabled:true otherwise anyway.
-  callinAvailable: protectedProcedure.query(async () => ({
-    enabled: await getRadioSettingBool("radio_callin_enabled"),
-  })),
+  // Whether call-in can actually be turned on for this broadcast — platform,
+  // station, and RJ gates combined (see lib/callinPolicy.ts). The Go Live
+  // form's call-in switch is only meaningful to show/enable when this is
+  // true, since the start mutation rejects callinEnabled:true otherwise.
+  callinAvailable: protectedProcedure
+    .input(z.object({ stationId: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => ({
+      enabled: await isCallinAllowedForBroadcast(input?.stationId, ctx.userId!),
+    })),
 
   createProfile: protectedProcedure
     .input(z.object({ stageName: z.string().min(1) }))
@@ -417,8 +420,8 @@ export const rjRouter = router({
           if (clash) throw new TRPCError({ code: "CONFLICT", message: "Another host is already live on this station" });
         }
 
-        if (input.callinEnabled && !(await getRadioSettingBool("radio_callin_enabled"))) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Call-in is not enabled on this platform" });
+        if (input.callinEnabled && !(await isCallinAllowedForBroadcast(input.stationId, ctx.userId!))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Call-in is not enabled for this station/RJ" });
         }
 
         const session = await prisma.liveSession.create({
@@ -584,7 +587,7 @@ export const rjRouter = router({
     reportContent: protectedProcedure
       .input(z.object({
         sessionId: z.string(),
-        targetType: z.enum(["chat_message", "song_request"]),
+        targetType: z.enum(["chat_message", "song_request", "call_in"]),
         targetId: z.string(),
         reason: z.string().min(1).max(500),
       }))
