@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { findOrCreateUserByEmail } from "../lib/findOrCreateUser.js";
 import { signTokens } from "../lib/auth.js";
 import { deviceInfoSchema, refreshTokenSchema, signInSchema } from "../schemas/auth.js";
 import {
@@ -191,32 +192,22 @@ export const authRouter = router({
         }
       }
 
-      // ── Find or create user ────────────────────────────────────────────────
-      let user = await prisma.user.findUnique({
-        where: { email },
-        include: { profile: true, roles: true },
-      });
-
-      if (!user) {
-        const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
-        const referral_code = generateReferralCode();
-        user = await prisma.user.create({
-          data: {
-            email,
-            password_hash,
-            email_verified: true,
-            profile: {
-              create: {
-                display_name: displayName || email.split("@")[0],
-                avatar_url: avatarUrl,
-                referral_code,
-              },
-            },
-            roles: { create: { role: "user" } },
+      // ── Find or create user (race-safe — see findOrCreateUser.ts) ───────────
+      const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
+      const referral_code = generateReferralCode();
+      const user = await findOrCreateUserByEmail(email, {
+        email,
+        password_hash,
+        email_verified: true,
+        profile: {
+          create: {
+            display_name: displayName || email.split("@")[0],
+            avatar_url: avatarUrl,
+            referral_code,
           },
-          include: { profile: true, roles: true },
-        });
-      }
+        },
+        roles: { create: { role: "user" } },
+      });
 
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
@@ -267,22 +258,15 @@ export const authRouter = router({
       const email = me.email ? me.email.toLowerCase() : `fb_${me.id}@facebook.com`;
       const avatarUrl = me.picture?.data?.url || null;
 
-      let user = await prisma.user.findUnique({ where: { email }, include: { profile: true, roles: true } });
-
-      if (!user) {
-        const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
-        const referral_code = generateReferralCode();
-        user = await prisma.user.create({
-          data: {
-            email,
-            password_hash,
-            email_verified: true,
-            profile: { create: { display_name: me.name || email.split("@")[0], avatar_url: avatarUrl, referral_code } },
-            roles: { create: { role: "user" } },
-          },
-          include: { profile: true, roles: true },
-        });
-      }
+      const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
+      const referral_code = generateReferralCode();
+      const user = await findOrCreateUserByEmail(email, {
+        email,
+        password_hash,
+        email_verified: true,
+        profile: { create: { display_name: me.name || email.split("@")[0], avatar_url: avatarUrl, referral_code } },
+        roles: { create: { role: "user" } },
+      });
 
       if (user.profile?.deleted_at) throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
       if (user.profile?.is_active === false) throw new TRPCError({ code: "FORBIDDEN", message: "Account deactivated. Contact support." });
@@ -470,26 +454,17 @@ export const authRouter = router({
         }
         user = { id: u.id, email: u.email, roles: u.roles, profile: existingProfile };
       } else {
-        // New user — create account keyed to phone
+        // New user — create account keyed to phone (race-safe — see findOrCreateUser.ts)
         const email = `phone_${phone}@boiaro.local`;
-        const existingByEmail = await prisma.user.findUnique({ where: { email } });
-        if (existingByEmail) {
-          const profile = await prisma.profile.findUnique({ where: { user_id: existingByEmail.id } });
-          user = { id: existingByEmail.id, email: existingByEmail.email, roles: [], profile };
-        } else {
-          const referral_code = generateReferralCode();
-          const newUser = await prisma.user.create({
-            data: {
-              email,
-              password_hash: await bcrypt.hash(crypto.randomUUID(), 12),
-              email_verified: true,
-              profile: { create: { display_name: phone, phone, referral_code } },
-              roles: { create: { role: "user" } },
-            },
-            include: { roles: true, profile: true },
-          });
-          user = { id: newUser.id, email: newUser.email, roles: newUser.roles, profile: newUser.profile };
-        }
+        const referral_code = generateReferralCode();
+        const newUser = await findOrCreateUserByEmail(email, {
+          email,
+          password_hash: await bcrypt.hash(crypto.randomUUID(), 12),
+          email_verified: true,
+          profile: { create: { display_name: phone, phone, referral_code } },
+          roles: { create: { role: "user" } },
+        });
+        user = { id: newUser.id, email: newUser.email, roles: newUser.roles, profile: newUser.profile };
       }
 
       const deviceResult = await resolveDeviceSessionOnLogin(user.id, { ...input, ip: ctx.ip, userAgent: ctx.userAgent });

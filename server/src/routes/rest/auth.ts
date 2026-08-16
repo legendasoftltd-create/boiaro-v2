@@ -15,6 +15,7 @@ import { resolveDeviceSessionOnLogin } from "../../services/deviceSession.servic
 import type { DeviceLoginParams } from "../../services/deviceSession.service.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
+import { findOrCreateUserByEmail } from "../../lib/findOrCreateUser.js";
 import { signTokens, ACCESS_TOKEN_EXPIRES_IN_SECONDS } from "../../lib/auth.js";
 import { sendMail } from "../../lib/mailer.js";
 import { sendOtpSms, normalizeBdPhone } from "../../lib/sms.js";
@@ -380,31 +381,21 @@ async function handleGoogleLogin(req: import("express").Request, res: Response) 
   try {
     const { email, displayName, avatarUrl } = await verifyGoogleToken(req.body ?? {});
 
-    let user = await prisma.user.findUnique({
-      where: { email },
-      include: { profile: true, roles: true },
-    });
-
-    if (!user) {
-      const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
-      const referral_code = generateReferralCode();
-      user = await prisma.user.create({
-        data: {
-          email,
-          password_hash,
-          email_verified: true,
-          profile: {
-            create: {
-              display_name: displayName || email.split("@")[0],
-              avatar_url: avatarUrl,
-              referral_code,
-            },
-          },
-          roles: { create: { role: "user" } },
+    const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
+    const referral_code = generateReferralCode();
+    const user = await findOrCreateUserByEmail(email, {
+      email,
+      password_hash,
+      email_verified: true,
+      profile: {
+        create: {
+          display_name: displayName || email.split("@")[0],
+          avatar_url: avatarUrl,
+          referral_code,
         },
-        include: { profile: true, roles: true },
-      });
-    }
+      },
+      roles: { create: { role: "user" } },
+    });
 
     if (user.profile?.deleted_at) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
@@ -477,31 +468,21 @@ authRestRouter.post("/social/facebook", async (req, res) => {
     const email = me.email ? me.email.toLowerCase() : `fb_${me.id}@facebook.com`;
     const avatarUrl = me.picture?.data?.url || null;
 
-    let user = await prisma.user.findUnique({
-      where: { email },
-      include: { profile: true, roles: true },
-    });
-
-    if (!user) {
-      const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
-      const referral_code = generateReferralCode();
-      user = await prisma.user.create({
-        data: {
-          email,
-          password_hash,
-          email_verified: true,
-          profile: {
-            create: {
-              display_name: me.name || email.split("@")[0],
-              avatar_url: avatarUrl,
-              referral_code,
-            },
-          },
-          roles: { create: { role: "user" } },
+    const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
+    const referral_code = generateReferralCode();
+    const user = await findOrCreateUserByEmail(email, {
+      email,
+      password_hash,
+      email_verified: true,
+      profile: {
+        create: {
+          display_name: me.name || email.split("@")[0],
+          avatar_url: avatarUrl,
+          referral_code,
         },
-        include: { profile: true, roles: true },
-      });
-    }
+      },
+      roles: { create: { role: "user" } },
+    });
 
     if (user.profile?.deleted_at) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
@@ -620,31 +601,21 @@ authRestRouter.post("/facebook", async (req, res) => {
     const email = me.email ? me.email.toLowerCase() : `fb_${me.id}@facebook.com`;
     const avatarUrl = me.picture?.data?.url || null;
 
-    let user = await prisma.user.findUnique({
-      where: { email },
-      include: { profile: true, roles: true },
-    });
-
-    if (!user) {
-      const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
-      const referral_code = generateReferralCode();
-      user = await prisma.user.create({
-        data: {
-          email,
-          password_hash,
-          email_verified: true,
-          profile: {
-            create: {
-              display_name: me.name || email.split("@")[0],
-              avatar_url: avatarUrl,
-              referral_code,
-            },
-          },
-          roles: { create: { role: "user" } },
+    const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
+    const referral_code = generateReferralCode();
+    const user = await findOrCreateUserByEmail(email, {
+      email,
+      password_hash,
+      email_verified: true,
+      profile: {
+        create: {
+          display_name: me.name || email.split("@")[0],
+          avatar_url: avatarUrl,
+          referral_code,
         },
-        include: { profile: true, roles: true },
-      });
-    }
+      },
+      roles: { create: { role: "user" } },
+    });
 
     if (user.profile?.deleted_at) {
       throw new TRPCError({ code: "FORBIDDEN", message: "Account deleted. Contact support." });
@@ -760,20 +731,14 @@ authRestRouter.post("/phone/verify-otp", async (req, res) => {
       userProfile = existingProfile;
     } else {
       const email = `phone_${phone}@boiaro.local`;
-      let u = await prisma.user.findUnique({ where: { email }, include: { roles: true, profile: true } });
-      if (!u) {
-        const referral_code = generateReferralCode();
-        u = await prisma.user.create({
-          data: {
-            email,
-            password_hash: await bcrypt.hash(crypto.randomUUID(), 12),
-            email_verified: true,
-            profile: { create: { display_name: phone, phone, referral_code } },
-            roles: { create: { role: "user" } },
-          },
-          include: { roles: true, profile: true },
-        });
-      }
+      const referral_code = generateReferralCode();
+      const u = await findOrCreateUserByEmail(email, {
+        email,
+        password_hash: await bcrypt.hash(crypto.randomUUID(), 12),
+        email_verified: true,
+        profile: { create: { display_name: phone, phone, referral_code } },
+        roles: { create: { role: "user" } },
+      });
       userId = u.id;
       userEmail = u.email;
       userRoles = u.roles.map((r) => r.role);

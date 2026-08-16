@@ -93,22 +93,42 @@ export async function findOrCreateAppleUser(identity: AppleIdentity, fallbackNam
     }
     const password_hash = await bcrypt.hash(crypto.randomUUID(), 12);
     const referral_code = generateReferralCode();
-    user = await prisma.user.create({
-      data: {
-        email: identity.email,
-        apple_id: identity.providerId,
-        password_hash,
-        email_verified: true,
-        profile: {
-          create: {
-            display_name: fallbackName || identity.email.split("@")[0],
-            referral_code,
+    try {
+      user = await prisma.user.create({
+        data: {
+          email: identity.email,
+          apple_id: identity.providerId,
+          password_hash,
+          email_verified: true,
+          profile: {
+            create: {
+              display_name: fallbackName || identity.email.split("@")[0],
+              referral_code,
+            },
           },
+          roles: { create: { role: "user" } },
         },
-        roles: { create: { role: "user" } },
-      },
-      include: { profile: true, roles: true },
-    });
+        include: { profile: true, roles: true },
+      });
+    } catch (err: any) {
+      // Race: a concurrent request (double-tapped "Sign in with Apple", a
+      // client retry) can also pass the not-found checks above and win the
+      // create — re-fetch instead of crashing with a raw unique-constraint
+      // error (the same bug class fixed for Google/Facebook/phone-OTP in
+      // findOrCreateUser.ts; apple_id isn't a plain email lookup so it's
+      // handled inline here instead of sharing that helper).
+      if (err?.code !== "P2002") throw err;
+      const winner = await prisma.user.findUnique({
+        where: { email: identity.email },
+        include: { profile: true, roles: true },
+      });
+      if (!winner) throw err;
+      user = await prisma.user.update({
+        where: { id: winner.id },
+        data: { apple_id: identity.providerId },
+        include: { profile: true, roles: true },
+      });
+    }
   }
 
   return user;
