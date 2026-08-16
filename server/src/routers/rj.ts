@@ -283,6 +283,56 @@ export const rjRouter = router({
       return updated;
     }),
 
+  // Edit the display metadata of a recording (title/description/cover/URL)
+  // without touching recording_status — distinct from attachRecording,
+  // which force-publishes, and unpublishRecording, which only flips status.
+  updateRecordingDetails: protectedProcedure
+    .input(z.object({
+      sessionId: z.string(),
+      showTitle: z.string().min(1).max(200).optional(),
+      description: z.string().max(2000).nullable().optional(),
+      coverImageUrl: z.string().url().nullable().optional(),
+      recordingUrl: z.string().url().regex(/^https:\/\//i, "Must be an https URL").optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertHostOrModerator(ctx.userId!, session);
+      const updated = await prisma.liveSession.update({
+        where: { id: input.sessionId },
+        data: {
+          ...(input.showTitle !== undefined ? { show_title: input.showTitle } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.coverImageUrl !== undefined ? { cover_image_url: input.coverImageUrl } : {}),
+          ...(input.recordingUrl !== undefined ? { recording_url: input.recordingUrl, recording_source: "manual" } : {}),
+        },
+      });
+      await logRadioAction(ctx.userId!, "recording_details_updated", { sessionId: input.sessionId });
+      return updated;
+    }),
+
+  // Per-recording stats — distinct from the platform-wide aggregate in
+  // radioAnalytics.ts, this is scoped to one session for display on its card.
+  recordingStats: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertHostOrModerator(ctx.userId!, session);
+      const progress = await prisma.catchupProgress.findMany({
+        where: { live_session_id: input.sessionId },
+        select: { completed: true, total_plays: true },
+      });
+      const uniqueListeners = progress.length;
+      const completedCount = progress.filter((p) => p.completed).length;
+      const completionRatePct = uniqueListeners > 0 ? Math.round((completedCount / uniqueListeners) * 100) : 0;
+      return {
+        totalPlays: session.catchup_play_count,
+        uniqueListeners,
+        completionRatePct,
+      };
+    }),
+
   deleteRecording: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ ctx, input }) => {

@@ -27,6 +27,7 @@ export default function RjRecordings() {
   const publishMutation = trpc.rj.publishRecording.useMutation({ onSuccess: () => { invalidate(); toast.success("Published — now live as catch-up audio") }, onError: (e) => toast.error(e.message) })
   const unpublishMutation = trpc.rj.unpublishRecording.useMutation({ onSuccess: () => { invalidate(); toast.success("Unpublished") }, onError: (e) => toast.error(e.message) })
   const deleteMutation = trpc.rj.deleteRecording.useMutation({ onSuccess: () => { invalidate(); toast.success("Deleted") }, onError: (e) => toast.error(e.message) })
+  const saveDetailsMutation = trpc.rj.updateRecordingDetails.useMutation({ onSuccess: () => { invalidate(); toast.success("Saved") }, onError: (e) => toast.error(e.message) })
 
   const anyPending = approveMutation.isPending || rejectMutation.isPending || publishMutation.isPending || unpublishMutation.isPending || deleteMutation.isPending
 
@@ -58,6 +59,9 @@ export default function RjRecordings() {
                 onReject={(reason) => rejectMutation.mutate({ sessionId: s.id, reason })}
                 onPublish={() => publishMutation.mutate({ sessionId: s.id })}
                 onDelete={() => deleteMutation.mutate({ sessionId: s.id })}
+                onSave={(update) => saveDetailsMutation.mutate({ sessionId: s.id, ...update })}
+                isSaving={saveDetailsMutation.isPending}
+                showStats
               />
             ))
           )}
@@ -83,6 +87,9 @@ export default function RjRecordings() {
                 isPending={anyPending}
                 onUnpublish={() => unpublishMutation.mutate({ sessionId: s.id })}
                 onDelete={() => deleteMutation.mutate({ sessionId: s.id })}
+                onSave={(update) => saveDetailsMutation.mutate({ sessionId: s.id, ...update })}
+                isSaving={saveDetailsMutation.isPending}
+                showStats
               />
             ))
           )}
