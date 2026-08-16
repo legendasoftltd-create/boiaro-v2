@@ -109,6 +109,12 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   // (only Safari can). Every other source (audiobook files, direct
   // MP3/AAC/OGG radio streams) still goes through plain audio.src.
   const hlsRef = useRef<Hls | null>(null)
+  // Auto-reconnect attempt count for a dropped LIVE radio stream — reset to
+  // 0 whenever playback actually recovers. Deliberately not used for
+  // regular book/audiobook files: a permanently corrupt file should surface
+  // its error immediately, not retry forever.
+  const radioReconnectAttemptsRef = useRef(0)
+  const radioReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // Elapsed-since-open timer for the current book's listening session — the
   // backend uses this to credit goal minutes on the very first periodic
@@ -396,6 +402,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
     audio.addEventListener("canplay", () => {
       setState((prev) => ({ ...prev, isLoading: false }))
+      radioReconnectAttemptsRef.current = 0
     })
 
     audio.addEventListener("play", () => {
@@ -467,8 +474,32 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       })
 
       recordPlaybackError()
+
+      // Live radio streams drop and recover on their own (RJ reconnects,
+      // network blip, etc.) — retry a few times with backoff instead of
+      // dead-ending on the first error like a genuinely corrupt file would.
+      // catchup-*/regular book ids are excluded on purpose: an audiobook
+      // file that fails to load is actually broken, not "temporarily offline".
+      const bookId = stateRef.current.book?.id
+      const isLiveRadio = bookId?.startsWith("radio-")
+      if (isLiveRadio && radioReconnectAttemptsRef.current < 5) {
+        const attempt = radioReconnectAttemptsRef.current + 1
+        radioReconnectAttemptsRef.current = attempt
+        const delay = Math.min(2000 * attempt, 15000)
+        setState((prev) => ({ ...prev, isLoading: true }))
+        if (radioReconnectTimerRef.current) clearTimeout(radioReconnectTimerRef.current)
+        radioReconnectTimerRef.current = setTimeout(() => {
+          const src = audio.currentSrc
+          if (!src || stateRef.current.book?.id !== bookId) return // switched away, don't resurrect
+          audio.src = src
+          audio.load()
+          audio.play().catch(() => {})
+        }, delay)
+        return
+      }
+
       setState((prev) => ({ ...prev, isPlaying: false, isLoading: false, error: errorMsg }))
-      toast.error(errorMsg)
+      toast.error(isLiveRadio ? "স্ট্রিম সংযোগ বিচ্ছিন্ন — আবার চেষ্টা করতে প্লে চাপুন" : errorMsg)
 
       /**
        * CRITICAL: If audio fails to load and user does NOT have full access,
@@ -489,6 +520,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       audio.src = ""
       hlsRef.current?.destroy()
       hlsRef.current = null
+      if (radioReconnectTimerRef.current) clearTimeout(radioReconnectTimerRef.current)
     }
   }, [])
 
@@ -627,6 +659,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
     hlsRef.current?.destroy()
     hlsRef.current = null
+    radioReconnectAttemptsRef.current = 0
+    if (radioReconnectTimerRef.current) { clearTimeout(radioReconnectTimerRef.current); radioReconnectTimerRef.current = null }
 
     prevTrackKeyRef.current = null
 

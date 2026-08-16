@@ -16,7 +16,7 @@ import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
-import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2, MoreVertical, VolumeX, Ban, Flag, ShieldOff, ChevronUp, ChevronDown } from "lucide-react"
+import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2, MoreVertical, VolumeX, Ban, Flag, ShieldOff, ChevronUp, ChevronDown, Share2, Clock, WifiOff } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -66,7 +66,7 @@ export default function LiveShow() {
             </div>
           </div>
         ) : (
-          <LiveShowRoom sessionId={session.id} showTitle={session.show_title} rjName={session.rj_profile?.stage_name} rjUserId={session.rj_user_id} isHost={isHost} callinEnabled={!!session.callin_enabled} streamUrl={session.stream_url} artworkUrl={session.rj_profile?.avatar_url} />
+          <LiveShowRoom sessionId={session.id} showTitle={session.show_title} rjName={session.rj_profile?.stage_name} rjUserId={session.rj_user_id} isHost={isHost} callinEnabled={!!session.callin_enabled} streamUrl={session.stream_url} artworkUrl={session.rj_profile?.avatar_url} status={session.status} startedAt={session.started_at} />
         )}
       </main>
       <Footer />
@@ -74,7 +74,7 @@ export default function LiveShow() {
   )
 }
 
-function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEnabled, streamUrl, artworkUrl }: { sessionId: string; showTitle: string | null; rjName?: string; rjUserId: string; isHost: boolean; callinEnabled: boolean; streamUrl?: string | null; artworkUrl?: string | null }) {
+function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEnabled, streamUrl, artworkUrl, status, startedAt }: { sessionId: string; showTitle: string | null; rjName?: string; rjUserId: string; isHost: boolean; callinEnabled: boolean; streamUrl?: string | null; artworkUrl?: string | null; status: string; startedAt: string }) {
   const { user } = useAuth()
   const { hasRole } = useUserRole()
   // The backend's assertHostOrModerator already grants admins/moderators the
@@ -239,18 +239,49 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
     toast.success("অনুরোধ পাঠানো হয়েছে!")
   }
 
+  const isReconnecting = status === "reconnecting"
+
+  const [elapsedLabel, setElapsedLabel] = useState("")
+  useEffect(() => {
+    if (!startedAt) return
+    const start = new Date(startedAt).getTime()
+    const tick = () => {
+      const secs = Math.max(0, Math.floor((Date.now() - start) / 1000))
+      const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60
+      setElapsedLabel(h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`)
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startedAt])
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/live/${sessionId}`
+    if (navigator.share) {
+      try { await navigator.share({ title: showTitle || "BoiAro On Air", url }); return } catch { /* cancelled — fall through to copy */ }
+    }
+    await navigator.clipboard.writeText(url)
+    toast.success("লিংক কপি হয়েছে")
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h1 className="text-xl font-serif font-bold flex items-center gap-2">
-            <Mic className="w-5 h-5 text-destructive" /> {showTitle || "লাইভ শো"}
-          </h1>
-          {rjName && (
-            <p className="text-sm text-muted-foreground">
-              <Link to={`/host/${rjUserId}`} className="hover:text-foreground hover:underline">{rjName}</Link> সঞ্চালনা করছেন
-            </p>
+        <div className="flex items-center gap-3">
+          {artworkUrl && (
+            <img src={toMediaUrl(artworkUrl) || undefined} alt="" className="w-11 h-11 rounded-full object-cover ring-1 ring-border/30 shrink-0" />
           )}
+          <div>
+            <h1 className="text-xl font-serif font-bold flex items-center gap-2">
+              <Mic className="w-5 h-5 text-destructive" /> {showTitle || "লাইভ শো"}
+            </h1>
+            {rjName && (
+              <p className="text-sm text-muted-foreground">
+                <Link to={`/host/${rjUserId}`} className="hover:text-foreground hover:underline">{rjName}</Link> সঞ্চালনা করছেন
+                {elapsedLabel && <span className="ml-2 inline-flex items-center gap-1 text-xs"><Clock className="w-3 h-3" /> {elapsedLabel}</span>}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {!isHost && (
@@ -275,8 +306,16 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
             <Users className="w-3.5 h-3.5" /> {listenerCount} জন শুনছেন
             {!connected && <span className="text-[10px] text-muted-foreground">(সংযুক্ত হচ্ছে...)</span>}
           </Badge>
+          <Button size="icon" variant="ghost" onClick={handleShare} title="শেয়ার করুন">
+            <Share2 className="w-4 h-4" />
+          </Button>
         </div>
       </div>
+      {isReconnecting && (
+        <p className="text-xs text-amber-500 flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+          <WifiOff className="w-3.5 h-3.5 shrink-0" /> সাময়িকভাবে সংযোগ বিচ্ছিন্ন — RJ পুনরায় সংযুক্ত হওয়ার চেষ্টা করছেন, শো এখনও চলছে
+        </p>
+      )}
       {!isHost && streamStatus === "error" && (
         <p className="text-xs text-destructive flex items-center gap-1.5">
           <Volume2 className="w-3.5 h-3.5" /> স্ট্রিম লোড করা যায়নি — আবার চেষ্টা করুন

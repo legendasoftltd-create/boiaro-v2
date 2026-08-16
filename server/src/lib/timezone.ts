@@ -22,8 +22,8 @@ export function dhakaWallClock(ref: Date = new Date()): Date {
   return toDhakaShifted(ref);
 }
 
-/** Converts a "Dhaka wall-clock" Date (as produced via Date.UTC) back to a real UTC instant. */
-function fromDhakaShifted(date: Date): Date {
+/** Converts a "Dhaka wall-clock" Date (as produced via Date.UTC, or from dhakaWallClock's shifted space) back to a real UTC instant. */
+export function fromDhakaShifted(date: Date): Date {
   return new Date(date.getTime() - DHAKA_OFFSET_MS);
 }
 

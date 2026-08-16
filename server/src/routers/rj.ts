@@ -13,6 +13,7 @@ import { getCallInIceServers } from "../lib/turnCredentials.js";
 import { PUBLIC_RJ_PROFILE_SELECT } from "../lib/rjProfile.js";
 import { computeRadioAnalytics } from "../lib/radioAnalytics.js";
 import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
+import { dhakaWallClock, fromDhakaShifted } from "../lib/timezone.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
   if (userId === session.rj_user_id) return;
@@ -355,6 +356,51 @@ export const rjRouter = router({
         if (!session || session.is_test) return null;
         const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id }, select: PUBLIC_RJ_PROFILE_SELECT });
         return { ...session, rj_profile: rjProfile };
+      }),
+
+    // Soonest upcoming show on a station — combines one-time and recurring
+    // schedules, computed in Dhaka wall-clock (see lib/timezone.ts) so it
+    // doesn't depend on the server process's own OS timezone. Used by the
+    // homepage/live-room "next show" display when nobody's currently live.
+    nextShowForStation: publicProcedure
+      .input(z.object({ stationId: z.string() }))
+      .query(async ({ input }) => {
+        const schedules = await prisma.showSchedule.findMany({
+          where: { station_id: input.stationId, is_active: true, status: "active" },
+        });
+        if (!schedules.length) return null;
+
+        const dhakaNow = dhakaWallClock();
+        let best: { schedule: (typeof schedules)[number]; atDhaka: Date } | null = null;
+
+        for (const s of schedules) {
+          const [h, m] = s.start_time.split(":").map(Number);
+          if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
+
+          let atDhaka: Date;
+          if (s.schedule_type === "one_time" && s.specific_date) {
+            // specific_date is stored as UTC midnight representing the
+            // intended Dhaka calendar date (see AdminRadioSchedule.tsx) —
+            // safe to read its UTC fields directly as the Dhaka date.
+            atDhaka = new Date(Date.UTC(s.specific_date.getUTCFullYear(), s.specific_date.getUTCMonth(), s.specific_date.getUTCDate(), h, m, 0, 0));
+          } else {
+            const daysAhead = (s.day_of_week - dhakaNow.getUTCDay() + 7) % 7;
+            atDhaka = new Date(dhakaNow);
+            atDhaka.setUTCDate(dhakaNow.getUTCDate() + daysAhead);
+            atDhaka.setUTCHours(h, m, 0, 0);
+            if (atDhaka.getTime() <= dhakaNow.getTime()) atDhaka.setUTCDate(atDhaka.getUTCDate() + 7);
+          }
+          if (atDhaka.getTime() <= dhakaNow.getTime()) continue; // one_time already passed
+          if (!best || atDhaka.getTime() < best.atDhaka.getTime()) best = { schedule: s, atDhaka };
+        }
+        if (!best) return null;
+
+        const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: best.schedule.rj_user_id }, select: PUBLIC_RJ_PROFILE_SELECT });
+        return {
+          ...best.schedule,
+          next_occurrence_at: fromDhakaShifted(best.atDhaka),
+          rj_profile: rjProfile,
+        };
       }),
 
     // The host's own private test broadcast, if one is running — not visible
