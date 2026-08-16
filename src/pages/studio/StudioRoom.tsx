@@ -9,6 +9,7 @@ import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, PhoneCall,
 import { toast } from "sonner"
 import { useStudioRoom } from "@/hooks/useStudioRoom"
 import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl, useMyStudioSessions } from "@/hooks/useStudioSession"
+import { useLiveSessionById } from "@/hooks/useLiveSession"
 import { useRadioStations } from "@/hooks/useRadioStation"
 import { useLiveSocket } from "@/hooks/useLiveSocket"
 import { useCallInBridge } from "@/hooks/useCallInBridge"
@@ -67,6 +68,12 @@ export default function StudioRoom() {
   // rather than only reaching a private RJ<->caller preview channel.
   const { getSocket: getCallInSocket } = useLiveSocket(isLive ? liveSessionId ?? undefined : undefined)
   const { setCallerStream } = useCallInBridge(room.getRoom)
+  // Reads callin_enabled from the server rather than the local
+  // broadcastSettings form state, which defaults to false and — like the
+  // rest of this component's local state — doesn't survive a page refresh
+  // mid-broadcast.
+  const { session: liveSessionRecord } = useLiveSessionById(liveSessionId ?? undefined)
+  const callInFeatureEnabled = !!liveSessionRecord?.callin_enabled
 
   // Restores isLive/liveSessionId from the server on mount (and after a
   // refresh mid-broadcast, which previously lost this state entirely and —
@@ -300,7 +307,7 @@ export default function StudioRoom() {
                   </Button>
                 )}
 
-                {isLive && liveSessionId && broadcastSettings.callinEnabled && (canControlBroadcast || isModerator) && (
+                {isLive && liveSessionId && callInFeatureEnabled && (canControlBroadcast || isModerator) && (
                   <Button size="sm" variant={callInOpen ? "default" : "outline"} onClick={() => setCallInOpen((v) => !v)} className="gap-1.5">
                     <PhoneCall className="w-3.5 h-3.5" /> Call-in
                   </Button>
@@ -323,7 +330,7 @@ export default function StudioRoom() {
                 <StudioVoicePanel voiceProcessor={room.voiceProcessor} />
               )}
 
-              {callInOpen && isLive && liveSessionId && broadcastSettings.callinEnabled && (canControlBroadcast || isModerator) && user && (
+              {callInOpen && isLive && liveSessionId && callInFeatureEnabled && (canControlBroadcast || isModerator) && user && (
                 <CallInPanel
                   sessionId={liveSessionId}
                   isHost
