@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc"
 import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { toast } from "sonner"
 import type { MediaType } from "@/lib/audioValidation"
+import { BackgroundAudio, isNativeAudioSupported } from "@/native/backgroundAudio"
 
 export interface AudioTrack {
   id: string
@@ -524,6 +525,32 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Network-change reconnect for live radio — a wifi/cellular handoff or a
+  // brief connectivity drop often leaves the stream in the same dead state
+  // the backoff retries above already handle, but this fires immediately on
+  // reconnection instead of waiting out whatever backoff delay was in
+  // flight (or, if retries had already been exhausted and the stream gave
+  // up, this gives it one more shot without the listener having to press
+  // play themselves). Scoped to live radio only, same as the retry logic
+  // above — a genuinely broken book/audiobook file should stay failed.
+  useEffect(() => {
+    const handleOnline = () => {
+      const audio = audioRef.current
+      const bookId = stateRef.current.book?.id
+      if (!audio || !bookId?.startsWith("radio-")) return
+      const src = audio.currentSrc
+      if (!src) return
+      radioReconnectAttemptsRef.current = 0
+      if (radioReconnectTimerRef.current) { clearTimeout(radioReconnectTimerRef.current); radioReconnectTimerRef.current = null }
+      setState((prev) => ({ ...prev, isLoading: true, error: null }))
+      audio.src = src
+      audio.load()
+      audio.play().catch(() => {})
+    }
+    window.addEventListener("online", handleOnline)
+    return () => window.removeEventListener("online", handleOnline)
+  }, [])
+
   // TIGHT CHAPTER-LOCK ENFORCEMENT: 200ms interval catches any path that starts
   // playing a chapter that requires coin/taka unlock before it loads.
   useEffect(() => {
@@ -946,6 +973,39 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
       navigator.mediaSession.playbackState = "paused"
     }
   }, [state.isPlaying, state.book, state.currentTrackIndex, state.tracks])
+
+  // Native background playback + lock-screen controls (Android — see
+  // src/native/backgroundAudio.ts). A no-op on web/iOS. Mirrors the same
+  // title/artist the web Media Session block above already computes, kept
+  // as a separate effect so a native-bridge failure can never affect the
+  // web Media Session path.
+  useEffect(() => {
+    if (!isNativeAudioSupported || !state.book) return
+    const title = state.tracks[state.currentTrackIndex]?.title || state.book.title
+    const artist = state.book.author?.name || "Unknown"
+    if (state.isPlaying) {
+      BackgroundAudio.start({ title, artist, isPlaying: true }).catch(() => {})
+    } else if (state.tracks.length > 0) {
+      BackgroundAudio.updatePlaybackState({ isPlaying: false }).catch(() => {})
+    }
+  }, [state.isPlaying, state.book, state.currentTrackIndex, state.tracks])
+
+  // Relays native transport events (lock screen / notification / Bluetooth
+  // tap, or an incoming-call audio-focus loss) back into the real <audio>
+  // element — registered once, reads current play/pause via refs so it
+  // never needs to re-subscribe.
+  useEffect(() => {
+    if (!isNativeAudioSupported) return
+    const playListener = BackgroundAudio.addListener("play", () => play())
+    const pauseListener = BackgroundAudio.addListener("pause", () => pause())
+    const stopListener = BackgroundAudio.addListener("stop", () => pause())
+    return () => {
+      playListener.then((h) => h.remove())
+      pauseListener.then((h) => h.remove())
+      stopListener.then((h) => h.remove())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!("mediaSession" in navigator)) return
