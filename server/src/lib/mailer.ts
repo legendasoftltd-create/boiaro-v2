@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { prisma } from "./prisma.js";
+import { decryptSecret } from "./secretEncryption.js";
 
 const BASE_HTML = (body: string) => `
 <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#1a1a2e">
@@ -35,7 +36,7 @@ async function getSmtpConfig(): Promise<SmtpConfig | null> {
     port: parseInt(map.smtp_port || "587", 10),
     secure: map.smtp_secure === "true",
     user: map.smtp_user,
-    pass: map.smtp_pass,
+    pass: decryptSecret(map.smtp_pass),
     fromEmail: map.smtp_from_email || map.smtp_user,
     fromName: map.smtp_from_name || "BoiAro",
   };

@@ -1,5 +1,6 @@
 import admin from "firebase-admin";
 import { prisma } from "./prisma.js";
+import { decryptSecret } from "./secretEncryption.js";
 
 // ─── Cached app state ────────────────────────────────────────────────────────
 let cachedApp: admin.app.App | null = null;
@@ -11,7 +12,7 @@ async function getServiceAccountJson(): Promise<string | null> {
     const row = await prisma.platformSetting.findUnique({
       where: { key: "firebase_service_account_json" },
     });
-    if (row?.value) return row.value;
+    if (row?.value) return decryptSecret(row.value);
   } catch {
     // DB unavailable — fall through to env
   }

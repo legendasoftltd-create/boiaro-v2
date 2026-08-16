@@ -7,6 +7,7 @@ import { prisma } from "./prisma.js";
 import { uploadWithFallback } from "./s3.js";
 import { logRadioAction } from "./radioAudit.js";
 import { getRadioSettingBool } from "./radioSettings.js";
+import { isRecordingStorageBudgetAvailable } from "./radioCostControl.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,7 +17,13 @@ export async function shouldAutoRecord(stationId: string | null | undefined, ses
   if (!(await getRadioSettingBool("radio_recording_enabled"))) return false;
   if (!stationId) return false;
   const station = await prisma.radioStation.findUnique({ where: { id: stationId }, select: { auto_recording_enabled: true } });
-  return !!station?.auto_recording_enabled;
+  if (!station?.auto_recording_enabled) return false;
+  // Storage costs real money — once an admin-set limit is reached, new
+  // automatic captures are silently skipped (not an error the broadcast
+  // itself should fail over) rather than growing storage unbounded. The RJ
+  // can still manually attach a recording later if space is freed up.
+  if (!(await isRecordingStorageBudgetAvailable())) return false;
+  return true;
 }
 
 // Never held on local disk long-term — this is a scratch directory the

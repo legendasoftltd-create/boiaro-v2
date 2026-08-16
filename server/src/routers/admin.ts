@@ -24,6 +24,9 @@ import { getMonthlyLeaderboard, recalculateMonth, upsertPrizeConfig, type Leader
 import { getGaRealtimeReport } from "../lib/gaRealtime.js";
 import { syncStationMountsWithBridge } from "../lib/studioBridge.js";
 import { computeRadioAnalytics, computeRadioAnalyticsSeries } from "../lib/radioAnalytics.js";
+import { getRecordingStorageUsedGb, getEstimatedBandwidthGb30d } from "../lib/radioCostControl.js";
+import { getStreamHealthForSessions } from "../lib/streamHealth.js";
+import { encryptSecret, decryptSecret } from "../lib/secretEncryption.js";
 import os from "os";
 import fs from "fs";
 
@@ -2757,7 +2760,7 @@ export const adminRouter = router({
     .mutation(async ({ input }) => {
       const pairs = Object.entries(input)
         .filter(([, v]) => v !== undefined && v !== "")
-        .map(([key, value]) => ({ key, value: value as string }));
+        .map(([key, value]) => ({ key, value: key === "smtp_pass" ? encryptSecret(value as string) : (value as string) }));
       await Promise.all(
         pairs.map((s) =>
           prisma.platformSetting.upsert({
@@ -2790,7 +2793,7 @@ export const adminRouter = router({
     const rows = await prisma.platformSetting.findMany({ where: { key: { in: keys } } });
     const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
     return {
-      service_account_json: map["firebase_service_account_json"] ?? "",
+      service_account_json: decryptSecret(map["firebase_service_account_json"]),
       push_enabled: map["firebase_push_enabled"] !== "false",
       web_api_key: map["firebase_web_api_key"] ?? "",
       web_auth_domain: map["firebase_web_auth_domain"] ?? "",
@@ -2818,7 +2821,7 @@ export const adminRouter = router({
     )
     .mutation(async ({ input }) => {
       const entries: [string, string][] = [
-        ["firebase_service_account_json", input.service_account_json],
+        ["firebase_service_account_json", encryptSecret(input.service_account_json)],
         ["firebase_push_enabled", String(input.push_enabled)],
         ["firebase_web_api_key", input.web_api_key ?? ""],
         ["firebase_web_auth_domain", input.web_auth_domain ?? ""],
@@ -6424,6 +6427,32 @@ export const adminRouter = router({
       })
     ),
 
+  // Every currently-live (or reconnecting) session with its real Icecast-
+  // level stream health — batched into one query rather than N, for the
+  // "Live Now" monitoring view. Distinct from `status` (RJ heartbeat only,
+  // doesn't confirm the stream itself is actually reachable).
+  liveSessionsHealth: adminProcedure.query(async () => {
+    const sessions = await prisma.liveSession.findMany({
+      where: { status: { in: ["live", "reconnecting"] }, is_test: false },
+      select: { id: true, show_title: true, rj_user_id: true, status: true, started_at: true, station_id: true },
+      orderBy: { started_at: "asc" },
+    });
+    if (!sessions.length) return [];
+    const [healthMap, rjProfiles, stations] = await Promise.all([
+      getStreamHealthForSessions(sessions.map((s) => s.id)),
+      prisma.rjProfile.findMany({ where: { user_id: { in: [...new Set(sessions.map((s) => s.rj_user_id))] } }, select: { user_id: true, stage_name: true } }),
+      prisma.radioStation.findMany({ where: { id: { in: sessions.map((s) => s.station_id).filter((v): v is string => !!v) } }, select: { id: true, name: true } }),
+    ]);
+    const nameMap = new Map(rjProfiles.map((p) => [p.user_id, p.stage_name]));
+    const stationMap = new Map(stations.map((s) => [s.id, s.name]));
+    return sessions.map((s) => ({
+      ...s,
+      rj_stage_name: nameMap.get(s.rj_user_id) ?? null,
+      station_name: s.station_id ? (stationMap.get(s.station_id) ?? null) : null,
+      streamHealth: healthMap.get(s.id) ?? "unknown",
+    }));
+  }),
+
   // ── Server cost monitoring ──────────────────────────────────────────────
   // Scoped to what this single Node process can actually observe — no
   // external monitoring agent. Bandwidth is an estimate (bitrate × listener
@@ -6450,30 +6479,19 @@ export const adminRouter = router({
 
     // Storage usage — sum of every recording's captured/uploaded file size.
     // Draft/rejected count toward usage too (they're still occupying real
-    // storage until reviewed or auto-deleted by the retention job).
-    const [storageAgg, storageLimitGb, bandwidthLimitGb, bitrateKbps, costPerGb, monthListenerSeconds] = await Promise.all([
-      prisma.liveSession.aggregate({ _sum: { recording_file_size_bytes: true } }),
+    // storage until reviewed or auto-deleted by the retention job). Shares
+    // its computation with radioCostControl.ts, which is what actually
+    // enforces these limits (blocking new recordings/broadcasts) — this
+    // query only displays the same numbers, so the alert here and the real
+    // gate elsewhere can never drift apart.
+    const [storageUsedGb, storageLimitGb, estimatedBandwidthGb30d, bandwidthLimitGb, costPerGb] = await Promise.all([
+      getRecordingStorageUsedGb(),
       getRadioSettingNumber("radio_recording_storage_limit_gb"),
+      getEstimatedBandwidthGb30d(),
       getRadioSettingNumber("radio_monthly_bandwidth_limit_gb"),
-      getRadioSettingNumber("radio_estimated_bitrate_kbps"),
       getRadioSettingNumber("radio_estimated_cost_per_gb"),
-      // Listener-seconds over the last 30 days — summed in JS since duration
-      // (left_at - joined_at) isn't something Prisma's query builder can
-      // aggregate directly in Postgres.
-      prisma.listenerSession
-        .findMany({
-          where: { joined_at: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
-          select: { joined_at: true, left_at: true },
-        })
-        .then((rows) => {
-          const now = Date.now();
-          return rows.reduce((sum, r) => sum + Math.max(0, ((r.left_at?.getTime() ?? now) - r.joined_at.getTime()) / 1000), 0);
-        }),
     ]);
 
-    const storageUsedGb = (storageAgg._sum.recording_file_size_bytes ?? 0) / (1024 ** 3);
-    const bitrate = bitrateKbps ?? 128;
-    const estimatedBandwidthGb30d = (monthListenerSeconds * bitrate * 1000) / 8 / (1024 ** 3);
     const estimatedMonthlyCost = costPerGb ? estimatedBandwidthGb30d * costPerGb : null;
 
     const alertThresholds = [70, 85, 95];
@@ -6766,9 +6784,12 @@ export const adminRouter = router({
     return { configured };
   }),
 
-  listSmsSids: adminProcedure.query(() =>
-    prisma.smsSid.findMany({ orderBy: { created_at: "asc" } })
-  ),
+  listSmsSids: adminProcedure.query(async () => {
+    const rows = await prisma.smsSid.findMany({ orderBy: { created_at: "asc" } });
+    // Decrypted for the admin edit form — same convention as
+    // getFirebaseSettings, since these fields round-trip through the UI.
+    return rows.map((r) => ({ ...r, api_token: decryptSecret(r.api_token), otp_secret: r.otp_secret ? decryptSecret(r.otp_secret) : r.otp_secret }));
+  }),
 
   createSmsSid: adminProcedure
     .input(z.object({
@@ -6787,8 +6808,8 @@ export const adminRouter = router({
         data: {
           label: input.label,
           sid: input.sid,
-          api_token: input.api_token,
-          otp_secret: input.otp_secret ?? null,
+          api_token: encryptSecret(input.api_token),
+          otp_secret: input.otp_secret ? encryptSecret(input.otp_secret) : null,
           is_default: input.is_default,
           is_active: input.is_active,
         },
@@ -6814,8 +6835,8 @@ export const adminRouter = router({
         data: {
           ...(input.label !== undefined && { label: input.label }),
           ...(input.sid !== undefined && { sid: input.sid }),
-          ...(input.api_token !== undefined && { api_token: input.api_token }),
-          ...(input.otp_secret !== undefined && { otp_secret: input.otp_secret }),
+          ...(input.api_token !== undefined && { api_token: encryptSecret(input.api_token) }),
+          ...(input.otp_secret !== undefined && { otp_secret: input.otp_secret ? encryptSecret(input.otp_secret) : input.otp_secret }),
           ...(input.is_default !== undefined && { is_default: input.is_default }),
           ...(input.is_active !== undefined && { is_active: input.is_active }),
         },

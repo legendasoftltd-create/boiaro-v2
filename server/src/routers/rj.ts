@@ -13,6 +13,8 @@ import { getCallInIceServers } from "../lib/turnCredentials.js";
 import { PUBLIC_RJ_PROFILE_SELECT } from "../lib/rjProfile.js";
 import { computeRadioAnalytics, computeRadioAnalyticsSeries } from "../lib/radioAnalytics.js";
 import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
+import { isRecordingStorageBudgetAvailable, isBandwidthBudgetAvailable } from "../lib/radioCostControl.js";
+import { getStreamHealth } from "../lib/streamHealth.js";
 import { dhakaWallClock, fromDhakaShifted } from "../lib/timezone.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
@@ -212,6 +214,9 @@ export const rjRouter = router({
       const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
       if (!session) throw new TRPCError({ code: "NOT_FOUND" });
       await assertHostOrModerator(ctx.userId!, session);
+      if (!(await isRecordingStorageBudgetAvailable())) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Recording storage limit reached — ask an admin to raise the limit or free up space before attaching more recordings." });
+      }
       const updated = await prisma.liveSession.update({
         where: { id: input.sessionId },
         data: {
@@ -306,6 +311,9 @@ export const rjRouter = router({
       const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
       if (!session) throw new TRPCError({ code: "NOT_FOUND" });
       await assertHostOrModerator(ctx.userId!, session);
+      if (input.recordingUrl !== undefined && !(await isRecordingStorageBudgetAvailable())) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Recording storage limit reached — ask an admin to raise the limit or free up space before uploading a replacement file." });
+      }
       const updated = await prisma.liveSession.update({
         where: { id: input.sessionId },
         data: {
@@ -551,6 +559,10 @@ export const rjRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "Call-in is not enabled for this station/RJ" });
         }
 
+        if (!input.isTest && !(await isBandwidthBudgetAvailable())) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "This month's bandwidth budget has been reached — new broadcasts are paused until next month or an admin raises the limit." });
+        }
+
         const session = await prisma.liveSession.create({
           data: {
             rj_user_id: ctx.userId,
@@ -657,6 +669,14 @@ export const rjRouter = router({
     listenerCount: publicProcedure
       .input(z.object({ sessionId: z.string() }))
       .query(({ input }) => ({ sessionId: input.sessionId, count: getListenerCount(input.sessionId) })),
+
+    // Real Icecast-level health (source actually reachable), distinct from
+    // listenerCount above (Socket.IO chat participants) and from the
+    // session's own status field (which only reflects the RJ's heartbeat,
+    // not whether the stream itself is actually serving audio).
+    streamHealth: publicProcedure
+      .input(z.object({ sessionId: z.string() }))
+      .query(({ input }) => getStreamHealth(input.sessionId)),
 
     // ── Moderation ─────────────────────────────────────────────────────────
     mutedUsers: protectedProcedure

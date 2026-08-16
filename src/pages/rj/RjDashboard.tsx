@@ -143,6 +143,10 @@ export default function RjDashboard() {
 
   const isLive = liveSession?.status === "live" || liveSession?.status === "reconnecting"
   const isReconnecting = liveSession?.status === "reconnecting"
+  const { data: streamHealth } = trpc.rj.liveSession.streamHealth.useQuery(
+    { sessionId: liveSession?.id ?? "" },
+    { enabled: isLive && !!liveSession?.id, refetchInterval: 20_000 }
+  )
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -266,6 +270,15 @@ export default function RjDashboard() {
               <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3 space-y-1">
                 <p><strong>Stream URL:</strong> {liveSession.stream_url}</p>
               </div>
+
+              {(streamHealth === "down" || streamHealth === "degraded") && (
+                <div className="flex items-center gap-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  {streamHealth === "down"
+                    ? "Your stream isn't reaching the server — listeners may not be able to hear you. Check your encoder/connection."
+                    : "Your stream connection looks unstable — some listeners may be dropping in and out."}
+                </div>
+              )}
 
               {!liveSession.is_test && (
                 <Button asChild variant="outline" className="w-full gap-2">

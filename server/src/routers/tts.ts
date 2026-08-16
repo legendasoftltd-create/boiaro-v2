@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { uploadWithFallback } from "../lib/s3.js";
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import crypto from "crypto";
+import { encryptSecret, decryptSecret } from "../lib/secretEncryption.js";
 
 const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const role = await prisma.userRole.findFirst({
@@ -23,7 +24,7 @@ async function getElevenLabsKey(): Promise<string | undefined> {
     return _apiKeyCache.value ?? process.env.ELEVENLABS_API_KEY;
   }
   const row = await prisma.platformSetting.findUnique({ where: { key: API_KEY_SETTING_KEY } });
-  const dbKey = row?.value?.trim() || null;
+  const dbKey = decryptSecret(row?.value).trim() || null;
   _apiKeyCache = { value: dbKey, expiresAt: Date.now() + 5 * 60_000 };
   return dbKey ?? process.env.ELEVENLABS_API_KEY;
 }
@@ -710,10 +711,11 @@ export const ttsRouter = router({
   adminSaveApiKey: adminProcedure
     .input(z.object({ apiKey: z.string().min(1) }))
     .mutation(async ({ input }) => {
+      const encrypted = encryptSecret(input.apiKey.trim());
       await prisma.platformSetting.upsert({
         where:  { key: API_KEY_SETTING_KEY },
-        update: { value: input.apiKey.trim() },
-        create: { key: API_KEY_SETTING_KEY, value: input.apiKey.trim() },
+        update: { value: encrypted },
+        create: { key: API_KEY_SETTING_KEY, value: encrypted },
       });
       invalidateApiKeyCache();
       return { success: true };

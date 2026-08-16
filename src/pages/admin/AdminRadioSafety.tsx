@@ -31,10 +31,18 @@ function metricColor(pct: number) {
   return "text-emerald-500"
 }
 
+const STREAM_HEALTH_BADGE: Record<string, { label: string; className: string }> = {
+  healthy: { label: "Healthy", className: "bg-emerald-500/15 text-emerald-400" },
+  degraded: { label: "Degraded", className: "bg-amber-500/15 text-amber-400" },
+  down: { label: "Down", className: "bg-destructive/15 text-destructive" },
+  unknown: { label: "Checking…", className: "bg-muted text-muted-foreground" },
+}
+
 function AdminRadioSafetyHealth() {
   const { data, isLoading, refetch, dataUpdatedAt } = trpc.admin.serverMetrics.useQuery(undefined, {
     refetchInterval: 15_000,
   })
+  const { data: liveSessions = [] } = trpc.admin.liveSessionsHealth.useQuery(undefined, { refetchInterval: 15_000 })
 
   if (isLoading) {
     return <div className="flex items-center gap-2 text-muted-foreground text-sm py-10 justify-center"><RefreshCw className="w-4 h-4 animate-spin" /> Loading...</div>
@@ -48,6 +56,32 @@ function AdminRadioSafetyHealth() {
         </p>
         <Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="w-3.5 h-3.5 mr-1" /> Refresh</Button>
       </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Radio className="w-4 h-4" /> Live Now ({liveSessions.length})</CardTitle></CardHeader>
+        <CardContent>
+          {liveSessions.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing live right now.</p>
+          ) : (
+            <div className="space-y-2">
+              {liveSessions.map((s: any) => {
+                const badge = STREAM_HEALTH_BADGE[s.streamHealth] ?? STREAM_HEALTH_BADGE.unknown
+                return (
+                  <div key={s.id} className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-muted/30 border border-border/30">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{s.show_title || "Untitled Show"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {s.rj_stage_name ?? "Unknown RJ"}{s.station_name ? ` · ${s.station_name}` : ""} · since {new Date(s.started_at).toLocaleTimeString()}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className={`shrink-0 ${badge.className}`}>{badge.label}</Badge>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {(data?.alerts?.length ?? 0) > 0 && (
         <Card className="border-destructive/30 bg-destructive/5">

@@ -2506,6 +2506,11 @@ model IcecastListenerSample {
   id              String   @id @default(uuid())
   live_session_id String?
   listener_count  Int
+  // Whether this session's mount was actually found in Icecast's own
+  // status-json.xsl response for this poll — distinct from listener_count
+  // being 0, which is ambiguous (source really has 0 listeners vs. source
+  // isn't there at all). Powers streamHealth (see lib/streamHealth.ts).
+  source_up       Boolean  @default(true)
   sampled_at      DateTime @default(now())
 
   live_session LiveSession? @relation(fields: [live_session_id], references: [id], onDelete: SetNull)

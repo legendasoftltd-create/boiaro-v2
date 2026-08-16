@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { prisma } from "./prisma.js";
+import { decryptSecret } from "./secretEncryption.js";
 
 const API_BASE = "https://smsplus.sslwireless.com/api/v3";
 
@@ -19,9 +20,9 @@ async function getCredentials(): Promise<SidCredentials | null> {
 
   if (dbSid) {
     return {
-      apiToken: dbSid.api_token,
+      apiToken: decryptSecret(dbSid.api_token),
       sid: dbSid.sid,
-      otpSecret: dbSid.otp_secret ?? undefined,
+      otpSecret: dbSid.otp_secret ? decryptSecret(dbSid.otp_secret) : undefined,
     };
   }
 

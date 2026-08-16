@@ -12,6 +12,7 @@ import { registerBridgeMount } from "../lib/studioBridge.js";
 import { deriveIcecastMountPath } from "../lib/icecastMount.js";
 import { getRadioSettingBool } from "../lib/radioSettings.js";
 import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
+import { isBandwidthBudgetAvailable } from "../lib/radioCostControl.js";
 
 // Host capabilities are a strict superset of Co-host/RJ/Producer/Guest, so a
 // participant who is both "the RJ" and "running the room" just holds the
@@ -242,6 +243,12 @@ export const studioRouter = router({
 
       if (input.callinEnabled && !(await isCallinAllowedForBroadcast(input.stationId, session.host_user_id))) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Call-in is not enabled for this station/RJ" });
+      }
+
+      // Studio broadcasts are never test broadcasts, unlike the traditional
+      // (external encoder) goLive flow — always gated.
+      if (!(await isBandwidthBudgetAvailable())) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "This month's bandwidth budget has been reached — new broadcasts are paused until next month or an admin raises the limit." });
       }
 
       // Real (non-test) broadcasts: no two RJs live on the same station at

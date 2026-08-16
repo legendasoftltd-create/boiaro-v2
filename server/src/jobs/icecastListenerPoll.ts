@@ -53,9 +53,10 @@ export async function runIcecastListenerPoll(): Promise<{ sampled: number }> {
     byOrigin.get(origin)!.targets.push({ sessionId: session.id, realMount });
   }
 
-  const samples: { live_session_id: string; listener_count: number }[] = unparseable.map((id) => ({
+  const samples: { live_session_id: string; listener_count: number; source_up: boolean }[] = unparseable.map((id) => ({
     live_session_id: id,
     listener_count: 0,
+    source_up: false,
   }));
 
   for (const { statusUrl, targets } of byOrigin.values()) {
@@ -76,7 +77,7 @@ export async function runIcecastListenerPoll(): Promise<{ sampled: number }> {
     }
     for (const target of targets) {
       const match = sources.find((s: any) => typeof s?.listenurl === "string" && s.listenurl.endsWith(target.realMount));
-      samples.push({ live_session_id: target.sessionId, listener_count: Number(match?.listeners ?? 0) || 0 });
+      samples.push({ live_session_id: target.sessionId, listener_count: Number(match?.listeners ?? 0) || 0, source_up: !!match });
     }
   }
 
