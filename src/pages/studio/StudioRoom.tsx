@@ -5,11 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, LogOut, MessageCircle, Music, Mic2 } from "lucide-react"
+import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, PhoneCall, LogOut, MessageCircle, Music, Mic2 } from "lucide-react"
 import { toast } from "sonner"
 import { useStudioRoom } from "@/hooks/useStudioRoom"
 import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl, useMyStudioSessions } from "@/hooks/useStudioSession"
 import { useRadioStations } from "@/hooks/useRadioStation"
+import { useLiveSocket } from "@/hooks/useLiveSocket"
+import { useCallInBridge } from "@/hooks/useCallInBridge"
+import { CallInPanel } from "@/components/live/CallInPanel"
 import { trpc } from "@/lib/trpc"
 import { BroadcastSettingsForm, DEFAULT_BROADCAST_SETTINGS, type BroadcastSettingsValue } from "@/components/rj/BroadcastSettingsForm"
 import { StudioMixerPanel } from "@/components/studio/StudioMixerPanel"
@@ -52,10 +55,18 @@ export default function StudioRoom() {
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null)
   const [mixerOpen, setMixerOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
+  const [callInOpen, setCallInOpen] = useState(false)
   const { data: mixerDefaults } = trpc.studio.mixerDefaults.useQuery()
   const mixerFeatureEnabled = mixerDefaults?.enabled ?? true
   const connecting = useRef(false)
   const heartbeatMutation = trpc.rj.liveSession.heartbeat.useMutation()
+  // Call-in requests/queue live on the LiveSession this broadcast creates
+  // (same socket room LiveShow.tsx uses) — connecting it here too, instead
+  // of only on that separate page, is what lets an on-air caller's audio
+  // actually get published into this LiveKit room (see useCallInBridge)
+  // rather than only reaching a private RJ<->caller preview channel.
+  const { getSocket: getCallInSocket } = useLiveSocket(isLive ? liveSessionId ?? undefined : undefined)
+  const { setCallerStream } = useCallInBridge(room.getRoom)
 
   // Restores isLive/liveSessionId from the server on mount (and after a
   // refresh mid-broadcast, which previously lost this state entirely and —
@@ -289,6 +300,12 @@ export default function StudioRoom() {
                   </Button>
                 )}
 
+                {isLive && liveSessionId && broadcastSettings.callinEnabled && (canControlBroadcast || isModerator) && (
+                  <Button size="sm" variant={callInOpen ? "default" : "outline"} onClick={() => setCallInOpen((v) => !v)} className="gap-1.5">
+                    <PhoneCall className="w-3.5 h-3.5" /> Call-in
+                  </Button>
+                )}
+
                 <Button size="sm" variant="ghost" onClick={handleLeave} className="gap-1.5 ml-auto">
                   <LogOut className="w-3.5 h-3.5" /> Leave
                 </Button>
@@ -304,6 +321,16 @@ export default function StudioRoom() {
 
               {mixerFeatureEnabled && voiceOpen && canControlBroadcast && room.micOn && room.voiceProcessor.isActive && (
                 <StudioVoicePanel voiceProcessor={room.voiceProcessor} />
+              )}
+
+              {callInOpen && isLive && liveSessionId && broadcastSettings.callinEnabled && (canControlBroadcast || isModerator) && user && (
+                <CallInPanel
+                  sessionId={liveSessionId}
+                  isHost
+                  hostUserId={user.id}
+                  getSocket={getCallInSocket}
+                  onRemoteStreamChange={setCallerStream}
+                />
               )}
 
               <div className="space-y-2">

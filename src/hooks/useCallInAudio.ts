@@ -28,6 +28,7 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [state, setState] = useState<CallInConnectionState>("idle");
   const [localMuted, setLocalMuted] = useState(false);
+  const [peerUserId, setPeerUserId] = useState<string | null>(null);
 
   // TURN credentials are time-limited (1h) — staleTime keeps them fresh
   // enough that a connection started any time while the page is open gets
@@ -48,6 +49,7 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
     peerUserIdRef.current = null;
+    setPeerUserId(null);
     setRemoteStream(null);
     setState("closed");
   }, []);
@@ -55,6 +57,7 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
   const ensurePeerConnection = useCallback((targetUserId: string) => {
     if (pcRef.current) return pcRef.current;
     peerUserIdRef.current = targetUserId;
+    setPeerUserId(targetUserId);
     const pc = new RTCPeerConnection({ iceServers: iceServersRef.current });
     pc.onicecandidate = (e) => {
       if (e.candidate && sessionId) {
@@ -139,5 +142,5 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
 
   useEffect(() => () => cleanup(), [cleanup]);
 
-  return { remoteStream, state, localMuted, startCall, hangup, toggleLocalMute };
+  return { remoteStream, state, localMuted, peerUserId, startCall, hangup, toggleLocalMute };
 }
