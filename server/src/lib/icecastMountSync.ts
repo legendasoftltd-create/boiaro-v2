@@ -29,7 +29,7 @@ const execFileAsync = promisify(execFile);
 const XML_PATH = process.env.ICECAST_XML_PATH || "/etc/icecast2/icecast.xml";
 const FALLBACK_MOUNT = process.env.ICECAST_STUDIO_FALLBACK_MOUNT || "/studio-fallback.mp3";
 
-const START_MARKER = "<!-- DYNAMIC_MOUNTS_START (managed by icecastMountSync.ts — do not edit by hand) -->";
+const START_MARKER = "<!-- DYNAMIC_MOUNTS_START (managed by server/src/lib/icecastMountSync.ts — do not edit by hand) -->";
 const END_MARKER = "<!-- DYNAMIC_MOUNTS_END -->";
 
 function escapeXml(value: string): string {
