@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck, Antenna } from "lucide-react"
+import { Radio, Mic, MicOff, Loader2, AlertTriangle, Clock, Wifi, MessageCircle, KeyRound, Copy, ShieldCheck, Antenna, Megaphone } from "lucide-react"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { AudioFileUpload } from "@/components/admin/AudioFileUpload"
 import { BroadcastSettingsForm, DEFAULT_BROADCAST_SETTINGS, type BroadcastSettingsValue } from "@/components/rj/BroadcastSettingsForm"
@@ -366,6 +367,9 @@ export default function RjDashboard() {
         </CardContent>
       </Card>
 
+      {/* Special Announcement */}
+      <SpecialAnnouncementCard />
+
       {/* Session History */}
       <Card>
         <CardHeader>
@@ -378,6 +382,41 @@ export default function RjDashboard() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function SpecialAnnouncementCard() {
+  const [title, setTitle] = useState("")
+  const [message, setMessage] = useState("")
+  const sendMutation = trpc.rj.sendSpecialAnnouncement.useMutation({
+    onSuccess: () => { setTitle(""); setMessage(""); toast.success("ঘোষণা পাঠানো হয়েছে") },
+    onError: (e) => toast.error(e.message),
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Megaphone className="w-4 h-4" /> Special Announcement
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-muted-foreground">
+          একটা বিশেষ ঘোষণা (যেমন হঠাৎ লাইভ, বিশেষ অতিথি) সরাসরি আপনার সব ফলোয়ারকে পাঠান — নির্ধারিত শোর বাইরে যেকোনো সময়।
+        </p>
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="শিরোনাম" maxLength={100} />
+        <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="বার্তা" maxLength={500} rows={2} />
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={sendMutation.isPending || !title.trim() || !message.trim()}
+          onClick={() => sendMutation.mutate({ title: title.trim(), message: message.trim() })}
+        >
+          {sendMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+          ফলোয়ারদের পাঠান
+        </Button>
+      </CardContent>
+    </Card>
   )
 }
 

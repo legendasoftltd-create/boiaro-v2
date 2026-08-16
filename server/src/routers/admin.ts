@@ -6208,12 +6208,14 @@ export const adminRouter = router({
       // different door into it, and it was silently skipping the notification.
       const statusChanged = previous && previous.status !== input.status;
       if (statusChanged && input.status === "cancelled") {
-        await notifyFollowersOfScheduleCancelled(input.rj_user_id, input.show_title, input.cancel_reason ?? null);
+        // Fire-and-forget — a schedule edit shouldn't block on notifying
+        // every one of the RJ's followers before the admin sees "saved".
+        notifyFollowersOfScheduleCancelled(input.rj_user_id, input.show_title, input.cancel_reason ?? null).catch(() => null);
       } else if (statusChanged && input.status === "rescheduled") {
         const newWhen = input.specific_date
           ? `${new Date(input.specific_date).toLocaleDateString()} ${input.start_time}`
           : `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][input.day_of_week]} ${input.start_time}`;
-        await notifyFollowersOfScheduleRescheduled(input.rj_user_id, input.show_title, newWhen);
+        notifyFollowersOfScheduleRescheduled(input.rj_user_id, input.show_title, newWhen).catch(() => null);
       }
 
       return result;
@@ -6253,7 +6255,7 @@ export const adminRouter = router({
             where: { id: request.schedule_id },
             data: { status: "cancelled", is_active: false, cancel_reason: request.reason ?? null },
           });
-          await notifyFollowersOfScheduleCancelled(request.schedule.rj_user_id, request.schedule.show_title, request.reason);
+          notifyFollowersOfScheduleCancelled(request.schedule.rj_user_id, request.schedule.show_title, request.reason).catch(() => null);
         } else if (request.request_type === "reschedule") {
           const data: Record<string, unknown> = { status: "active" };
           if (request.proposed_day_of_week != null) data.day_of_week = request.proposed_day_of_week;
@@ -6264,7 +6266,7 @@ export const adminRouter = router({
           const newWhen = request.proposed_specific_date
             ? `${new Date(request.proposed_specific_date).toLocaleDateString()} ${request.proposed_start_time ?? request.schedule.start_time}`
             : `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][request.proposed_day_of_week ?? request.schedule.day_of_week]} ${request.proposed_start_time ?? request.schedule.start_time}`;
-          await notifyFollowersOfScheduleRescheduled(request.schedule.rj_user_id, request.schedule.show_title, newWhen);
+          notifyFollowersOfScheduleRescheduled(request.schedule.rj_user_id, request.schedule.show_title, newWhen).catch(() => null);
         }
       }
 

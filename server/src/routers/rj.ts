@@ -7,7 +7,7 @@ import { generateBroadcastToken, verifyBroadcastToken } from "../lib/broadcastTo
 import { logRadioAction } from "../lib/radioAudit.js";
 import { getRadioSetting, getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
 import { startRecording, stopRecording, shouldAutoRecord } from "../lib/liveRecorder.js";
-import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished } from "../lib/radioNotify.js";
+import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished, notifyFollowersOfSpecialAnnouncement } from "../lib/radioNotify.js";
 import { deleteFromS3 } from "../lib/s3.js";
 import { getCallInIceServers } from "../lib/turnCredentials.js";
 import { PUBLIC_RJ_PROFILE_SELECT } from "../lib/rjProfile.js";
@@ -152,6 +152,29 @@ export const rjRouter = router({
       groupBy: z.enum(["none", "show"]).default("none"),
     }))
     .query(({ ctx, input }) => computeRadioAnalytics({ ...input, rjUserId: ctx.userId! })),
+
+  // Manual "special live announcement" to an RJ's own followers — for
+  // anything outside the automatic triggers (go-live, schedule change,
+  // catch-up published): a surprise show, a special guest, etc. An RJ can
+  // only ever send to their own followers; admin/moderator can send on
+  // behalf of any RJ (e.g. helping promote a show).
+  sendSpecialAnnouncement: protectedProcedure
+    .input(z.object({
+      rjUserId: z.string().optional(),
+      title: z.string().min(1).max(100),
+      message: z.string().min(1).max(500),
+      link: z.string().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const targetRjUserId = input.rjUserId ?? ctx.userId!;
+      if (targetRjUserId !== ctx.userId) {
+        const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
+        if (!role) throw new TRPCError({ code: "FORBIDDEN", message: "Only the RJ themself or a moderator can send this" });
+      }
+      notifyFollowersOfSpecialAnnouncement(targetRjUserId, input.title, input.message, input.link).catch(() => null);
+      await logRadioAction(ctx.userId!, "special_announcement_sent", { rjUserId: targetRjUserId, title: input.title });
+      return { sent: true };
+    }),
 
   mySessions: protectedProcedure.query(({ ctx }) =>
     prisma.liveSession.findMany({
