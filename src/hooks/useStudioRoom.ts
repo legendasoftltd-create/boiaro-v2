@@ -6,7 +6,9 @@ import {
   type RemoteParticipant,
   type RemoteTrack,
   type RemoteTrackPublication,
+  type LocalTrackPublication,
 } from "livekit-client";
+import { useVoiceProcessor } from "./useVoiceProcessor";
 
 export type StudioConnectionState = "idle" | "connecting" | "connected" | "disconnected" | "failed";
 
@@ -25,6 +27,9 @@ export interface StudioParticipantInfo {
 export function useStudioRoom() {
   const roomRef = useRef<Room | null>(null);
   const audioElsRef = useRef<Map<string, HTMLMediaElement>>(new Map());
+  const micPublicationRef = useRef<LocalTrackPublication | null>(null);
+  const voiceProcessor = useVoiceProcessor();
+  const { buildProcessedMicTrack, teardown: teardownVoiceProcessor } = voiceProcessor;
   const [state, setState] = useState<StudioConnectionState>("idle");
   const [participants, setParticipants] = useState<StudioParticipantInfo[]>([]);
   const [micOn, setMicOn] = useState(false);
@@ -79,7 +84,20 @@ export function useStudioRoom() {
     try {
       await room.connect(url, token);
       if (publishMic) {
-        await room.localParticipant.setMicrophoneEnabled(true);
+        // §14 Mixer voice chain (gate/EQ/gain/compressor/limiter) publishes
+        // its own processed track in place of LiveKit's raw getUserMedia
+        // capture. If DSP setup throws for any reason, fall back to the
+        // plain, untouched path — a broadcast must never be blocked or
+        // silenced by a voice-processing bug (see the "listener can't hear
+        // RJ" incident this whole remediation effort started from).
+        try {
+          const processedTrack = await buildProcessedMicTrack();
+          const pub = await room.localParticipant.publishTrack(processedTrack, { source: Track.Source.Microphone, name: "microphone" });
+          micPublicationRef.current = pub;
+        } catch (dspErr) {
+          console.error("[useStudioRoom] voice processor setup failed — falling back to unprocessed mic:", dspErr);
+          await room.localParticipant.setMicrophoneEnabled(true);
+        }
         setMicOn(true);
       }
       syncParticipants(room);
@@ -87,13 +105,19 @@ export function useStudioRoom() {
       setState("failed");
       throw err;
     }
-  }, [syncParticipants]);
+  }, [syncParticipants, buildProcessedMicTrack]);
 
   const toggleMic = useCallback(async () => {
     const room = roomRef.current;
     if (!room) return;
     const next = !micOn;
-    await room.localParticipant.setMicrophoneEnabled(next);
+    if (micPublicationRef.current) {
+      if (next) await micPublicationRef.current.unmute();
+      else await micPublicationRef.current.mute();
+    } else {
+      // Fallback path (voice processor failed at connect time) — plain LiveKit toggle.
+      await room.localParticipant.setMicrophoneEnabled(next);
+    }
     setMicOn(next);
     syncParticipants(room);
   }, [micOn, syncParticipants]);
@@ -103,9 +127,11 @@ export function useStudioRoom() {
     audioElsRef.current.clear();
     roomRef.current?.disconnect();
     roomRef.current = null;
+    micPublicationRef.current = null;
+    teardownVoiceProcessor();
     setState("disconnected");
     setParticipants([]);
-  }, []);
+  }, [teardownVoiceProcessor]);
 
   useEffect(() => () => disconnect(), [disconnect]);
 
@@ -115,5 +141,5 @@ export function useStudioRoom() {
   // useLiveSocket's getSocket(), used by useCallInAudio.
   const getRoom = useCallback(() => roomRef.current, []);
 
-  return { state, participants, micOn, connect, toggleMic, disconnect, getRoom };
+  return { state, participants, micOn, connect, toggleMic, disconnect, getRoom, voiceProcessor };
 }
