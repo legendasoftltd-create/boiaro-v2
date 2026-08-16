@@ -90,10 +90,19 @@ export async function resolveDeviceSessionOnLogin(
     return { allowed: true };
   }
 
+  // upsert rather than create: two concurrent logins from the same new
+  // device (double-tap, a client retry, two tabs) both pass the
+  // findUnique-sees-nothing check above and would otherwise race on
+  // create() — reproduced in production as an unhandled Prisma
+  // unique-constraint error on (user_id, device_id) surfacing as a bare
+  // login failure (same bug class as findOrCreateUserByEmail.ts, and the
+  // same fix already used by touchOrCreateDeviceSessionOnRefresh below).
   const limit = await getEffectiveDeviceLimit(userId);
   if (limit === null) {
-    await prisma.deviceSession.create({
-      data: {
+    await prisma.deviceSession.upsert({
+      where: { user_id_device_id: { user_id: userId, device_id: params.deviceId } },
+      update: { last_active_at: new Date() },
+      create: {
         user_id: userId,
         device_id: params.deviceId,
         device_name: params.deviceName ?? null,
@@ -110,8 +119,10 @@ export async function resolveDeviceSessionOnLogin(
   });
 
   if (currentDevices.length < limit) {
-    await prisma.deviceSession.create({
-      data: {
+    await prisma.deviceSession.upsert({
+      where: { user_id_device_id: { user_id: userId, device_id: params.deviceId } },
+      update: { last_active_at: new Date() },
+      create: {
         user_id: userId,
         device_id: params.deviceId,
         device_name: params.deviceName ?? null,

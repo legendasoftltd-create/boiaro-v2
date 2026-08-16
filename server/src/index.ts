@@ -44,7 +44,22 @@ app.set("trust proxy", 1);
 // media/uploads to the frontend's own origin and to S3/CDN, and a default
 // CSP/CORP here would need real tuning against those to avoid silently
 // breaking image/audio loading rather than actually being safer.
-app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false, crossOriginEmbedderPolicy: false }));
+//
+// crossOriginOpenerPolicy is downgraded from Helmet's default ("same-origin")
+// to "same-origin-allow-popups": with the stricter default, Google Identity
+// Services' popup sign-in (src/integrations/lovable/index.ts) loses its
+// window.closed visibility into the popup it opened and fires a false
+// "popup_closed" error_callback almost immediately — while the real Google
+// popup is still open and usable. Reproduced in production (Google login
+// failing instantly with popup_closed despite the account picker still
+// showing). same-origin-allow-popups keeps this page isolated from windows
+// that open *it*, it only stops blocking windows *it* opens.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+}));
 
 const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "http://localhost:8080")
   .split(",")
