@@ -2478,6 +2478,13 @@ model StudioAudioAsset {
   // organizational — playback behavior is still driven by `category` alone
   // (music goes through the music player, everything else is a one-shot).
   subcategory             String?
+  // pending | approved | rejected | unpublished. Admin-curated
+  // (owner_user_id null) and RJ self-uploads (when approval isn't
+  // required — see radio_mixer_require_approval) insert straight to
+  // "approved". libraryList only ever returns "approved" plus the
+  // caller's own rows regardless of status, so an RJ can see their own
+  // pending/rejected submissions.
+  status                  String    @default("approved")
   title                   String
   file_url                String
   duration_seconds        Int?

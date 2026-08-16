@@ -154,6 +154,9 @@ const TOGGLE_KEYS: { key: string; label: string; help: string }[] = [
   { key: "radio_guest_listening_enabled", label: "Guest listening", help: "Signed-out visitors get a playable stream URL" },
   { key: "radio_callin_enabled", label: "Listener call-in", help: "Peer-to-peer WebRTC audio (public STUN only until a TURN relay is provisioned — see docs). Off by default." },
   { key: "radio_chat_links_enabled", label: "Links in chat", help: "Turn off to strip any message containing a URL" },
+  { key: "radio_mixer_enabled", label: "Mixer feature (§14)", help: "Hard off switch for music/jingle/SFX mixing and voice DSP in BoiAro Studio" },
+  { key: "radio_mixer_rj_upload_enabled", label: "Mixer: RJ self-uploads", help: "Whether RJs can add their own tracks to the mixer library (admin uploads always allowed)" },
+  { key: "radio_mixer_require_approval", label: "Mixer: require approval", help: "RJ self-uploads start pending review instead of going live immediately" },
 ]
 
 const NUMERIC_KEYS: { key: string; label: string; help: string; placeholder: string }[] = [
@@ -166,13 +169,16 @@ const NUMERIC_KEYS: { key: string; label: string; help: string; placeholder: str
   { key: "radio_duplicate_message_window_seconds", label: "Duplicate message window (seconds)", help: "Blocks an identical repeat from the same person within this window", placeholder: "30" },
   { key: "radio_recording_draft_retention_days", label: "Draft recording retention (days)", help: "Auto-deletes never-published recordings after this long", placeholder: "7" },
   { key: "radio_recording_published_retention_days", label: "Published recording retention (days)", help: "Blank = keep forever", placeholder: "unlimited" },
-  { key: "radio_recording_storage_limit_gb", label: "Recording storage limit (GB)", help: "Blank = unlimited — alert-only, nothing auto-deletes to enforce it", placeholder: "unlimited" },
-  { key: "radio_monthly_bandwidth_limit_gb", label: "Monthly bandwidth limit (GB)", help: "Blank = unlimited — used for the capacity alert only", placeholder: "unlimited" },
+  { key: "radio_recording_storage_limit_gb", label: "Recording storage limit (GB)", help: "Blank = unlimited — once reached, new recordings are blocked (auto capture skipped, manual attach rejected)", placeholder: "unlimited" },
+  { key: "radio_monthly_bandwidth_limit_gb", label: "Monthly bandwidth limit (GB)", help: "Blank = unlimited — once reached, new broadcasts are blocked from starting", placeholder: "unlimited" },
   { key: "radio_estimated_bitrate_kbps", label: "Estimated stream bitrate (kbps)", help: "Used only to compute the bandwidth/cost estimate below", placeholder: "128" },
   { key: "radio_estimated_cost_per_gb", label: "Estimated cost per GB", help: "Your currency, admin-entered — blank disables the cost estimate", placeholder: "0" },
   { key: "radio_mixer_duck_level", label: "Mixer: duck level (0-1)", help: "How far music/jingles duck while the host speaks — 0.25 = drop to 25% volume", placeholder: "0.25" },
   { key: "radio_mixer_duck_attack_ms", label: "Mixer: duck attack (ms)", help: "Ramp-down time when the host starts speaking", placeholder: "200" },
   { key: "radio_mixer_duck_release_ms", label: "Mixer: duck release (ms)", help: "Ramp-back-up time after the host stops speaking", placeholder: "1000" },
+  { key: "radio_mixer_max_file_size_mb", label: "Mixer: max file size (MB)", help: "Blank = unlimited", placeholder: "20" },
+  { key: "radio_mixer_allowed_formats", label: "Mixer: allowed formats", help: "Comma-separated file extensions", placeholder: "mp3,wav,m4a,ogg,aac" },
+  { key: "radio_mixer_max_playlist_length", label: "Mixer: max queue length", help: "Per-broadcast playlist cap — blank = unlimited", placeholder: "50" },
 ]
 
 const BLOCKED_WORDS_KEY = "radio_blocked_words"

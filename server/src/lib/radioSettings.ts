@@ -33,6 +33,14 @@ export const RADIO_SETTINGS_DEFAULTS = {
   radio_mixer_duck_attack_ms: "200", // ramp-down time when the host starts speaking
   radio_mixer_duck_release_ms: "1000", // ramp-back-up time after the host stops speaking
 
+  // §14 Mixer platform controls.
+  radio_mixer_enabled: "true", // hard off switch for the whole mixer/voice-DSP feature
+  radio_mixer_rj_upload_enabled: "true", // RJs can add their own tracks (platform-curated uploads are always allowed for admins)
+  radio_mixer_require_approval: "false", // RJ self-uploads start "pending" instead of going live immediately
+  radio_mixer_max_file_size_mb: "20",
+  radio_mixer_allowed_formats: "mp3,wav,m4a,ogg,aac", // comma-separated file extensions
+  radio_mixer_max_playlist_length: "50", // per-broadcast queue cap
+
   // Chat safety.
   radio_slow_mode_seconds: "2", // minimum gap between messages from the same user
   radio_blocked_words: "", // comma-separated, case-insensitive substrings

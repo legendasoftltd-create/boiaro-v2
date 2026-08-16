@@ -10,7 +10,7 @@ import { shouldAutoRecord, startRecording, stopRecording } from "../lib/liveReco
 import { notifyFollowersOfGoLive } from "../lib/radioNotify.js";
 import { registerBridgeMount } from "../lib/studioBridge.js";
 import { deriveIcecastMountPath } from "../lib/icecastMount.js";
-import { getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
+import { getRadioSetting, getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
 import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
 import { isBandwidthBudgetAvailable } from "../lib/radioCostControl.js";
 
@@ -410,13 +410,18 @@ export const studioRouter = router({
       return updated;
     }),
 
-  // Platform-wide ducking defaults, admin-set (see radioSettings.ts) — seeds
-  // a new broadcast's sliders; each RJ can still adjust their own per-
-  // broadcast afterward (see useStudioMixer.ts), never persisted back here.
+  // Platform-wide ducking defaults + feature toggles, admin-set (see
+  // radioSettings.ts) — seeds a new broadcast's sliders; each RJ can still
+  // adjust their own per-broadcast afterward (see useStudioMixer.ts), never
+  // persisted back here. `enabled`/`rjUploadEnabled` gate the client UI as a
+  // convenience — the real enforcement is server-side in libraryUpload etc.
   mixerDefaults: protectedProcedure.query(async () => ({
     duckLevel: (await getRadioSettingNumber("radio_mixer_duck_level")) ?? 0.25,
     duckAttackMs: (await getRadioSettingNumber("radio_mixer_duck_attack_ms")) ?? 200,
     duckReleaseMs: (await getRadioSettingNumber("radio_mixer_duck_release_ms")) ?? 1000,
+    enabled: await getRadioSettingBool("radio_mixer_enabled"),
+    rjUploadEnabled: await getRadioSettingBool("radio_mixer_rj_upload_enabled"),
+    maxPlaylistLength: (await getRadioSettingNumber("radio_mixer_max_playlist_length")) ?? 50,
   })),
 
   // ── §14 Mixer: music/jingle/SFX library ─────────────────────────────────
@@ -430,15 +435,24 @@ export const studioRouter = router({
       subcategory: z.enum(["station_id", "intro", "outro", "commercial", "transition", "applause"]).optional(),
       search: z.string().max(200).optional(),
       favoritesOnly: z.boolean().default(false),
+      // Admin library-management view — sees every platform track
+      // regardless of status (including unpublished), so publish/unpublish
+      // has something to toggle back. Silently ignored for non-admins.
+      adminView: z.boolean().default(false),
     }))
     .query(async ({ ctx, input }) => {
+      const isAdminView = input.adminView && !!(await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } }));
       const [assets, favoriteRows] = await Promise.all([
         prisma.studioAudioAsset.findMany({
           where: {
             ...(input.category ? { category: input.category } : {}),
             ...(input.subcategory ? { subcategory: input.subcategory } : {}),
             ...(input.search ? { title: { contains: input.search, mode: "insensitive" } } : {}),
-            OR: [{ owner_user_id: null }, { owner_user_id: ctx.userId }],
+            // Platform-wide tracks only show once approved/published; an RJ
+            // always sees their own uploads regardless of status, so they
+            // can tell a pending/rejected submission apart from a live one.
+            // Admin management view sees every platform track regardless.
+            OR: isAdminView ? [{ owner_user_id: null }, { owner_user_id: ctx.userId }] : [{ owner_user_id: null, status: "approved" }, { owner_user_id: ctx.userId }],
           },
           orderBy: { created_at: "desc" },
         }),
@@ -474,23 +488,79 @@ export const studioRouter = router({
       platformWide: z.boolean().default(false),
     }))
     .mutation(async ({ ctx, input }) => {
+      if (!(await getRadioSettingBool("radio_mixer_enabled"))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "The mixer feature is currently disabled" });
+      }
+      let isAdmin = false;
       if (input.platformWide) {
         const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
         if (!role) throw new TRPCError({ code: "FORBIDDEN", message: "Only an admin can add to the platform library" });
-      } else if (!input.licenseAcknowledged) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "You must confirm you own or are licensed to use this audio" });
+        isAdmin = true;
+      } else {
+        if (!(await getRadioSettingBool("radio_mixer_rj_upload_enabled"))) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Self-uploads to the mixer library are currently disabled" });
+        }
+        if (!input.licenseAcknowledged) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "You must confirm you own or are licensed to use this audio" });
+        }
       }
+
+      const allowedFormats = (await getRadioSetting("radio_mixer_allowed_formats")).split(",").map((f) => f.trim().toLowerCase()).filter(Boolean);
+      const ext = input.fileUrl.split(".").pop()?.split(/[?#]/)[0]?.toLowerCase();
+      if (allowedFormats.length && (!ext || !allowedFormats.includes(ext))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Unsupported file format — allowed: ${allowedFormats.join(", ")}` });
+      }
+
+      const maxSizeMb = await getRadioSettingNumber("radio_mixer_max_file_size_mb");
+      if (maxSizeMb) {
+        try {
+          const head = await fetch(input.fileUrl, { method: "HEAD", signal: AbortSignal.timeout(8_000) });
+          const lengthHeader = head.headers.get("content-length");
+          const sizeMb = lengthHeader ? Number(lengthHeader) / 1024 ** 2 : null;
+          if (sizeMb && sizeMb > maxSizeMb) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `File is ${Math.round(sizeMb)}MB — the mixer library limit is ${maxSizeMb}MB` });
+          }
+        } catch (err) {
+          if (err instanceof TRPCError) throw err;
+          // HEAD failed for a reason unrelated to size (network hiccup,
+          // server doesn't send content-length) — don't block the upload
+          // over an inconclusive check.
+        }
+      }
+
+      const requiresApproval = !isAdmin && (await getRadioSettingBool("radio_mixer_require_approval"));
+
       return prisma.studioAudioAsset.create({
         data: {
           owner_user_id: input.platformWide ? null : ctx.userId,
           category: input.category,
           subcategory: input.category === "music" ? null : (input.subcategory ?? null),
+          status: requiresApproval ? "pending" : "approved",
           title: input.title,
           file_url: input.fileUrl,
           duration_seconds: input.durationSeconds ?? null,
           license_acknowledged_at: input.platformWide ? null : new Date(),
         },
       });
+    }),
+
+  // Admin review queue for RJ self-uploads awaiting approval.
+  libraryModeration: protectedProcedure.query(async ({ ctx }) => {
+    const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
+    if (!role) throw new TRPCError({ code: "FORBIDDEN" });
+    return prisma.studioAudioAsset.findMany({ where: { status: "pending" }, orderBy: { created_at: "asc" } });
+  }),
+
+  moderateLibraryAsset: protectedProcedure
+    .input(z.object({ assetId: z.string(), action: z.enum(["approve", "reject", "publish", "unpublish"]) }))
+    .mutation(async ({ ctx, input }) => {
+      const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
+      if (!role) throw new TRPCError({ code: "FORBIDDEN" });
+      const status = input.action === "approve" || input.action === "publish" ? "approved"
+        : input.action === "reject" ? "rejected" : "unpublished";
+      await prisma.studioAudioAsset.update({ where: { id: input.assetId }, data: { status } });
+      await logRadioAction(ctx.userId!, "mixer_asset_moderated", { assetId: input.assetId, action: input.action });
+      return { status };
     }),
 
   libraryDelete: protectedProcedure
@@ -522,6 +592,13 @@ export const studioRouter = router({
     .input(z.object({ sessionId: z.string(), audioAssetId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await assertModerator(input.sessionId, ctx.userId!);
+      const maxLength = await getRadioSettingNumber("radio_mixer_max_playlist_length");
+      if (maxLength) {
+        const queueCount = await prisma.studioPlaylistItem.count({ where: { studio_session_id: input.sessionId, played_at: null } });
+        if (queueCount >= maxLength) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Queue is at the ${maxLength}-track limit — remove something first` });
+        }
+      }
       const last = await prisma.studioPlaylistItem.findFirst({
         where: { studio_session_id: input.sessionId },
         orderBy: { position: "desc" },

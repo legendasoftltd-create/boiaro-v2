@@ -266,7 +266,9 @@ export function StudioMixerPanel({ sessionId, getRoom, isSpeaking }: { sessionId
           )}
         </div>
 
-        <MixerUploadForm category={tab} onUploaded={() => utils.studio.libraryList.invalidate()} />
+        {mixerDefaults?.rjUploadEnabled !== false && (
+          <MixerUploadForm category={tab} onUploaded={() => utils.studio.libraryList.invalidate()} />
+        )}
       </CardContent>
     </Card>
   )

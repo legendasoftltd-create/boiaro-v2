@@ -52,6 +52,8 @@ export default function StudioRoom() {
   const [liveSessionId, setLiveSessionId] = useState<string | null>(null)
   const [mixerOpen, setMixerOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
+  const { data: mixerDefaults } = trpc.studio.mixerDefaults.useQuery()
+  const mixerFeatureEnabled = mixerDefaults?.enabled ?? true
   const connecting = useRef(false)
   const heartbeatMutation = trpc.rj.liveSession.heartbeat.useMutation()
 
@@ -275,13 +277,13 @@ export default function StudioRoom() {
                   </Button>
                 )}
 
-                {(canControlBroadcast || isModerator) && (
+                {mixerFeatureEnabled && (canControlBroadcast || isModerator) && (
                   <Button size="sm" variant={mixerOpen ? "default" : "outline"} onClick={() => setMixerOpen((v) => !v)} className="gap-1.5">
                     <Music className="w-3.5 h-3.5" /> Mixer
                   </Button>
                 )}
 
-                {canControlBroadcast && room.micOn && room.voiceProcessor.isActive && (
+                {mixerFeatureEnabled && canControlBroadcast && room.micOn && room.voiceProcessor.isActive && (
                   <Button size="sm" variant={voiceOpen ? "default" : "outline"} onClick={() => setVoiceOpen((v) => !v)} className="gap-1.5">
                     <Mic2 className="w-3.5 h-3.5" /> Voice
                   </Button>
@@ -292,7 +294,7 @@ export default function StudioRoom() {
                 </Button>
               </div>
 
-              {mixerOpen && (canControlBroadcast || isModerator) && (
+              {mixerFeatureEnabled && mixerOpen && (canControlBroadcast || isModerator) && (
                 <StudioMixerPanel
                   sessionId={sessionId}
                   getRoom={room.getRoom}
@@ -300,7 +302,7 @@ export default function StudioRoom() {
                 />
               )}
 
-              {voiceOpen && canControlBroadcast && room.micOn && room.voiceProcessor.isActive && (
+              {mixerFeatureEnabled && voiceOpen && canControlBroadcast && room.micOn && room.voiceProcessor.isActive && (
                 <StudioVoicePanel voiceProcessor={room.voiceProcessor} />
               )}
 
