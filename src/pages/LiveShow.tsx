@@ -519,6 +519,7 @@ function CallInPanel({ sessionId, isHost, hostUserId, getSocket }: { sessionId: 
   const previewMutation = trpc.rj.callIn.previewCall.useMutation({ onSuccess: () => utils.rj.callIn.queue.invalidate() })
   const goOnAirMutation = trpc.rj.callIn.goOnAir.useMutation({ onSuccess: () => { utils.rj.callIn.queue.invalidate(); toast.success("এই কলার এখন সরাসরি সম্প্রচারে আছে") } })
   const muteMutation = trpc.rj.callIn.muteCaller.useMutation({ onSuccess: () => utils.rj.callIn.queue.invalidate() })
+  const unmuteCallerMutation = trpc.rj.callIn.unmuteCaller.useMutation({ onSuccess: () => utils.rj.callIn.queue.invalidate() })
   const removeMutation = trpc.rj.callIn.remove.useMutation({ onSuccess: () => { utils.rj.callIn.queue.invalidate(); hangup() } })
   const endMutation = trpc.rj.callIn.end.useMutation({ onSuccess: () => { utils.rj.callIn.myStatus.invalidate(); hangup() } })
   const reportCallerMutation = trpc.rj.liveSession.reportContent.useMutation({
@@ -615,7 +616,11 @@ function CallInPanel({ sessionId, isHost, hostUserId, getSocket }: { sessionId: 
                   )}
                   {(c.status === "on_air" || c.status === "muted") && (
                     <>
-                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => muteMutation.mutate({ callId: c.id })}><MicOff className="w-3 h-3" /></Button>
+                      {c.status === "muted" ? (
+                        <Button size="icon" variant="ghost" className="h-6 w-6 text-amber-500" title="Unmute" onClick={() => unmuteCallerMutation.mutate({ callId: c.id })}><Mic className="w-3 h-3" /></Button>
+                      ) : (
+                        <Button size="icon" variant="ghost" className="h-6 w-6" title="Mute" onClick={() => muteMutation.mutate({ callId: c.id })}><MicOff className="w-3 h-3" /></Button>
+                      )}
                       <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => removeMutation.mutate({ callId: c.id })}><UserX className="w-3 h-3" /></Button>
                     </>
                   )}

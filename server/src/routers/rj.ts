@@ -904,6 +904,17 @@ export const rjRouter = router({
         return updated;
       }),
 
+    unmuteCaller: protectedProcedure
+      .input(z.object({ callId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const call = await prisma.callInRequest.findUnique({ where: { id: input.callId }, include: { session: { select: { rj_user_id: true, id: true } } } });
+        if (!call) throw new TRPCError({ code: "NOT_FOUND" });
+        await assertHostOrModerator(ctx.userId!, call.session);
+        const updated = await prisma.callInRequest.update({ where: { id: input.callId }, data: { status: "on_air" } });
+        emitToUserInSession(call.session.id, call.user_id, "callin:unmute", { callId: call.id });
+        return updated;
+      }),
+
     remove: protectedProcedure
       .input(z.object({ callId: z.string() }))
       .mutation(async ({ ctx, input }) => {

@@ -118,12 +118,14 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
     };
     const onHangup = () => cleanup();
     const onMute = () => toggleLocalMute(true);
+    const onUnmute = () => toggleLocalMute(false);
 
     socket.on("callin:offer", onOffer);
     socket.on("callin:answer", onAnswer);
     socket.on("callin:ice-candidate", onIce);
     socket.on("callin:hangup", onHangup);
     socket.on("callin:mute", onMute);
+    socket.on("callin:unmute", onUnmute);
 
     return () => {
       socket.off("callin:offer", onOffer);
@@ -131,6 +133,7 @@ export function useCallInAudio(getSocket: () => Socket | null, sessionId: string
       socket.off("callin:ice-candidate", onIce);
       socket.off("callin:hangup", onHangup);
       socket.off("callin:mute", onMute);
+      socket.off("callin:unmute", onUnmute);
     };
   }, [getSocket, sessionId, ensurePeerConnection, cleanup, toggleLocalMute]);
 
