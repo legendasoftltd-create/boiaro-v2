@@ -48,9 +48,16 @@ nms.run();
 //     specific stream path should use — one broadcast can register two
 //     (a primary and, for a voice-only master recording, a mic-only tap)
 //     (see server/src/routers/studio.ts's startBroadcast).
-//   POST /internal/sync-stations   — after any RadioStation is added,
-//     edited, or (de)activated, the full current list of station mounts,
-//     so Icecast's per-mount fallback wiring stays current (icecastConfig.ts).
+//   POST /internal/sync-stations   — the full current list of station
+//     mounts, so Icecast's per-mount fallback wiring stays current
+//     (icecastConfig.ts). SUPERSEDED as of 2026-08-16: the main app server
+//     no longer calls this — it manages the real, listener-facing Icecast's
+//     mount config directly now (server/src/lib/icecastMountSync.ts), since
+//     that Icecast lives on the main app host, not this one. This endpoint
+//     and icecastConfig.ts are left in place (harmless, still correct for
+//     managing THIS host's own local Icecast) but are dead code in the
+//     current deployment — see project memory
+//     studio-bridge-icecast-routing-2026-08-16 for why.
 function readJsonBody(req: import("node:http").IncomingMessage): Promise<any> {
   return new Promise((resolve, reject) => {
     let body = "";

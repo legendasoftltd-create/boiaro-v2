@@ -1,6 +1,14 @@
 import { TRPCError } from "@trpc/server";
 import { prisma } from "./prisma.js";
 import { deriveIcecastMountPath } from "./icecastMount.js";
+import { syncStudioIcecastMounts } from "./icecastMountSync.js";
+
+// The bridge's own fixed default mount (studio-bridge/.env's ICECAST_MOUNT)
+// — used only by a stationless test broadcast (registerBridgeMount falls
+// back to it when no station is selected); every real, per-station
+// broadcast lands on that station's own derived mount instead. Included
+// unconditionally so even that edge case gets dead-air fallback protection.
+const STUDIO_BRIDGE_DEFAULT_MOUNT = process.env.STUDIO_BRIDGE_DEFAULT_MOUNT || "/studio.mp3";
 
 /**
  * Shared client for the Bridge Relay's internal control channel (see
@@ -45,20 +53,25 @@ export async function registerBridgeMount(
 }
 
 /**
- * Pushes the current set of active stations' Icecast mounts to the Bridge
- * Relay so it can keep each mount's emergency-fallback wiring (silence ->
- * standby playlist) up to date in Icecast's config — see icecastConfig.ts
- * on the bridge side. Best-effort: called after any station is added,
- * edited, or (de)activated, and once at server boot; a bridge that's
- * temporarily unreachable just misses that one sync, not a hard failure,
- * since going live doesn't depend on this (only registerBridgeMount does).
+ * Keeps the real, listener-facing Icecast's per-mount emergency-fallback
+ * wiring (silence -> standby playlist) in sync with the platform's active
+ * station list — see icecastMountSync.ts (this used to call out to the
+ * Bridge Relay's own /internal/sync-stations, which only ever managed the
+ * bridge's own local Icecast; that stopped being the one real listeners
+ * connect to once the bridge started pushing to this host instead — see
+ * project memory studio-bridge-icecast-routing-2026-08-16). Best-effort:
+ * called after any station is added, edited, or (de)activated, and once at
+ * server boot; going live never depends on this having succeeded, only the
+ * dead-air fallback protection does.
  */
 export async function syncStationMountsWithBridge(): Promise<void> {
   const stations = await prisma.radioStation.findMany({
     where: { is_active: true },
     select: { stream_url: true },
   });
-  const mounts = [...new Set(stations.map((s) => deriveIcecastMountPath(s.stream_url)).filter((m): m is string => !!m))];
-  const res = await callBridgeInternal("/internal/sync-stations", { mounts });
-  if (!res.ok) throw new Error(`Bridge Relay rejected station sync (${res.status})`);
+  const mounts = [
+    STUDIO_BRIDGE_DEFAULT_MOUNT,
+    ...stations.map((s) => deriveIcecastMountPath(s.stream_url)).filter((m): m is string => !!m),
+  ];
+  await syncStudioIcecastMounts(mounts);
 }
