@@ -81,6 +81,19 @@ export function CallInPanel({ sessionId, isHost, hostUserId, getSocket, onRemote
     onRemoteStreamChange(remoteStream && isBroadcastable ? remoteStream : null)
   }, [isHost, onRemoteStreamChange, remoteStream, activeCallStatus])
 
+  // The bridge (useCallInBridge, in the embedding page) outlives this panel
+  // — it's only torn down when the page itself unmounts, not when the RJ
+  // toggles this panel closed. Without this, closing the panel leaves a
+  // now-dead track published in the LiveKit room indefinitely (confirmed in
+  // production: a track from a call that ended minutes earlier was still
+  // published, occupying the caller's "slot" and never carrying audio,
+  // which made a genuinely fresh call afterwards look broken too).
+  useEffect(() => {
+    if (!isHost) return
+    return () => onRemoteStreamChange?.(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHost])
+
   // Host preview: list available output devices (Chrome/Edge only — see
   // canPickOutput) so the RJ can route the preview to headphones instead of
   // whatever output their broadcast encoder is capturing.
