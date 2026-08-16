@@ -27,3 +27,14 @@ export function detectCountryCode(req: CountryLookupSource): string | null {
   const lookup = geoip.lookup(ip.replace(/^::ffff:/, ""));
   return lookup?.country ?? null;
 }
+
+// Best-effort city name — only available via the offline geoip-lite lookup;
+// there's no city equivalent to the CF-IPCountry header path, so this
+// returns null whenever a CDN header would otherwise have short-circuited
+// detectCountryCode above.
+export function detectCityName(req: CountryLookupSource): string | null {
+  const ip = req.ip;
+  if (!ip) return null;
+  const lookup = geoip.lookup(ip.replace(/^::ffff:/, ""));
+  return lookup?.city || null;
+}

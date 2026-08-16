@@ -23,7 +23,7 @@ import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSettingNumber, type 
 import { getMonthlyLeaderboard, recalculateMonth, upsertPrizeConfig, type LeaderboardMetric } from "../services/monthlyLeaderboard.service.js";
 import { getGaRealtimeReport } from "../lib/gaRealtime.js";
 import { syncStationMountsWithBridge } from "../lib/studioBridge.js";
-import { computeRadioAnalytics } from "../lib/radioAnalytics.js";
+import { computeRadioAnalytics, computeRadioAnalyticsSeries } from "../lib/radioAnalytics.js";
 import os from "os";
 import fs from "fs";
 
@@ -5927,6 +5927,16 @@ export const adminRouter = router({
       groupBy: z.enum(["none", "rj", "station", "show"]).default("none"),
     }))
     .query(({ input }) => computeRadioAnalytics(input)),
+
+  // True day/week/month time-bucketed trend series — the summary above only
+  // ever gives one aggregate for the whole range, no way to see a trend line.
+  radioAnalyticsSeries: adminProcedure
+    .input(z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      bucket: z.enum(["day", "week", "month"]).default("day"),
+    }))
+    .query(({ input }) => computeRadioAnalyticsSeries(input)),
 
   radioMetrics: adminProcedure.query(async () => {
     const todayStart = new Date();

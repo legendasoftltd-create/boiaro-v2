@@ -1156,8 +1156,16 @@ model ListenerSession {
   device_id       String?
   platform        String? // web | android | ios
   // ISO 3166-1 alpha-2, via geoCountry.ts (CF-IPCountry header or geoip-lite
-  // fallback) — country-only, no city-level lookup (see plan for why).
+  // fallback).
   country         String?
+  // Best-effort city name from the geoip-lite fallback lookup only — the
+  // CF-IPCountry header path has no city equivalent, so this is null
+  // whenever a CDN country header was the source of `country` above.
+  city            String?
+  // "high" | "medium" | "low" — set once the listener's player reports its
+  // active quality tier (see socket.ts's listener:set_quality); null until
+  // then, since not every station even offers tiers.
+  quality         String?
   joined_at       DateTime  @default(now())
   left_at         DateTime?
   created_at      DateTime  @default(now())

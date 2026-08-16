@@ -14,6 +14,7 @@ import {
   AlertTriangle, RefreshCw, Flag, ScrollText, SlidersHorizontal, CheckCircle2, BarChart3, PhoneOff,
 } from "lucide-react"
 import { toast } from "sonner"
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 
 const TABS = [
   { value: "health", label: "Server Health", icon: Activity },
@@ -246,9 +247,12 @@ const GROUP_BY_LABEL: Record<"none" | "rj" | "station" | "show", string> = {
   none: "Nothing", rj: "RJ", station: "STATION", show: "Program",
 }
 
+const SERIES_BUCKET_LABEL: Record<"day" | "week" | "month", string> = { day: "Daily", week: "Weekly", month: "Monthly" }
+
 function AdminRadioSafetyAnalytics() {
   const [range, setRange] = useState<"7" | "30" | "90">("30")
   const [groupBy, setGroupBy] = useState<"none" | "rj" | "station" | "show">("none")
+  const [bucket, setBucket] = useState<"day" | "week" | "month">("day")
   // Memoized on `range` only — recomputing this fresh on every render (as a
   // bare `new Date(...)` below the hook) was producing a brand-new `from`
   // string each render, which changed the query key, refetched, re-rendered,
@@ -257,6 +261,7 @@ function AdminRadioSafetyAnalytics() {
   // picks a different range.
   const from = useMemo(() => new Date(Date.now() - Number(range) * 24 * 60 * 60 * 1000).toISOString(), [range])
   const { data, isLoading } = trpc.admin.radioAnalytics.useQuery({ from, groupBy })
+  const { data: seriesData } = trpc.admin.radioAnalyticsSeries.useQuery({ from, bucket })
 
   return (
     <div className="space-y-4">
@@ -304,6 +309,57 @@ function AdminRadioSafetyAnalytics() {
               </CardContent>
             </Card>
           )}
+
+          {data.summary.cityBreakdown && Object.keys(data.summary.cityBreakdown).length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">City Breakdown</CardTitle></CardHeader>
+              <CardContent className="flex gap-4 flex-wrap">
+                {Object.entries(data.summary.cityBreakdown).map(([city, count]) => (
+                  <div key={city} className="text-sm"><span className="font-medium">{city}</span>: {count as number}</div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {data.summary.qualityBreakdown && Object.keys(data.summary.qualityBreakdown).length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">Quality Tier Breakdown</CardTitle></CardHeader>
+              <CardContent className="flex gap-4 flex-wrap">
+                {Object.entries(data.summary.qualityBreakdown).map(([quality, count]) => (
+                  <div key={quality} className="text-sm"><span className="font-medium capitalize">{quality}</span>: {count as number}</div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-base">Listener Trend</CardTitle>
+              <div className="flex gap-2">
+                {(["day", "week", "month"] as const).map((b) => (
+                  <Button key={b} size="sm" variant={bucket === b ? "default" : "outline"} onClick={() => setBucket(b)} className="text-xs">
+                    {SERIES_BUCKET_LABEL[b]}
+                  </Button>
+                ))}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {seriesData && seriesData.series.length > 0 ? (
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={seriesData.series}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                    <XAxis dataKey="date" fontSize={11} />
+                    <YAxis fontSize={11} />
+                    <Tooltip />
+                    <Line type="monotone" dataKey="uniqueListeners" name="Unique Listeners" stroke="#f97316" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="totalSessions" name="Sessions" stroke="#6366f1" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-muted-foreground py-6 text-center">No data for this range.</p>
+              )}
+            </CardContent>
+          </Card>
 
           {data.groups && data.groups.length > 0 && (
             <Card>

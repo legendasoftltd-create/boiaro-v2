@@ -139,6 +139,11 @@ export function useLiveSocket(sessionId: string | undefined) {
     socketRef.current?.emit("song_request:reorder", { sessionId, requestId, direction });
   }, [sessionId]);
 
+  const reportQuality = useCallback((quality: "high" | "medium" | "low") => {
+    if (!sessionId) return;
+    socketRef.current?.emit("listener:set_quality", { quality });
+  }, [sessionId]);
+
   // Lazily read the current socket — used by useCallInAudio, which attaches
   // its own listeners to this same connection rather than opening a second
   // one just for call-in signaling.
@@ -146,7 +151,7 @@ export function useLiveSocket(sessionId: string | undefined) {
 
   return {
     connected, listenerCount, messages, reactions, songRequests,
-    sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus, reorderSongRequest,
+    sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus, reorderSongRequest, reportQuality,
     setMessages, setSongRequests, getSocket,
   };
 }

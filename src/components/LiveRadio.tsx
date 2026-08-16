@@ -136,10 +136,16 @@ function RadioCard({ station, isLive, liveSessionId, liveSessionStatus, startedA
   // exactly while this card is the one actively playing a live RJ session —
   // undefined otherwise, which makes useLiveSocket leave/disconnect.
   const [trackedSessionId, setTrackedSessionId] = useState<string | undefined>(undefined)
-  useLiveSocket(trackedSessionId)
+  const { reportQuality } = useLiveSocket(trackedSessionId)
   useEffect(() => {
     setTrackedSessionId(isRadioActive && isPlaying && liveSessionId ? liveSessionId : undefined)
   }, [isRadioActive, isPlaying, liveSessionId])
+
+  // Reports whichever tier is actually selected once there's a tracked
+  // session to attach it to, and again on every later quality switch.
+  useEffect(() => {
+    if (trackedSessionId) reportQuality(quality)
+  }, [trackedSessionId, quality, reportQuality])
 
   const isReconnecting = liveSessionStatus === "reconnecting"
 

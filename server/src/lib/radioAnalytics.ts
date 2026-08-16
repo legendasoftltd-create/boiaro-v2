@@ -1,4 +1,5 @@
 import { prisma } from "./prisma.js";
+import { dhakaWallClock } from "./timezone.js";
 
 export interface RadioAnalyticsInput {
   from?: string;
@@ -32,7 +33,7 @@ export async function computeRadioAnalytics(input: RadioAnalyticsInput) {
   const [listenerRows, chatRows, requestCount, newFollowers, catchupRows, stations, rjProfiles, icecastSamples] = await Promise.all([
     prisma.listenerSession.findMany({
       where: { live_session_id: { in: sessionIds } },
-      select: { live_session_id: true, user_id: true, device_id: true, platform: true, country: true, joined_at: true, left_at: true },
+      select: { live_session_id: true, user_id: true, device_id: true, platform: true, country: true, city: true, quality: true, joined_at: true, left_at: true },
     }),
     prisma.liveChatMessage.findMany({ where: { live_session_id: { in: sessionIds } }, select: { live_session_id: true, user_id: true } }),
     prisma.songRequest.count({ where: { live_session_id: { in: sessionIds } } }),
@@ -83,6 +84,15 @@ export async function computeRadioAnalytics(input: RadioAnalyticsInput) {
   const countryBreakdown: Record<string, number> = {};
   listenerRows.forEach((r) => { const c = r.country ?? "unknown"; countryBreakdown[c] = (countryBreakdown[c] ?? 0) + 1; });
 
+  // City is best-effort (only populated by the geoip-lite fallback path, see
+  // geoCountry.ts) — omit "unknown" here rather than let a mostly-empty
+  // field dominate the breakdown the way countryBreakdown intentionally does.
+  const cityBreakdown: Record<string, number> = {};
+  listenerRows.forEach((r) => { if (r.city) cityBreakdown[r.city] = (cityBreakdown[r.city] ?? 0) + 1; });
+
+  const qualityBreakdown: Record<string, number> = {};
+  listenerRows.forEach((r) => { if (r.quality) qualityBreakdown[r.quality] = (qualityBreakdown[r.quality] ?? 0) + 1; });
+
   const catchupUniqueListeners = new Set(catchupRows.map((r) => `${r.live_session_id}:${r.user_id}`)).size;
   const catchupCompleted = catchupRows.filter((r) => r.completed).length;
 
@@ -112,6 +122,8 @@ export async function computeRadioAnalytics(input: RadioAnalyticsInput) {
     catchupCompletionRatePct: catchupRows.length ? Math.round((catchupCompleted / catchupRows.length) * 1000) / 10 : 0,
     deviceBreakdown,
     countryBreakdown,
+    cityBreakdown,
+    qualityBreakdown,
   };
 
   let groups: Array<{ key: string; label: string } & typeof summary> | null = null;
@@ -135,6 +147,10 @@ export async function computeRadioAnalytics(input: RadioAnalyticsInput) {
       const gCompleted = gCatchup.filter((r) => r.completed).length;
       const gCountryBreakdown: Record<string, number> = {};
       gListener.forEach((r) => { const c = r.country ?? "unknown"; gCountryBreakdown[c] = (gCountryBreakdown[c] ?? 0) + 1; });
+      const gCityBreakdown: Record<string, number> = {};
+      gListener.forEach((r) => { if (r.city) gCityBreakdown[r.city] = (gCityBreakdown[r.city] ?? 0) + 1; });
+      const gQualityBreakdown: Record<string, number> = {};
+      gListener.forEach((r) => { if (r.quality) gQualityBreakdown[r.quality] = (gQualityBreakdown[r.quality] ?? 0) + 1; });
       return {
         key, label: labelOf(key),
         totalSessions: gSessions.length,
@@ -156,9 +172,104 @@ export async function computeRadioAnalytics(input: RadioAnalyticsInput) {
         catchupCompletionRatePct: gCatchup.length ? Math.round((gCompleted / gCatchup.length) * 1000) / 10 : 0,
         deviceBreakdown: {},
         countryBreakdown: gCountryBreakdown,
+        cityBreakdown: gCityBreakdown,
+        qualityBreakdown: gQualityBreakdown,
       };
     }).sort((a, b) => b.uniqueListeners - a.uniqueListeners);
   }
 
   return { from, to, summary, groups };
+}
+
+export interface RadioAnalyticsSeriesInput {
+  from?: string;
+  to?: string;
+  bucket?: "day" | "week" | "month";
+  rjUserId?: string;
+}
+
+function seriesBucketKey(date: Date, bucket: "day" | "week" | "month"): string {
+  const d = dhakaWallClock(date);
+  if (bucket === "month") return d.toISOString().slice(0, 7);
+  if (bucket === "week") {
+    const day = d.getUTCDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(d);
+    monday.setUTCDate(d.getUTCDate() + mondayOffset);
+    return monday.toISOString().slice(0, 10);
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+// True time-bucketed series (day/week/month), distinct from computeRadioAnalytics
+// above which only ever returns one aggregate summary for the whole range —
+// this is what powers an actual trend chart. Each session (and everything
+// tied to it — listeners, chat) is attributed to the Dhaka-wall-clock bucket
+// its started_at falls in, same attribution rule the summary's own range
+// filter already uses.
+export async function computeRadioAnalyticsSeries(input: RadioAnalyticsSeriesInput) {
+  const from = input.from ? new Date(input.from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const to = input.to ? new Date(input.to) : new Date();
+  const bucket = input.bucket ?? "day";
+
+  const sessionsInRange = await prisma.liveSession.findMany({
+    where: {
+      started_at: { gte: from, lte: to },
+      is_test: false,
+      ...(input.rjUserId ? { rj_user_id: input.rjUserId } : {}),
+    },
+    select: { id: true, started_at: true, catchup_play_count: true, reaction_count: true },
+  });
+  const sessionIds = sessionsInRange.map((s) => s.id);
+  const sessionStart = new Map(sessionsInRange.map((s) => [s.id, s.started_at]));
+
+  const [listenerRows, chatRows] = await Promise.all([
+    prisma.listenerSession.findMany({
+      where: { live_session_id: { in: sessionIds } },
+      select: { live_session_id: true, user_id: true, device_id: true, joined_at: true, left_at: true },
+    }),
+    prisma.liveChatMessage.findMany({ where: { live_session_id: { in: sessionIds } }, select: { live_session_id: true } }),
+  ]);
+
+  interface Bucket { totalSessions: number; uniqueListenerKeys: Set<string>; totalListeningSeconds: number; chatCount: number; catchupPlays: number; reactionCount: number }
+  const buckets = new Map<string, Bucket>();
+  const getBucket = (key: string): Bucket => {
+    let b = buckets.get(key);
+    if (!b) { b = { totalSessions: 0, uniqueListenerKeys: new Set(), totalListeningSeconds: 0, chatCount: 0, catchupPlays: 0, reactionCount: 0 }; buckets.set(key, b); }
+    return b;
+  };
+
+  const now = Date.now();
+  sessionsInRange.forEach((s) => {
+    const b = getBucket(seriesBucketKey(s.started_at, bucket));
+    b.totalSessions += 1;
+    b.catchupPlays += s.catchup_play_count;
+    b.reactionCount += s.reaction_count;
+  });
+  listenerRows.forEach((r) => {
+    const startedAt = sessionStart.get(r.live_session_id);
+    if (!startedAt) return;
+    const b = getBucket(seriesBucketKey(startedAt, bucket));
+    b.uniqueListenerKeys.add(r.user_id ?? `device:${r.device_id}`);
+    b.totalListeningSeconds += Math.max(0, ((r.left_at?.getTime() ?? now) - r.joined_at.getTime()) / 1000);
+  });
+  chatRows.forEach((r) => {
+    const startedAt = sessionStart.get(r.live_session_id);
+    if (!startedAt) return;
+    getBucket(seriesBucketKey(startedAt, bucket)).chatCount += 1;
+  });
+
+  const series = [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, b]) => ({
+      date,
+      totalSessions: b.totalSessions,
+      uniqueListeners: b.uniqueListenerKeys.size,
+      totalListeningMinutes: Math.round(b.totalListeningSeconds / 60),
+      chatCount: b.chatCount,
+      catchupPlays: b.catchupPlays,
+      reactionCount: b.reactionCount,
+    }));
+
+  return { from, to, bucket, series };
 }

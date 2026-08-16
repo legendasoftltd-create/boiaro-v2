@@ -11,7 +11,7 @@ import { notifyFollowersOfGoLive, notifyFollowersOfCatchupPublished, notifyFollo
 import { deleteFromS3 } from "../lib/s3.js";
 import { getCallInIceServers } from "../lib/turnCredentials.js";
 import { PUBLIC_RJ_PROFILE_SELECT } from "../lib/rjProfile.js";
-import { computeRadioAnalytics } from "../lib/radioAnalytics.js";
+import { computeRadioAnalytics, computeRadioAnalyticsSeries } from "../lib/radioAnalytics.js";
 import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
 import { dhakaWallClock, fromDhakaShifted } from "../lib/timezone.js";
 
@@ -152,6 +152,14 @@ export const rjRouter = router({
       groupBy: z.enum(["none", "show"]).default("none"),
     }))
     .query(({ ctx, input }) => computeRadioAnalytics({ ...input, rjUserId: ctx.userId! })),
+
+  myAnalyticsSeries: protectedProcedure
+    .input(z.object({
+      from: z.string().optional(),
+      to: z.string().optional(),
+      bucket: z.enum(["day", "week", "month"]).default("day"),
+    }))
+    .query(({ ctx, input }) => computeRadioAnalyticsSeries({ ...input, rjUserId: ctx.userId! })),
 
   // Manual "special live announcement" to an RJ's own followers — for
   // anything outside the automatic triggers (go-live, schedule change,

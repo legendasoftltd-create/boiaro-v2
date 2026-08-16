@@ -5,7 +5,7 @@ import { prisma } from "../lib/prisma.js";
 import { getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
 import { logRadioAction } from "../lib/radioAudit.js";
 import { checkMessageSafety } from "../lib/chatSafety.js";
-import { detectCountryCode } from "../lib/geoCountry.js";
+import { detectCountryCode, detectCityName } from "../lib/geoCountry.js";
 
 interface AuthedSocket extends Socket {
   userId?: string;
@@ -140,21 +140,68 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       emitListenerCount(sessionId);
 
       const country = detectCountryCode({ headers: socket.handshake.headers, ip: socket.handshake.address });
-      // Mutually exclusive, same convention as anonymous book-view tracking
-      // (viewTracking.ts): a real user gets user_id, a guest gets a
-      // privacy-safe client-generated device_id (never a device fingerprint).
-      const row = await prisma.listenerSession
-        .create({
-          data: {
-            live_session_id: sessionId,
-            user_id: userId ?? null,
-            device_id: userId ? null : (deviceId ?? null),
-            platform: platform ?? "web",
-            country,
-          },
-        })
-        .catch(() => null);
+      const city = detectCityName({ headers: socket.handshake.headers, ip: socket.handshake.address });
+
+      // A page refresh (or a brief network drop) tears down and reopens the
+      // socket, which used to always create a brand-new ListenerSession row
+      // — fragmenting one continuous listen into several short ones and
+      // dragging down average-duration-style metrics even though the total
+      // listening time was still counted correctly. Resume a still-open (or
+      // very recently closed) row for the same listener+session instead of
+      // starting a fresh one, so a refresh doesn't fragment their listen.
+      const RESUME_WINDOW_MS = 45_000;
+      const resumeWhere = userId
+        ? { live_session_id: sessionId, user_id: userId }
+        : deviceId
+          ? { live_session_id: sessionId, user_id: null, device_id: deviceId }
+          : null;
+      // Excludes any row already claimed by a currently-connected socket —
+      // e.g. the same listener open in a second tab — so resuming a
+      // refreshed tab's row never steals an actually-still-open one out
+      // from under it.
+      const activeRowIds = new Set(listenerSessionRows.values());
+      const resumableCandidate = resumeWhere
+        ? await prisma.listenerSession.findFirst({
+            where: {
+              ...resumeWhere,
+              OR: [{ left_at: null }, { left_at: { gte: new Date(Date.now() - RESUME_WINDOW_MS) } }],
+            },
+            orderBy: { joined_at: "desc" },
+          })
+        : null;
+      const resumable = resumableCandidate && !activeRowIds.has(resumableCandidate.id) ? resumableCandidate : null;
+
+      const row = resumable
+        ? await prisma.listenerSession
+            .update({ where: { id: resumable.id }, data: { left_at: null, platform: platform ?? resumable.platform, country: country ?? resumable.country, city: city ?? resumable.city } })
+            .catch(() => null)
+        // Mutually exclusive, same convention as anonymous book-view tracking
+        // (viewTracking.ts): a real user gets user_id, a guest gets a
+        // privacy-safe client-generated device_id (never a device fingerprint).
+        : await prisma.listenerSession
+            .create({
+              data: {
+                live_session_id: sessionId,
+                user_id: userId ?? null,
+                device_id: userId ? null : (deviceId ?? null),
+                platform: platform ?? "web",
+                country,
+                city,
+              },
+            })
+            .catch(() => null);
       if (row) listenerSessionRows.set(socket.id, row.id);
+    });
+
+    // Reported by the client once it knows which quality tier it's actually
+    // playing (see LiveRadio.tsx's handleQualityChange) — not set at join
+    // time since not every station offers tiers and the initial tier can
+    // change mid-listen.
+    socket.on("listener:set_quality", async ({ quality }: { quality?: string }) => {
+      if (!quality || !["high", "medium", "low"].includes(quality)) return;
+      const rowId = listenerSessionRows.get(socket.id);
+      if (!rowId) return;
+      await prisma.listenerSession.update({ where: { id: rowId }, data: { quality } }).catch(() => null);
     });
 
     socket.on("leave_session", async () => {
