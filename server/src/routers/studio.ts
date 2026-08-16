@@ -10,7 +10,7 @@ import { shouldAutoRecord, startRecording, stopRecording } from "../lib/liveReco
 import { notifyFollowersOfGoLive } from "../lib/radioNotify.js";
 import { registerBridgeMount } from "../lib/studioBridge.js";
 import { deriveIcecastMountPath } from "../lib/icecastMount.js";
-import { getRadioSettingBool } from "../lib/radioSettings.js";
+import { getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
 import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
 import { isBandwidthBudgetAvailable } from "../lib/radioCostControl.js";
 
@@ -409,6 +409,15 @@ export const studioRouter = router({
       await logRadioAction(ctx.userId!, "studio_broadcast_ended", { sessionId: session.id });
       return updated;
     }),
+
+  // Platform-wide ducking defaults, admin-set (see radioSettings.ts) — seeds
+  // a new broadcast's sliders; each RJ can still adjust their own per-
+  // broadcast afterward (see useStudioMixer.ts), never persisted back here.
+  mixerDefaults: protectedProcedure.query(async () => ({
+    duckLevel: (await getRadioSettingNumber("radio_mixer_duck_level")) ?? 0.25,
+    duckAttackMs: (await getRadioSettingNumber("radio_mixer_duck_attack_ms")) ?? 200,
+    duckReleaseMs: (await getRadioSettingNumber("radio_mixer_duck_release_ms")) ?? 1000,
+  })),
 
   // ── §14 Mixer: music/jingle/SFX library ─────────────────────────────────
   // owner_user_id null = admin-curated, platform-wide; set = one RJ's own

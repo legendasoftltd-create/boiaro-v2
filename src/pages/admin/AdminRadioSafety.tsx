@@ -170,6 +170,9 @@ const NUMERIC_KEYS: { key: string; label: string; help: string; placeholder: str
   { key: "radio_monthly_bandwidth_limit_gb", label: "Monthly bandwidth limit (GB)", help: "Blank = unlimited — used for the capacity alert only", placeholder: "unlimited" },
   { key: "radio_estimated_bitrate_kbps", label: "Estimated stream bitrate (kbps)", help: "Used only to compute the bandwidth/cost estimate below", placeholder: "128" },
   { key: "radio_estimated_cost_per_gb", label: "Estimated cost per GB", help: "Your currency, admin-entered — blank disables the cost estimate", placeholder: "0" },
+  { key: "radio_mixer_duck_level", label: "Mixer: duck level (0-1)", help: "How far music/jingles duck while the host speaks — 0.25 = drop to 25% volume", placeholder: "0.25" },
+  { key: "radio_mixer_duck_attack_ms", label: "Mixer: duck attack (ms)", help: "Ramp-down time when the host starts speaking", placeholder: "200" },
+  { key: "radio_mixer_duck_release_ms", label: "Mixer: duck release (ms)", help: "Ramp-back-up time after the host stops speaking", placeholder: "1000" },
 ]
 
 const BLOCKED_WORDS_KEY = "radio_blocked_words"

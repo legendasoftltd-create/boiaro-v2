@@ -8,9 +8,9 @@ export interface MixerAsset {
   category: "music" | "jingle" | "sfx";
 }
 
-const DUCK_LEVEL = 0.25;
-const DUCK_RAMP_S = 0.2;
-const UNDUCK_RAMP_S = 1;
+const DEFAULT_DUCK_LEVEL = 0.25;
+const DEFAULT_DUCK_ATTACK_S = 0.2;
+const DEFAULT_DUCK_RELEASE_S = 1;
 
 /**
  * §14 Mixer: a Web Audio graph (music player + one-shot soundboard) mixed
@@ -42,6 +42,16 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
   const [duckingEnabled, setDuckingEnabled] = useState(true);
   const [isDucked, setIsDucked] = useState(false);
   const [loopEnabled, setLoopEnabledState] = useState(false);
+  // Admin-set platform defaults (see studio.mixerDefaults) seed these once
+  // via applyDuckDefaults — the RJ can freely adjust per-broadcast after.
+  const [duckLevel, setDuckLevel] = useState(DEFAULT_DUCK_LEVEL);
+  const [duckAttackS, setDuckAttackS] = useState(DEFAULT_DUCK_ATTACK_S);
+  const [duckReleaseS, setDuckReleaseS] = useState(DEFAULT_DUCK_RELEASE_S);
+  const applyDuckDefaults = useCallback((defaults: { duckLevel: number; duckAttackMs: number; duckReleaseMs: number }) => {
+    setDuckLevel(defaults.duckLevel);
+    setDuckAttackS(defaults.duckAttackMs / 1000);
+    setDuckReleaseS(defaults.duckReleaseMs / 1000);
+  }, []);
 
   const ensureContext = useCallback(() => {
     if (audioCtxRef.current) return audioCtxRef.current;
@@ -77,11 +87,11 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
     const ctx = audioCtxRef.current;
     const duckGain = duckGainRef.current;
     if (!ctx || !duckGain) return;
-    const target = duckingEnabled && isSpeaking ? DUCK_LEVEL : 1;
+    const target = duckingEnabled && isSpeaking ? duckLevel : 1;
     duckGain.gain.cancelScheduledValues(ctx.currentTime);
-    duckGain.gain.linearRampToValueAtTime(target, ctx.currentTime + (target < 1 ? DUCK_RAMP_S : UNDUCK_RAMP_S));
+    duckGain.gain.linearRampToValueAtTime(target, ctx.currentTime + (target < 1 ? duckAttackS : duckReleaseS));
     setIsDucked(target < 1);
-  }, [isSpeaking, duckingEnabled]);
+  }, [isSpeaking, duckingEnabled, duckLevel, duckAttackS, duckReleaseS]);
 
   const ensurePublished = useCallback(async () => {
     const room = getRoom();
@@ -181,6 +191,8 @@ export function useStudioMixer(getRoom: () => Room | null, isSpeaking: boolean) 
 
   return {
     isPublished, nowPlaying, musicVolume, duckingEnabled, isDucked, loopEnabled,
+    duckLevel, duckAttackS, duckReleaseS,
     playTrack, stopMusic, triggerOneShot, setMusicVolume, setDuckingEnabled, setLoopEnabled, teardown,
+    setDuckLevel, setDuckAttackS, setDuckReleaseS, applyDuckDefaults,
   };
 }

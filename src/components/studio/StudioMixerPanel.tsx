@@ -74,6 +74,18 @@ export function StudioMixerPanel({ sessionId, getRoom, isSpeaking }: { sessionId
     },
   })
 
+  // Seed the ducking sliders from the admin-set platform defaults once,
+  // on mount — the RJ is then free to adjust for this broadcast.
+  const { data: mixerDefaults } = trpc.studio.mixerDefaults.useQuery()
+  const appliedDefaultsRef = useRef(false)
+  useEffect(() => {
+    if (mixerDefaults && !appliedDefaultsRef.current) {
+      mixer.applyDuckDefaults(mixerDefaults)
+      appliedDefaultsRef.current = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mixerDefaults])
+
   // Detect the current track finishing (nowPlaying -> null) to auto-advance
   // the queue — only when what just ended was actually a queued item, not
   // an ad-hoc library play.
@@ -120,12 +132,33 @@ export function StudioMixerPanel({ sessionId, getRoom, isSpeaking }: { sessionId
           <span className="text-[10px] text-muted-foreground w-8 text-right">{Math.round(mixer.musicVolume * 100)}%</span>
         </div>
 
-        <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30">
-          <div className="flex items-center gap-2">
-            <Zap className={`w-3.5 h-3.5 ${mixer.isDucked ? "text-amber-400" : "text-muted-foreground"}`} />
-            <span className="text-xs">Ducking {mixer.isDucked && <span className="text-amber-400">(active)</span>}</span>
+        <div className="p-2 rounded-lg bg-muted/30 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Zap className={`w-3.5 h-3.5 ${mixer.isDucked ? "text-amber-400" : "text-muted-foreground"}`} />
+              <span className="text-xs">Ducking {mixer.isDucked && <span className="text-amber-400">(active)</span>}</span>
+            </div>
+            <Switch checked={mixer.duckingEnabled} onCheckedChange={mixer.setDuckingEnabled} />
           </div>
-          <Switch checked={mixer.duckingEnabled} onCheckedChange={mixer.setDuckingEnabled} />
+          {mixer.duckingEnabled && (
+            <div className="space-y-1.5 pl-6">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground w-14 shrink-0">Level</span>
+                <Slider value={[Math.round(mixer.duckLevel * 100)]} onValueChange={([v]) => mixer.setDuckLevel(v / 100)} max={90} min={0} step={5} className="flex-1" />
+                <span className="text-[10px] text-muted-foreground w-9 text-right">{Math.round(mixer.duckLevel * 100)}%</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground w-14 shrink-0">Attack</span>
+                <Slider value={[Math.round(mixer.duckAttackS * 1000)]} onValueChange={([v]) => mixer.setDuckAttackS(v / 1000)} max={1000} min={0} step={50} className="flex-1" />
+                <span className="text-[10px] text-muted-foreground w-9 text-right">{Math.round(mixer.duckAttackS * 1000)}ms</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-muted-foreground w-14 shrink-0">Release</span>
+                <Slider value={[Math.round(mixer.duckReleaseS * 1000)]} onValueChange={([v]) => mixer.setDuckReleaseS(v / 1000)} max={3000} min={0} step={100} className="flex-1" />
+                <span className="text-[10px] text-muted-foreground w-9 text-right">{Math.round(mixer.duckReleaseS * 1000)}ms</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center justify-between p-2 rounded-lg bg-muted/30">

@@ -26,6 +26,13 @@ export const RADIO_SETTINGS_DEFAULTS = {
   radio_estimated_bitrate_kbps: "128", // used only to compute the bandwidth/cost estimate below
   radio_estimated_cost_per_gb: "", // admin-entered currency/GB — empty disables the cost estimate
 
+  // §14 Mixer ducking defaults — seed a new broadcast's ducking sliders;
+  // each RJ can still adjust their own per-broadcast (see
+  // useStudioMixer.ts), these are just the platform-wide starting point.
+  radio_mixer_duck_level: "0.25", // 0-1, how far music/jingles duck while the host speaks
+  radio_mixer_duck_attack_ms: "200", // ramp-down time when the host starts speaking
+  radio_mixer_duck_release_ms: "1000", // ramp-back-up time after the host stops speaking
+
   // Chat safety.
   radio_slow_mode_seconds: "2", // minimum gap between messages from the same user
   radio_blocked_words: "", // comma-separated, case-insensitive substrings
