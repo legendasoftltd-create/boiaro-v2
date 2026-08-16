@@ -1701,6 +1701,13 @@ model RjProfile {
   email       String?
   is_active   Boolean  @default(true)
   is_approved Boolean  @default(false)
+  // Explicit lifecycle status, kept in sync with is_approved/is_active by
+  // every admin.ts mutation that touches either — those booleans stay the
+  // source of truth for authorization checks (unchanged), this field exists
+  // so Suspended and Deactivated (previously both just is_active:false,
+  // indistinguishable in the data) and Rejected (previously indistinguishable
+  // from a never-reviewed Pending row) are actually queryable/displayable.
+  status      String   @default("pending") // pending | approved | rejected | suspended | deactivated
   phone       String?
   specialty   String?
   stage_name  String

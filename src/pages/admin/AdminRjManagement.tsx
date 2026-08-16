@@ -3,7 +3,6 @@ import { Link } from "react-router-dom"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,8 +19,17 @@ interface RjRow {
   specialty: string | null
   is_approved: boolean
   is_active: boolean
+  status: "pending" | "approved" | "rejected" | "suspended" | "deactivated"
   created_at: string
   profile_email?: string
+}
+
+const STATUS_BADGE: Record<RjRow["status"], { label: string; className: string }> = {
+  pending: { label: "Pending", className: "bg-secondary text-muted-foreground" },
+  approved: { label: "Approved", className: "bg-emerald-500/15 text-emerald-400" },
+  rejected: { label: "Rejected", className: "bg-destructive/15 text-destructive" },
+  suspended: { label: "Suspended", className: "bg-amber-500/15 text-amber-400" },
+  deactivated: { label: "Deactivated", className: "bg-muted text-muted-foreground" },
 }
 
 interface LiveSessionRow {
@@ -45,6 +53,7 @@ export default function AdminRjManagement() {
   const approveRjMutation = trpc.admin.approveRj.useMutation()
   const rejectRjMutation = trpc.admin.rejectRj.useMutation()
   const suspendRjMutation = trpc.admin.suspendRj.useMutation()
+  const deactivateRjMutation = trpc.admin.deactivateRj.useMutation()
   const reactivateRjMutation = trpc.admin.reactivateRj.useMutation()
   const forceEndLiveSessionMutation = trpc.admin.forceEndLiveSession.useMutation()
 
@@ -93,36 +102,29 @@ export default function AdminRjManagement() {
   useEffect(() => { fetchAll() }, [])
 
   // Explicit, logged transitions — each records to RjApprovalLog and, where
-  // it matters, revokes the RJ's broadcast token immediately.
-  const toggleApproval = async (rj: RjRow) => {
+  // it matters, revokes the RJ's broadcast token immediately. Suspend and
+  // Deactivate are deliberately separate actions (not one toggle) — they're
+  // distinguishable states now (RjProfile.status), typically suspend =
+  // temporary/reversible, deactivate = the RJ is leaving/being removed.
+  const runTransition = async (mutate: () => Promise<unknown>, successMsg: string) => {
     try {
-      if (rj.is_approved) {
-        await rejectRjMutation.mutateAsync({ id: rj.id })
-      } else {
-        await approveRjMutation.mutateAsync({ id: rj.id })
-      }
+      await mutate()
     } catch {
       toast.error("Failed to update")
       return
     }
-    toast.success(rj.is_approved ? "RJ approval revoked" : "RJ approved!")
+    toast.success(successMsg)
     fetchAll()
   }
 
-  const toggleActive = async (rj: RjRow) => {
-    try {
-      if (rj.is_active) {
-        await suspendRjMutation.mutateAsync({ id: rj.id })
-      } else {
-        await reactivateRjMutation.mutateAsync({ id: rj.id })
-      }
-    } catch {
-      toast.error("Failed to update")
-      return
-    }
-    toast.success(rj.is_active ? "RJ suspended — any live session was stopped and their broadcast token revoked" : "RJ reactivated!")
-    fetchAll()
+  const approveRj = (rj: RjRow) => runTransition(() => approveRjMutation.mutateAsync({ id: rj.id }), "RJ approved!")
+  const rejectRj = (rj: RjRow) => runTransition(() => rejectRjMutation.mutateAsync({ id: rj.id }), "RJ rejected")
+  const suspendRj = (rj: RjRow) => runTransition(() => suspendRjMutation.mutateAsync({ id: rj.id }), "RJ suspended — any live session was stopped and their broadcast token revoked")
+  const deactivateRj = (rj: RjRow) => {
+    if (!window.confirm(`Deactivate ${rj.stage_name}? This ends any live session and revokes their broadcast token.`)) return
+    runTransition(() => deactivateRjMutation.mutateAsync({ id: rj.id }), "RJ deactivated — any live session was stopped and their broadcast token revoked")
   }
+  const reactivateRj = (rj: RjRow) => runTransition(() => reactivateRjMutation.mutateAsync({ id: rj.id }), "RJ reactivated!")
 
   const forceEndSession = async (session: LiveSessionRow) => {
     try {
@@ -252,41 +254,58 @@ export default function AdminRjManagement() {
                   <TableHead>Stage Name</TableHead>
                   <TableHead>User</TableHead>
                   <TableHead>Specialty</TableHead>
-                  <TableHead>Approved</TableHead>
-                  <TableHead>Active</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rjs.map((rj) => (
-                  <TableRow key={rj.id}>
-                    <TableCell className="font-medium">{rj.stage_name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{rj.profile_email}</TableCell>
-                    <TableCell className="text-sm">{rj.specialty || "—"}</TableCell>
-                    <TableCell>
-                      <Badge variant={rj.is_approved ? "default" : "secondary"} className={rj.is_approved ? "bg-emerald-500/15 text-emerald-400" : ""}>
-                        {rj.is_approved ? "Approved" : "Pending"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Switch checked={rj.is_active} onCheckedChange={() => toggleActive(rj)} />
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => toggleApproval(rj)}
-                        className="text-xs"
-                      >
-                        {rj.is_approved ? (
-                          <><UserX className="w-3 h-3 mr-1" /> Revoke</>
-                        ) : (
-                          <><UserCheck className="w-3 h-3 mr-1" /> Approve</>
-                        )}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {rjs.map((rj) => {
+                  const badge = STATUS_BADGE[rj.status] ?? STATUS_BADGE.pending
+                  return (
+                    <TableRow key={rj.id}>
+                      <TableCell className="font-medium">{rj.stage_name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{rj.profile_email}</TableCell>
+                      <TableCell className="text-sm">{rj.specialty || "—"}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className={badge.className}>{badge.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1.5">
+                          {rj.status === "pending" && (
+                            <>
+                              <Button variant="outline" size="sm" className="text-xs" onClick={() => approveRj(rj)}>
+                                <UserCheck className="w-3 h-3 mr-1" /> Approve
+                              </Button>
+                              <Button variant="outline" size="sm" className="text-xs" onClick={() => rejectRj(rj)}>
+                                <UserX className="w-3 h-3 mr-1" /> Reject
+                              </Button>
+                            </>
+                          )}
+                          {rj.status === "rejected" && (
+                            <Button variant="outline" size="sm" className="text-xs" onClick={() => approveRj(rj)}>
+                              <UserCheck className="w-3 h-3 mr-1" /> Approve
+                            </Button>
+                          )}
+                          {rj.status === "approved" && (
+                            <>
+                              <Button variant="outline" size="sm" className="text-xs" onClick={() => suspendRj(rj)}>Suspend</Button>
+                              <Button variant="outline" size="sm" className="text-xs text-destructive" onClick={() => deactivateRj(rj)}>Deactivate</Button>
+                            </>
+                          )}
+                          {rj.status === "suspended" && (
+                            <>
+                              <Button variant="outline" size="sm" className="text-xs" onClick={() => reactivateRj(rj)}>Reactivate</Button>
+                              <Button variant="outline" size="sm" className="text-xs text-destructive" onClick={() => deactivateRj(rj)}>Deactivate</Button>
+                            </>
+                          )}
+                          {rj.status === "deactivated" && (
+                            <Button variant="outline" size="sm" className="text-xs" onClick={() => reactivateRj(rj)}>Reactivate</Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}

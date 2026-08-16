@@ -65,6 +65,19 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
+// Admin-only — no moderator. `moderator` is meant for chat/request/report
+// moderation (still covered by adminProcedure above, and by
+// assertHostOrModerator in rj.ts), not full platform control. Applied
+// specifically to RJ lifecycle (approve/reject/suspend/deactivate/
+// reactivate), station CRUD, and platform-wide radio settings — the exact
+// overreach found in an audit (a moderator could suspend RJs and edit
+// stations, same as admin).
+const strictAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: "admin" } });
+  if (!role) throw new TRPCError({ code: "FORBIDDEN" });
+  return next({ ctx });
+});
+
 const HOMEPAGE_SECTION_DEFAULTS: Array<{
   section_key: string;
   title: string;
@@ -6027,7 +6040,7 @@ export const adminRouter = router({
     prisma.radioStation.findMany({ orderBy: [{ sort_order: "asc" }, { created_at: "asc" }] })
   ),
 
-  upsertRadioStation: adminProcedure
+  upsertRadioStation: strictAdminProcedure
     .input(
       z.object({
         id: z.string().optional(),
@@ -6064,7 +6077,7 @@ export const adminRouter = router({
       return result;
     }),
 
-  setRadioStationActive: adminProcedure
+  setRadioStationActive: strictAdminProcedure
     .input(z.object({ id: z.string(), is_active: z.boolean() }))
     .mutation(async ({ input }) => {
       const result = await prisma.radioStation.update({ where: { id: input.id }, data: { is_active: input.is_active } });
@@ -6263,33 +6276,33 @@ export const adminRouter = router({
   // Explicit, logged transitions (RjApprovalLog) instead of a blunt
   // is_approved/is_active toggle — each one also revokes the broadcast
   // token where that matters, so access actually stops immediately.
-  approveRj: adminProcedure
+  approveRj: strictAdminProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const profile = await prisma.rjProfile.update({ where: { id: input.id }, data: { is_approved: true, is_active: true } });
+      const profile = await prisma.rjProfile.update({ where: { id: input.id }, data: { is_approved: true, is_active: true, status: "approved" } });
       await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "approved", reason: input.reason, actor_id: ctx.userId! } });
       await logRadioAction(ctx.userId!, "rj_approved", { rjUserId: profile.user_id });
       return profile;
     }),
 
-  rejectRj: adminProcedure
+  rejectRj: strictAdminProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const profile = await prisma.rjProfile.update({
         where: { id: input.id },
-        data: { is_approved: false, broadcast_token_hash: null, broadcast_token_revoked_at: new Date() },
+        data: { is_approved: false, broadcast_token_hash: null, broadcast_token_revoked_at: new Date(), status: "rejected" },
       });
       await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "rejected", reason: input.reason, actor_id: ctx.userId! } });
       await logRadioAction(ctx.userId!, "rj_rejected", { rjUserId: profile.user_id });
       return profile;
     }),
 
-  suspendRj: adminProcedure
+  suspendRj: strictAdminProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const profile = await prisma.rjProfile.update({
         where: { id: input.id },
-        data: { is_active: false, broadcast_token_revoked_at: new Date() },
+        data: { is_active: false, broadcast_token_revoked_at: new Date(), status: "suspended" },
       });
       // A suspended RJ going live right now must also be stopped — not just
       // blocked from starting a new one.
@@ -6307,12 +6320,12 @@ export const adminRouter = router({
       return profile;
     }),
 
-  deactivateRj: adminProcedure
+  deactivateRj: strictAdminProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const profile = await prisma.rjProfile.update({
         where: { id: input.id },
-        data: { is_active: false, broadcast_token_revoked_at: new Date() },
+        data: { is_active: false, broadcast_token_revoked_at: new Date(), status: "deactivated" },
       });
       const activeSessions = await prisma.liveSession.findMany({
         where: { rj_user_id: profile.user_id, status: { in: ["live", "reconnecting"] } },
@@ -6328,10 +6341,10 @@ export const adminRouter = router({
       return profile;
     }),
 
-  reactivateRj: adminProcedure
+  reactivateRj: strictAdminProcedure
     .input(z.object({ id: z.string(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const profile = await prisma.rjProfile.update({ where: { id: input.id }, data: { is_active: true } });
+      const profile = await prisma.rjProfile.update({ where: { id: input.id }, data: { is_active: true, status: "approved" } });
       await prisma.rjApprovalLog.create({ data: { rj_user_id: profile.user_id, action: "reactivated", reason: input.reason, actor_id: ctx.userId! } });
       await logRadioAction(ctx.userId!, "rj_reactivated", { rjUserId: profile.user_id });
       return profile;
@@ -6348,7 +6361,7 @@ export const adminRouter = router({
   // — not just hidden in the UI.
   radioSettings: adminProcedure.query(() => getRadioSettings()),
 
-  updateRadioSettings: adminProcedure
+  updateRadioSettings: strictAdminProcedure
     .input(z.record(z.string(), z.string()))
     .mutation(async ({ ctx, input }) => {
       const allowedKeys = Object.keys(RADIO_SETTINGS_DEFAULTS) as RadioSettingKey[];

@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { notifyUser } from "../lib/notify.js";
+import { dhakaWallClock } from "../lib/timezone.js";
 
 // Two distinct reminder windows (spec requires both a 30-min heads-up and a
 // 10-min "starting soon" nudge). Each window has its own notification type
@@ -14,8 +15,12 @@ const WINDOWS: { minutes: number; type: string; toleranceMin: number }[] = [
 // reminder sent, notifying everyone who follows that RJ.
 export async function runShowReminders(): Promise<{ sent: number }> {
   const now = new Date();
-  const currentDay = now.getDay(); // 0=Sunday, matches JS Date convention
-  const todayStr = now.toISOString().slice(0, 10);
+  // Dhaka wall-clock fields, not the server process's own OS timezone —
+  // read only with the UTC getters below, since dhakaWallClock() returns a
+  // Date shifted specifically so its UTC-getters read as Dhaka local time.
+  const dhakaNow = dhakaWallClock(now);
+  const currentDay = dhakaNow.getUTCDay(); // 0=Sunday, matches JS Date convention
+  const todayStr = dhakaNow.toISOString().slice(0, 10);
 
   const candidateShows = await prisma.showSchedule.findMany({
     where: {
@@ -34,9 +39,12 @@ export async function runShowReminders(): Promise<{ sent: number }> {
   for (const show of candidateShows) {
     const [h, m] = show.start_time.split(":").map(Number);
     if (!Number.isFinite(h) || !Number.isFinite(m)) continue;
-    const showTime = new Date(now);
-    showTime.setHours(h, m, 0, 0);
-    const minsUntil = (showTime.getTime() - now.getTime()) / 60000;
+    // Build the show's start time as a Dhaka wall-clock instant (same
+    // shifted-space as dhakaNow) so the diff below is in real elapsed
+    // minutes regardless of the server's own OS timezone.
+    const showTimeShifted = new Date(dhakaNow);
+    showTimeShifted.setUTCHours(h, m, 0, 0);
+    const minsUntil = (showTimeShifted.getTime() - dhakaNow.getTime()) / 60000;
 
     for (const window of WINDOWS) {
       if (minsUntil < window.minutes - window.toleranceMin || minsUntil > window.minutes) continue;

@@ -11,6 +11,17 @@ function toDhakaShifted(date: Date): Date {
   return new Date(date.getTime() + DHAKA_OFFSET_MS);
 }
 
+/**
+ * Exported for call sites that need individual Dhaka wall-clock fields
+ * (day-of-week, hour, minute) rather than a period range — e.g. comparing
+ * "is it time to send this show's reminder yet" against a HH:MM start time.
+ * Read with the UTC getters (getUTCDay/getUTCHours/...), never the local
+ * ones — the whole point is to not depend on the server process's own TZ.
+ */
+export function dhakaWallClock(ref: Date = new Date()): Date {
+  return toDhakaShifted(ref);
+}
+
 /** Converts a "Dhaka wall-clock" Date (as produced via Date.UTC) back to a real UTC instant. */
 function fromDhakaShifted(date: Date): Date {
   return new Date(date.getTime() - DHAKA_OFFSET_MS);
