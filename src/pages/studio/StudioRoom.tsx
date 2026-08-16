@@ -244,7 +244,7 @@ export default function StudioRoom() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center flex-wrap gap-2">
                 <Button size="sm" variant={room.micOn ? "default" : "outline"} onClick={room.toggleMic} className="gap-1.5">
                   {room.micOn ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
                   {room.micOn ? "মাইক চালু" : "মাইক বন্ধ"}
