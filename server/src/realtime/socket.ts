@@ -258,8 +258,33 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
         return;
       }
 
+      // Duplicate detection: same (trimmed, case-insensitive) text already
+      // pending/accepted in this session within the last 10 minutes — saved
+      // as its own row (so the requester still sees it was received) but
+      // flagged "duplicate" rather than joining the actionable queue twice.
+      const recentDuplicate = await prisma.songRequest.findFirst({
+        where: {
+          live_session_id: sessionId,
+          status: { in: ["pending", "accepted"] },
+          created_at: { gte: new Date(now - 10 * 60 * 1000) },
+          request_text: { equals: text, mode: "insensitive" },
+        },
+      });
+      const nextPosition = recentDuplicate ? 0 : ((await prisma.songRequest.aggregate({
+        where: { live_session_id: sessionId },
+        _max: { position: true },
+      }))._max.position ?? -1) + 1;
+
       const [saved, profile] = await Promise.all([
-        prisma.songRequest.create({ data: { live_session_id: sessionId, user_id: userId, request_text: text } }),
+        prisma.songRequest.create({
+          data: {
+            live_session_id: sessionId,
+            user_id: userId,
+            request_text: text,
+            status: recentDuplicate ? "duplicate" : "pending",
+            position: nextPosition,
+          },
+        }),
         prisma.profile.findUnique({ where: { user_id: userId }, select: { display_name: true } }),
       ]);
       io!.to(room(sessionId)).emit("song_request:new", {
@@ -272,20 +297,26 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       });
     });
 
+    // A user can delete their own message; host/moderator can delete anyone's.
     socket.on("moderation:delete_message", async ({ sessionId, messageId }: { sessionId: string; messageId: string }) => {
       if (!sessionId || !messageId || !userId) return;
-      const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { rj_user_id: true } });
-      if (!session || !(await isHostOrModerator(userId, session))) {
-        socket.emit("error", { message: "Not authorized to moderate this session" });
+      const [session, message] = await Promise.all([
+        prisma.liveSession.findUnique({ where: { id: sessionId }, select: { rj_user_id: true } }),
+        prisma.liveChatMessage.findUnique({ where: { id: messageId }, select: { user_id: true, live_session_id: true } }),
+      ]);
+      if (!session || !message || message.live_session_id !== sessionId) return;
+      const isOwn = message.user_id === userId;
+      if (!isOwn && !(await isHostOrModerator(userId, session))) {
+        socket.emit("error", { message: "Not authorized to delete this message" });
         return;
       }
       await prisma.liveChatMessage.delete({ where: { id: messageId } }).catch(() => null);
       io!.to(room(sessionId)).emit("chat:deleted", { messageId });
-      logRadioAction(userId, "chat_message_deleted", { sessionId, messageId }).catch(() => null);
+      logRadioAction(userId, isOwn ? "chat_message_deleted_own" : "chat_message_deleted", { sessionId, messageId }).catch(() => null);
     });
 
     socket.on("song_request:update_status", async ({ sessionId, requestId, status }: { sessionId: string; requestId: string; status: string }) => {
-      if (!sessionId || !requestId || !userId || !["pending", "played", "rejected"].includes(status)) return;
+      if (!sessionId || !requestId || !userId || !["pending", "accepted", "played", "skipped", "rejected", "duplicate"].includes(status)) return;
       const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { rj_user_id: true } });
       if (!session || !(await isHostOrModerator(userId, session))) {
         socket.emit("error", { message: "Not authorized to manage requests for this session" });
@@ -293,6 +324,29 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       }
       const updated = await prisma.songRequest.update({ where: { id: requestId }, data: { status } }).catch(() => null);
       if (updated) io!.to(room(sessionId)).emit("song_request:updated", { id: updated.id, status: updated.status });
+    });
+
+    // Swap a pending request's position with its immediate neighbor —
+    // simple, reliable reordering without needing a drag-and-drop payload.
+    socket.on("song_request:reorder", async ({ sessionId, requestId, direction }: { sessionId: string; requestId: string; direction: "up" | "down" }) => {
+      if (!sessionId || !requestId || !userId || (direction !== "up" && direction !== "down")) return;
+      const session = await prisma.liveSession.findUnique({ where: { id: sessionId }, select: { rj_user_id: true } });
+      if (!session || !(await isHostOrModerator(userId, session))) return;
+      const current = await prisma.songRequest.findUnique({ where: { id: requestId } });
+      if (!current || current.live_session_id !== sessionId) return;
+      const neighbor = await prisma.songRequest.findFirst({
+        where: {
+          live_session_id: sessionId,
+          position: direction === "up" ? { lt: current.position } : { gt: current.position },
+        },
+        orderBy: { position: direction === "up" ? "desc" : "asc" },
+      });
+      if (!neighbor) return;
+      await prisma.$transaction([
+        prisma.songRequest.update({ where: { id: current.id }, data: { position: neighbor.position } }),
+        prisma.songRequest.update({ where: { id: neighbor.id }, data: { position: current.position } }),
+      ]);
+      io!.to(room(sessionId)).emit("song_request:reordered", { sessionId });
     });
 
     // ── Listener call-in: WebRTC signaling relay ──────────────────────────

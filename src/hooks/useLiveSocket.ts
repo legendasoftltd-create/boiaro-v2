@@ -27,7 +27,7 @@ export interface SongRequestItem {
   user_id: string;
   display_name: string | null;
   request_text: string;
-  status: "pending" | "played" | "rejected";
+  status: "pending" | "accepted" | "played" | "skipped" | "rejected" | "duplicate";
   created_at: string;
 }
 
@@ -129,9 +129,14 @@ export function useLiveSocket(sessionId: string | undefined) {
     socketRef.current?.emit("moderation:delete_message", { sessionId, messageId });
   }, [sessionId]);
 
-  const updateSongRequestStatus = useCallback((requestId: string, status: "played" | "rejected") => {
+  const updateSongRequestStatus = useCallback((requestId: string, status: SongRequestItem["status"]) => {
     if (!sessionId) return;
     socketRef.current?.emit("song_request:update_status", { sessionId, requestId, status });
+  }, [sessionId]);
+
+  const reorderSongRequest = useCallback((requestId: string, direction: "up" | "down") => {
+    if (!sessionId) return;
+    socketRef.current?.emit("song_request:reorder", { sessionId, requestId, direction });
   }, [sessionId]);
 
   // Lazily read the current socket — used by useCallInAudio, which attaches
@@ -141,7 +146,7 @@ export function useLiveSocket(sessionId: string | undefined) {
 
   return {
     connected, listenerCount, messages, reactions, songRequests,
-    sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus,
+    sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus, reorderSongRequest,
     setMessages, setSongRequests, getSocket,
   };
 }

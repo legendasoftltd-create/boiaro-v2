@@ -513,7 +513,7 @@ export const rjRouter = router({
         await assertHostOrModerator(ctx.userId!, session);
         const requests = await prisma.songRequest.findMany({
           where: { live_session_id: input.sessionId },
-          orderBy: { created_at: "desc" },
+          orderBy: { position: "asc" },
           take: 100,
         });
         const userIds = [...new Set(requests.map((r) => r.user_id))];

@@ -16,7 +16,7 @@ import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
-import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2, MoreVertical, VolumeX, Ban, Flag, ShieldOff } from "lucide-react"
+import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2, MoreVertical, VolumeX, Ban, Flag, ShieldOff, ChevronUp, ChevronDown } from "lucide-react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -84,7 +84,7 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
   const isHostOrMod = isHost || isModerator
   const {
     connected, listenerCount, messages, reactions, songRequests,
-    sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus,
+    sendMessage, sendReaction, sendSongRequest, deleteMessage, updateSongRequestStatus, reorderSongRequest,
     setMessages, setSongRequests, getSocket,
   } = useLiveSocket(sessionId)
 
@@ -169,8 +169,20 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
   }
 
   const { data: history } = trpc.rj.liveSession.chatHistory.useQuery({ sessionId }, { enabled: !!sessionId })
-  const { data: hostQueue } = trpc.rj.liveSession.songRequests.useQuery({ sessionId }, { enabled: isHost })
+  const { data: hostQueue } = trpc.rj.liveSession.songRequests.useQuery({ sessionId }, { enabled: isHostOrMod })
   const utils = trpc.useUtils()
+
+  // Reordering emits a bare "positions changed" signal (no payload) —
+  // refetch the queue rather than trying to reconstruct the new order
+  // client-side from a partial socket event.
+  useEffect(() => {
+    if (!isHostOrMod) return
+    const socket = getSocket()
+    if (!socket) return
+    const onReordered = () => utils.rj.liveSession.songRequests.invalidate({ sessionId })
+    socket.on("song_request:reordered", onReordered)
+    return () => { socket.off("song_request:reordered", onReordered) }
+  }, [isHostOrMod, getSocket, sessionId, utils])
   const { data: mutedUsers = [] } = trpc.rj.liveSession.mutedUsers.useQuery({ sessionId }, { enabled: isHostOrMod })
 
   const muteMutation = trpc.rj.liveSession.muteUser.useMutation({
@@ -294,35 +306,41 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
                   <span className="text-[12px] font-medium">{m.display_name || "Anonymous"}</span>
                   <span className="text-[13px] ml-2 break-words">{m.message}</span>
                 </div>
-                {user && m.user_id !== user.id && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {isHostOrMod && (
-                        <DropdownMenuItem onClick={() => deleteMessage(m.id)} className="text-destructive">
-                          <Trash2 className="w-3.5 h-3.5 mr-2" /> মুছে ফেলুন
-                        </DropdownMenuItem>
-                      )}
-                      {isHostOrMod && (
-                        <DropdownMenuItem onClick={() => handleMute(m.user_id, "mute")}>
-                          <VolumeX className="w-3.5 h-3.5 mr-2" /> মিউট করুন
-                        </DropdownMenuItem>
-                      )}
-                      {isHostOrMod && (
-                        <DropdownMenuItem onClick={() => handleMute(m.user_id, "ban")} className="text-destructive">
-                          <Ban className="w-3.5 h-3.5 mr-2" /> ব্যান করুন
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuItem onClick={() => handleReport(m.id)}>
-                        <Flag className="w-3.5 h-3.5 mr-2" /> রিপোর্ট করুন
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
+                {user && (() => {
+                  const isOwn = m.user_id === user.id
+                  const canDelete = isOwn || isHostOrMod
+                  return (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {canDelete && (
+                          <DropdownMenuItem onClick={() => deleteMessage(m.id)} className="text-destructive">
+                            <Trash2 className="w-3.5 h-3.5 mr-2" /> মুছে ফেলুন
+                          </DropdownMenuItem>
+                        )}
+                        {!isOwn && isHostOrMod && (
+                          <DropdownMenuItem onClick={() => handleMute(m.user_id, "mute")}>
+                            <VolumeX className="w-3.5 h-3.5 mr-2" /> মিউট করুন
+                          </DropdownMenuItem>
+                        )}
+                        {!isOwn && isHostOrMod && (
+                          <DropdownMenuItem onClick={() => handleMute(m.user_id, "ban")} className="text-destructive">
+                            <Ban className="w-3.5 h-3.5 mr-2" /> ব্যান করুন
+                          </DropdownMenuItem>
+                        )}
+                        {!isOwn && (
+                          <DropdownMenuItem onClick={() => handleReport(m.id)}>
+                            <Flag className="w-3.5 h-3.5 mr-2" /> রিপোর্ট করুন
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )
+                })()}
               </div>
             ))}
             <div ref={chatEndRef} />
@@ -350,32 +368,55 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
           <div className="p-3 border-b border-border/20">
             <div className="flex items-center gap-2">
               <Music className="w-4 h-4 text-primary" />
-              <span className="text-[13px] font-semibold">{isHost ? "অনুরোধের তালিকা" : "গান/টপিক অনুরোধ করুন"}</span>
+              <span className="text-[13px] font-semibold">{isHostOrMod ? "অনুরোধের তালিকা" : "গান/টপিক অনুরোধ করুন"}</span>
             </div>
-            {isHost && (
+            {isHostOrMod && (
               <p className="text-[10.5px] text-muted-foreground mt-1 leading-snug">
                 এখান থেকে সরাসরি গান বাজে না — অনুরোধ পড়ে আপনার নিজের এনকোডার/ডিভাইস থেকে গানটি বাজান, তারপর এখানে "Played" চেপে জানিয়ে দিন।
               </p>
             )}
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {(isHost ? songRequests : songRequests.filter((r) => r.user_id === user?.id)).map((r) => (
+            {(isHostOrMod ? songRequests : songRequests.filter((r) => r.user_id === user?.id)).map((r) => (
               <div key={r.id} className="p-2 rounded-lg bg-secondary/20 text-[12px]">
                 <div className="flex items-center justify-between">
                   <span className="font-medium">{r.display_name || "Anonymous"}</span>
-                  <Badge variant="outline" className="text-[9px]">{r.status}</Badge>
+                  <Badge variant="outline" className={`text-[9px] ${r.status === "duplicate" ? "border-amber-500/40 text-amber-500" : ""}`}>{r.status}</Badge>
                 </div>
                 <p className="mt-0.5">{r.request_text}</p>
-                {isHost && r.status === "pending" && (
-                  <div className="flex gap-1.5 mt-1.5">
-                    <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => updateSongRequestStatus(r.id, "played")}>Played</Button>
-                    <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => updateSongRequestStatus(r.id, "rejected")}>Reject</Button>
+                {isHostOrMod && (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    {r.status === "pending" && (
+                      <>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => updateSongRequestStatus(r.id, "accepted")}>Accept</Button>
+                        <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => updateSongRequestStatus(r.id, "rejected")}>Reject</Button>
+                      </>
+                    )}
+                    {r.status === "accepted" && (
+                      <>
+                        <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => updateSongRequestStatus(r.id, "played")}>Played</Button>
+                        <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => updateSongRequestStatus(r.id, "skipped")}>Skip</Button>
+                      </>
+                    )}
+                    {r.status === "duplicate" && (
+                      <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => updateSongRequestStatus(r.id, "rejected")}>Dismiss</Button>
+                    )}
+                    {(r.status === "pending" || r.status === "accepted") && (
+                      <div className="flex items-center gap-0.5 ml-auto">
+                        <Button size="icon" variant="ghost" className="h-6 w-6" title="উপরে সরান" onClick={() => reorderSongRequest(r.id, "up")}>
+                          <ChevronUp className="w-3 h-3" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-6 w-6" title="নিচে সরান" onClick={() => reorderSongRequest(r.id, "down")}>
+                          <ChevronDown className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             ))}
           </div>
-          {!isHost && (
+          {!isHostOrMod && (
             <div className="p-2 border-t border-border/20 flex gap-2">
               <Input
                 value={requestInput}

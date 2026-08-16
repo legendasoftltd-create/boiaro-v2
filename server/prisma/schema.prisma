@@ -1289,12 +1289,16 @@ model SongRequest {
   live_session_id String
   user_id         String
   request_text    String
-  status          String   @default("pending") // pending | played | rejected
+  status          String   @default("pending") // pending | accepted | played | skipped | rejected | duplicate
+  // Queue order for the RJ's own reordering (up/down) — independent of
+  // created_at so a request can be moved without changing its timestamp.
+  position        Int      @default(0)
   created_at      DateTime @default(now())
 
   session LiveSession @relation(fields: [live_session_id], references: [id], onDelete: Cascade)
 
   @@index([live_session_id, created_at])
+  @@index([live_session_id, position])
   @@map("song_requests")
 }
 
