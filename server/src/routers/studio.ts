@@ -350,25 +350,40 @@ export const studioRouter = router({
 
       await registerBridgeMount(`/live/${session.room_name}`, { mount, toIcecast: true, toWav: input.recordingMode === "mixed" });
 
-      const liveSession = await prisma.liveSession.create({
-        data: {
-          rj_user_id: session.host_user_id,
-          station_id: input.stationId ?? null,
-          stream_url: streamUrl,
-          show_title: input.showTitle ?? null,
-          description: input.description ?? null,
-          cover_image_url: input.coverImageUrl ?? null,
-          category: input.category ?? null,
-          status: "live",
-          started_at: new Date(),
-          last_heartbeat_at: new Date(),
-          is_test: false,
-          chat_enabled: input.chatEnabled,
-          requests_enabled: input.requestsEnabled,
-          recording_enabled: input.recordingEnabled,
-          callin_enabled: input.callinEnabled,
-        },
-      });
+      // The clash findFirst above is a friendly fast-path error — it can't
+      // stop two concurrent startBroadcast calls for the same station both
+      // passing it and both creating a session (same race as goLive in
+      // rj.ts, and the same fix: a partial unique index
+      // — live_sessions_one_live_per_station — is the actual atomic guard).
+      // No Egress/stream has started yet at this point, so it's safe to
+      // just surface the friendly error here.
+      let liveSession;
+      try {
+        liveSession = await prisma.liveSession.create({
+          data: {
+            rj_user_id: session.host_user_id,
+            station_id: input.stationId ?? null,
+            stream_url: streamUrl,
+            show_title: input.showTitle ?? null,
+            description: input.description ?? null,
+            cover_image_url: input.coverImageUrl ?? null,
+            category: input.category ?? null,
+            status: "live",
+            started_at: new Date(),
+            last_heartbeat_at: new Date(),
+            is_test: false,
+            chat_enabled: input.chatEnabled,
+            requests_enabled: input.requestsEnabled,
+            recording_enabled: input.recordingEnabled,
+            callin_enabled: input.callinEnabled,
+          },
+        });
+      } catch (err: any) {
+        if (err?.code === "P2002") {
+          throw new TRPCError({ code: "CONFLICT", message: "Another host is already live on this station" });
+        }
+        throw err;
+      }
 
       const { httpUrl, apiKey, apiSecret } = livekitEnv();
       const egress = new EgressClient(httpUrl, apiKey, apiSecret);

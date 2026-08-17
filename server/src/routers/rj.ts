@@ -574,25 +574,41 @@ export const rjRouter = router({
           throw new TRPCError({ code: "FORBIDDEN", message: "This month's bandwidth budget has been reached — new broadcasts are paused until next month or an admin raises the limit." });
         }
 
-        const session = await prisma.liveSession.create({
-          data: {
-            rj_user_id: ctx.userId,
-            station_id: input.stationId ?? null,
-            stream_url: input.streamUrl,
-            show_title: input.showTitle ?? null,
-            description: input.description ?? null,
-            cover_image_url: input.coverImageUrl ?? null,
-            category: input.category ?? null,
-            status: "live",
-            started_at: new Date(),
-            last_heartbeat_at: new Date(),
-            is_test: input.isTest,
-            chat_enabled: input.chatEnabled,
-            requests_enabled: input.requestsEnabled,
-            recording_enabled: input.recordingEnabled,
-            callin_enabled: input.callinEnabled,
-          },
-        });
+        // The findFirst clash check above is a friendly, fast-path error
+        // message — it can't stop two concurrent goLive requests for the
+        // same station from both passing it and both creating a session
+        // (reproduced in production: two overlapping live sessions on one
+        // station, fighting over the same Icecast mount). The database's
+        // partial unique index (live_sessions_one_live_per_station) is the
+        // actual guard; catch its violation here and surface the same
+        // CONFLICT instead of a raw constraint error.
+        let session;
+        try {
+          session = await prisma.liveSession.create({
+            data: {
+              rj_user_id: ctx.userId,
+              station_id: input.stationId ?? null,
+              stream_url: input.streamUrl,
+              show_title: input.showTitle ?? null,
+              description: input.description ?? null,
+              cover_image_url: input.coverImageUrl ?? null,
+              category: input.category ?? null,
+              status: "live",
+              started_at: new Date(),
+              last_heartbeat_at: new Date(),
+              is_test: input.isTest,
+              chat_enabled: input.chatEnabled,
+              requests_enabled: input.requestsEnabled,
+              recording_enabled: input.recordingEnabled,
+              callin_enabled: input.callinEnabled,
+            },
+          });
+        } catch (err: any) {
+          if (err?.code === "P2002") {
+            throw new TRPCError({ code: "CONFLICT", message: "Another host is already live on this station" });
+          }
+          throw err;
+        }
 
         if (!input.isTest) {
           notifyFollowersOfGoLive(ctx.userId!, profile.stage_name, input.showTitle, session.id).catch(() => null);
