@@ -48,6 +48,13 @@ export default function RjDashboard() {
   const { status: termsStatus, accept: acceptTerms, isAccepting } = useRjTerms()
   const { get: getSetting, isLoading: settingsLoading } = useSiteSettings()
   const { data: stations } = useRadioStations()
+  // The admin-managed programming schedule and this "Go Live" form used to
+  // be completely disconnected — nothing here knew what the schedule said
+  // this RJ should be broadcasting right now, so the station picker just
+  // defaulted to whichever station happened to be first in the list.
+  // Confirmed live: an RJ scheduled for one station went live on a
+  // different one because of exactly this gap.
+  const { data: currentShow } = trpc.rj.myCurrentShow.useQuery()
 
   const broadcastHost = getSetting("radio_broadcast_host")
   const broadcastPort = getSetting("radio_broadcast_port")
@@ -82,21 +89,36 @@ export default function RjDashboard() {
     return () => { document.title = "BoiAro" }
   }, [])
 
-  // Default to the first active station once the list loads, so a
-  // fresh RJ doesn't have to know to pick one — falls back to the old
-  // single-station behavior (platform's public stream URL, no station
-  // attached) only when there are no stations configured at all.
+  // Defaults the station to whatever the schedule says this RJ should be
+  // broadcasting right now, if anything — otherwise falls back to the
+  // first active station so a fresh RJ doesn't have to know to pick one,
+  // and finally to the old single-station behavior (platform's public
+  // stream URL, no station attached) when there are no stations at all.
+  // currentShow can still arrive after stations/the first-station default
+  // already ran, so this re-checks even once stationId is set — but only
+  // ever overrides an *auto*-picked station, never one the RJ chose.
+  const [stationAutoPicked, setStationAutoPicked] = useState(true)
   useEffect(() => {
-    if (stationId || streamUrl) return
+    if (stationId && !stationAutoPicked) return
+    if (currentShow) {
+      if (currentShow.station_id !== stationId) {
+        setStationId(currentShow.station_id)
+        setStreamUrl(currentShow.station.stream_url)
+        setBroadcastSettings((f) => ({ ...f, showTitle: f.showTitle || currentShow.show_title }))
+      }
+      return
+    }
+    if (stationId) return
     if (stations && stations.length > 0) {
       setStationId(stations[0].id)
       setStreamUrl(stations[0].stream_url)
     } else if (publicStreamUrl) {
       setStreamUrl(publicStreamUrl)
     }
-  }, [stations, publicStreamUrl])
+  }, [stations, publicStreamUrl, currentShow, stationId, stationAutoPicked])
 
   const handleStationChange = (value: string) => {
+    setStationAutoPicked(false)
     if (value === "__none__") {
       setStationId("")
       return
@@ -394,6 +416,18 @@ export default function RjDashboard() {
                   <p className="text-[11px] text-muted-foreground">
                     Which station this broadcast goes out on — picking one fills in its stream URL below and stops another host going live on the same station while you're on air.
                   </p>
+                  {currentShow && currentShow.station_id === stationId && (
+                    <p className="text-[11px] text-emerald-400 flex items-center gap-1">
+                      <Clock className="w-3 h-3 shrink-0" />
+                      Scheduled now: "{currentShow.show_title}" on {currentShow.station.name} — auto-selected below.
+                    </p>
+                  )}
+                  {currentShow && currentShow.station_id !== stationId && (
+                    <p className="text-[11px] text-amber-400 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      Your schedule has "{currentShow.show_title}" on {currentShow.station.name} right now — double check you meant to pick a different station.
+                    </p>
+                  )}
                 </div>
               )}
 

@@ -1053,6 +1053,43 @@ export const rjRouter = router({
     })
   ),
 
+  // The admin-managed programming schedule and the RJ's own "Go Live" flow
+  // used to be completely disconnected — the dashboard just defaulted to
+  // whichever station happened to be first in the list, with no idea what
+  // the schedule said this RJ should be broadcasting right now. Confirmed
+  // live: an RJ scheduled for one station went live on a different one
+  // (the schedule's Station field looked right in the admin editor, but
+  // nothing carried that into the RJ's actual go-live station picker).
+  // Lets the dashboard auto-select (and pre-fill the show title for) the
+  // right station whenever the RJ has a show scheduled right now.
+  myCurrentShow: protectedProcedure.query(async ({ ctx }) => {
+    const schedules = await prisma.showSchedule.findMany({
+      where: { rj_user_id: ctx.userId, is_active: true, status: "active" },
+      include: { station: { select: { id: true, name: true, stream_url: true } } },
+    });
+    if (!schedules.length) return null;
+
+    const dhakaNow = dhakaWallClock();
+    const todayDow = dhakaNow.getUTCDay();
+    const nowMinutes = dhakaNow.getUTCHours() * 60 + dhakaNow.getUTCMinutes();
+
+    for (const s of schedules) {
+      const isToday = s.schedule_type === "one_time" && s.specific_date
+        ? s.specific_date.getUTCFullYear() === dhakaNow.getUTCFullYear()
+          && s.specific_date.getUTCMonth() === dhakaNow.getUTCMonth()
+          && s.specific_date.getUTCDate() === dhakaNow.getUTCDate()
+        : s.schedule_type !== "one_time" && s.day_of_week === todayDow;
+      if (!isToday) continue;
+
+      const toMinutes = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+      const start = toMinutes(s.start_time);
+      let end = toMinutes(s.end_time);
+      if (end <= start) end += 24 * 60; // crosses midnight
+      if (nowMinutes >= start && nowMinutes < end) return s;
+    }
+    return null;
+  }),
+
   // ── Catch-up playback tracking ──────────────────────────────────────────
   myCatchupProgress: protectedProcedure
     .input(z.object({ sessionId: z.string() }))
