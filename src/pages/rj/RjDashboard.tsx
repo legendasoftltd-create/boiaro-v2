@@ -19,6 +19,20 @@ import { Checkbox } from "@/components/ui/checkbox"
 
 // Keep in sync with server/src/lib/rjTermsClauses.ts's RJ_TERMS_CLAUSE_KEYS —
 // itemized broadcaster-terms clauses, replacing one blanket checkbox.
+// Mirrors server/src/lib/icecastMount.ts's deriveIcecastMountPath: a
+// station's stream_url is the public *listening* URL (reverse-proxied
+// through this same prefix), not the raw Icecast mount an encoder connects
+// to — the mount is whatever's left after stripping it.
+const ICECAST_PROXY_PREFIX = "/radio-stream"
+function deriveMountFromStreamUrl(streamUrl: string): string | null {
+  try {
+    const path = new URL(streamUrl).pathname
+    return path.startsWith(ICECAST_PROXY_PREFIX + "/") ? path.slice(ICECAST_PROXY_PREFIX.length) : path
+  } catch {
+    return null
+  }
+}
+
 const TERMS_CLAUSES: { key: string; label: string }[] = [
   { key: "prohibited_content", label: "I will only broadcast music/content I own or am licensed to play, and I'm responsible for copyright compliance." },
   { key: "recording_consent", label: "I consent to the platform recording my broadcasts for catch-up playback." },
@@ -42,6 +56,18 @@ export default function RjDashboard() {
 
   const [stationId, setStationId] = useState("")
   const [streamUrl, setStreamUrl] = useState("")
+  // The Broadcast Setup card below used to always show the site-wide
+  // radio_broadcast_mount setting, regardless of which station was actually
+  // selected — harmless back when every station shared one mount, but with
+  // multiple stations now expected to have distinct mounts (see the
+  // station-uniqueness fix), that static value silently told the RJ to
+  // point their encoder at the *wrong* mount whenever they picked any
+  // station other than whichever one the global setting happened to match.
+  // Reproduced live: a station showed as live with the right RJ/details,
+  // but never actually received audio, while a *different* station started
+  // unexpectedly playing that RJ's stream — the encoder was still pointed
+  // at the old global mount instead of the selected station's.
+  const effectiveMount = deriveMountFromStreamUrl(streamUrl) || broadcastMount
   const [broadcastSettings, setBroadcastSettings] = useState<BroadcastSettingsValue>(DEFAULT_BROADCAST_SETTINGS)
   const [broadcastToken, setBroadcastToken] = useState("")
   const [isTestBroadcast, setIsTestBroadcast] = useState(false)
@@ -227,9 +253,14 @@ export default function RjDashboard() {
             <div className="text-xs bg-muted/50 rounded-lg p-3 space-y-1 font-mono">
               <p><span className="text-muted-foreground font-sans">Host:</span> {broadcastHost}</p>
               <p><span className="text-muted-foreground font-sans">Port:</span> {broadcastPort}</p>
-              <p><span className="text-muted-foreground font-sans">Mount:</span> {broadcastMount}</p>
+              <p><span className="text-muted-foreground font-sans">Mount:</span> {effectiveMount}</p>
               <p><span className="text-muted-foreground font-sans">Protocol:</span> Icecast2</p>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              {stationId
+                ? "Mount matches the station selected below — re-check this if you switch stations, your encoder needs to point at the new mount too."
+                : "Pick a station below to see its exact mount, or enter a custom stream URL."}
+            </p>
             <p className="text-xs text-amber-400 flex items-center gap-1">
               <AlertTriangle className="w-3 h-3 shrink-0" /> Ask an admin for your source password — not your BoiAro login.
             </p>

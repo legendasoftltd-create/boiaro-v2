@@ -378,12 +378,15 @@ function RadioCard({ station, isLive, liveSessionId, liveSessionStatus, startedA
         {/* Only shown when an RJ is actually broadcasting right now — this used
             to show for every station regardless of live status, which meant
             an idle station's card claimed to be "LIVE" whenever its stream
-            just hadn't errored yet. Reconnecting gets its own distinct badge
-            rather than looking identical to a healthy live broadcast. */}
+            just hadn't errored yet. Kept to just "LIVE" (color signals
+            reconnecting vs healthy) rather than the full Bengali status
+            phrase — that overflowed this 64-80px thumbnail badly; the full
+            "reconnecting, RJ is coming back" message already has its own
+            room in the text row below. */}
         {isLive && !hasError && (
           <div className={`absolute top-1 right-1 flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${isReconnecting ? "bg-amber-500 text-white" : "bg-destructive text-destructive-foreground"}`}>
             <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${isReconnecting ? "bg-white" : "bg-destructive-foreground"}`} />
-            {isReconnecting ? "সংযোগ বিচ্ছিন্ন" : "LIVE"}
+            LIVE
           </div>
         )}
         {isLive && rjAvatarUrl && (
