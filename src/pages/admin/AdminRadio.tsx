@@ -141,6 +141,44 @@ function validateStreamUrl(url: string): { valid: boolean; warning?: string } {
   }
 }
 
+function slugify(name: string): string {
+  return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "station"
+}
+
+/**
+ * Suggests a stream URL for a brand-new station that's very unlikely to
+ * collide with an existing one — reuses the same host/path convention as
+ * whatever station already exists (so it lands on the same reverse-proxied
+ * Icecast prefix), derives a slug from the station name, and appends a
+ * counter if that slug is already taken. Two stations sharing a mount means
+ * two RJs going live on "different" stations actually fight over the same
+ * broadcast — this is the "make it easy to avoid that" half of the fix; the
+ * server enforces it either way.
+ */
+function suggestStreamUrl(name: string, existingStations: RadioStation[]): string {
+  const sample = existingStations.find((s) => { try { new URL(s.stream_url); return true } catch { return false } })
+  let origin = window.location.origin
+  let dir = "/radio-stream/"
+  let ext = ".mp3"
+  if (sample) {
+    const parsed = new URL(sample.stream_url)
+    origin = parsed.origin
+    const lastSlash = parsed.pathname.lastIndexOf("/")
+    dir = lastSlash >= 0 ? parsed.pathname.slice(0, lastSlash + 1) : "/"
+    const lastDot = parsed.pathname.lastIndexOf(".")
+    ext = lastDot > lastSlash ? parsed.pathname.slice(lastDot) : ".mp3"
+  }
+  const existingUrls = new Set(existingStations.flatMap((s) => [s.stream_url, s.stream_url_medium, s.stream_url_low].filter(Boolean)))
+  const slug = slugify(name)
+  let candidate = `${origin}${dir}live-${slug}${ext}`
+  let n = 2
+  while (existingUrls.has(candidate)) {
+    candidate = `${origin}${dir}live-${slug}-${n}${ext}`
+    n++
+  }
+  return candidate
+}
+
 const EMPTY_FORM = {
   name: "",
   stream_url: "",
@@ -155,11 +193,15 @@ const EMPTY_FORM = {
 }
 
 /** Create (station === null) or edit (station set) — same form either way. */
-function StationFormDialog({ station, onClose, onSaved }: { station: RadioStation | null; onClose: () => void; onSaved: () => void }) {
+function StationFormDialog({ station, existingStations, onClose, onSaved }: { station: RadioStation | null; existingStations: RadioStation[]; onClose: () => void; onSaved: () => void }) {
   const upsertRadioStationMutation = trpc.admin.upsertRadioStation.useMutation()
   const [saving, setSaving] = useState(false)
   const [urlValidation, setUrlValidation] = useState<{ valid: boolean; warning?: string }>({ valid: true })
   const [form, setForm] = useState(EMPTY_FORM)
+  // Only auto-fills the Stream URL for a brand-new station, and only until
+  // the admin actually edits that field themselves — never touches it again
+  // after that, including on further name edits.
+  const [urlAutoFilled, setUrlAutoFilled] = useState(true)
 
   useEffect(() => {
     setForm(station ? {
@@ -174,7 +216,14 @@ function StationFormDialog({ station, onClose, onSaved }: { station: RadioStatio
       callin_enabled: station.callin_enabled ?? true,
       default_quality: station.default_quality ?? "high",
     } : EMPTY_FORM)
+    setUrlAutoFilled(!station)
   }, [station])
+
+  useEffect(() => {
+    if (!urlAutoFilled || station || !form.name.trim()) return
+    setForm((f) => ({ ...f, stream_url: suggestStreamUrl(form.name, existingStations) }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.name, urlAutoFilled, station])
 
   useEffect(() => {
     setUrlValidation(form.stream_url ? validateStreamUrl(form.stream_url) : { valid: true })
@@ -253,10 +302,16 @@ function StationFormDialog({ station, onClose, onSaved }: { station: RadioStatio
             <Label>Stream URL *</Label>
             <Input
               value={form.stream_url}
-              onChange={(e) => setForm((f) => ({ ...f, stream_url: e.target.value }))}
+              onChange={(e) => { setUrlAutoFilled(false); setForm((f) => ({ ...f, stream_url: e.target.value })) }}
               placeholder="https://stream.example.com/live.mp3"
               className={urlValidation.warning && !urlValidation.valid ? "border-destructive" : ""}
             />
+            {!station && urlAutoFilled && form.stream_url.trim() && (
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                Suggested automatically so it won't collide with another station — edit freely if you'd rather use your own.
+              </p>
+            )}
             {urlValidation.warning ? (
               <p className={`text-xs flex items-center gap-1 ${urlValidation.valid ? "text-amber-400" : "text-destructive"}`}>
                 <AlertTriangle className="w-3 h-3" />
@@ -496,6 +551,7 @@ export default function AdminRadio() {
       {dialogTarget !== null && (
         <StationFormDialog
           station={dialogTarget === "new" ? null : dialogTarget}
+          existingStations={stations}
           onClose={() => setDialogTarget(null)}
           onSaved={() => { setDialogTarget(null); loadStations() }}
         />

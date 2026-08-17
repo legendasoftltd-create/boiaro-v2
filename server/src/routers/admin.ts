@@ -23,6 +23,7 @@ import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSettingNumber, type 
 import { getMonthlyLeaderboard, recalculateMonth, upsertPrizeConfig, type LeaderboardMetric } from "../services/monthlyLeaderboard.service.js";
 import { getGaRealtimeReport } from "../lib/gaRealtime.js";
 import { syncStationMountsWithBridge } from "../lib/studioBridge.js";
+import { deriveIcecastMountPath } from "../lib/icecastMount.js";
 import { computeRadioAnalytics, computeRadioAnalyticsSeries } from "../lib/radioAnalytics.js";
 import { getRecordingStorageUsedGb, getEstimatedBandwidthGb30d } from "../lib/radioCostControl.js";
 import { getStreamHealthForSessions } from "../lib/streamHealth.js";
@@ -6071,6 +6072,37 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input }) => {
+      // Two stations sharing a mount means two RJs going live on "different"
+      // stations actually fight over the same Icecast source — whichever
+      // encoder wins plays for both, making it look like the same RJ is
+      // hosting every station. Reproduced in production from a station
+      // whose stream_url had drifted to match another station's exactly.
+      // Guard by comparing the real Icecast mount (post reverse-proxy-prefix
+      // stripping — see deriveIcecastMountPath), not the raw URL string, so
+      // e.g. an http vs https or a differently-formatted equivalent URL
+      // still gets caught.
+      const newMounts = [input.stream_url, input.stream_url_medium, input.stream_url_low]
+        .map(deriveIcecastMountPath)
+        .filter((m): m is string => !!m);
+      if (newMounts.length) {
+        const others = await prisma.radioStation.findMany({
+          where: input.id ? { id: { not: input.id } } : undefined,
+          select: { name: true, stream_url: true, stream_url_medium: true, stream_url_low: true },
+        });
+        for (const other of others) {
+          const otherMounts = [other.stream_url, other.stream_url_medium, other.stream_url_low]
+            .map(deriveIcecastMountPath)
+            .filter((m): m is string => !!m);
+          const clash = newMounts.find((m) => otherMounts.includes(m));
+          if (clash) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: `This stream URL's mount (${clash}) is already used by station "${other.name}" — each station needs its own unique stream URL, or two RJs going live on "different" stations will collide on the same broadcast.`,
+            });
+          }
+        }
+      }
+
       const data = {
         name: input.name,
         stream_url: input.stream_url,
