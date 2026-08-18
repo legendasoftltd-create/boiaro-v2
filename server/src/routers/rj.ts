@@ -414,7 +414,7 @@ export const rjRouter = router({
     current: publicProcedure.query(async () => {
       const session = await prisma.liveSession.findFirst({
         where: { status: { in: ["live", "reconnecting"] }, is_test: false },
-        include: { station: true },
+        include: { station: true, studio_session: { select: { id: true } } },
         orderBy: { started_at: "desc" },
       });
       if (!session) return null;
@@ -451,7 +451,7 @@ export const rjRouter = router({
       .query(async ({ input }) => {
         const session = await prisma.liveSession.findUnique({
           where: { id: input.sessionId },
-          include: { station: true },
+          include: { station: true, studio_session: { select: { id: true } } },
         });
         if (!session || session.is_test) return null;
         const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id }, select: PUBLIC_RJ_PROFILE_SELECT });

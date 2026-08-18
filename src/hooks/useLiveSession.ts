@@ -22,6 +22,13 @@ export interface LiveSession {
   requests_enabled?: boolean;
   recording_enabled?: boolean;
   callin_enabled?: boolean;
+  // Present only for a BoiAro Studio (LiveKit) broadcast — null for the
+  // external-encoder "Simple Go-Live" flow. Distinguishes them because
+  // call-in only actually reaches listeners for a Studio broadcast (via
+  // the LiveKit bridge in StudioRoom.tsx) — managing calls from this page
+  // for a Studio broadcast is a private RJ<->caller preview that never
+  // reaches the audience, so the UI needs to know which one it's dealing with.
+  studio_session?: { id: string } | null;
 }
 
 export interface RjProfile {

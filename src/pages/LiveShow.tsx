@@ -66,7 +66,7 @@ export default function LiveShow() {
             </div>
           </div>
         ) : (
-          <LiveShowRoom sessionId={session.id} showTitle={session.show_title} rjName={session.rj_profile?.stage_name} rjUserId={session.rj_user_id} isHost={isHost} callinEnabled={!!session.callin_enabled} streamUrl={session.stream_url} artworkUrl={session.rj_profile?.avatar_url} status={session.status} startedAt={session.started_at} />
+          <LiveShowRoom sessionId={session.id} showTitle={session.show_title} rjName={session.rj_profile?.stage_name} rjUserId={session.rj_user_id} isHost={isHost} callinEnabled={!!session.callin_enabled} isStudioSession={!!session.studio_session} streamUrl={session.stream_url} artworkUrl={session.rj_profile?.avatar_url} status={session.status} startedAt={session.started_at} />
         )}
       </main>
       <Footer />
@@ -74,7 +74,7 @@ export default function LiveShow() {
   )
 }
 
-function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEnabled, streamUrl, artworkUrl, status, startedAt }: { sessionId: string; showTitle: string | null; rjName?: string; rjUserId: string; isHost: boolean; callinEnabled: boolean; streamUrl?: string | null; artworkUrl?: string | null; status: string; startedAt: string }) {
+function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEnabled, isStudioSession, streamUrl, artworkUrl, status, startedAt }: { sessionId: string; showTitle: string | null; rjName?: string; rjUserId: string; isHost: boolean; callinEnabled: boolean; isStudioSession: boolean; streamUrl?: string | null; artworkUrl?: string | null; status: string; startedAt: string }) {
   const { user } = useAuth()
   const { hasRole } = useUserRole()
   // The backend's assertHostOrModerator already grants admins/moderators the
@@ -494,7 +494,21 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
         </div>
       )}
 
-      {callinEnabled && (
+      {callinEnabled && isHost && isStudioSession ? (
+        // Managing calls from this page for a Studio (LiveKit) broadcast is
+        // a dead end: this panel has no access to the LiveKit room, so a
+        // caller sent "on air" here only ever reaches the host's own
+        // private preview — never the actual listeners. Confirmed live
+        // more than once: the state machine (accept/preview/on-air) works
+        // fine here, which made it look like a real bug elsewhere every
+        // time, when the real issue was just being on the wrong page.
+        <div className="border border-amber-500/30 bg-amber-500/5 rounded-xl p-3 flex items-center gap-2">
+          <PhoneCall className="w-4 h-4 text-amber-500 shrink-0" />
+          <p className="text-[12px] text-amber-500">
+            এটি BoiAro Studio সম্প্রচার — কল ম্যানেজ করতে Studio Room-এর ভেতরের <strong>Call-in</strong> বাটন ব্যবহার করুন, এখান থেকে করা কল শ্রোতাদের কাছে পৌঁছাবে না।
+          </p>
+        </div>
+      ) : callinEnabled && (
         <CallInPanel sessionId={sessionId} isHost={isHost} hostUserId={rjUserId} getSocket={getSocket} />
       )}
     </div>
