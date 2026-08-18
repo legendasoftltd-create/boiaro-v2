@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { sendHttpError } from "../../lib/http.js";
 import { getHomepageData } from "../../services/homepage.service.js";
-import { getBecauseYouReadRecommendations } from "../../services/books.service.js";
+import {
+  getBecauseYouReadRecommendations,
+  getBestSellerBookIds, getTrendingAudiobookIds, getTopAudiobookIds,
+} from "../../services/books.service.js";
 import { prisma } from "../../lib/prisma.js";
 import { resolveBookUrls } from "../../lib/mediaUrl.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
@@ -23,6 +26,7 @@ const PAGINATED_SECTIONS = new Set([
   "trendingNow", "newReleases", "popularBooks",
   "popularAudiobooks", "popularHardCopies", "popularEbooks",
   "editorsPick", "freeBooks", "topMostRead", "becauseYouRead",
+  "bestSellers", "specialOffers", "trendingAudiobooks", "topAudiobooks",
 ]);
 
 const parsePaginationQuery = (query: Record<string, any>) => ({
@@ -36,8 +40,35 @@ const bookSelect = {
   author: { select: { id: true, name: true, avatar_url: true } },
   translator: { select: { id: true, name: true, avatar_url: true } },
   category: { select: { id: true, name: true, slug: true } },
-  formats: { where: { is_available: true }, select: { format: true, price: true, in_stock: true } },
+  formats: { where: { is_available: true }, select: { format: true, price: true, original_price: true, discount: true, in_stock: true } },
 } as const;
+
+// Shared by bestSellers/trendingAudiobooks/topAudiobooks below: candidateIds
+// is a pre-ranked (best first) list of book ids from an aggregate query;
+// rankById supplies the actual rank value used to re-sort after the id list
+// gets narrowed by format/search/approval status/pagination — narrowing can
+// drop ids, so the original array order can't just be sliced directly.
+async function fetchRankedSection(
+  candidateIds: string[],
+  rankById: Map<string, number>,
+  opts: { requiredFormat: "hardcopy" | "audiobook"; search?: string; limit: number; offset: number }
+) {
+  if (candidateIds.length === 0) return { data: [], total: 0, limit: opts.limit, offset: opts.offset, has_more: false };
+  const books = await prisma.book.findMany({
+    where: {
+      id: { in: candidateIds },
+      submission_status: "approved",
+      is_active: true,
+      formats: { some: { format: opts.requiredFormat, is_available: true, submission_status: "approved" } },
+      ...(opts.search && { title: { contains: opts.search, mode: "insensitive" as const } }),
+    },
+    select: bookSelect,
+  });
+  const ranked = books.slice().sort((a, b) => (rankById.get(b.id) ?? 0) - (rankById.get(a.id) ?? 0));
+  const total = ranked.length;
+  const page = ranked.slice(opts.offset, opts.offset + opts.limit).map(resolveBookUrls);
+  return { data: page, total, limit: opts.limit, offset: opts.offset, has_more: opts.offset + opts.limit < total };
+}
 
 async function getPaginatedSection(section: string, limit: number, offset: number, userId?: string, format?: "ebook" | "audiobook" | "hardcopy", search?: string) {
   const formatWhere = format
@@ -169,6 +200,53 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
       prisma.book.count({ where }),
     ]);
     return { data: books.map(resolveBookUrls), total, limit, offset, has_more: offset + limit < total };
+  }
+
+  if (section === "bestSellers") {
+    // Real sales (OrderItem.quantity summed per hardcopy book, non-cancelled/
+    // returned/pending orders, rolling 180 days), not the manually-admin-set
+    // Book.is_bestseller flag — see getBestSellerBookIds for the full query.
+    if (format && format !== "hardcopy") return { data: [], total: 0, limit, offset, has_more: false };
+    const { candidateIds, rankById } = await getBestSellerBookIds();
+    return fetchRankedSection(candidateIds, rankById, { requiredFormat: "hardcopy", search, limit, offset });
+  }
+
+  if (section === "specialOffers") {
+    // Hardcopy books currently carrying an admin-set discount, ranked by
+    // discount % (highest first) — sorted in JS since Prisma can't order by
+    // a filtered to-many relation's scalar field directly.
+    if (format && format !== "hardcopy") return { data: [], total: 0, limit, offset, has_more: false };
+    const where = {
+      submission_status: "approved", is_active: true,
+      formats: { some: { format: "hardcopy" as const, is_available: true, submission_status: "approved", discount: { gt: 0 } } },
+      ...searchWhere,
+    };
+    const candidates = await prisma.book.findMany({
+      where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }], take: 300, select: bookSelect,
+    });
+    const discountOf = (b: any) => b.formats.find((f: any) => f.format === "hardcopy")?.discount ?? 0;
+    const ranked = candidates.slice().sort((a, b) => discountOf(b) - discountOf(a));
+    const total = ranked.length;
+    const page = ranked.slice(offset, offset + limit).map(resolveBookUrls);
+    return { data: page, total, limit, offset, has_more: offset + limit < total };
+  }
+
+  if (section === "trendingAudiobooks") {
+    // Recent (14-day) unique-listener growth — distinct from popularAudiobooks
+    // above, which ranks by the generic, all-time, shared-with-ebooks
+    // total_reads counter. See getTrendingAudiobookIds.
+    if (format && format !== "audiobook") return { data: [], total: 0, limit, offset, has_more: false };
+    const { candidateIds, rankById } = await getTrendingAudiobookIds();
+    return fetchRankedSection(candidateIds, rankById, { requiredFormat: "audiobook", search, limit, offset });
+  }
+
+  if (section === "topAudiobooks") {
+    // "Top 10 Audiobooks" — same BookListen source as trendingAudiobooks, no
+    // recency window: all-time unique-listener count. Callers wanting exactly
+    // the top 10 should pass limit=10.
+    if (format && format !== "audiobook") return { data: [], total: 0, limit, offset, has_more: false };
+    const { candidateIds, rankById } = await getTopAudiobookIds();
+    return fetchRankedSection(candidateIds, rankById, { requiredFormat: "audiobook", search, limit, offset });
   }
 
   if (section === "becauseYouRead") {

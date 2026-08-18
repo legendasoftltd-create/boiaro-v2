@@ -919,6 +919,17 @@ Supported section keys:
 - `continueListening`
 - `radio`
 - `currentUser`
+- `bestSellers` (hardcopy, ranked by real sales — see [HOMEPAGE_RANKING_SECTIONS_API.md](HOMEPAGE_RANKING_SECTIONS_API.md))
+- `specialOffers` (hardcopy, ranked by discount %)
+- `trendingAudiobooks` (audiobook, ranked by recent unique-listener growth)
+- `topAudiobooks` (audiobook, ranked by all-time unique-listener count — "Top 10 Audiobooks")
+
+These four plus `trendingNow`, `newReleases`, `popularBooks`, `popularAudiobooks`,
+`popularHardCopies`, `popularEbooks`, `editorsPick`, `freeBooks`, `topMostRead`,
+and `becauseYouRead` are paginated at the DB level — their response includes
+`total`/`offset`/`has_more` (see [HOMEPAGE_RANKING_SECTIONS_API.md](HOMEPAGE_RANKING_SECTIONS_API.md)
+for the exact shape), unlike the plain `{ "section", "data" }` shown below for
+the non-paginated snapshot sections.
 
 **Success (200):**
 ```json

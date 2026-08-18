@@ -20,8 +20,12 @@ const TrendingBooks = lazy(() => import("@/components/TrendingBooks").then(m => 
 const Top10MostRead = lazy(() => import("@/components/Top10MostRead").then(m => ({ default: m.Top10MostRead })))
 const EditorsPick = lazy(() => import("@/components/EditorsPick").then(m => ({ default: m.EditorsPick })))
 const PopularAudiobooks = lazy(() => import("@/components/PopularAudiobooks").then(m => ({ default: m.PopularAudiobooks })))
+const TrendingAudiobooks = lazy(() => import("@/components/TrendingAudiobooks").then(m => ({ default: m.TrendingAudiobooks })))
+const TopAudiobooks = lazy(() => import("@/components/TopAudiobooks").then(m => ({ default: m.TopAudiobooks })))
 const Audiobooks = lazy(() => import("@/components/Audiobooks").then(m => ({ default: m.Audiobooks })))
 const HardCopies = lazy(() => import("@/components/HardCopies").then(m => ({ default: m.HardCopies })))
+const BestSellers = lazy(() => import("@/components/BestSellers").then(m => ({ default: m.BestSellers })))
+const SpecialOffers = lazy(() => import("@/components/SpecialOffers").then(m => ({ default: m.SpecialOffers })))
 const FreeBooks = lazy(() => import("@/components/FreeBooks").then(m => ({ default: m.FreeBooks })))
 const Categories = lazy(() => import("@/components/Categories").then(m => ({ default: m.Categories })))
 const Authors = lazy(() => import("@/components/Authors").then(m => ({ default: m.Authors })))
@@ -45,8 +49,12 @@ const SECTION_REGISTRY: Record<string, () => JSX.Element | null> = {
   top_10_most_read: () => <Top10MostRead />,
   editors_pick: () => <EditorsPick />,
   popular_audiobooks: () => <PopularAudiobooks />,
+  trending_audiobooks: () => <TrendingAudiobooks />,
+  top_audiobooks: () => <TopAudiobooks />,
   audiobooks: () => <Audiobooks />,
   hard_copies: () => <HardCopies />,
+  best_sellers: () => <BestSellers />,
+  special_offers: () => <SpecialOffers />,
   free_books: () => <FreeBooks />,
   categories: () => <Categories />,
   authors: () => <Authors />,
@@ -64,7 +72,8 @@ const FALLBACK_KEYS = [
   "continue_reading", "continue_listening", "leaderboard", "recently_viewed",
   "recommended_for_you", "because_you_read", "featured_books",
   "trending_books", "top_10_most_read", "editors_pick",
-  "popular_audiobooks", "audiobooks", "hard_copies", "free_books",
+  "popular_audiobooks", "trending_audiobooks", "top_audiobooks", "audiobooks",
+  "hard_copies", "best_sellers", "special_offers", "free_books",
   "categories", "authors", "narrators", "translators", "live_radio", "blog", "app_download",
   "category_sections",
 ]

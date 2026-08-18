@@ -673,3 +673,74 @@ export async function getBecauseYouReadRecommendations(
     books: booksWithNarrators.map(resolveBookUrls),
   };
 }
+
+// ── Automatic homepage ranking sources ──────────────────────────────────────
+// Shared between the web tRPC router (routers/books.ts) and the mobile REST
+// API (routes/rest/homepage.ts) so both platforms always agree on the same
+// ranking. Each returns pre-ranked (best first, capped at 300 candidates)
+// book ids plus their rank value — callers narrow by format/search/approval
+// status afterward (which can drop ids), then re-sort by rankById rather
+// than trusting the original array order to still be contiguous.
+export interface RankedBookIds {
+  candidateIds: string[];
+  rankById: Map<string, number>;
+}
+
+// "Best Sellers" — real sales (OrderItem.quantity summed per hardcopy book),
+// not the manually-admin-set Book.is_bestseller flag browseBooks' own
+// filter=bestseller uses. Only counts orders that are genuine completed
+// sales (matches the same status exclusion used for revenue/financial
+// reporting elsewhere in admin.ts), within a rolling 180-day window so the
+// list reflects *current* bestsellers rather than one all-time winner
+// permanently occupying every slot.
+export async function getBestSellerBookIds(): Promise<RankedBookIds> {
+  const since = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+  const sold = await prisma.orderItem.groupBy({
+    by: ["book_id"],
+    where: {
+      format: "hardcopy",
+      book_id: { not: null },
+      order: { status: { notIn: ["cancelled", "returned", "pending"] }, created_at: { gte: since } },
+    },
+    _sum: { quantity: true },
+    orderBy: { _sum: { quantity: "desc" } },
+    take: 300,
+  });
+  const candidateIds = sold.map((s) => s.book_id).filter((id): id is string => !!id);
+  const rankById = new Map(sold.map((s) => [s.book_id as string, s._sum.quantity ?? 0]));
+  return { candidateIds, rankById };
+}
+
+// "Trending Now" (audiobooks) — unique-listener growth in the last 14 days
+// (BookListen is one row per user per book, so this counts new listeners,
+// not replay volume). Distinct from the existing popularAudiobooks section,
+// which ranks by Book.total_reads — a generic, all-time, shared-with-ebooks
+// counter, not an audiobook-listening-specific or time-bounded signal.
+export async function getTrendingAudiobookIds(): Promise<RankedBookIds> {
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  // No `orderBy` on the groupBy itself — combining it with `_count` here hits
+  // a TS-only circular-type issue in the installed Prisma version; sorting
+  // the (already cheap, book_id-only) rows in JS sidesteps it entirely.
+  const listens = await prisma.bookListen.groupBy({
+    by: ["book_id"],
+    where: { created_at: { gte: since } },
+    _count: { _all: true },
+  });
+  const ranked = listens.sort((a, b) => b._count._all - a._count._all).slice(0, 300);
+  const candidateIds = ranked.map((l) => l.book_id);
+  const rankById = new Map(ranked.map((l) => [l.book_id, l._count._all]));
+  return { candidateIds, rankById };
+}
+
+// "Top 10 Audiobooks" — same BookListen source as trending, no recency
+// window: all-time unique-listener count.
+export async function getTopAudiobookIds(): Promise<RankedBookIds> {
+  const listens = await prisma.bookListen.groupBy({
+    by: ["book_id"],
+    _count: { _all: true },
+  });
+  const ranked = listens.sort((a, b) => b._count._all - a._count._all).slice(0, 300);
+  const candidateIds = ranked.map((l) => l.book_id);
+  const rankById = new Map(ranked.map((l) => [l.book_id, l._count._all]));
+  return { candidateIds, rankById };
+}

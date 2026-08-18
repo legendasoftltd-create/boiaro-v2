@@ -3,10 +3,75 @@ import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { bookByIdSchema, bookListSchema } from "../schemas/books.js";
-import { getBookById, listBooks, getBecauseYouReadRecommendations } from "../services/books.service.js";
+import {
+  getBookById, listBooks, getBecauseYouReadRecommendations,
+  getBestSellerBookIds, getTrendingAudiobookIds, getTopAudiobookIds,
+  type RankedBookIds,
+} from "../services/books.service.js";
 import { resolveBookUrls } from "../lib/mediaUrl.js";
 import { getCreatorBookIds, userOwnsBook } from "../lib/creatorBooks.js";
 import { maybeRecordView } from "../lib/viewTracking.js";
+
+// Shared include shape for the four "ranked ids -> full book records" homepage
+// sections below (bestSellers/specialOffers/trendingAudiobooks/topAudiobooks)
+// — same fields as browseBooks/trending already fetch, so trpcBookToMasterBook
+// on the frontend works identically no matter which section produced a book.
+const bookDetailInclude = {
+  author: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, genre: true, is_featured: true } },
+  translator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, genre: true, is_featured: true } },
+  publisher: { select: { id: true, name: true, name_en: true, logo_url: true, description: true, is_verified: true } },
+  category: { select: { id: true, name: true, name_bn: true, slug: true, icon: true, color: true } },
+  formats: {
+    where: { submission_status: "approved" as const, is_available: true },
+    include: {
+      narrator: { select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true, user_id: true } },
+    },
+  },
+} as const;
+
+async function attachNarratorsAndResolve(books: any[]) {
+  const allNarratorIds = [...new Set(books.flatMap((b) => b.formats.flatMap((f: any) => f.narrator_ids || [])))];
+  const narratorRows = allNarratorIds.length > 0
+    ? await prisma.narrator.findMany({
+        where: { id: { in: allNarratorIds } },
+        select: { id: true, name: true, name_en: true, avatar_url: true, bio: true, specialty: true, rating: true, is_featured: true, user_id: true },
+      })
+    : [];
+  const narratorById = new Map(narratorRows.map((n) => [n.id, n]));
+  const withNarrators = books.map((b) => ({
+    ...b,
+    formats: b.formats.map((f: any) => ({
+      ...f,
+      narrators: (f.narrator_ids || []).map((nid: string) => narratorById.get(nid)).filter(Boolean),
+    })),
+  }));
+  return withNarrators.map(resolveBookUrls);
+}
+
+// candidateIds is a pre-ranked (best first) list of book ids from an
+// aggregate query (sales sum, listen count, ...); rankById supplies the
+// actual rank value used to re-sort after the id list gets narrowed by
+// format/search/approval status below — narrowing can drop ids, so the
+// original array order can't just be sliced directly.
+async function rankAndFetchBooks(
+  candidateIds: string[],
+  rankById: Map<string, number>,
+  opts: { format: "hardcopy" | "audiobook"; search?: string; limit: number }
+) {
+  if (candidateIds.length === 0) return [];
+  const books = await prisma.book.findMany({
+    where: {
+      id: { in: candidateIds },
+      submission_status: "approved",
+      is_active: true,
+      formats: { some: { format: opts.format, is_available: true, submission_status: "approved" } },
+      ...(opts.search && { title: { contains: opts.search, mode: "insensitive" } }),
+    },
+    include: bookDetailInclude,
+  });
+  const ranked = books.slice().sort((a, b) => (rankById.get(b.id) ?? 0) - (rankById.get(a.id) ?? 0)).slice(0, opts.limit);
+  return attachNarratorsAndResolve(ranked);
+}
 
 export const booksRouter = router({
   list: publicProcedure
@@ -219,6 +284,62 @@ export const booksRouter = router({
 
       const bookMap = new Map(booksWithNarrators.map((b) => [b.id, b]));
       return trendingIds.map((id) => bookMap.get(id)).filter(Boolean).map(resolveBookUrls);
+    }),
+
+  // Real sales, not the manually-admin-set is_bestseller flag `browseBooks`'s
+  // filter=bestseller uses — sums OrderItem.quantity per hardcopy book across
+  // real (non-cancelled/returned/pending) orders in the last 180 days, same
+  // "rank candidate ids, then fetch+attach narrators" shape as `trending`
+  // above. Falls back to books.service.ts's getBestSellerBookIds, shared
+  // with the mobile REST equivalent (routes/rest/homepage.ts) so both
+  // platforms always agree on the same ranking.
+  bestSellers: publicProcedure
+    .input(z.object({ limit: z.number().min(1).max(50).default(10), search: z.string().optional() }))
+    .query(async ({ input }) => {
+      const { candidateIds, rankById } = await getBestSellerBookIds();
+      return rankAndFetchBooks(candidateIds, rankById, { format: "hardcopy", search: input.search, limit: input.limit });
+    }),
+
+  // Hardcopy books currently carrying an admin-set discount — ranked by
+  // discount % (highest first), not by any engagement/sales signal.
+  specialOffers: publicProcedure
+    .input(z.object({ limit: z.number().min(1).max(50).default(10), search: z.string().optional() }))
+    .query(async ({ input }) => {
+      const where: any = {
+        submission_status: "approved",
+        is_active: true,
+        formats: { some: { format: "hardcopy", is_available: true, submission_status: "approved", discount: { gt: 0 } } },
+        ...(input.search && { title: { contains: input.search, mode: "insensitive" } }),
+      };
+      const candidates = await prisma.book.findMany({
+        where,
+        orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }],
+        take: 300,
+        include: bookDetailInclude,
+      });
+      const discountOf = (b: any) => b.formats.find((f: any) => f.format === "hardcopy")?.discount ?? 0;
+      const ranked = candidates.slice().sort((a, b) => discountOf(b) - discountOf(a)).slice(0, input.limit);
+      return await attachNarratorsAndResolve(ranked);
+    }),
+
+  // Recent (last 14 days) unique-listener growth per audiobook — a genuine
+  // "people are listening to this right now" signal, distinct from
+  // popularAudiobooks (all-time total_reads, a generic reads/views counter
+  // shared with ebooks, not audiobook-listen-specific).
+  trendingAudiobooks: publicProcedure
+    .input(z.object({ limit: z.number().min(1).max(50).default(10), search: z.string().optional() }))
+    .query(async ({ input }) => {
+      const { candidateIds, rankById } = await getTrendingAudiobookIds();
+      return rankAndFetchBooks(candidateIds, rankById, { format: "audiobook", search: input.search, limit: input.limit });
+    }),
+
+  // All-time unique-listener count per audiobook — "Top 10 Audiobooks".
+  // Same BookListen source as trendingAudiobooks, no recency window.
+  topAudiobooks: publicProcedure
+    .input(z.object({ limit: z.number().min(1).max(50).default(10), search: z.string().optional() }))
+    .query(async ({ input }) => {
+      const { candidateIds, rankById } = await getTopAudiobookIds();
+      return rankAndFetchBooks(candidateIds, rankById, { format: "audiobook", search: input.search, limit: input.limit });
     }),
 
   byId: publicProcedure
