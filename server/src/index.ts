@@ -27,6 +27,7 @@ import {
 
 import { startStorageSyncService } from "./services/storageSync.service.js";
 import { startScheduledJobs } from "./jobs/index.js";
+import { reconcileOrphanedStudioSessions } from "./jobs/streamReconnect.js";
 import { syncStationMountsWithBridge } from "./lib/studioBridge.js";
 import { applyWatermark } from "./lib/watermark.js";
 import { verifyFileHeader } from "./lib/fileValidation.js";
@@ -337,6 +338,11 @@ httpServer.listen(PORT, () => {
   // case it was restarted independently and lost its in-memory fallback
   // config (see studioBridge.ts / icecastConfig.ts).
   syncStationMountsWithBridge().catch(() => {});
+  // One-time cleanup for StudioSessions orphaned before the ongoing sweep
+  // (jobs/streamReconnect.ts) existed — see reconcileOrphanedStudioSessions.
+  reconcileOrphanedStudioSessions()
+    .then((n) => n && console.log(`[boot] reconciled ${n} orphaned studio session(s)`))
+    .catch((err) => console.error("[boot] reconcileOrphanedStudioSessions failed:", err));
   // Apply S3 bucket policy so TTS/ambient audio folders are publicly readable
   if (s3Configured) {
     applyPublicReadPolicy()

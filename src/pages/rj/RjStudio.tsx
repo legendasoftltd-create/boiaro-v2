@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Users, Plus, Copy, Radio } from "lucide-react"
+import { Loader2, Users, Plus, Copy, Radio, Square } from "lucide-react"
 import { toast } from "sonner"
+import { useAuth } from "@/contexts/AuthContext"
 import {
   useMyStudioSessions,
   useCreateStudioSession,
   useGenerateInviteLink,
+  useBroadcastControl,
   type StudioSession,
 } from "@/hooks/useStudioSession"
 
@@ -71,8 +73,29 @@ export default function RjStudio() {
 }
 
 function SessionCard({ session, onOpen, onChanged }: { session: StudioSession; onOpen: () => void; onChanged: () => void }) {
+  const { user } = useAuth()
   const { generate, isGenerating } = useGenerateInviteLink(session.id)
+  const { endBroadcast, isEnding } = useBroadcastControl(session.id)
   const [lastInvite, setLastInvite] = useState<{ role: string; url: string } | null>(null)
+  const isHost = session.host_user_id === user?.id
+
+  // A broadcast can end up stuck showing "live" here without ever really
+  // being live anymore (tab crash, lost connection, network drop — the RJ
+  // never got to click End Broadcast). Confirmed live: a session sat
+  // showing "লাইভ" days after its actual broadcast ended, with no way to
+  // clear it short of reopening the room and hoping it reconnects. This is
+  // the manual escape hatch — same endBroadcast the Studio Room's own End
+  // button uses, so recording/Egress cleanup happens the same way.
+  const handleForceEnd = async () => {
+    if (!confirm("এই broadcast টি জোর করে শেষ করবেন? এটি সত্যিই এখনো লাইভ থাকলে সবার সংযোগ বিচ্ছিন্ন হয়ে যাবে।")) return
+    try {
+      await endBroadcast()
+      toast.success("Broadcast শেষ করা হয়েছে")
+      onChanged()
+    } catch (err: any) {
+      toast.error(err.message || "শেষ করা যায়নি")
+    }
+  }
 
   const handleInvite = async (role: "co_host" | "producer" | "rj" | "guest") => {
     try {
@@ -112,9 +135,17 @@ function SessionCard({ session, onOpen, onChanged }: { session: StudioSession; o
             {ROLE_LABEL[lastInvite.role]}: {lastInvite.url}
           </p>
         )}
-        <Button size="sm" onClick={onOpen} className="gap-1.5">
-          <Users className="w-3.5 h-3.5" /> Studio Room খুলুন
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={onOpen} className="gap-1.5">
+            <Users className="w-3.5 h-3.5" /> Studio Room খুলুন
+          </Button>
+          {session.status === "live" && isHost && (
+            <Button size="sm" variant="destructive" disabled={isEnding} onClick={handleForceEnd} className="gap-1.5">
+              {isEnding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5" />}
+              জোর করে শেষ করুন
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   )

@@ -420,10 +420,21 @@ function RadioCard({ station, isLive, liveSessionId, liveSessionStatus, startedA
               <Loader2 className="w-3 h-3 animate-spin" />
               Connecting to stream...
             </span>
-          ) : isCurrentlyPlaying ? (
+          ) : isCurrentlyPlaying && isLive ? (
             <span className="flex items-center gap-1 text-[10px] text-destructive font-medium">
               <span className="w-1.5 h-1.5 bg-destructive rounded-full animate-pulse" />
               Streaming Live
+            </span>
+          ) : isCurrentlyPlaying ? (
+            // Playing, but no RJ is actually live — this station's mount is
+            // still reachable (its own regular stream, or dead-air fallback
+            // content) without a real broadcast behind it. Showing "Streaming
+            // Live" here would claim an on-air RJ that doesn't exist — this
+            // used to do exactly that, since it only checked local playback
+            // state, never whether anyone was actually broadcasting.
+            <span className="flex items-center gap-1 text-[10px] text-blue-400 font-medium">
+              <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
+              Playing
             </span>
           ) : (
             <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
