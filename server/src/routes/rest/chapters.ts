@@ -284,6 +284,7 @@ const unlockIapSchema = z.object({
   book_id: z.string().min(1),
   transaction_id: z.string().min(1),
   product_id: z.string().optional(),
+  platform: z.enum(["ios", "android"]).optional(),
 });
 
 // ── POST /api/v1/chapters/:trackId/unlock-iap ─────────────────────────────────
@@ -339,6 +340,9 @@ chaptersRestRouter.post("/chapters/:trackId/unlock-iap", requireAuth, async (req
       return;
     }
 
+    const store = input.platform === "android" ? "play_store" : "app_store";
+    const matched = verification.matchedEntry as { purchase_date?: string; is_sandbox?: boolean } | undefined;
+
     const unlock = await prisma.$transaction(async (tx: any) => {
       await tx.iapTransaction.create({
         data: {
@@ -346,6 +350,10 @@ chaptersRestRouter.post("/chapters/:trackId/unlock-iap", requireAuth, async (req
           book_id: bookId,
           track_id: trackId,
           product_id: input.product_id ?? null,
+          platform: input.platform ?? null,
+          store,
+          is_sandbox: matched?.is_sandbox ?? null,
+          purchase_date: matched?.purchase_date ? new Date(matched.purchase_date) : null,
           transaction_id: input.transaction_id,
           raw_response: verification.matchedEntry as any,
         },
@@ -359,7 +367,13 @@ chaptersRestRouter.post("/chapters/:trackId/unlock-iap", requireAuth, async (req
     });
 
     if (!alreadyUnlocked && unlock) {
-      await calculateEarnings({ bookId, format, saleAmount: 0, contentUnlockId: unlock.id }).catch(() => null);
+      // The chapter's own BDT price, not the IAP tier price — RevenueCat
+      // verified that Apple/Google charged the user, but this platform's
+      // own royalty/earnings math is priced in taka against what this
+      // chapter is actually configured to sell for (used to be hardcoded to
+      // 0, silently paying out no earnings at all for any IAP unlock).
+      const saleAmount = track.chapter_taka_price ?? track.chapter_price ?? 0;
+      await calculateEarnings({ bookId, format, saleAmount, contentUnlockId: unlock.id }).catch(() => null);
     }
 
     res.json({
@@ -378,6 +392,7 @@ const unlockBookIapSchema = z.object({
   transaction_id: z.string().min(1),
   product_id: z.string().optional(),
   format: z.enum(["ebook", "audiobook"]),
+  platform: z.enum(["ios", "android"]).optional(),
 });
 
 // ── POST /api/v1/books/:bookId/unlock-iap ─────────────────────────────────────
@@ -392,7 +407,7 @@ chaptersRestRouter.post("/books/:bookId/unlock-iap", requireAuth, async (req: Au
 
     const book = await prisma.book.findFirst({
       where: { OR: [{ id: param }, { slug: param }] },
-      select: { id: true },
+      select: { id: true, formats: { where: { format: input.format }, select: { price: true }, take: 1 } },
     });
     if (!book) {
       res.status(404).json({ error: "Book not found" });
@@ -429,6 +444,9 @@ chaptersRestRouter.post("/books/:bookId/unlock-iap", requireAuth, async (req: Au
       return;
     }
 
+    const store = input.platform === "android" ? "play_store" : "app_store";
+    const matched = verification.matchedEntry as { purchase_date?: string; is_sandbox?: boolean } | undefined;
+
     const unlock = await prisma.$transaction(async (tx: any) => {
       await tx.iapTransaction.create({
         data: {
@@ -436,6 +454,10 @@ chaptersRestRouter.post("/books/:bookId/unlock-iap", requireAuth, async (req: Au
           book_id: bookId,
           track_id: null,
           product_id: input.product_id ?? null,
+          platform: input.platform ?? null,
+          store,
+          is_sandbox: matched?.is_sandbox ?? null,
+          purchase_date: matched?.purchase_date ? new Date(matched.purchase_date) : null,
           transaction_id: input.transaction_id,
           raw_response: verification.matchedEntry as any,
         },
@@ -449,7 +471,11 @@ chaptersRestRouter.post("/books/:bookId/unlock-iap", requireAuth, async (req: Au
     });
 
     if (!alreadyUnlocked && unlock) {
-      await calculateEarnings({ bookId, format: input.format, saleAmount: 0, contentUnlockId: unlock.id }).catch(() => null);
+      // The book's own BDT price for this format, not the IAP tier price —
+      // used to be hardcoded to 0, silently paying out no author/RJ
+      // earnings at all for any IAP unlock.
+      const saleAmount = book.formats[0]?.price ?? 0;
+      await calculateEarnings({ bookId, format: input.format, saleAmount, contentUnlockId: unlock.id }).catch(() => null);
     }
 
     res.json({

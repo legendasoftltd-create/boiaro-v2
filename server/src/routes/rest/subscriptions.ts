@@ -3,6 +3,7 @@ import { sendHttpError } from "../../lib/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
+import { verifyRevenueCatSubscription } from "../../lib/revenuecat.js";
 
 export const subscriptionsRestRouter = Router();
 
@@ -393,6 +394,169 @@ subscriptionsRestRouter.post("/subscribe", requireAuth, async (req: Authenticate
       gateway_url: sslData.GatewayPageURL,
       subscription_id: sub.id,
       transaction_id: transactionId,
+    });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// POST /subscriptions/subscribe-iap — activate a subscription purchased via
+// RevenueCat (Apple App Store / Google Play). Mobile-only counterpart to
+// /subscribe — that endpoint handles SSLCommerz/free plans and is
+// unchanged; this one never touches SSLCommerz at all.
+// Body: { plan_id, transaction_id, product_id, payment_method: "appstore"|"playstore", platform: "ios"|"android" }
+subscriptionsRestRouter.post("/subscribe-iap", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.auth.userId!;
+    const { plan_id, transaction_id, product_id, payment_method, platform } = req.body as {
+      plan_id?: string;
+      transaction_id?: string;
+      product_id?: string;
+      payment_method?: string;
+      platform?: string;
+    };
+
+    if (!plan_id || !transaction_id || !product_id) {
+      res.status(400).json({ error: "plan_id, transaction_id, and product_id are required" });
+      return;
+    }
+    if (payment_method && !["appstore", "playstore"].includes(payment_method)) {
+      res.status(400).json({ error: "payment_method must be appstore or playstore" });
+      return;
+    }
+    if (platform && !["ios", "android"].includes(platform)) {
+      res.status(400).json({ error: "platform must be ios or android" });
+      return;
+    }
+
+    const plan = await prisma.subscriptionPlan.findUnique({ where: { id: plan_id } });
+    if (!plan || !plan.is_active) {
+      res.status(404).json({ error: "Subscription plan not found or inactive" });
+      return;
+    }
+
+    // Duplicate prevention: a given store transaction can only ever activate
+    // the one subscription it was first used for — replaying it (a client
+    // retry, a double-submit) returns the same result instead of erroring,
+    // but reusing it for a *different* plan/user is rejected outright.
+    const existingTxn = await prisma.iapTransaction.findUnique({ where: { transaction_id } });
+    if (existingTxn) {
+      if (existingTxn.user_id === userId && existingTxn.subscription_id) {
+        const existingSub = await prisma.userSubscription.findUnique({ where: { id: existingTxn.subscription_id } });
+        if (existingSub && existingSub.plan_id === plan_id) {
+          res.json({
+            success: true,
+            already_processed: true,
+            subscription: { id: existingSub.id, status: existingSub.status, end_date: existingSub.end_date },
+          });
+          return;
+        }
+      }
+      res.status(409).json({ error: "Transaction already used" });
+      return;
+    }
+
+    // Same conflict rule as /subscribe: blocks a second active subscription
+    // to this exact plan, or subscribing again while a cancelled-but-valid
+    // (grace period) subscription is still in effect. An active subscription
+    // to a *different* plan is a switch/upgrade, handled below.
+    const existingActive = await prisma.userSubscription.findFirst({
+      where: {
+        user_id: userId,
+        status: { in: ["active", "cancelled"] },
+        OR: [{ end_date: null }, { end_date: { gte: new Date() } }],
+      },
+      select: { id: true, end_date: true, status: true, plan_id: true },
+    });
+    if (existingActive && (existingActive.status === "cancelled" || existingActive.plan_id === plan_id)) {
+      const isCancelled = existingActive.status === "cancelled";
+      res.status(409).json({
+        error: isCancelled
+          ? "You have a cancelled subscription that is still valid. You can re-subscribe after it expires."
+          : "You already have an active subscription to this plan.",
+        subscription_id: existingActive.id,
+        end_date: existingActive.end_date,
+      });
+      return;
+    }
+
+    // Verify with RevenueCat before activating anything — the store has
+    // already charged the user by the time this request arrives, so a
+    // failed verification here means the transaction_id/product_id don't
+    // check out, not that the purchase itself failed.
+    const verification = await verifyRevenueCatSubscription(userId, transaction_id, product_id);
+    if (!verification.ok || !verification.matchedEntry) {
+      res.status(402).json({ error: verification.error || "Could not verify subscription purchase" });
+      return;
+    }
+    const entry = verification.matchedEntry;
+    const store = entry.store || (platform === "android" ? "play_store" : "app_store");
+    const purchaseDate = entry.purchase_date ? new Date(entry.purchase_date) : new Date();
+    const expiresDate = new Date(entry.expires_date!); // presence already checked by verifyRevenueCatSubscription
+
+    const sub = await prisma.$transaction(async (tx: any) => {
+      const created = await tx.userSubscription.create({
+        data: {
+          user_id: userId,
+          plan_id: plan.id,
+          status: "active",
+          start_date: purchaseDate,
+          end_date: expiresDate,
+          amount_paid: plan.price,
+          store,
+          is_sandbox: entry.is_sandbox ?? false,
+          purchase_date: purchaseDate,
+          expires_date: expiresDate,
+        },
+      });
+
+      await tx.iapTransaction.create({
+        data: {
+          user_id: userId,
+          subscription_id: created.id,
+          product_id,
+          platform: platform ?? null,
+          store,
+          is_sandbox: entry.is_sandbox ?? false,
+          purchase_date: purchaseDate,
+          expires_date: expiresDate,
+          transaction_id,
+          raw_response: entry as any,
+        },
+      });
+
+      await tx.payment.create({
+        data: {
+          user_id: userId,
+          subscription_id: created.id,
+          amount: plan.price,
+          method: payment_method || (platform === "android" ? "playstore" : "appstore"),
+          status: "completed",
+          transaction_id,
+        },
+      });
+
+      if (existingActive) {
+        await tx.userSubscription.update({
+          where: { id: existingActive.id },
+          data: { status: "replaced", end_date: purchaseDate },
+        });
+      }
+
+      return created;
+    });
+
+    res.status(201).json({
+      success: true,
+      subscription: {
+        id: sub.id,
+        plan_id: sub.plan_id,
+        status: sub.status,
+        start_date: sub.start_date,
+        end_date: sub.end_date,
+        store: sub.store,
+        is_sandbox: sub.is_sandbox,
+      },
     });
   } catch (error) {
     sendHttpError(res, error);

@@ -258,15 +258,20 @@ model ChapterPurchase {
 // transaction_id is globally unique so a single receipt can never unlock more
 // than one (user, book, track) combination — the core replay-attack defense.
 model IapTransaction {
-  id             String   @id @default(uuid())
-  user_id        String
-  book_id        String
-  track_id       String?
-  product_id     String?
-  store          String   @default("app_store")
-  transaction_id String   @unique
-  raw_response   Json?
-  created_at     DateTime @default(now())
+  id              String    @id @default(uuid())
+  user_id         String
+  book_id         String? // null for a subscribe-iap transaction (no book involved)
+  track_id        String?
+  subscription_id String? // set for a subscribe-iap transaction, null for book/chapter unlocks
+  product_id      String?
+  platform        String? // "ios" | "android"
+  store           String    @default("app_store")
+  is_sandbox      Boolean?
+  purchase_date   DateTime?
+  expires_date    DateTime? // subscriptions only — null for one-time book/chapter unlocks
+  transaction_id  String    @unique
+  raw_response    Json?
+  created_at      DateTime  @default(now())
 
   @@index([user_id])
   @@map("iap_transactions")
@@ -2327,6 +2332,12 @@ model UserSubscription {
   status          String   @default("pending")
   updated_at      DateTime @updatedAt
   user_id         String
+  // Set only for a RevenueCat/IAP-activated subscription (subscribe-iap) —
+  // the store's own record of this purchase, not derived from plan.price.
+  store           String?    // "app_store" | "play_store"
+  is_sandbox      Boolean?
+  purchase_date   DateTime?
+  expires_date    DateTime?
 
   plan          SubscriptionPlan @relation(fields: [plan_id], references: [id])
   coupon_usages CouponUsage[]

@@ -151,7 +151,10 @@ export default function AdminPaymentGateways() {
     ));
   };
 
-  const hasMode = (key: string) => !["cod", "bkash", "nagad", "revenuecat"].includes(key);
+  // RevenueCat's Live/Test mode gates whether the backend accepts sandbox
+  // IAP purchases (see server/src/lib/revenuecat.ts) — needs this same
+  // toggle other gateways already have, not an exception from it.
+  const hasMode = (key: string) => !["cod", "bkash", "nagad"].includes(key);
 
   return (
     <div>
