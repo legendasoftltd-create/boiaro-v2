@@ -307,7 +307,12 @@ app.use(socialBotMiddleware);
 if (process.env.NODE_ENV === "production") {
   // index: false — index.html must fall through to the handler below so
   // GA4/GTM tags can be injected server-side rather than served as a static file.
-  app.use(express.static(frontendDist, { index: false }));
+  // dotfiles: "allow" — serve-static's default ("ignore") silently treats
+  // any dotfile/dot-directory as not found, which would make /.well-known/
+  // (apple-app-site-association, assetlinks.json — required verbatim, no
+  // redirect, for iOS Universal Links / Android App Links) fall through to
+  // the SPA catch-all below and serve index.html instead of the real file.
+  app.use(express.static(frontendDist, { index: false, dotfiles: "allow" }));
   app.get("*", async (_req, res) => {
     try {
       const html = await getAnalyticsInjectedHtml(path.join(frontendDist, "index.html"));
