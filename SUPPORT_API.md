@@ -22,7 +22,7 @@ Input:
 ```
 `category` is optional, defaults to `"general"`.
 
-Creates a `SupportTicket` row with `status: "open"`, owned by the calling user.
+Creates a `SupportTicket` row with `status: "open"`, owned by the calling user. `priority` defaults to the user's active subscription plan's `support_priority` (`low`/`medium`/`high`/`urgent`), falling back to `"medium"` for users with no priority-support plan.
 
 Response: the created `SupportTicket` row.
 
@@ -67,8 +67,10 @@ Response (array):
     "description": "...",
     "category": "billing",
     "status": "open",
-    "priority": "normal",
+    "priority": "medium",
     "assigned_to": null,
+    "resolved_at": null,
+    "closed_at": null,
     "user_id": "uuid",
     "created_at": "...",
     "updated_at": "...",
@@ -130,7 +132,7 @@ Input:
   "assigned_to": "<admin_user_id>"
 }
 ```
-All fields except `id` are optional — only provided fields are updated. `status` is a free-form string (conventionally `open` / `in_progress` / `resolved` / `closed`); not enum-validated server-side.
+All fields except `id` are optional — only provided fields are updated. `status` is a free-form string (conventionally `open` / `in_progress` / `resolved` / `closed`); not enum-validated server-side. Setting `status: "resolved"` stamps `resolved_at`; `"closed"` stamps `closed_at`; moving back to `"open"`/`"in_progress"` clears both.
 
 ### `admin.addSupportTicketReply`
 **Type:** mutation
@@ -153,3 +155,4 @@ When `isInternal: true`, the message is stored prefixed with `[Internal] ` and f
 
 - **No attachment upload.** `attachment_url` exists in the admin detail response shape but is hardcoded `null` — no upload mutation/endpoint backs it.
 - **No notification when a user replies** (only the reverse — staff reply → user notified). Whoever's `assigned_to` the ticket isn't proactively pinged; admins would need to check the support inbox themselves.
+- **`type: "ticket"`** is present on every `listSupportTickets`/`getSupportTicketDetail` response but is always the same hardcoded value — there is no second ticket type. The admin UI's earlier "Complaints" tab/stat/badges that implied otherwise were dead code and have been removed (2026-08-20).

@@ -3,7 +3,7 @@ import Hls from "hls.js"
 import { useAuth } from "@/contexts/AuthContext"
 import { useSecureContent } from "@/hooks/useSecureContent"
 import { recordPlaybackError } from "@/hooks/useSecureContent"
-import { usePresence } from "@/hooks/usePresence"
+import { usePresenceContext } from "@/contexts/PresenceContext"
 import { useConsumptionTracker } from "@/hooks/useConsumptionTracker"
 import { useActivityTracker } from "@/hooks/useActivityTracker"
 import { trpc } from "@/lib/trpc"
@@ -98,7 +98,7 @@ const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(und
 export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const { getSecureUrl, prefetchBatchUrls } = useSecureContent()
-  const { setActivity } = usePresence()
+  const { setActivity } = usePresenceContext()
   const { trackListeningProgress } = useActivityTracker()
   const utils = trpc.useUtils()
   const updateListeningProgressMutation = trpc.profiles.updateListeningProgress.useMutation()

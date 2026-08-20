@@ -8,6 +8,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { AudioPlayerProvider } from "@/contexts/AudioPlayerContext";
+import { PresenceProvider } from "@/contexts/PresenceContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -18,7 +19,6 @@ const GlobalAudiobookPaywall = lazy(() => import("@/components/audio-player/Glob
 const AppDownloadGate = lazy(() => import("@/components/AppDownloadGate").then(m => ({ default: m.AppDownloadGate })));
 const CartDrawer = lazy(() => import("@/components/cart/CartDrawer").then(m => ({ default: m.CartDrawer })));
 const RoleApplicationSubmitter = lazy(() => import("@/components/RoleApplicationSubmitter").then(m => ({ default: m.RoleApplicationSubmitter })));
-const PresenceTracker = lazy(() => import("@/components/PresenceTracker").then(m => ({ default: m.PresenceTracker })));
 const PushNotificationManager = lazy(() => import("@/components/PushNotificationManager").then(m => ({ default: m.PushNotificationManager })));
 const BandwidthReporter = lazy(() => import("@/components/BandwidthReporter").then(m => ({ default: m.BandwidthReporter })));
 const AnalyticsScripts = lazy(() => import("@/components/AnalyticsScripts").then(m => ({ default: m.AnalyticsScripts })));
@@ -231,11 +231,11 @@ const App = () => {
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <PresenceProvider>
           <CartProvider>
             <AudioPlayerProvider>
               <Suspense fallback={null}><AppDownloadGate /></Suspense>
               <Suspense fallback={null}><RoleApplicationSubmitter /></Suspense>
-              <Suspense fallback={null}><PresenceTracker /></Suspense>
               <Suspense fallback={null}><PushNotificationManager /></Suspense>
               <Suspense fallback={null}><BandwidthReporter /></Suspense>
               <Suspense fallback={null}><AnalyticsScripts /></Suspense>
@@ -420,6 +420,7 @@ const App = () => {
               <Suspense fallback={null}><CartDrawer /></Suspense>
             </AudioPlayerProvider>
           </CartProvider>
+          </PresenceProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { createContext, useContext, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
 import { Capacitor } from "@capacitor/core";
@@ -9,7 +9,24 @@ const HEARTBEAT_INTERVAL = 45_000;
 const BACKGROUND_HEARTBEAT_INTERVAL = 120_000;
 const DEBOUNCE_MS = 5_000;
 
-export function usePresence() {
+interface PresenceContextType {
+  setActivity: (type: ActivityType, bookId?: string) => void;
+}
+
+const PresenceContext = createContext<PresenceContextType | undefined>(undefined);
+
+// Single app-wide heartbeat loop. Previously `usePresence()` was called
+// independently from PresenceTracker, AudioPlayerContext, and EbookReader —
+// each instance kept its own `currentActivity` ref and its own 45s interval,
+// so all three raced to upsert the same `userPresence` row and whichever
+// fired last won. Since PresenceTracker's and AudioPlayerContext's copies
+// defaulted to (or resolved to) "browsing" whenever nothing was playing,
+// they intermittently stomped a real "reading"/"listening" heartbeat back to
+// "browsing" — undercounting the admin dashboard's Reading Now/Listening Now
+// to near-zero even while Active Now (which just counts any presence row
+// updated in the last 5 minutes) stayed accurate. One shared instance means
+// there is only ever one activity value and one interval per user.
+export function PresenceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentActivity = useRef<{ page?: string; bookId?: string; type: ActivityType }>({ type: "browsing" });
@@ -93,5 +110,11 @@ export function usePresence() {
     [debouncedUpsert]
   );
 
-  return { setActivity };
+  return <PresenceContext.Provider value={{ setActivity }}>{children}</PresenceContext.Provider>;
+}
+
+export function usePresenceContext() {
+  const ctx = useContext(PresenceContext);
+  if (!ctx) throw new Error("usePresenceContext must be used within a PresenceProvider");
+  return ctx;
 }

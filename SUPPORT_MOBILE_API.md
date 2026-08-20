@@ -21,6 +21,8 @@ Request body:
 ```
 `category` is optional (defaults to `"general"`). Suggested category values (free-form, not enforced): `payment_issue`, `book_access`, `audiobook_playback`, `subscription`, `refund`, `hardcopy_delivery`, `account`, `general`, `other`.
 
+`priority` is not settable by the client — it's derived server-side from the user's active subscription plan's `support_priority` (`low`/`medium`/`high`/`urgent`), falling back to `"medium"` for users with no priority-support plan.
+
 Response `200`:
 ```json
 {
@@ -30,7 +32,7 @@ Response `200`:
   "description": "I paid via bKash but my order still shows pending.",
   "category": "payment_issue",
   "status": "open",
-  "priority": "normal",
+  "priority": "medium",
   "assigned_to": null,
   "closed_at": null,
   "resolved_at": null,
@@ -58,7 +60,7 @@ Response `200`:
       "description": "...",
       "category": "payment_issue",
       "status": "open",
-      "priority": "normal",
+      "priority": "medium",
       "created_at": "...",
       "updated_at": "...",
       "ticket_number": "TKT-A1B2C3D4",
@@ -85,7 +87,7 @@ Response `200`:
   "description": "I paid via bKash but my order still shows pending.",
   "category": "payment_issue",
   "status": "in_progress",
-  "priority": "normal",
+  "priority": "medium",
   "created_at": "...",
   "updated_at": "...",
   "ticket_number": "TKT-A1B2C3D4",

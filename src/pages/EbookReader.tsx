@@ -31,7 +31,7 @@ import { TtsFullPlayer } from "@/components/ebook-reader/TtsFullPlayer";
 import { useTtsEngine, type TtsMode } from "@/hooks/useTtsEngine";
 import { useBackgroundMusic, detectMusicGenre, type MusicGenre } from "@/hooks/useBackgroundMusic";
 import { useMediaSession } from "@/hooks/useMediaSession";
-import { usePresence } from "@/hooks/usePresence";
+import { usePresenceContext } from "@/contexts/PresenceContext";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
 import { trpc } from "@/lib/trpc";
 import { toMediaUrl } from "@/lib/mediaUrl";
@@ -62,7 +62,7 @@ export default function EbookReader() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { getSecureUrl, logAccess } = useSecureContent();
-  const { setActivity } = usePresence();
+  const { setActivity } = usePresenceContext();
 
   const [bookId, setBookId] = useState<string | null>(null);
   const [bookTitle, setBookTitle] = useState("");
