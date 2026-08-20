@@ -1,6 +1,5 @@
 import cron from "node-cron";
 import { runInactivityAlerts } from "./inactivityAlerts.js";
-import { runStreakAlerts } from "./streakAlerts.js";
 import { runWeeklySummary } from "./weeklySummary.js";
 import { runCompetitionPayouts } from "./competitionPayouts.js";
 import { runMonthlyLeaderboardLock } from "./monthlyLeaderboardLock.js";
@@ -39,12 +38,13 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] inactivityAlerts failed:", err));
   }, DHAKA);
 
-  // Daily at 20:00 Dhaka — streak-ending-soon alerts (streaks lapse at Dhaka midnight)
-  cron.schedule("0 20 * * *", () => {
-    runStreakAlerts()
-      .then((r) => r.sent && console.log(`[jobs] streakAlerts: sent ${r.sent}`))
-      .catch((err) => console.error("[jobs] streakAlerts failed:", err));
-  }, DHAKA);
+  // Streak-ending-soon push notifications (runStreakAlerts, in ./streakAlerts.js)
+  // are intentionally NOT scheduled — every user who had a streak at risk got
+  // pushed a "your streak ends today!" notification daily at 20:00 Dhaka,
+  // which caused a real (not fake) but unwanted spike of app opens on the
+  // admin dashboard's Active Now count every evening. Streak tracking itself
+  // (accrual, lapsing at Dhaka midnight) lives entirely outside this job and
+  // is unaffected — this only ever sent the reminder push, nothing else.
 
   // Weekly, Sunday at 18:00 Dhaka — weekly reading report ready notification
   cron.schedule("0 18 * * 0", () => {
@@ -108,5 +108,5 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] databaseBackup failed:", err));
   }, DHAKA);
 
-  console.log("[jobs] scheduled jobs registered (inactivity, streak, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll, database backup)");
+  console.log("[jobs] scheduled jobs registered (inactivity, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll, database backup)");
 }
