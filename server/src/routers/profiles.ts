@@ -357,7 +357,14 @@ export const profilesRouter = router({
           description: input.description,
           category: input.category || "general",
           status: "open",
-          ...(subscription?.support_priority ? { priority: subscription.support_priority } : {}),
+          // Explicit fallback, not the schema's own default ("normal") — the
+          // admin Support Tickets UI's priority filter/color-coding only
+          // knows low/medium/high/urgent (matching the subscription plan
+          // editor's own options), so a ticket left on the schema default
+          // silently fell outside every priority filter and rendered with
+          // no color. Confirmed live: 100% of real tickets had priority
+          // "normal", none of them findable via the priority dropdown.
+          priority: subscription?.support_priority || "medium",
         },
       });
     }),

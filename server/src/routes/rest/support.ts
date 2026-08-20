@@ -28,7 +28,9 @@ supportRestRouter.post("/tickets", requireAuth, async (req: AuthenticatedRequest
         description: input.description,
         category: input.category || "general",
         status: "open",
-        ...(subscription?.support_priority ? { priority: subscription.support_priority } : {}),
+        // Explicit fallback, not the schema's own default — see the matching
+        // comment in routers/profiles.ts's createTicket.
+        priority: subscription?.support_priority || "medium",
       },
     });
     res.json({ ...ticket, ticket_number: ticketNumber(ticket.id) });

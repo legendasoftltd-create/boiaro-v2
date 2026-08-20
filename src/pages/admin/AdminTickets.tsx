@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Search, Ticket, AlertCircle, Clock, CheckCircle, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -51,7 +50,6 @@ export default function AdminTickets() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [typeTab, setTypeTab] = useState("all");
 
   const { data: tickets = [], isLoading } = useQuery({
     queryKey: ["support-tickets"],
@@ -59,7 +57,6 @@ export default function AdminTickets() {
   });
 
   const filtered = tickets.filter(t => {
-    if (typeTab !== "all" && t.type !== typeTab) return false;
     if (statusFilter !== "all" && t.status !== statusFilter) return false;
     if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
     if (categoryFilter !== "all" && t.category !== categoryFilter) return false;
@@ -83,18 +80,17 @@ export default function AdminTickets() {
     resolved: tickets.filter(t => t.status === "resolved").length,
     closed: tickets.filter(t => t.status === "closed").length,
     urgent: tickets.filter(t => t.priority === "urgent").length,
-    complaints: tickets.filter(t => t.type === "complaint").length,
   };
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold font-serif text-primary">Support Tickets</h1>
-        <p className="text-sm text-muted-foreground">User support & complaint management</p>
+        <p className="text-sm text-muted-foreground">User support ticket management</p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
           { label: "Total", value: stats.total, icon: <Ticket className="h-4 w-4" />, color: "text-foreground" },
           { label: "Open", value: stats.open, icon: statusIcons.open, color: "text-blue-400" },
@@ -102,7 +98,6 @@ export default function AdminTickets() {
           { label: "Resolved", value: stats.resolved, icon: statusIcons.resolved, color: "text-green-400" },
           { label: "Closed", value: stats.closed, icon: statusIcons.closed, color: "text-muted-foreground" },
           { label: "Urgent", value: stats.urgent, icon: <AlertCircle className="h-4 w-4" />, color: "text-red-400" },
-          { label: "Complaints", value: stats.complaints, icon: <AlertCircle className="h-4 w-4" />, color: "text-orange-400" },
         ].map(s => (
           <Card key={s.label} className="bg-card/60 border-border/40">
             <CardContent className="p-3 flex items-center gap-2">
@@ -115,15 +110,6 @@ export default function AdminTickets() {
           </Card>
         ))}
       </div>
-
-      {/* Tabs and Filters */}
-      <Tabs value={typeTab} onValueChange={setTypeTab}>
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="ticket">Tickets</TabsTrigger>
-          <TabsTrigger value="complaint">Complaints</TabsTrigger>
-        </TabsList>
-      </Tabs>
 
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
@@ -183,7 +169,6 @@ export default function AdminTickets() {
                   <Link to={`/admin/ticket/${t.id}`} className="font-mono text-xs text-primary hover:underline">
                     {t.ticket_number}
                   </Link>
-                  {t.type === "complaint" && <Badge variant="outline" className="ml-2 text-[10px] text-orange-400 border-orange-400/30">Complaint</Badge>}
                 </TableCell>
                 <TableCell>
                   <div className="text-sm font-medium">{t.user_name || "—"}</div>

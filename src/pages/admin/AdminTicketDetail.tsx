@@ -82,7 +82,6 @@ export default function AdminTicketDetail() {
         <div>
           <h1 className="text-xl font-bold font-serif text-primary flex items-center gap-2">
             <span className="font-mono text-sm text-muted-foreground">{ticket.ticket_number}</span>
-            {ticket.type === "complaint" && <Badge variant="outline" className="text-orange-400 border-orange-400/30">Complaint</Badge>}
           </h1>
           <p className="text-sm text-muted-foreground">{ticket.subject}</p>
         </div>
@@ -152,7 +151,6 @@ export default function AdminTicketDetail() {
               <div><span className="text-muted-foreground">Phone:</span> <span>{ticket.user_phone || "—"}</span></div>
               <Separator className="bg-border/40" />
               <div><span className="text-muted-foreground">Category:</span> <span>{ticket.category}</span></div>
-              <div><span className="text-muted-foreground">Type:</span> <Badge variant="outline" className="text-[10px]">{ticket.type === "complaint" ? "Complaint" : "Ticket"}</Badge></div>
             </CardContent>
           </Card>
 

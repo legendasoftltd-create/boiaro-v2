@@ -2593,9 +2593,22 @@ export const adminRouter = router({
     )
     .mutation(({ input }) => {
       const { id, ...data } = input;
+      // resolved_at/closed_at exist on the schema (and are documented in
+      // SUPPORT_MOBILE_API.md as if populated) but nothing ever actually set
+      // them — a status change alone left both permanently null, with no
+      // record of when a ticket was actually resolved. Derive them from the
+      // status transition here; moving back to open/in_progress clears them
+      // (a reopened ticket isn't "resolved" anymore).
+      const patch: typeof data & { resolved_at?: Date | null; closed_at?: Date | null } = { ...data };
+      if (data.status === "resolved") patch.resolved_at = new Date();
+      else if (data.status === "closed") patch.closed_at = new Date();
+      else if (data.status === "open" || data.status === "in_progress") {
+        patch.resolved_at = null;
+        patch.closed_at = null;
+      }
       return prisma.supportTicket.update({
         where: { id },
-        data,
+        data: patch,
       });
     }),
 
