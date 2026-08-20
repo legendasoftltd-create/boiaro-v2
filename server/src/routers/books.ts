@@ -56,7 +56,7 @@ async function attachNarratorsAndResolve(books: any[]) {
 async function rankAndFetchBooks(
   candidateIds: string[],
   rankById: Map<string, number>,
-  opts: { format: "hardcopy" | "audiobook"; search?: string; limit: number }
+  opts: { format?: "hardcopy" | "audiobook" | "ebook"; search?: string; limit: number }
 ) {
   if (candidateIds.length === 0) return [];
   const books = await prisma.book.findMany({
@@ -64,7 +64,7 @@ async function rankAndFetchBooks(
       id: { in: candidateIds },
       submission_status: "approved",
       is_active: true,
-      formats: { some: { format: opts.format, is_available: true, submission_status: "approved" } },
+      ...(opts.format && { formats: { some: { format: opts.format, is_available: true, submission_status: "approved" } } }),
       ...(opts.search && { title: { contains: opts.search, mode: "insensitive" } }),
     },
     include: bookDetailInclude,
@@ -294,21 +294,31 @@ export const booksRouter = router({
   // with the mobile REST equivalent (routes/rest/homepage.ts) so both
   // platforms always agree on the same ranking.
   bestSellers: publicProcedure
-    .input(z.object({ limit: z.number().min(1).max(50).default(10), search: z.string().optional() }))
+    .input(z.object({
+      limit: z.number().min(1).max(50).default(10),
+      search: z.string().optional(),
+      format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+    }))
     .query(async ({ input }) => {
       const { candidateIds, rankById } = await getBestSellerBookIds();
-      return rankAndFetchBooks(candidateIds, rankById, { format: "hardcopy", search: input.search, limit: input.limit });
+      return rankAndFetchBooks(candidateIds, rankById, { format: input.format, search: input.search, limit: input.limit });
     }),
 
-  // Hardcopy books currently carrying an admin-set discount — ranked by
-  // discount % (highest first), not by any engagement/sales signal.
+  // Books currently carrying an admin-set discount on any format, ranked by
+  // discount % (highest first) — not by any engagement/sales signal. With no
+  // `format` filter, ranks by each book's best current offer across all its
+  // formats; with one, ranks (and requires a discount) on that format only.
   specialOffers: publicProcedure
-    .input(z.object({ limit: z.number().min(1).max(50).default(10), search: z.string().optional() }))
+    .input(z.object({
+      limit: z.number().min(1).max(50).default(10),
+      search: z.string().optional(),
+      format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+    }))
     .query(async ({ input }) => {
       const where: any = {
         submission_status: "approved",
         is_active: true,
-        formats: { some: { format: "hardcopy", is_available: true, submission_status: "approved", discount: { gt: 0 } } },
+        formats: { some: { ...(input.format && { format: input.format }), is_available: true, submission_status: "approved", discount: { gt: 0 } } },
         ...(input.search && { title: { contains: input.search, mode: "insensitive" } }),
       };
       const candidates = await prisma.book.findMany({
@@ -317,7 +327,10 @@ export const booksRouter = router({
         take: 300,
         include: bookDetailInclude,
       });
-      const discountOf = (b: any) => b.formats.find((f: any) => f.format === "hardcopy")?.discount ?? 0;
+      const discountOf = (b: any) => {
+        const relevant = input.format ? b.formats.filter((f: any) => f.format === input.format) : b.formats;
+        return Math.max(0, ...relevant.map((f: any) => f.discount ?? 0));
+      };
       const ranked = candidates.slice().sort((a, b) => discountOf(b) - discountOf(a)).slice(0, input.limit);
       return await attachNarratorsAndResolve(ranked);
     }),

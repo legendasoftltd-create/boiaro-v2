@@ -51,7 +51,7 @@ const bookSelect = {
 async function fetchRankedSection(
   candidateIds: string[],
   rankById: Map<string, number>,
-  opts: { requiredFormat: "hardcopy" | "audiobook"; search?: string; limit: number; offset: number }
+  opts: { requiredFormat?: "hardcopy" | "audiobook" | "ebook"; search?: string; limit: number; offset: number }
 ) {
   if (candidateIds.length === 0) return { data: [], total: 0, limit: opts.limit, offset: opts.offset, has_more: false };
   const books = await prisma.book.findMany({
@@ -59,7 +59,7 @@ async function fetchRankedSection(
       id: { in: candidateIds },
       submission_status: "approved",
       is_active: true,
-      formats: { some: { format: opts.requiredFormat, is_available: true, submission_status: "approved" } },
+      ...(opts.requiredFormat && { formats: { some: { format: opts.requiredFormat, is_available: true, submission_status: "approved" } } }),
       ...(opts.search && { title: { contains: opts.search, mode: "insensitive" as const } }),
     },
     select: bookSelect,
@@ -203,28 +203,33 @@ async function getPaginatedSection(section: string, limit: number, offset: numbe
   }
 
   if (section === "bestSellers") {
-    // Real sales (OrderItem.quantity summed per hardcopy book, non-cancelled/
-    // returned/pending orders, rolling 180 days), not the manually-admin-set
-    // Book.is_bestseller flag — see getBestSellerBookIds for the full query.
-    if (format && format !== "hardcopy") return { data: [], total: 0, limit, offset, has_more: false };
+    // Real sales (OrderItem.quantity summed per book across every format it
+    // sold in, non-cancelled/returned/pending orders, rolling 180 days), not
+    // the manually-admin-set Book.is_bestseller flag — see
+    // getBestSellerBookIds for the full query. `type` narrows to one format
+    // (e.g. only hardcopy sales); omit it for all formats.
     const { candidateIds, rankById } = await getBestSellerBookIds();
-    return fetchRankedSection(candidateIds, rankById, { requiredFormat: "hardcopy", search, limit, offset });
+    return fetchRankedSection(candidateIds, rankById, { requiredFormat: format, search, limit, offset });
   }
 
   if (section === "specialOffers") {
-    // Hardcopy books currently carrying an admin-set discount, ranked by
-    // discount % (highest first) — sorted in JS since Prisma can't order by
-    // a filtered to-many relation's scalar field directly.
-    if (format && format !== "hardcopy") return { data: [], total: 0, limit, offset, has_more: false };
+    // Books currently carrying an admin-set discount on any format, ranked
+    // by discount % (highest first) — sorted in JS since Prisma can't order
+    // by a filtered to-many relation's scalar field directly. With no `type`,
+    // ranks by each book's best current offer across all its formats; with
+    // one, ranks (and requires a discount) on that format only.
     const where = {
       submission_status: "approved", is_active: true,
-      formats: { some: { format: "hardcopy" as const, is_available: true, submission_status: "approved", discount: { gt: 0 } } },
+      formats: { some: { ...(format && { format }), is_available: true, submission_status: "approved", discount: { gt: 0 } } },
       ...searchWhere,
     };
     const candidates = await prisma.book.findMany({
       where, orderBy: [{ priority: { sort: "asc", nulls: "last" } }, { created_at: "desc" }], take: 300, select: bookSelect,
     });
-    const discountOf = (b: any) => b.formats.find((f: any) => f.format === "hardcopy")?.discount ?? 0;
+    const discountOf = (b: any) => {
+      const relevant = format ? b.formats.filter((f: any) => f.format === format) : b.formats;
+      return Math.max(0, ...relevant.map((f: any) => f.discount ?? 0));
+    };
     const ranked = candidates.slice().sort((a, b) => discountOf(b) - discountOf(a));
     const total = ranked.length;
     const page = ranked.slice(offset, offset + limit).map(resolveBookUrls);

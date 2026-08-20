@@ -686,19 +686,21 @@ export interface RankedBookIds {
   rankById: Map<string, number>;
 }
 
-// "Best Sellers" — real sales (OrderItem.quantity summed per hardcopy book),
-// not the manually-admin-set Book.is_bestseller flag browseBooks' own
-// filter=bestseller uses. Only counts orders that are genuine completed
-// sales (matches the same status exclusion used for revenue/financial
-// reporting elsewhere in admin.ts), within a rolling 180-day window so the
-// list reflects *current* bestsellers rather than one all-time winner
-// permanently occupying every slot.
+// "Best Sellers" — real sales (OrderItem.quantity summed per book, across
+// every format it sold in — a book bought as both an ebook and a hardcopy
+// counts both toward the same ranking), not the manually-admin-set
+// Book.is_bestseller flag browseBooks' own filter=bestseller uses. Only
+// counts orders that are genuine completed sales (matches the same status
+// exclusion used for revenue/financial reporting elsewhere in admin.ts),
+// within a rolling 180-day window so the list reflects *current*
+// bestsellers rather than one all-time winner permanently occupying every
+// slot. Callers narrow to one format afterward (rankAndFetchBooks/
+// fetchRankedSection) — the ranking itself stays format-agnostic.
 export async function getBestSellerBookIds(): Promise<RankedBookIds> {
   const since = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
   const sold = await prisma.orderItem.groupBy({
     by: ["book_id"],
     where: {
-      format: "hardcopy",
       book_id: { not: null },
       order: { status: { notIn: ["cancelled", "returned", "pending"] }, created_at: { gte: since } },
     },

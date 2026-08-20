@@ -15,18 +15,25 @@ this doc only covers these four and the ranking behind them).
 
 ## Summary
 
-| Section key | Category | Ranked by | Window |
+| Section key | Formats | Ranked by | Window |
 | :--- | :--- | :--- | :--- |
-| `bestSellers` | Hard Copy | Sum of `OrderItem.quantity` for real (paid, non-cancelled/returned) orders | Rolling 180 days |
-| `specialOffers` | Hard Copy | Discount % (highest first) | None — anything with an active discount right now |
-| `trendingAudiobooks` | Audiobook | Count of new unique listeners (`BookListen`, one row per user per book) | Rolling 14 days |
-| `topAudiobooks` | Audiobook | Count of unique listeners, all time | None — lifetime |
+| `bestSellers` | All (filterable) | Sum of `OrderItem.quantity` for real (paid, non-cancelled/returned) orders, across every format a book sold in | Rolling 180 days |
+| `specialOffers` | All (filterable) | Discount % (highest first) — each book's *best* current offer across its formats when no `type` filter is applied | None — anything with an active discount right now |
+| `trendingAudiobooks` | Audiobook only | Count of new unique listeners (`BookListen`, one row per user per book) | Rolling 14 days |
+| `topAudiobooks` | Audiobook only | Count of unique listeners, all time | None — lifetime |
 
 None of these read the manually-admin-set `Book.is_bestseller`/`is_featured`
 flags — they reflect what's actually happening on the platform. If a section
-looks empty, it's telling the truth (e.g. no hardcopy orders have gone
-through yet, or nobody has discounted a book) rather than falling back to a
-curated list.
+looks empty, it's telling the truth (e.g. no orders have gone through yet,
+or nobody has discounted a book) rather than falling back to a curated list.
+
+`bestSellers` and `specialOffers` show books across **all formats** by
+default (a hardcopy sale and an ebook sale of the same book both count
+toward the same ranking) — pass `type` to narrow to one, matching the
+website's own All/eBooks/Audio/Print toggle on these two sections.
+`trendingAudiobooks`/`topAudiobooks` are audiobook-only by definition — a
+`type` other than `audiobook` returns an empty page on those two, not an
+error.
 
 ---
 
@@ -43,7 +50,7 @@ GET /api/v1/homepage/{section}?limit=10&offset=0
 | :--- | :--- | :--- | :--- |
 | `limit` | int | 20 | 1–50. Pass `10` for a "Top 10" style row. |
 | `offset` | int | 0 | For "See more" / infinite scroll within the section. |
-| `type` | string | — | Optional format filter. Passing a format the section doesn't apply to (e.g. `type=ebook` on `bestSellers`) returns an empty page, not an error — these sections are already format-locked (`bestSellers`/`specialOffers` are hardcopy-only, `trendingAudiobooks`/`topAudiobooks` are audiobook-only). |
+| `type` | string | — | `ebook`, `audiobook`, or `hardcopy`. On `bestSellers`/`specialOffers`, omit for all formats or narrow to one. On `trendingAudiobooks`/`topAudiobooks` (audiobook-only sections), passing anything other than `audiobook` returns an empty page, not an error. |
 | `search` | string | — | Narrows by title, applied *within* the ranked list (a low-ranked match can still appear if it matches; it isn't re-ranked by relevance). |
 
 No authentication required.
@@ -87,11 +94,12 @@ No authentication required.
   internally at 300 candidates before pagination), not just the current
   page — use them for "See more" the same way as any other paginated
   homepage section.
-- `formats` is filtered to available, approved formats only. For
-  `bestSellers`/`specialOffers` this always includes a `hardcopy` entry;
-  for `trendingAudiobooks`/`topAudiobooks` it always includes an
-  `audiobook` entry — a book can still carry other formats too (e.g. an
-  ebook edition), they just aren't what the section ranked on.
+- `formats` is filtered to available, approved formats only — whatever
+  formats that book actually has, not just the one it ranked on.
+  `trendingAudiobooks`/`topAudiobooks` always include an `audiobook`
+  entry (they're audiobook-only sections); `bestSellers`/`specialOffers`
+  include whichever format(s) matched — if a book sold as both an ebook
+  and a hardcopy, both appear, not just the one that drove the ranking.
 - `formats[].discount` and `formats[].original_price` are now present on
   every homepage section's book payload (not just `specialOffers`) — use
   `discount` to render a "X% OFF" badge anywhere a hardcopy price shows.
@@ -100,11 +108,13 @@ No authentication required.
 
 ## `bestSellers` — real sales, not a manual flag
 
-Sums `OrderItem.quantity` per hardcopy book across orders placed in the
-last 180 days, **excluding** orders with `status` in `cancelled`,
-`returned`, or `pending` (same exclusion the admin financial/revenue
-reports already use — a pending or cancelled order was never actually
-fulfilled, so it shouldn't count as a "sale").
+Sums `OrderItem.quantity` per book — across **every format** it sold in —
+for orders placed in the last 180 days, **excluding** orders with `status`
+in `cancelled`, `returned`, or `pending` (same exclusion the admin
+financial/revenue reports already use — a pending or cancelled order was
+never actually fulfilled, so it shouldn't count as a "sale"). A book sold
+as both an ebook and a hardcopy has both sale counts summed into one
+ranking; pass `type` to rank/filter by one format's sales only.
 
 This is deliberately **not** the same as `Book.is_bestseller` (a flag an
 admin sets by hand) — `browseBooks`'s existing `filter=bestseller` on the
@@ -114,19 +124,25 @@ disagree, and don't try to reconcile them — they answer different
 questions.
 
 ```http
-GET /api/v1/homepage/bestSellers?limit=10
+GET /api/v1/homepage/bestSellers?limit=10           # all formats
+GET /api/v1/homepage/bestSellers?limit=10&type=hardcopy
 ```
 
 ---
 
-## `specialOffers` — currently discounted hardcopies
+## `specialOffers` — currently discounted books
 
-Any hardcopy format with `discount > 0` set (via Admin → Books → the
-format's discount field), ranked by discount percentage, highest first.
+Any format with `discount > 0` set (via Admin → Books → the format's
+discount field), ranked by discount percentage, highest first. With no
+`type`, each book is ranked by its *best* current discount across all its
+formats (e.g. a book discounted 30% as an ebook but only 10% as a
+hardcopy ranks on the 30%); with a `type`, only that format's discount
+counts and a book needs a discount on *that* format to appear at all.
 Ties fall back to admin `priority`, then newest first.
 
 ```http
-GET /api/v1/homepage/specialOffers?limit=10
+GET /api/v1/homepage/specialOffers?limit=10           # all formats
+GET /api/v1/homepage/specialOffers?limit=10&type=ebook
 ```
 
 There's no time window — a book stays in this section for as long as its
@@ -177,6 +193,7 @@ The equivalent web (tRPC) procedures are `books.bestSellers`,
 `books.topAudiobooks` — same ranking logic (they call the same server-side
 functions in `services/books.service.ts`), so the website and the app
 always agree on what's currently a bestseller, on offer, or trending. They
-take `{ limit, search }` and return a plain array (no pagination
-envelope) — the mobile REST endpoints above are the ones to use for the
-app.
+take `{ limit, search, format? }` (`bestSellers`/`specialOffers` accept
+`format`; the other two are already audiobook-locked) and return a plain
+array (no pagination envelope) — the mobile REST endpoints above are the
+ones to use for the app.
