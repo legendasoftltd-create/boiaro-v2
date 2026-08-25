@@ -76,6 +76,11 @@ const ADMIN_SECTION_KEY_TO_BUNDLE_FIELD: Record<string, { field: string; empty: 
   free_books: { field: "FreeBooks", empty: [] },
   continue_reading: { field: "continueReading", empty: [] },
   continue_listening: { field: "continueListening", empty: [] },
+  // getHomepageData's bundle also carries these two as top-level fields
+  // (separate from — and in addition to — their own paginated /:section
+  // endpoint), so the bundle route needs them gated too.
+  popular_audiobooks: { field: "popularAudiobooks", empty: [] },
+  hard_copies: { field: "popularHardCopies", empty: [] },
 };
 
 async function getDisabledAdminSectionKeys(): Promise<Set<string>> {
