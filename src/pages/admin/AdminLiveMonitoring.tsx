@@ -93,18 +93,41 @@ export default function AdminLiveMonitoring() {
   const ledger = monitorData?.ledger || [];
   const sysLogs = monitorData?.systemLogs || [];
 
-  /* ─── DERIVED METRICS ─── */
+  /* ─── DERIVED METRICS ───
+   * Payment.status varies by which checkout path created the row —
+   * "awaiting_payment" (order/wallet checkouts) and "pending" (subscription
+   * checkouts) both mean the same "gateway session open, outcome not known
+   * yet" state; "completed" (IAP) means the same as "paid". Treating only
+   * the literal strings "paid"/"failed"/"pending" as real used to silently
+   * drop every "awaiting_payment" and "completed" row from every bucket
+   * except the total — inflating the denominator without ever counting them
+   * as a success, which crushed the displayed rate toward 0% regardless of
+   * how the gateway was actually performing. COD is excluded entirely: it
+   * has no online gateway step, so it isn't a "payment attempt" here.
+   */
   const paymentStats = useMemo(() => {
-    if (!payments) return { total: 0, success: 0, failed: 0, pending: 0, rate: 0, recentFailed: [] as any[] };
-    const success = payments.filter(p => p.status === "paid");
-    const failed = payments.filter(p => p.status === "failed");
-    const pending = payments.filter(p => p.status === "pending");
+    if (!payments) return { total: 0, success: 0, failed: 0, pending: 0, resolved: 0, rate: 0, recentFailed: [] as any[] };
+    const gatewayAttempts = payments.filter(p => p.method !== "cod");
+    const success = gatewayAttempts.filter(p => p.status === "paid" || p.status === "completed");
+    const failed = gatewayAttempts.filter(p => p.status === "failed");
+    const open = gatewayAttempts.filter(p => p.status === "pending" || p.status === "awaiting_payment");
+    const resolved = success.length + failed.length;
     return {
-      total: payments.length,
+      total: gatewayAttempts.length,
       success: success.length,
       failed: failed.length,
-      pending: pending.length,
-      rate: pct(success.length, payments.length),
+      // "Open" — gateway session still in progress or abandoned without a
+      // callback/IPN ever landing. Not folded into the rate below: an
+      // in-progress checkout hasn't failed yet, and jobs/paymentExpiry.ts
+      // resolves anything genuinely abandoned to "failed" within 3 hours.
+      pending: open.length,
+      resolved,
+      // Success rate over RESOLVED attempts only (paid+failed) — the honest
+      // "of the checkouts that actually concluded, how many succeeded"
+      // number. Still-open attempts can't fairly count against it since we
+      // don't yet know how they'll end. 0 when nothing has resolved yet —
+      // callers must check `resolved` before treating that as a real 0%.
+      rate: pct(success.length, resolved),
       recentFailed: failed.slice(0, 20),
     };
   }, [payments]);
@@ -197,7 +220,10 @@ export default function AdminLiveMonitoring() {
   const dupPreventLogs = useMemo(() => (sysLogs || []).filter(l => l.message?.toLowerCase().includes("duplicate") || l.module === "coin_reward").slice(0, 20), [sysLogs]);
 
   /* ─── HEALTH ─── */
-  const paymentOk = paymentStats.rate >= 80 || paymentStats.total === 0;
+  // No verdict possible until at least one attempt has actually resolved
+  // (paid or failed) — an all-still-open range isn't a failure, it's just
+  // not decided yet.
+  const paymentOk = paymentStats.resolved === 0 || paymentStats.rate >= 80;
   const coinOk = coinStats.awarded >= 0; // always ok unless anomaly
   const unlockOk = unlockStats.failed === 0;
   const revenueOk = revenueStats.missingLedger === 0 && revenueStats.dupLedger === 0;
@@ -205,7 +231,7 @@ export default function AdminLiveMonitoring() {
   /* ─── ALERTS ─── */
   const alerts = useMemo(() => {
     const a: { type: "error" | "warning"; msg: string }[] = [];
-    if (paymentStats.rate > 0 && paymentStats.rate < 80) a.push({ type: "error", msg: `Payment failure spike — success rate only ${paymentStats.rate}%` });
+    if (paymentStats.resolved > 0 && paymentStats.rate < 80) a.push({ type: "error", msg: `Payment failure spike — success rate only ${paymentStats.rate}% (${paymentStats.failed}/${paymentStats.resolved} failed)` });
     if (unlockStats.failed > 3) a.push({ type: "warning", msg: `${unlockStats.failed} unlock failures detected` });
     if (revenueStats.missingLedger > 0) a.push({ type: "error", msg: `${revenueStats.missingLedger} verified orders missing ledger entries` });
     if (revenueStats.dupLedger > 0) a.push({ type: "warning", msg: `${revenueStats.dupLedger} duplicate ledger entries found` });
@@ -295,7 +321,7 @@ export default function AdminLiveMonitoring() {
             <Stat label="Total Attempts" value={paymentStats.total} icon={CreditCard} />
             <Stat label="Successful" value={paymentStats.success} icon={CheckCircle2} accent="text-green-500" />
             <Stat label="Failed" value={paymentStats.failed} icon={XCircle} accent="text-destructive" />
-            <Stat label="Success Rate" value={`${paymentStats.rate}%`} icon={TrendingUp} accent={paymentStats.rate >= 80 ? "text-green-500" : "text-destructive"} />
+            <Stat label="Success Rate" value={paymentStats.resolved === 0 ? "—" : `${paymentStats.rate}%`} icon={TrendingUp} accent={paymentOk ? "text-green-500" : "text-destructive"} />
           </div>
           <Stat label="Pending" value={paymentStats.pending} icon={Clock} accent="text-amber-500" />
 

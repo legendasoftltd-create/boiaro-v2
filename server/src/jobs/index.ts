@@ -8,6 +8,7 @@ import { runStreamReconnectSweep } from "./streamReconnect.js";
 import { runRecordingRetentionSweep } from "./recordingRetention.js";
 import { runIcecastListenerPoll } from "./icecastListenerPoll.js";
 import { runDatabaseBackup } from "./databaseBackup.js";
+import { runPaymentExpirySweep } from "./paymentExpiry.js";
 
 /**
  * Registers all recurring background jobs. Called once at server startup
@@ -98,6 +99,16 @@ export function startScheduledJobs(): void {
     runIcecastListenerPoll().catch((err) => console.error("[jobs] icecastListenerPoll failed:", err));
   });
 
+  // Every 15 minutes — expire long-abandoned SSLCommerz/bKash/Nagad checkouts
+  // (order or subscription) that never got a success/fail/cancel callback or
+  // IPN, so they settle into "payment_failed" instead of sitting open forever
+  // and skewing the Live Monitoring payment success rate.
+  cron.schedule("*/15 * * * *", () => {
+    runPaymentExpirySweep()
+      .then((r) => (r.ordersExpired || r.subscriptionsExpired) && console.log(`[jobs] paymentExpiry: orders=${r.ordersExpired} subscriptions=${r.subscriptionsExpired}`))
+      .catch((err) => console.error("[jobs] paymentExpiry failed:", err));
+  });
+
   // Daily at 03:00 Dhaka — full database backup to S3/R2 (see
   // AdminBackupStatus.tsx for the real catalog this feeds). Runs before the
   // 04:00 recording-retention sweep so a backup always reflects what's about
@@ -108,5 +119,5 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] databaseBackup failed:", err));
   }, DHAKA);
 
-  console.log("[jobs] scheduled jobs registered (inactivity, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll, database backup)");
+  console.log("[jobs] scheduled jobs registered (inactivity, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll, payment expiry, database backup)");
 }

@@ -56,10 +56,19 @@ async function deleteCancelledOrder(orderId: string) {
 }
 
 async function finalizePaidOrder(params: { orderId: string; paymentMethod: string; transactionId?: string }) {
-  // Atomic status flip: only one concurrent caller can move from pending/awaiting_payment → confirmed.
-  // This is the primary guard against IPN + redirect race conditions creating duplicate earnings.
+  // Atomic status flip: only one concurrent caller can move a not-yet-confirmed
+  // order to confirmed. This is the primary guard against IPN + redirect race
+  // conditions creating duplicate earnings.
+  //
+  // Deliberately `status: { not: "confirmed" }` rather than an explicit
+  // `{ in: ["pending", "awaiting_payment"] }` allowlist — the payment-expiry
+  // sweep (jobs/paymentExpiry.ts) moves long-abandoned orders to
+  // "payment_failed" so they stop being counted as open, but SSLCommerz can
+  // still deliver a genuinely late success IPN afterward. An allowlist would
+  // treat that as "already finalized" and skip fulfillment entirely — a paid
+  // customer getting nothing. Any non-confirmed status can still be promoted.
   const updated = await prisma.order.updateMany({
-    where: { id: params.orderId, status: { in: ["pending", "awaiting_payment"] } },
+    where: { id: params.orderId, status: { not: "confirmed" } },
     data: { status: "confirmed" },
   });
   // If no rows were updated, another request already finalized this order — skip all side effects.
