@@ -380,6 +380,47 @@ export const rjRouter = router({
       return updated;
     }),
 
+  // BoiAro Studio's higher-quality WAV master (tapped pre-Icecast-compression
+  // at the Bridge Relay) — a separate file from the MP3 catch-up recording
+  // above, and not gated by the same publish/approve workflow (it's an
+  // archive/backup copy, not the public catch-up audio). Only ended Studio
+  // sessions that produced one show up here; a Simple Go Live session never
+  // has a studio_session at all, and a Studio session with the master
+  // recording disabled/still-empty is skipped too.
+  masterRecordings: protectedProcedure.query(async ({ ctx }) => {
+    const isAdmin = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
+    const sessions = await prisma.liveSession.findMany({
+      where: {
+        status: "ended",
+        ...(isAdmin ? {} : { rj_user_id: ctx.userId }),
+        studio_session: { master_recording_status: { not: null } },
+      },
+      include: { studio_session: { select: { master_recording_url: true, master_recording_status: true, recording_mode: true } } },
+      orderBy: { ended_at: "desc" },
+      take: 50,
+    });
+    return sessions;
+  }),
+
+  deleteMasterRecording: protectedProcedure
+    .input(z.object({ sessionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const session = await prisma.liveSession.findUnique({ where: { id: input.sessionId } });
+      if (!session) throw new TRPCError({ code: "NOT_FOUND" });
+      await assertHostOrModerator(ctx.userId!, session);
+      const studioSession = await prisma.studioSession.findUnique({ where: { live_session_id: input.sessionId } });
+      if (!studioSession) throw new TRPCError({ code: "NOT_FOUND", message: "No master recording for this session" });
+      if (studioSession.master_recording_url) {
+        await deleteFromS3(studioSession.master_recording_url).catch((err) => console.error("[deleteMasterRecording] S3 delete failed:", err?.message));
+      }
+      await prisma.studioSession.update({
+        where: { id: studioSession.id },
+        data: { master_recording_url: null, master_recording_status: null },
+      });
+      await logRadioAction(ctx.userId!, "master_recording_deleted", { sessionId: input.sessionId });
+      return { ok: true };
+    }),
+
   // Public podcast-style archive — ended sessions with a recording attached.
   catchupSessions: publicProcedure
     .input(z.object({ limit: z.number().int().min(1).max(50).default(20), cursor: z.string().optional() }).optional())

@@ -2,6 +2,7 @@ import { useEffect } from "react"
 import { trpc } from "@/lib/trpc"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { RecordingCard } from "@/components/radio/RecordingCard"
+import { MasterRecordingCard } from "@/components/radio/MasterRecordingCard"
 import { FileAudio, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -15,6 +16,7 @@ export default function RjRecordings() {
 
   const { data: pending = [], isLoading: pendingLoading } = trpc.rj.pendingRecordings.useQuery()
   const { data: sessions = [], isLoading: sessionsLoading } = trpc.rj.mySessions.useQuery()
+  const { data: masterRecordings = [], isLoading: masterLoading } = trpc.rj.masterRecordings.useQuery()
   const published = sessions.filter((s: any) => s.recording_status === "published")
 
   const invalidate = () => {
@@ -28,6 +30,7 @@ export default function RjRecordings() {
   const unpublishMutation = trpc.rj.unpublishRecording.useMutation({ onSuccess: () => { invalidate(); toast.success("Unpublished") }, onError: (e) => toast.error(e.message) })
   const deleteMutation = trpc.rj.deleteRecording.useMutation({ onSuccess: () => { invalidate(); toast.success("Deleted") }, onError: (e) => toast.error(e.message) })
   const saveDetailsMutation = trpc.rj.updateRecordingDetails.useMutation({ onSuccess: () => { invalidate(); toast.success("Saved") }, onError: (e) => toast.error(e.message) })
+  const deleteMasterMutation = trpc.rj.deleteMasterRecording.useMutation({ onSuccess: () => { utils.rj.masterRecordings.invalidate(); toast.success("Deleted") }, onError: (e) => toast.error(e.message) })
 
   const anyPending = approveMutation.isPending || rejectMutation.isPending || publishMutation.isPending || unpublishMutation.isPending || deleteMutation.isPending
 
@@ -90,6 +93,33 @@ export default function RjRecordings() {
                 onSave={(update) => saveDetailsMutation.mutate({ sessionId: s.id, ...update })}
                 isSaving={saveDetailsMutation.isPending}
                 showStats
+              />
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileAudio className="w-4 h-4" /> Studio Master Recordings ({masterRecordings.length})
+          </CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Higher-quality WAV backups from BoiAro Studio broadcasts — separate from the catch-up audio above.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {masterLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          ) : masterRecordings.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No Studio master recordings yet.</p>
+          ) : (
+            masterRecordings.map((s: any) => (
+              <MasterRecordingCard
+                key={s.id}
+                session={s}
+                onDelete={() => deleteMasterMutation.mutate({ sessionId: s.id })}
+                isPending={deleteMasterMutation.isPending}
               />
             ))
           )}
