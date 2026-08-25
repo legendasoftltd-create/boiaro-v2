@@ -13,7 +13,7 @@ import { SearchableSelect } from "@/components/admin/SearchableSelect";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle, Sparkles, Mic, Download, Lock, Unlock } from "lucide-react";
+import { Plus, Pencil, Trash2, Upload, BookOpen, Headphones, Package, Music, Loader2, Image, AlertTriangle, BookMarked, Coins, CheckCircle, Sparkles, Mic, Download, Lock, Unlock, ChevronUp, ChevronDown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
@@ -107,6 +107,8 @@ export default function AdminBooks() {
   const deleteTrackMutation = trpc.admin.deleteAudiobookTrackAdmin.useMutation();
   const toggleTrackPreviewMutation = trpc.books.toggleTrackPreview.useMutation();
   const setTrackStatusMutation = trpc.admin.setAudiobookTrackStatus.useMutation();
+  const reorderTracksMutation = trpc.admin.reorderAudiobookTracks.useMutation();
+  const [reorderingId, setReorderingId] = useState<string | null>(null);
   const createLedgerEntryMutation = trpc.admin.createAccountingLedgerEntry.useMutation();
   const savePremiumVoiceMutation = trpc.admin.savePremiumVoiceSettings.useMutation();
   const getDownloadUrlMutation = trpc.admin.getBookDownloadUrl.useMutation();
@@ -412,6 +414,34 @@ export default function AdminBooks() {
     }
     setTracks(tracks.map(t => t.id === id ? { ...t, status: "active" } : t));
     toast.success("Chapter activated — now visible on the site and app");
+  };
+
+  // Swaps the track with its neighbor in `tracks`, then persists the new
+  // full order for this format. Optimistic — the local list (and its
+  // displayed #) updates immediately; a failure re-fetches from the server
+  // so the UI never disagrees with what's actually saved.
+  const moveTrack = async (id: string, direction: "up" | "down") => {
+    const idx = tracks.findIndex(t => t.id === id);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (idx === -1 || swapIdx < 0 || swapIdx >= tracks.length || !selectedFormatId) return;
+
+    const reordered = [...tracks];
+    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+    const renumbered = reordered.map((t, i) => ({ ...t, track_number: i + 1 }));
+    setTracks(renumbered);
+
+    setReorderingId(id);
+    try {
+      await reorderTracksMutation.mutateAsync({
+        bookFormatId: selectedFormatId,
+        orderedTrackIds: renumbered.map(t => t.id),
+      });
+    } catch (error: any) {
+      toast.error(error.message || "Failed to reorder chapters");
+      loadTracks(selectedFormatId);
+    } finally {
+      setReorderingId(null);
+    }
   };
 
   const trackStatusBadge = (status: string) => {
@@ -2097,6 +2127,24 @@ export default function AdminBooks() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-0.5">
+                      <div className="flex flex-col -my-1 mr-0.5">
+                        <Button
+                          size="icon" variant="ghost" className="h-4 w-5 p-0"
+                          disabled={reorderingId === t.id || tracks.findIndex(x => x.id === t.id) === 0}
+                          onClick={() => moveTrack(t.id, "up")}
+                          title="Move chapter up"
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon" variant="ghost" className="h-4 w-5 p-0"
+                          disabled={reorderingId === t.id || tracks.findIndex(x => x.id === t.id) === tracks.length - 1}
+                          onClick={() => moveTrack(t.id, "down")}
+                          title="Move chapter down"
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </div>
                       {t.status !== "active" && (
                         <Button
                           size="icon" variant="ghost" className="h-7 w-7 text-emerald-400 hover:text-emerald-400"

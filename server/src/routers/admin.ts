@@ -666,6 +666,31 @@ export const adminRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(({ input }) => prisma.audiobookTrack.delete({ where: { id: input.id } })),
 
+  // Chapter reorder (admin's "Audio Tracks" dialog Up/Down buttons) — takes
+  // the full new track order for one format and rewrites track_number to
+  // match array position. Verifying every id actually belongs to
+  // bookFormatId first stops a stray id from another audiobook silently
+  // relabeling itself under this one — track_number is scoped to
+  // book_format_id everywhere it's read (getAudiobookTracksForFormat, the
+  // public reader/player), so a leaked cross-format id would misfile it.
+  reorderAudiobookTracks: adminProcedure
+    .input(z.object({ bookFormatId: z.string(), orderedTrackIds: z.array(z.string()).min(1) }))
+    .mutation(async ({ input }) => {
+      const owned = await prisma.audiobookTrack.findMany({
+        where: { id: { in: input.orderedTrackIds }, book_format_id: input.bookFormatId },
+        select: { id: true },
+      });
+      if (owned.length !== input.orderedTrackIds.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Track list doesn't match this audiobook's chapters" });
+      }
+      await prisma.$transaction(
+        input.orderedTrackIds.map((id, i) =>
+          prisma.audiobookTrack.update({ where: { id }, data: { track_number: i + 1 } })
+        )
+      );
+      return { ok: true };
+    }),
+
   createAccountingLedgerEntry: adminProcedure
     .input(
       z.object({
