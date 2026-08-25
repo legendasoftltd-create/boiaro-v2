@@ -481,7 +481,7 @@ export const booksRouter = router({
   activePlacements: publicProcedure.query(() =>
     prisma.adPlacement.findMany({
       where: { is_enabled: true },
-      select: { placement_key: true, ad_type: true, device_visibility: true, frequency: true, display_priority: true },
+      select: { placement_key: true, ad_type: true, device_visibility: true, frequency: true, display_priority: true, delay_seconds: true, min_progress_percent: true },
     })
   ),
 

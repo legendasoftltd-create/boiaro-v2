@@ -14,12 +14,14 @@ import { PlayerCommentsDrawer } from "./PlayerCommentsDrawer"
 import { useAudiobookBackgroundMusic } from "./AudiobookBackgroundMusic"
 import { BgMusicControls } from "./BgMusicControls"
 import type { MusicGenre } from "@/hooks/useBackgroundMusic"
+import { AdBannerBlock } from "@/components/AdBannerBlock"
+import { useAdPlacementThreshold, isAdThresholdReached } from "@/hooks/useAdPlacementThreshold"
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 
 export function FullPlayer() {
   const {
-    book, audiobook, isPlaying, isFullPlayerOpen, currentTime, duration, tracks, currentTrackIndex,
+    book, audiobook, isPlaying, isFullPlayerOpen, currentTime, duration, progressPercentage, tracks, currentTrackIndex,
     playbackRate, volume, isLoading, currentMediaType,
     togglePlay, nextTrack, prevTrack, goToTrack, seekTo,
     setPlaybackRate, setVolume, closeFullPlayer, formatTime,
@@ -50,6 +52,13 @@ export function FullPlayer() {
     setBgMusicGenre(g)
     try { const p = JSON.parse(localStorage.getItem("bgmusic_prefs") || "{}"); localStorage.setItem("bgmusic_prefs", JSON.stringify({ ...p, genre: g })); } catch {}
   }, [])
+
+  // Delayed player ad — no ad until the placement's threshold is crossed.
+  // currentTime is already elapsed listening seconds, no separate timer needed.
+  const playerAdThreshold = useAdPlacementThreshold("player_delayed")
+  const showPlayerAd =
+    playerAdThreshold.isEnabled &&
+    isAdThresholdReached(playerAdThreshold, { elapsedSeconds: currentTime, progressPercent: progressPercentage })
 
   if (!book || !audiobook || !isFullPlayerOpen) return null
 
@@ -206,6 +215,12 @@ export function FullPlayer() {
                 isRealAudio={bgMusic.isRealAudio}
               />
             </div>
+
+            {showPlayerAd && (
+              <div className="w-full mb-4">
+                <AdBannerBlock placementKey="player_delayed" device="all" noContainer />
+              </div>
+            )}
           </div>
         </div>
 

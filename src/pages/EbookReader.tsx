@@ -38,6 +38,8 @@ import { toMediaUrl } from "@/lib/mediaUrl";
 import { setAmbientTracks } from "@/lib/ambientAudioGenerator";
 import { ContinueInAppPrompt } from "@/components/ContinueInAppPrompt";
 import { Capacitor } from "@capacitor/core";
+import { AdBannerBlock } from "@/components/AdBannerBlock";
+import { useAdPlacementThreshold, isAdThresholdReached } from "@/hooks/useAdPlacementThreshold";
 
 type FileType = "pdf" | "epub";
 
@@ -737,6 +739,18 @@ export default function EbookReader() {
     try { if (bookId) localStorage.setItem(`continue_in_app_dismissed_${bookId}`, "1"); } catch {}
   };
 
+  // ──────── Delayed reader ad — no ad until the placement's threshold is crossed ────────
+  const readerAdThreshold = useAdPlacementThreshold("reader_delayed");
+  const [readerElapsedSeconds, setReaderElapsedSeconds] = useState(0);
+  useEffect(() => {
+    if (!readerAdThreshold.isEnabled || loading) return;
+    const timer = setInterval(() => setReaderElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [readerAdThreshold.isEnabled, loading]);
+  const showReaderAd =
+    readerAdThreshold.isEnabled &&
+    isAdThresholdReached(readerAdThreshold, { elapsedSeconds: readerElapsedSeconds, progressPercent: percentage });
+
   // ──────── EPUB location change handler with paywall check ────────
   const handleEpubLocationChange = useCallback(
     ({ percentage: pct, cfi, chapter, page, pageTotal }: {
@@ -1210,6 +1224,14 @@ export default function EbookReader() {
           <Badge className="bg-background/60 text-foreground/80 backdrop-blur-md shadow-sm border border-border/40 px-2.5 py-0.5 text-[10px] md:text-xs font-medium pointer-events-auto">
             {previewInfo}
           </Badge>
+        </div>
+      )}
+
+      {showReaderAd && !contentLocked && (
+        <div className="fixed bottom-0 inset-x-0 z-[190] px-3 pb-3 pointer-events-none">
+          <div className="max-w-md mx-auto pointer-events-auto">
+            <AdBannerBlock placementKey="reader_delayed" device="all" />
+          </div>
         </div>
       )}
 

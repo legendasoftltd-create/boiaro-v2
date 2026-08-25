@@ -4135,6 +4135,8 @@ export const adminRouter = router({
         display_priority: z.number().int().nullable().optional(),
         notes: z.string().nullable().optional(),
         is_enabled: z.boolean().optional(),
+        delay_seconds: z.number().int().nullable().optional(),
+        min_progress_percent: z.number().int().min(0).max(100).nullable().optional(),
       })
     )
     .mutation(({ input }) => {

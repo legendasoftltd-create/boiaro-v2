@@ -23,6 +23,8 @@ interface Placement {
   device_visibility: string;
   display_priority: number;
   notes: string | null;
+  delay_seconds: number | null;
+  min_progress_percent: number | null;
 }
 
 export default function AdminAdPlacements() {
@@ -53,6 +55,8 @@ export default function AdminAdPlacements() {
       device_visibility: current.device_visibility,
       display_priority: current.display_priority,
       notes: current.notes,
+      delay_seconds: current.delay_seconds,
+      min_progress_percent: current.min_progress_percent,
     });
     toast.success("Placement updated");
     setEditOpen(false);
@@ -142,6 +146,29 @@ export default function AdminAdPlacements() {
                 <Label>Display Priority</Label>
                 <Input type="number" value={current.display_priority} onChange={e => setCurrent({ ...current, display_priority: parseInt(e.target.value) || 0 })} />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Delay (seconds)</Label>
+                  <Input
+                    type="number" min={0}
+                    value={current.delay_seconds ?? ""}
+                    placeholder="e.g. 60 — no ad before this"
+                    onChange={e => setCurrent({ ...current, delay_seconds: e.target.value === "" ? null : parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Min. Progress (%)</Label>
+                  <Input
+                    type="number" min={0} max={100}
+                    value={current.min_progress_percent ?? ""}
+                    placeholder="e.g. 20"
+                    onChange={e => setCurrent({ ...current, min_progress_percent: e.target.value === "" ? null : parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-muted-foreground -mt-2">
+                For "reader_delayed"/"player_delayed": the ad won't appear until whichever of these is set is reached. Leave both blank to not delay at all.
+              </p>
               <div className="space-y-1.5">
                 <Label>Notes</Label>
                 <Textarea value={current.notes || ""} onChange={e => setCurrent({ ...current, notes: e.target.value })} />

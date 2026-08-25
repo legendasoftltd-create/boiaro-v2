@@ -147,6 +147,13 @@ model AdPlacement {
   notes             String?
   placement_key     String   @unique
   updated_at        DateTime @updatedAt
+  // Gates a "delayed" placement (e.g. reader_delayed/player_delayed) — the ad
+  // doesn't render until the reader/listener crosses whichever of these is
+  // set (either can gate; null means that condition doesn't apply). Read by
+  // useAdPlacementThreshold on the client, not enforced server-side — this is
+  // UX pacing, not access control.
+  delay_seconds        Int?
+  min_progress_percent Int?
 
   @@map("ad_placements")
 }
