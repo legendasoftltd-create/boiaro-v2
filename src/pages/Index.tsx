@@ -122,6 +122,14 @@ const Index = () => {
     return known.length > 0 ? known : FALLBACK_KEYS
   }, [sections])
 
+  // "hero" has its own admin toggle (HOMEPAGE_SECTION_DEFAULTS) but Hero/
+  // HeroBannerStrip aren't in SECTION_REGISTRY — they render below regardless
+  // of orderedKeys, so disabling "hero" in admin previously had no effect at
+  // all. useHomepageSections() only ever returns enabled rows, so "present in
+  // sections" IS "enabled"; default true while sections hasn't loaded yet so
+  // the hero doesn't flash away on first paint.
+  const heroEnabled = !sections || sections.length === 0 ? true : sections.some(s => s.section_key === "hero")
+
   // Sections are lazy-loaded, so the target may not be in the DOM yet when
   // navigating here via a #section-key hash (e.g. the navbar radio icon) —
   // poll briefly instead of a single scrollIntoView attempt.
@@ -146,12 +154,16 @@ const Index = () => {
     <ContentFilterProvider>
       <main className="min-h-screen bg-background">
         <Navbar />
-        <ErrorBoundary>
-          <Hero />
-        </ErrorBoundary>
-        <ErrorBoundary>
-          <HeroBannerStrip />
-        </ErrorBoundary>
+        {heroEnabled && (
+          <>
+            <ErrorBoundary>
+              <Hero />
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <HeroBannerStrip />
+            </ErrorBoundary>
+          </>
+        )}
         <div className="transition-opacity duration-200 ease-out">
           {orderedKeys.map(key => (
             <ErrorBoundary key={key}>

@@ -29,6 +29,60 @@ const PAGINATED_SECTIONS = new Set([
   "bestSellers", "specialOffers", "trendingAudiobooks", "topAudiobooks",
 ]);
 
+// REST section identifier → HomepageSection.section_key, for the subset with
+// an unambiguous 1:1 admin-toggle equivalent — only these are gated by
+// is_enabled below. Deliberately NOT mapped: trendingNow/newReleases/
+// popularBooks/popularEbooks (general-purpose browse variants with no single
+// admin row backing them) and countsValue/currentUser (not content
+// sections). Previously nothing here checked is_enabled at all, so disabling
+// a section in Admin → Homepage Sections had zero effect on the mobile app —
+// only the web tRPC path (books.homepageSections) actually filtered on it.
+const REST_SECTION_TO_ADMIN_KEY: Record<string, string> = {
+  slider: "hero",
+  radio: "live_radio",
+  becauseYouRead: "because_you_read",
+  editorsPick: "editors_pick",
+  appDownload: "app_download",
+  topMostRead: "top_10_most_read",
+  allCategory: "categories",
+  allAuthor: "authors",
+  allNarrators: "narrators",
+  allTranslators: "translators",
+  freeBooks: "free_books",
+  continueReading: "continue_reading",
+  continueListening: "continue_listening",
+  popularAudiobooks: "popular_audiobooks",
+  popularHardCopies: "hard_copies",
+  bestSellers: "best_sellers",
+  specialOffers: "special_offers",
+  trendingAudiobooks: "trending_audiobooks",
+  topAudiobooks: "top_audiobooks",
+};
+
+// HomepageSection.section_key → the /homepage bundle's own field name(s) +
+// what that field looks like with nothing in it. Only the fields with a
+// clean corresponding admin row are covered — see REST_SECTION_TO_ADMIN_KEY.
+const ADMIN_SECTION_KEY_TO_BUNDLE_FIELD: Record<string, { field: string; empty: unknown }> = {
+  hero: { field: "slider", empty: { slider: [] } },
+  live_radio: { field: "radio", empty: { station: null, liveSession: null } },
+  because_you_read: { field: "BecauseYouRead", empty: [] },
+  editors_pick: { field: "editorsPick", empty: [] },
+  app_download: { field: "appDownload", empty: [] },
+  top_10_most_read: { field: "topTenMostRead", empty: [] },
+  categories: { field: "allCategory", empty: [] },
+  authors: { field: "allAuthor", empty: [] },
+  narrators: { field: "allNarrators", empty: [] },
+  translators: { field: "allTranslators", empty: [] },
+  free_books: { field: "FreeBooks", empty: [] },
+  continue_reading: { field: "continueReading", empty: [] },
+  continue_listening: { field: "continueListening", empty: [] },
+};
+
+async function getDisabledAdminSectionKeys(): Promise<Set<string>> {
+  const rows = await prisma.homepageSection.findMany({ where: { is_enabled: false }, select: { section_key: true } });
+  return new Set(rows.map((r) => r.section_key));
+}
+
 const parsePaginationQuery = (query: Record<string, any>) => ({
   limit: Math.min(Math.max(Number(query.limit ?? 20), 1), 50),
   offset: Math.max(Number(query.offset ?? 0), 0),
@@ -280,6 +334,12 @@ homepageRestRouter.get("/", async (req: AuthenticatedRequest, res) => {
     }
     const userId = req.auth?.userId ?? undefined;
     const result = await getHomepageData(rawLimit, userId, typeof rawType === "string" ? rawType : undefined);
+    const disabledKeys = await getDisabledAdminSectionKeys();
+    if (disabledKeys.size > 0) {
+      for (const [adminKey, { field, empty }] of Object.entries(ADMIN_SECTION_KEY_TO_BUNDLE_FIELD)) {
+        if (disabledKeys.has(adminKey)) (result as Record<string, unknown>)[field] = empty;
+      }
+    }
     res.json(result);
   } catch (error) {
     sendHttpError(res, error);
@@ -294,15 +354,23 @@ homepageRestRouter.get("/:section", async (req: AuthenticatedRequest, res) => {
     }
     const section = Array.isArray(req.params.section) ? req.params.section[0] : req.params.section;
 
+    const adminKey = REST_SECTION_TO_ADMIN_KEY[section];
+    const isDisabled = adminKey ? (await getDisabledAdminSectionKeys()).has(adminKey) : false;
+
     // For book-list sections: direct paginated DB query
     if (PAGINATED_SECTIONS.has(section)) {
       const { limit, offset } = parsePaginationQuery(req.query);
+      if (isDisabled) return res.json({ section, data: [], total: 0, limit, offset, has_more: false });
       const format = normalizeHomepageType(typeof rawType === "string" ? rawType : undefined);
       const rawSearch = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
       const search = typeof rawSearch === "string" && rawSearch.trim() ? rawSearch.trim() : undefined;
       const result = await getPaginatedSection(section, limit, offset, req.auth?.userId, format, search);
       if (!result) return res.status(404).json({ error: "Section not found" });
       return res.json({ section, ...result });
+    }
+
+    if (isDisabled) {
+      return res.json({ section, data: ADMIN_SECTION_KEY_TO_BUNDLE_FIELD[adminKey]?.empty ?? null });
     }
 
     // For other sections: full homepage snapshot (non-paginated)
