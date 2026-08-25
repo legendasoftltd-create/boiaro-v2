@@ -36,6 +36,8 @@ import { useActivityTracker } from "@/hooks/useActivityTracker";
 import { trpc } from "@/lib/trpc";
 import { toMediaUrl } from "@/lib/mediaUrl";
 import { setAmbientTracks } from "@/lib/ambientAudioGenerator";
+import { ContinueInAppPrompt } from "@/components/ContinueInAppPrompt";
+import { Capacitor } from "@capacitor/core";
 
 type FileType = "pdf" | "epub";
 
@@ -88,6 +90,7 @@ export default function EbookReader() {
   const [showSettings, setShowSettings] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [contentLocked, setContentLocked] = useState(false);
+  const [continueInAppDismissed, setContinueInAppDismissed] = useState(false);
   const [chapterTitle, setChapterTitle] = useState("");
   const [tocItems, setTocItems] = useState<any[]>([]);
   const [currentHref, setCurrentHref] = useState("");
@@ -708,6 +711,32 @@ export default function EbookReader() {
     setContentLocked(true)
   }, [promptEnabled, isFreeBook, percentage, currentPage, promptThresholdType, promptThresholdValue, bookId, contentLocked])
 
+  // ──────── "Continue in App" nudge — any book, dismissible, not a paywall ────────
+  // Distinct from the free-book lock above: reuses the same threshold-config
+  // convention (admin can add continue_in_app_* PlatformSettings; falls back
+  // to sensible defaults if unset) but never blocks reading, and shows once
+  // per book per browser (not tied to isFreeBook/contentLocked at all).
+  const continueInAppEnabled = getSetting("continue_in_app_enabled", "true") !== "false";
+  const continueInAppThresholdPage = Math.max(1, Number(getSetting("continue_in_app_page", "3")) || 3);
+  const showContinueInApp =
+    continueInAppEnabled &&
+    !Capacitor.isNativePlatform() &&
+    !continueInAppDismissed &&
+    !!bookSlug &&
+    currentPage >= continueInAppThresholdPage;
+
+  useEffect(() => {
+    if (!bookId) return;
+    let dismissed = false;
+    try { dismissed = !!localStorage.getItem(`continue_in_app_dismissed_${bookId}`); } catch {}
+    setContinueInAppDismissed(dismissed);
+  }, [bookId]);
+
+  const dismissContinueInApp = () => {
+    setContinueInAppDismissed(true);
+    try { if (bookId) localStorage.setItem(`continue_in_app_dismissed_${bookId}`, "1"); } catch {}
+  };
+
   // ──────── EPUB location change handler with paywall check ────────
   const handleEpubLocationChange = useCallback(
     ({ percentage: pct, cfi, chapter, page, pageTotal }: {
@@ -1182,6 +1211,10 @@ export default function EbookReader() {
             {previewInfo}
           </Badge>
         </div>
+      )}
+
+      {showContinueInApp && !contentLocked && (
+        <ContinueInAppPrompt bookPath={`/book/${bookSlug}`} onDismiss={dismissContinueInApp} />
       )}
 
       {/* Locked overlay — fullscreen gate, fires immediately when threshold is crossed */}

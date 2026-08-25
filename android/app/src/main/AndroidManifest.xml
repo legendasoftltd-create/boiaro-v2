@@ -22,6 +22,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- App Links — claims https://boiaro.com so tapping a link (from
+                 another app, a push notification, search results, etc.) opens
+                 this app directly instead of the browser. autoVerify triggers
+                 Android's Digital Asset Links check against
+                 /.well-known/assetlinks.json (already served by the backend)
+                 at install time. Without this intent-filter, that file being
+                 served correctly still does nothing — the app itself has to
+                 declare it wants to claim the domain. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="boiaro.com" />
+            </intent-filter>
+
         </activity>
 
         <service

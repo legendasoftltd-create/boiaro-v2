@@ -17,9 +17,11 @@ const MiniPlayer = lazy(() => import("@/components/audio-player/MiniPlayer").the
 const FullPlayer = lazy(() => import("@/components/audio-player/FullPlayer").then(m => ({ default: m.FullPlayer })));
 const GlobalAudiobookPaywall = lazy(() => import("@/components/audio-player/GlobalAudiobookPaywall").then(m => ({ default: m.GlobalAudiobookPaywall })));
 const AppDownloadGate = lazy(() => import("@/components/AppDownloadGate").then(m => ({ default: m.AppDownloadGate })));
+const AudioContinueInAppPrompt = lazy(() => import("@/components/AudioContinueInAppPrompt").then(m => ({ default: m.AudioContinueInAppPrompt })));
 const CartDrawer = lazy(() => import("@/components/cart/CartDrawer").then(m => ({ default: m.CartDrawer })));
 const RoleApplicationSubmitter = lazy(() => import("@/components/RoleApplicationSubmitter").then(m => ({ default: m.RoleApplicationSubmitter })));
 const PushNotificationManager = lazy(() => import("@/components/PushNotificationManager").then(m => ({ default: m.PushNotificationManager })));
+const DeepLinkHandler = lazy(() => import("@/components/DeepLinkHandler").then(m => ({ default: m.DeepLinkHandler })));
 const BandwidthReporter = lazy(() => import("@/components/BandwidthReporter").then(m => ({ default: m.BandwidthReporter })));
 const AnalyticsScripts = lazy(() => import("@/components/AnalyticsScripts").then(m => ({ default: m.AnalyticsScripts })));
 const DailyRewardDialog = lazy(() => import("@/components/DailyRewardDialog").then(m => ({ default: m.DailyRewardDialog })));
@@ -235,8 +237,10 @@ const App = () => {
           <CartProvider>
             <AudioPlayerProvider>
               <Suspense fallback={null}><AppDownloadGate /></Suspense>
+              <Suspense fallback={null}><AudioContinueInAppPrompt /></Suspense>
               <Suspense fallback={null}><RoleApplicationSubmitter /></Suspense>
               <Suspense fallback={null}><PushNotificationManager /></Suspense>
+              <Suspense fallback={null}><DeepLinkHandler /></Suspense>
               <Suspense fallback={null}><BandwidthReporter /></Suspense>
               <Suspense fallback={null}><AnalyticsScripts /></Suspense>
               <Suspense fallback={null}><DailyRewardDialog /></Suspense>

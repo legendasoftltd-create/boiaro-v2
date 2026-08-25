@@ -11,6 +11,7 @@ import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { toast } from "sonner"
 import type { MediaType } from "@/lib/audioValidation"
 import { BackgroundAudio, isNativeAudioSupported } from "@/native/backgroundAudio"
+import { Capacitor } from "@capacitor/core"
 
 export interface AudioTrack {
   id: string
@@ -91,6 +92,9 @@ interface AudioPlayerContextType extends PlayerState {
   setLockedTrackIds: (ids: Set<string>) => void
   /** Check synchronously whether a track ID is chapter-locked (reads ref, no re-render) */
   isTrackLocked: (trackId: string) => boolean
+  /** Dismissible "Continue in App" nudge — true once CONTINUE_IN_APP_THRESHOLD_SEC of listening is reached */
+  continueInAppPromptVisible: boolean
+  dismissContinueInAppPrompt: () => void
 }
 
 const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(undefined)
@@ -156,6 +160,16 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   showPaywallRef.current = showPaywall
   const appPromptLockedRef = useRef(appPromptLocked)
   appPromptLockedRef.current = appPromptLocked
+
+  // "Continue in App" nudge — dismissible, shown once per book after some
+  // listening time regardless of free/paid status. Distinct from
+  // appPromptLocked above (a non-dismissible free-book paywall lock that
+  // pauses playback); this never pauses anything.
+  const CONTINUE_IN_APP_THRESHOLD_SEC = 90
+  const [continueInAppPromptVisible, setContinueInAppPromptVisible] = useState(false)
+  const continueInAppPromptVisibleRef = useRef(false)
+  continueInAppPromptVisibleRef.current = continueInAppPromptVisible
+  const continueInAppDismissedForBookRef = useRef<string | null>(null)
 
   const [state, setState] = useState<PlayerState>({
     book: null,
@@ -306,6 +320,15 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state)
   stateRef.current = state
 
+  const dismissContinueInAppPrompt = useCallback(() => {
+    setContinueInAppPromptVisible(false)
+    const bid = stateRef.current.book?.id
+    if (bid) {
+      continueInAppDismissedForBookRef.current = bid
+      try { localStorage.setItem(`continue_in_app_dismissed_audio_${bid}`, "1") } catch {}
+    }
+  }, [])
+
   // Create media element once (audio — video tracks use the embedded <video> in FullPlayer)
   useEffect(() => {
     const audio = new Audio()
@@ -362,6 +385,27 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setFreePlayThresholdState(null)
         setState((prev) => ({ ...prev, isPlaying: false }))
         return
+      }
+
+      // "Continue in App" nudge — checked independently of the gate above,
+      // never pauses playback. Skipped once dismissed for this book (tracked
+      // in localStorage, keyed by book id, same convention as the app-prompt
+      // locks above) or while the native app itself is playing.
+      if (
+        !continueInAppPromptVisibleRef.current &&
+        !Capacitor.isNativePlatform() &&
+        currentSec >= CONTINUE_IN_APP_THRESHOLD_SEC
+      ) {
+        const bid = stateRef.current.book?.id
+        if (bid && continueInAppDismissedForBookRef.current !== bid) {
+          let dismissed = false
+          try { dismissed = !!localStorage.getItem(`continue_in_app_dismissed_audio_${bid}`) } catch {}
+          if (dismissed) {
+            continueInAppDismissedForBookRef.current = bid
+          } else {
+            setContinueInAppPromptVisible(true)
+          }
+        }
       }
 
       setState((prev) => ({
@@ -1078,6 +1122,8 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
         setFreePlayThreshold,
         setLockedTrackIds,
         isTrackLocked,
+        continueInAppPromptVisible,
+        dismissContinueInAppPrompt,
       }}
     >
       {children}
