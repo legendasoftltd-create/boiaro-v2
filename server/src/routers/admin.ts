@@ -6289,6 +6289,9 @@ export const adminRouter = router({
       schedule_type: z.enum(["recurring", "one_time"]).default("recurring"),
       day_of_week: z.number().int().min(0).max(6),
       specific_date: z.string().datetime().optional().nullable(),
+      // Only meaningful for one_time shows whose end_time crosses midnight
+      // past specific_date — see the schema comment on ShowSchedule.end_date.
+      end_date: z.string().datetime().optional().nullable(),
       start_time: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM format"),
       end_time: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM format"),
       is_active: z.boolean().default(true),
@@ -6308,7 +6311,37 @@ export const adminRouter = router({
       const toMinutes = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
       const startMin = toMinutes(input.start_time);
       const endMin = toMinutes(input.end_time);
-      if (endMin <= startMin) throw new TRPCError({ code: "BAD_REQUEST", message: "End time must be after start time" });
+      // endMin <= startMin means the show crosses midnight (e.g. 23:30 -> 01:00)
+      // rather than being invalid — a recurring show just spills into the next
+      // day of the week (no date to attach, nothing else needed). A one_time
+      // show needs an explicit end_date past specific_date so it's unambiguous
+      // which calendar date it actually ends on.
+      const crossesMidnight = endMin <= startMin;
+      let resolvedEndDate: Date | null = null;
+      if (input.schedule_type === "one_time") {
+        const startDate = new Date(input.specific_date!);
+        if (crossesMidnight) {
+          if (!input.end_date) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "End date is required when the end time is before the start time (show crosses midnight)" });
+          }
+          resolvedEndDate = new Date(input.end_date);
+          if (resolvedEndDate.getTime() <= startDate.getTime()) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "End date must be after the start date" });
+          }
+        }
+        // Same-day show: end_date is ignored/cleared even if the client sent one.
+      }
+
+      // Both ranges being compared are already scoped to the same day_of_week
+      // (recurring) or same specific_date (one_time) by dayOrDateFilter below,
+      // so a range that crosses midnight can be normalized by extending its
+      // end past 1440 (minutes in a day) — that's enough to make ordinary
+      // interval-overlap math correct even when one or both ranges wrap.
+      const overlaps = (aStart: number, aEnd: number, bStart: number, bEnd: number) => {
+        const aEndExt = aEnd <= aStart ? aEnd + 1440 : aEnd;
+        const bEndExt = bEnd <= bStart ? bEnd + 1440 : bEnd;
+        return aStart < bEndExt && bStart < aEndExt;
+      };
 
       // Conflict detection: other active schedules on the same station that
       // occupy the same day (recurring) or same calendar date (one_time) and
@@ -6328,7 +6361,7 @@ export const adminRouter = router({
       const conflict = candidates.find((c) => {
         const cStart = toMinutes(c.start_time);
         const cEnd = toMinutes(c.end_time);
-        return startMin < cEnd && cStart < endMin;
+        return overlaps(startMin, endMin, cStart, cEnd);
       });
       if (conflict) {
         throw new TRPCError({ code: "CONFLICT", message: `Time conflicts with "${conflict.show_title}" (${conflict.start_time}-${conflict.end_time}) on the same station` });
@@ -6349,7 +6382,7 @@ export const adminRouter = router({
       const rjConflict = rjCandidates.find((c) => {
         const cStart = toMinutes(c.start_time);
         const cEnd = toMinutes(c.end_time);
-        return startMin < cEnd && cStart < endMin;
+        return overlaps(startMin, endMin, cStart, cEnd);
       });
       if (rjConflict) {
         throw new TRPCError({
@@ -6365,6 +6398,7 @@ export const adminRouter = router({
         schedule_type: input.schedule_type,
         day_of_week: input.day_of_week,
         specific_date: input.specific_date ? new Date(input.specific_date) : null,
+        end_date: resolvedEndDate,
         start_time: input.start_time,
         end_time: input.end_time,
         is_active: input.is_active,

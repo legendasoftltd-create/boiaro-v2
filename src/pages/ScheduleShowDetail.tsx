@@ -33,8 +33,10 @@ export default function ScheduleShowDetail() {
     )
   }
 
+  const fmtDate = (d: string | Date) => new Date(d).toLocaleDateString("bn-BD", { timeZone: "Asia/Dhaka", day: "numeric", month: "long", year: "numeric" })
+  const crossesMidnight = !!schedule.end_date && String(schedule.end_date).slice(0, 10) !== String(schedule.specific_date).slice(0, 10)
   const when = schedule.schedule_type === "one_time" && schedule.specific_date
-    ? new Date(schedule.specific_date).toLocaleDateString("bn-BD", { timeZone: "Asia/Dhaka", day: "numeric", month: "long", year: "numeric" })
+    ? (crossesMidnight ? `${fmtDate(schedule.specific_date)} – ${fmtDate(schedule.end_date!)}` : fmtDate(schedule.specific_date))
     : DAY_NAMES[schedule.day_of_week]
 
   const shareUrl = `${window.location.origin}/schedule/${schedule.id}`

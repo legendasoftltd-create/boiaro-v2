@@ -10,6 +10,16 @@ import { ShareButton } from "@/components/ShareButton"
 
 const DAY_NAMES = ["রবিবার", "সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার"]
 
+// One-time shows whose end_time crosses midnight carry an explicit end_date
+// past specific_date — surface that so "11:30 PM - 1:00 AM" doesn't read as
+// backwards.
+function formatOneTimeDate(specificDate: string, endDate: string | null | undefined) {
+  const start = new Date(specificDate).toLocaleDateString(undefined, { timeZone: "Asia/Dhaka" })
+  if (!endDate || String(endDate).slice(0, 10) === String(specificDate).slice(0, 10)) return start
+  const end = new Date(endDate).toLocaleDateString(undefined, { timeZone: "Asia/Dhaka" })
+  return `${start} – ${end}`
+}
+
 export default function RadioSchedule() {
   const { data: schedules = [], isLoading } = trpc.rj.showSchedules.useQuery()
   useEffect(() => {
@@ -57,7 +67,7 @@ export default function RadioSchedule() {
                         <div className="min-w-0">
                           <Link to={`/schedule/${s.id}`} className="text-sm font-medium hover:underline">{s.show_title}</Link>
                           <p className="text-xs text-muted-foreground">
-                            <Link to={`/host/${s.rj_user_id}`} className="hover:text-foreground hover:underline">{s.rj_stage_name || "RJ"}</Link> · {s.station?.name} · {new Date(s.specific_date).toLocaleDateString(undefined, { timeZone: "Asia/Dhaka" })}
+                            <Link to={`/host/${s.rj_user_id}`} className="hover:text-foreground hover:underline">{s.rj_stage_name || "RJ"}</Link> · {s.station?.name} · {formatOneTimeDate(s.specific_date, s.end_date)}
                           </p>
                           {s.description && <p className="text-xs text-muted-foreground/80 mt-1">{s.description}</p>}
                         </div>

@@ -1877,6 +1877,12 @@ model ShowSchedule {
   updated_at      DateTime  @updatedAt
   schedule_type   String    @default("recurring") // recurring | one_time
   specific_date   DateTime? // set when schedule_type = one_time; day_of_week still derived/stored for display
+  // Only meaningful when schedule_type = one_time and the show's end_time
+  // crosses midnight past specific_date (e.g. starts 23:30, ends 01:00) —
+  // null means "same calendar day as specific_date" (every existing row).
+  // Recurring shows never set this: day_of_week already implies "spills
+  // into the next day of the week" with no date to attach to.
+  end_date        DateTime?
   status          String    @default("active") // active | cancelled | rescheduled
   category        String?
   description     String?
