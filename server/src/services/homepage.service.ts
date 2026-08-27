@@ -85,9 +85,17 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         ],
     });
 
+    // These four are only ever consumed by the homepage bundle/section
+    // endpoints (no separate "full directory" REST route exists for mobile
+    // the way the web app's /authors, /narrators, /translators pages have),
+    // so is_featured can be hard-filtered here safely — unlike the shared
+    // web tRPC procedures (books.authors/narrators/translators/publishers),
+    // which also back those full-directory pages and gate the same filter
+    // behind an explicit featuredOnly flag instead.
     const allAuthor = await prisma.author.findMany({
         where: {
             status: "active",
+            is_featured: true,
         },
         orderBy: [
             {
@@ -102,6 +110,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const allNarrators = await prisma.narrator.findMany({
         where: {
             status: "active",
+            is_featured: true,
         },
         orderBy: [
             {
@@ -116,6 +125,22 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
     const allTranslators = await prisma.translator.findMany({
         where: {
             status: "active",
+            is_featured: true,
+        },
+        orderBy: [
+            {
+                priority: "desc",
+            },
+            {
+                created_at: "desc",
+            },
+        ],
+    });
+
+    const allPublisher = await prisma.publisher.findMany({
+        where: {
+            status: "active",
+            is_featured: true,
         },
         orderBy: [
             {
@@ -415,6 +440,7 @@ export const getHomepageData = async (limit, userId?: string, type?: string) => 
         allAuthor: allAuthor.slice(0, takeLimit).map(resolveUrls),
         allNarrators: allNarrators.slice(0, takeLimit).map(resolveUrls),
         allTranslators: allTranslators.slice(0, takeLimit).map(resolveUrls),
+        allPublisher: allPublisher.slice(0, takeLimit).map(resolveUrls),
         "countsValue": { counts, totalNarrators },
         "NewReleases": {
             "all": filterBooksByType(newReleaseBooks).slice(0, takeLimit),

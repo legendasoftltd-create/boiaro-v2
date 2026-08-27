@@ -6,13 +6,15 @@ import { ChevronLeft, ChevronRight, BookOpen, Sparkles, Users } from "lucide-rea
 import { useAuthors } from "@/hooks/useBooks"
 
 export function Authors() {
-  const { authors } = useAuthors()
+  const { authors } = useAuthors({ featuredOnly: true })
   const scrollRef = useRef<HTMLDivElement>(null)
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
       scrollRef.current.scrollBy({ left: direction === "left" ? -280 : 280, behavior: "smooth" })
     }
   }
+
+  if (authors.length === 0) return null
 
   return (
     <section id="authors" className="section-container">

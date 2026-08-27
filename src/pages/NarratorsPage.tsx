@@ -16,7 +16,7 @@ const NarratorsPage = () => {
     return () => clearTimeout(t);
   }, [searchDraft]);
 
-  const narrators = useNarrators(search);
+  const narrators = useNarrators({ search });
 
   return (
     <main className="min-h-screen bg-background">

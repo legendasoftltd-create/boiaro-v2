@@ -50,6 +50,7 @@ const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const PaymentCallback = lazy(() => import("./pages/PaymentCallback.tsx"));
 const BooksPage = lazy(() => import("./pages/BooksPage.tsx"));
 const AuthorsPage = lazy(() => import("./pages/AuthorsPage.tsx"));
+const PublishersPage = lazy(() => import("./pages/PublishersPage.tsx"));
 const TranslatorsPage = lazy(() => import("./pages/TranslatorsPage.tsx"));
 const NarratorsPage = lazy(() => import("./pages/NarratorsPage.tsx"));
 const CategoriesPage = lazy(() => import("./pages/CategoriesPage.tsx"));
@@ -267,6 +268,7 @@ const App = () => {
                 <Route path="/b/:bookId" element={<BookDetail />} />
                 <Route path="/books" element={<BooksPage />} />
                 <Route path="/authors" element={<AuthorsPage />} />
+                <Route path="/publishers" element={<PublishersPage />} />
                 <Route path="/narrators" element={<NarratorsPage />} />
                 <Route path="/translators" element={<TranslatorsPage />} />
                 <Route path="/categories" element={<CategoriesPage />} />

@@ -6,13 +6,15 @@ import { Play, Mic2, ChevronLeft, ChevronRight, Headphones, Star } from "lucide-
 import { useNarrators } from "@/hooks/useBooks"
 
 export function Narrators() {
-  const narrators = useNarrators()
+  const narrators = useNarrators({ featuredOnly: true })
   const scrollRef = useRef<HTMLDivElement>(null)
   const scroll = (direction: "left" | "right") => {
     if (scrollRef.current) {
       scrollRef.current.scrollBy({ left: direction === "left" ? -260 : 260, behavior: "smooth" })
     }
   }
+
+  if (narrators.length === 0) return null
 
   return (
     <section id="narrators" className="section-container bg-gradient-to-b from-blue-500/[0.03] via-background to-background">

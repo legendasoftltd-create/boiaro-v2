@@ -31,6 +31,7 @@ const Categories = lazy(() => import("@/components/Categories").then(m => ({ def
 const Authors = lazy(() => import("@/components/Authors").then(m => ({ default: m.Authors })))
 const Narrators = lazy(() => import("@/components/Narrators").then(m => ({ default: m.Narrators })))
 const Translators = lazy(() => import("@/components/Translators").then(m => ({ default: m.Translators })))
+const Publishers = lazy(() => import("@/components/Publishers").then(m => ({ default: m.Publishers })))
 const AppDownload = lazy(() => import("@/components/AppDownload").then(m => ({ default: m.AppDownload })))
 const BlogSection = lazy(() => import("@/components/BlogSection").then(m => ({ default: m.BlogSection })))
 const LiveRadioSection = lazy(() => import("@/components/LiveRadio").then(m => ({ default: m.LiveRadioSection })))
@@ -60,6 +61,7 @@ const SECTION_REGISTRY: Record<string, () => JSX.Element | null> = {
   authors: () => <Authors />,
   narrators: () => <Narrators />,
   translators: () => <Translators />,
+  publishers: () => <Publishers />,
   blog: () => <BlogSection />,
   live_radio: () => <LiveRadioSection />,
   app_download: () => <AppDownload />,
@@ -74,7 +76,7 @@ const FALLBACK_KEYS = [
   "trending_books", "top_10_most_read", "editors_pick",
   "popular_audiobooks", "trending_audiobooks", "top_audiobooks", "audiobooks",
   "hard_copies", "best_sellers", "special_offers", "free_books",
-  "categories", "authors", "narrators", "translators", "live_radio", "blog", "app_download",
+  "categories", "authors", "narrators", "translators", "publishers", "live_radio", "blog", "app_download",
   "category_sections",
 ]
 const REGISTRY_KEYS = new Set(Object.keys(SECTION_REGISTRY))

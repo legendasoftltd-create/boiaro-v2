@@ -112,6 +112,7 @@ const HOMEPAGE_SECTION_DEFAULTS: Array<{
   { section_key: "authors", title: "জনপ্রিয় লেখক", subtitle: "আমাদের প্রিয় লেখকগণ", is_enabled: true, sort_order: 20, display_source: null },
   { section_key: "narrators", title: "জনপ্রিয় কথক", subtitle: null, is_enabled: true, sort_order: 21, display_source: null },
   { section_key: "translators", title: "জনপ্রিয় অনুবাদক", subtitle: null, is_enabled: true, sort_order: 22, display_source: null },
+  { section_key: "publishers", title: "জনপ্রিয় প্রকাশক", subtitle: null, is_enabled: true, sort_order: 27, display_source: null },
   { section_key: "live_radio", title: "BoiAro On Air", subtitle: "Listen to live streaming now", is_enabled: false, sort_order: 23, display_source: null },
   { section_key: "blog", title: "ব্লগ ও আর্টিকেল", subtitle: "আমাদের সাম্প্রতিক লেখা", is_enabled: true, sort_order: 24, display_source: null },
   { section_key: "app_download", title: "অ্যাপ ডাউনলোড", subtitle: null, is_enabled: true, sort_order: 25, display_source: null },

@@ -603,13 +603,14 @@ export const booksRouter = router({
     }),
 
   narrators: publicProcedure
-    .input(z.object({ search: z.string().optional() }).optional())
+    .input(z.object({ search: z.string().optional(), featuredOnly: z.boolean().optional() }).optional())
     .query(async ({ input }) => {
     const search = input?.search;
     const [narrators, formats] = await Promise.all([
       prisma.narrator.findMany({
         where: {
           status: "active",
+          ...(input?.featuredOnly ? { is_featured: true } : {}),
           ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] } : {}),
         },
         orderBy: [{ priority: "desc" }, { name: "asc" }],
@@ -728,13 +729,14 @@ export const booksRouter = router({
     }),
 
   authors: publicProcedure
-    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500), search: z.string().optional() }).optional())
+    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500), search: z.string().optional(), featuredOnly: z.boolean().optional() }).optional())
     .query(async ({ input }) => {
       const page = input?.page ?? 0;
       const pageSize = input?.pageSize ?? 500;
       const search = input?.search;
       const where = {
         status: "active" as const,
+        ...(input?.featuredOnly ? { is_featured: true } : {}),
         ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] } : {}),
       };
       const [authors, total, bookCounts] = await Promise.all([
@@ -757,13 +759,14 @@ export const booksRouter = router({
     }),
 
   translators: publicProcedure
-    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500), search: z.string().optional() }).optional())
+    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500), search: z.string().optional(), featuredOnly: z.boolean().optional() }).optional())
     .query(async ({ input }) => {
       const page = input?.page ?? 0;
       const pageSize = input?.pageSize ?? 500;
       const search = input?.search;
       const where = {
         status: "active" as const,
+        ...(input?.featuredOnly ? { is_featured: true } : {}),
         ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] } : {}),
       };
       const [translators, total, bookCounts] = await Promise.all([
@@ -783,6 +786,36 @@ export const booksRouter = router({
       const countMap: Record<string, number> = {};
       bookCounts.forEach((r) => { if (r.translator_id) countMap[r.translator_id] = r._count.translator_id; });
       return { data: translators.map((t) => ({ ...t, booksCount: countMap[t.id] || 0, followers: 0 })), total, page, pageSize };
+    }),
+
+  publishers: publicProcedure
+    .input(z.object({ page: z.number().min(0).default(0), pageSize: z.number().min(1).max(500).default(500), search: z.string().optional(), featuredOnly: z.boolean().optional() }).optional())
+    .query(async ({ input }) => {
+      const page = input?.page ?? 0;
+      const pageSize = input?.pageSize ?? 500;
+      const search = input?.search;
+      const where = {
+        status: "active" as const,
+        ...(input?.featuredOnly ? { is_featured: true } : {}),
+        ...(search ? { OR: [{ name: { contains: search, mode: "insensitive" as const } }, { name_en: { contains: search, mode: "insensitive" as const } }] } : {}),
+      };
+      const [publishers, total, bookCounts] = await Promise.all([
+        prisma.publisher.findMany({
+          where,
+          orderBy: [{ priority: "desc" }, { name: "asc" }],
+          skip: page * pageSize,
+          take: pageSize,
+        }),
+        prisma.publisher.count({ where }),
+        prisma.book.groupBy({
+          by: ["publisher_id"],
+          where: { submission_status: "approved", is_active: true, publisher_id: { not: null } },
+          _count: { publisher_id: true },
+        }),
+      ]);
+      const countMap: Record<string, number> = {};
+      bookCounts.forEach((r) => { if (r.publisher_id) countMap[r.publisher_id] = r._count.publisher_id; });
+      return { data: publishers.map((p) => ({ ...p, booksCount: countMap[p.id] || 0, followers: 0 })), total, page, pageSize };
     }),
 
   voices: publicProcedure.query(() =>
