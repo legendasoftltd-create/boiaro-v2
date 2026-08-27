@@ -1399,6 +1399,10 @@ model Notification {
 
   user_notifications UserNotification[]
 
+  @@index([created_at])
+  @@index([status])
+  @@index([type])
+  @@index([audience])
   @@map("notifications")
 }
 

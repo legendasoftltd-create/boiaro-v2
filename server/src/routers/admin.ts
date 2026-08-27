@@ -2313,11 +2313,64 @@ export const adminRouter = router({
     ),
 
   // ── Notifications ─────────────────────────────────────────────────────────────
-  listNotifications: adminProcedure.query(() =>
-    prisma.notification.findMany({
-      orderBy: { created_at: "desc" },
-    })
-  ),
+  // Server-side paginated — this table is 7,000+ rows in production and a bare
+  // findMany() with no limit was shipping the entire table to the browser on
+  // every page load, then rendering every row into the DOM unvirtualized.
+  // That's what was actually freezing the tab ("Page Unresponsive"), not just
+  // the network transfer — a huge single-frame DOM render blocks the main
+  // thread just as badly as the fetch does. Paginating fixes both at once.
+  listNotifications: adminProcedure
+    .input(
+      z.object({
+        page: z.number().int().min(1).default(1),
+        pageSize: z.union([z.literal(25), z.literal(50), z.literal(100)]).default(25),
+        tab: z.enum(["all", "draft", "sent", "scheduled"]).default("all"),
+        type: z.string().optional(),
+        audience: z.string().optional(),
+        search: z.string().optional(),
+      })
+    )
+    .query(async ({ input }) => {
+      const where: Record<string, unknown> = {};
+      if (input.tab === "draft") where.status = "draft";
+      else if (input.tab === "sent") where.status = "sent";
+      else if (input.tab === "scheduled") { where.scheduled_at = { not: null }; where.status = { not: "sent" }; }
+      if (input.type && input.type !== "all") where.type = input.type;
+      if (input.audience && input.audience !== "all") where.audience = input.audience;
+      const search = input.search?.trim();
+      if (search) {
+        where.OR = [
+          { title: { contains: search, mode: "insensitive" } },
+          { message: { contains: search, mode: "insensitive" } },
+        ];
+      }
+
+      const [data, total] = await Promise.all([
+        prisma.notification.findMany({
+          where,
+          orderBy: { created_at: "desc" },
+          skip: (input.page - 1) * input.pageSize,
+          take: input.pageSize,
+        }),
+        prisma.notification.count({ where }),
+      ]);
+
+      return { data, total, page: input.page, pageSize: input.pageSize, totalPages: Math.max(1, Math.ceil(total / input.pageSize)) };
+    }),
+
+  // Cheap aggregate counts for the stat cards — independent of the paginated
+  // list above and of whatever filter/search/tab is currently active, so the
+  // cards always reflect the whole table without ever loading its rows.
+  notificationStats: adminProcedure.query(async () => {
+    const [total, draft, sent, scheduled, high] = await Promise.all([
+      prisma.notification.count(),
+      prisma.notification.count({ where: { status: "draft" } }),
+      prisma.notification.count({ where: { status: "sent" } }),
+      prisma.notification.count({ where: { scheduled_at: { not: null }, status: { not: "sent" } } }),
+      prisma.notification.count({ where: { priority: { in: ["high", "urgent"] } } }),
+    ]);
+    return { total, draft, sent, scheduled, high };
+  }),
 
   createNotification: adminProcedure
     .input(

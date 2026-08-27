@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Bell, Plus, Send, Search, Trash2, Edit, Eye, Clock, ShoppingCart, CreditCard, Users, Megaphone, Calendar } from "lucide-react";
+import { Bell, Plus, Send, Search, Trash2, Edit, Eye, Clock, ShoppingCart, CreditCard, Users, Megaphone, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Notification {
   id: string; title: string; message: string; type: string; audience: string;
@@ -59,23 +59,46 @@ const PRIORITIES = [
   { value: "urgent", label: "Urgent" },
 ];
 
+const PAGE_SIZES = [25, 50, 100] as const;
+
 export default function AdminNotifications() {
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
-  const [filterStatus] = useState("all");
+  const [filterAudience, setFilterAudience] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewDialog, setViewDialog] = useState<Notification | null>(null);
   const [editing, setEditing] = useState<Notification | null>(null);
-  const [tab, setTab] = useState("all");
+  const [tab, setTab] = useState<"all" | "draft" | "sent" | "scheduled">("all");
   const [tplDialog, setTplDialog] = useState(false);
   const [editingTpl, setEditingTpl] = useState<Template | null>(null);
   const [tplForm, setTplForm] = useState({ name: "", title: "", message: "", type: "system", channel: "in_app", cta_text: "", cta_link: "", image_url: "" });
   const [form, setForm] = useState({ title: "", message: "", type: "system", audience: "all", target_user_id: "", priority: "normal", link: "", image_url: "", channel: "in_app", scheduled_at: "" });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<25 | 50 | 100>(25);
 
-  const { data: notificationsRaw = [], isLoading: loading } = trpc.admin.listNotifications.useQuery();
+  // Debounce search so every keystroke doesn't fire a new server query
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Any filter change resets to page 1 — staying on e.g. page 40 of a
+  // freshly-filtered (much shorter) result set would just show "no results".
+  useEffect(() => { setPage(1); }, [tab, filterType, filterAudience, debouncedSearch, pageSize]);
+
+  const { data: notifPage, isLoading: loading } = trpc.admin.listNotifications.useQuery({
+    page, pageSize, tab,
+    type: filterType !== "all" ? filterType : undefined,
+    audience: filterAudience !== "all" ? filterAudience : undefined,
+    search: debouncedSearch || undefined,
+  }, { placeholderData: (prev) => prev });
+  const { data: stats = { total: 0, draft: 0, sent: 0, scheduled: 0, high: 0 } } = trpc.admin.notificationStats.useQuery();
   const { data: templatesRaw = [] } = trpc.admin.listNotificationTemplates.useQuery();
-  const notifications = notificationsRaw as Notification[];
+  const notifications = (notifPage?.data ?? []) as Notification[];
+  const total = notifPage?.total ?? 0;
+  const totalPages = notifPage?.totalPages ?? 1;
   const templates = templatesRaw as Template[];
   const createNotificationMutation = trpc.admin.createNotification.useMutation();
   const updateNotificationMutation = trpc.admin.updateNotification.useMutation();
@@ -121,6 +144,7 @@ export default function AdminNotifications() {
       }
       await Promise.all([
         utils.admin.listNotifications.invalidate(),
+        utils.admin.notificationStats.invalidate(),
         utils.admin.listNotificationTemplates.invalidate(),
       ]);
       setDialogOpen(false);
@@ -134,7 +158,7 @@ export default function AdminNotifications() {
     try {
       const result = await sendNotificationMutation.mutateAsync({ id: n.id });
       toast.success(`Notification sent to ${result.sent} user(s)`);
-      await utils.admin.listNotifications.invalidate();
+      await Promise.all([utils.admin.listNotifications.invalidate(), utils.admin.notificationStats.invalidate()]);
     } catch (error: any) {
       toast.error(error.message || "Failed to send notification");
     }
@@ -148,7 +172,7 @@ export default function AdminNotifications() {
       return;
     }
     toast.success("Deleted");
-    await utils.admin.listNotifications.invalidate();
+    await Promise.all([utils.admin.listNotifications.invalidate(), utils.admin.notificationStats.invalidate()]);
   };
 
   const openCreateTpl = () => { setTplForm({ name: "", title: "", message: "", type: "system", channel: "in_app", cta_text: "", cta_link: "", image_url: "" }); setEditingTpl(null); setTplDialog(true); };
@@ -181,23 +205,9 @@ export default function AdminNotifications() {
     await utils.admin.listNotificationTemplates.invalidate();
   };
 
-  const filtered = notifications.filter((n) => {
-    if (tab === "scheduled" && !n.scheduled_at) return false;
-    if (tab === "sent" && n.status !== "sent") return false;
-    if (tab === "draft" && n.status !== "draft") return false;
-    if (filterType !== "all" && n.type !== filterType) return false;
-    if (filterStatus !== "all" && n.status !== filterStatus) return false;
-    if (search) { const s = search.toLowerCase(); if (!n.title.toLowerCase().includes(s) && !n.message.toLowerCase().includes(s)) return false; }
-    return true;
-  });
-
-  const stats = {
-    total: notifications.length,
-    draft: notifications.filter((n) => n.status === "draft").length,
-    sent: notifications.filter((n) => n.status === "sent").length,
-    scheduled: notifications.filter((n) => n.scheduled_at && n.status !== "sent").length,
-    high: notifications.filter((n) => n.priority === "high" || n.priority === "urgent").length,
-  };
+  // notifications is already this page's server-filtered slice; stats come from
+  // the separate lightweight notificationStats query (see above) — neither
+  // needs a client-side pass over the full table anymore.
 
   const statusColor = (s: string) => { if (s === "sent") return "bg-emerald-500/20 text-emerald-400"; if (s === "scheduled") return "bg-blue-500/20 text-blue-400"; if (s === "draft") return "bg-amber-500/20 text-amber-400"; return "bg-muted text-muted-foreground"; };
   const statusLabel = (s: string) => { if (s === "sent") return "Sent"; if (s === "scheduled") return "Scheduled"; return "Draft"; };
@@ -231,7 +241,7 @@ export default function AdminNotifications() {
         ))}
       </div>
 
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="draft">Draft</TabsTrigger>
@@ -254,6 +264,19 @@ export default function AdminNotifications() {
                   {TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <Select value={filterAudience} onValueChange={setFilterAudience}>
+                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Audience" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Audiences</SelectItem>
+                  {AUDIENCES.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v) as 25 | 50 | 100)}>
+                <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZES.map((n) => <SelectItem key={n} value={String(n)}>{n} / page</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <Card className="border-border/30">
               <Table>
@@ -271,9 +294,9 @@ export default function AdminNotifications() {
                 <TableBody>
                   {loading ? (
                     <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
-                  ) : filtered.length === 0 ? (
+                  ) : notifications.length === 0 ? (
                     <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No notifications</TableCell></TableRow>
-                  ) : filtered.map((n) => (
+                  ) : notifications.map((n) => (
                     <TableRow key={n.id}>
                       <TableCell className="font-medium max-w-[200px] truncate">{n.title}</TableCell>
                       <TableCell><Badge variant="outline" className="text-[11px]">{channelLabel(n.channel)}</Badge></TableCell>
@@ -300,6 +323,49 @@ export default function AdminNotifications() {
                 </TableBody>
               </Table>
             </Card>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <p className="text-[12px] text-muted-foreground">
+                  {total === 0 ? "0 results" : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total}`}
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm" variant="outline" className="h-8 gap-1"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" /> Previous
+                  </Button>
+                  {(() => {
+                    // Compact window of page numbers around the current one — never
+                    // more than 5 buttons regardless of how many pages exist.
+                    const windowSize = 5;
+                    let start = Math.max(1, page - Math.floor(windowSize / 2));
+                    const end = Math.min(totalPages, start + windowSize - 1);
+                    start = Math.max(1, end - windowSize + 1);
+                    return Array.from({ length: end - start + 1 }, (_, i) => start + i).map((p) => (
+                      <Button
+                        key={p}
+                        size="sm"
+                        variant={p === page ? "default" : "outline"}
+                        className="h-8 w-8 p-0"
+                        onClick={() => setPage(p)}
+                      >
+                        {p}
+                      </Button>
+                    ));
+                  })()}
+                  <Button
+                    size="sm" variant="outline" className="h-8 gap-1"
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </TabsContent>
         ))}
 
