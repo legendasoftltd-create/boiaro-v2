@@ -6000,6 +6000,40 @@ export const adminRouter = router({
       })
     ),
 
+  // Feeds the "Insert On Air Link" picker in AdminNotifications — one flat
+  // list of { label, value } covering all three On Air link kinds (home /
+  // live / scheduled), so the notification Link field can be filled
+  // correctly without the admin needing to know or type the URL shape.
+  listOnAirLinkOptions: adminProcedure.query(async () => {
+    const [liveSessions, upcoming] = await Promise.all([
+      prisma.liveSession.findMany({
+        where: { status: "live" },
+        select: { id: true, show_title: true },
+        orderBy: { started_at: "desc" },
+        take: 20,
+      }),
+      prisma.showSchedule.findMany({
+        where: { is_active: true },
+        select: { id: true, show_title: true, schedule_type: true, specific_date: true, day_of_week: true, start_time: true },
+        orderBy: [{ day_of_week: "asc" }, { start_time: "asc" }],
+        take: 50,
+      }),
+    ]);
+
+    const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const options = [
+      { label: "BoiAro On Air (Home)", value: "/schedule" },
+      ...liveSessions.map((s) => ({ label: `🔴 Live now: ${s.show_title || "Untitled"}`, value: `/live/${s.id}` })),
+      ...upcoming.map((s) => {
+        const when = s.schedule_type === "one_time" && s.specific_date
+          ? new Date(s.specific_date).toLocaleDateString()
+          : `${DAY_NAMES[s.day_of_week]} ${s.start_time}`;
+        return { label: `📅 ${s.show_title} — ${when}`, value: `/schedule/${s.id}` };
+      }),
+    ];
+    return options;
+  }),
+
   updateRjProfile: adminProcedure
     .input(z.object({ id: z.string(), is_approved: z.boolean().optional(), is_active: z.boolean().optional(), callin_enabled: z.boolean().optional() }))
     .mutation(({ input }) => {

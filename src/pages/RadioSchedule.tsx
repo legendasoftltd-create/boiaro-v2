@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { trpc } from "@/lib/trpc"
 import { Calendar, Clock } from "lucide-react"
+import { ShareButton } from "@/components/ShareButton"
 
 const DAY_NAMES = ["রবিবার", "সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার"]
 
@@ -53,14 +54,17 @@ export default function RadioSchedule() {
                   {upcoming.map((s: any) => (
                     <Card key={s.id} id={s.id} className="border-border/30">
                       <CardContent className="p-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium">{s.show_title}</p>
+                        <div className="min-w-0">
+                          <Link to={`/schedule/${s.id}`} className="text-sm font-medium hover:underline">{s.show_title}</Link>
                           <p className="text-xs text-muted-foreground">
                             <Link to={`/host/${s.rj_user_id}`} className="hover:text-foreground hover:underline">{s.rj_stage_name || "RJ"}</Link> · {s.station?.name} · {new Date(s.specific_date).toLocaleDateString(undefined, { timeZone: "Asia/Dhaka" })}
                           </p>
                           {s.description && <p className="text-xs text-muted-foreground/80 mt-1">{s.description}</p>}
                         </div>
-                        <Badge variant="outline" className="gap-1 shrink-0"><Clock className="w-3 h-3" /> {s.start_time} - {s.end_time}</Badge>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Badge variant="outline" className="gap-1"><Clock className="w-3 h-3" /> {s.start_time} - {s.end_time}</Badge>
+                          <ShareButton title={s.show_title} url={`${window.location.origin}/schedule/${s.id}`} className="h-8 w-8" />
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -74,13 +78,16 @@ export default function RadioSchedule() {
                   {d.shows.map((s: any) => (
                     <Card key={s.id} id={s.id} className="border-border/30">
                       <CardContent className="p-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium">{s.show_title}</p>
+                        <div className="min-w-0">
+                          <Link to={`/schedule/${s.id}`} className="text-sm font-medium hover:underline">{s.show_title}</Link>
                           <p className="text-xs text-muted-foreground">
                             <Link to={`/host/${s.rj_user_id}`} className="hover:text-foreground hover:underline">{s.rj_stage_name || "RJ"}</Link> · {s.station?.name}
                           </p>
                         </div>
-                        <Badge variant="outline" className="gap-1 shrink-0"><Clock className="w-3 h-3" /> {s.start_time} - {s.end_time}</Badge>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Badge variant="outline" className="gap-1"><Clock className="w-3 h-3" /> {s.start_time} - {s.end_time}</Badge>
+                          <ShareButton title={s.show_title} url={`${window.location.origin}/schedule/${s.id}`} className="h-8 w-8" />
+                        </div>
                       </CardContent>
                     </Card>
                   ))}

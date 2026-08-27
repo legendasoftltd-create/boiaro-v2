@@ -96,6 +96,7 @@ export default function AdminNotifications() {
     search: debouncedSearch || undefined,
   }, { placeholderData: (prev) => prev });
   const { data: stats = { total: 0, draft: 0, sent: 0, scheduled: 0, high: 0 } } = trpc.admin.notificationStats.useQuery();
+  const { data: onAirLinkOptions = [] } = trpc.admin.listOnAirLinkOptions.useQuery();
   const { data: templatesRaw = [] } = trpc.admin.listNotificationTemplates.useQuery();
   const notifications = (notifPage?.data ?? []) as Notification[];
   const total = notifPage?.total ?? 0;
@@ -421,7 +422,19 @@ export default function AdminNotifications() {
             </div>
             <div><label className="text-sm font-medium mb-1 block">Audience</label><Select value={form.audience} onValueChange={(v) => setForm({ ...form, audience: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{AUDIENCES.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}</SelectContent></Select></div>
             {form.audience === "specific" && <div><label className="text-sm font-medium mb-1 block">User ID</label><Input value={form.target_user_id} onChange={(e) => setForm({ ...form, target_user_id: e.target.value })} placeholder="UUID" /></div>}
-            <div><label className="text-sm font-medium mb-1 block">Link (optional)</label><Input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="/orders, /dashboard" /></div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Link (optional)</label>
+              <div className="flex gap-2">
+                <Input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="/orders, /dashboard" className="flex-1" />
+                <Select value="" onValueChange={(v) => setForm({ ...form, link: v })}>
+                  <SelectTrigger className="w-[180px] shrink-0"><SelectValue placeholder="On Air link…" /></SelectTrigger>
+                  <SelectContent>
+                    {onAirLinkOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    {onAirLinkOptions.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">No live/scheduled shows</div>}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div>
               <label className="text-sm font-medium mb-1 block">Image (optional)</label>
               <SiteImageUpload value={form.image_url} onChange={(url) => setForm({ ...form, image_url: url })} fieldKey="notification-image" />

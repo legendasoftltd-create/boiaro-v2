@@ -35,6 +35,7 @@ function buildHtml(meta: {
   url: string;
   imageWidth: number;
   imageHeight: number;
+  ogType?: string;
 }): string {
   const t = esc(meta.title);
   const d = esc(meta.description);
@@ -48,7 +49,7 @@ function buildHtml(meta: {
   <meta charset="UTF-8"/>
   <title>${t} — ${SITE_NAME}</title>
   <link rel="canonical" href="${url}"/>
-  <meta property="og:type" content="book"/>
+  <meta property="og:type" content="${meta.ogType ?? "website"}"/>
   <meta property="og:site_name" content="${SITE_NAME}"/>
   <meta property="og:url" content="${url}"/>
   <meta property="og:title" content="${t} — ${SITE_NAME}"/>
@@ -72,47 +73,119 @@ function buildHtml(meta: {
 </html>`;
 }
 
+function cleanDescription(raw: string | null | undefined, fallback: string): string {
+  return (raw || fallback).replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
+async function buildBookMeta(slug: string) {
+  const book = await prisma.book.findFirst({
+    where: { slug, is_active: true, submission_status: "approved" },
+    select: { title: true, description: true, description_bn: true, cover_url: true, slug: true },
+  });
+  if (!book) return null;
+
+  const resolvedCover = resolveFileUrl(book.cover_url);
+  const coverUrl = resolvedCover || FALLBACK_IMAGE;
+  // Book covers are portrait; the generated site-wide fallback is a 1200x630 card.
+  const [imageWidth, imageHeight] = resolvedCover ? [800, 1200] : [1200, 630];
+  return {
+    title: book.title,
+    description: cleanDescription(book.description || book.description_bn, "বইআরোতে এই বইটি পড়ুন।"),
+    image: coverUrl,
+    url: `${SITE_URL}/book/${book.slug}`,
+    imageWidth,
+    imageHeight,
+    ogType: "book",
+  };
+}
+
+async function buildLiveSessionMeta(id: string) {
+  const session = await prisma.liveSession.findUnique({
+    where: { id },
+    select: {
+      show_title: true, description: true, cover_image_url: true,
+      station: { select: { name: true, artwork_url: true } },
+    },
+  });
+  if (!session) return null;
+
+  const image = resolveFileUrl(session.cover_image_url) || resolveFileUrl(session.station?.artwork_url ?? null) || FALLBACK_IMAGE;
+  return {
+    title: session.show_title || "BoiAro On Air",
+    description: cleanDescription(session.description, `${session.station?.name || "BoiAro On Air"}-এ এখন সরাসরি সম্প্রচার চলছে।`),
+    image,
+    url: `${SITE_URL}/live/${id}`,
+    imageWidth: 1200,
+    imageHeight: 630,
+  };
+}
+
+async function buildScheduledShowMeta(id: string) {
+  const schedule = await prisma.showSchedule.findUnique({
+    where: { id },
+    select: {
+      is_active: true, show_title: true, description: true, cover_image_url: true,
+      station: { select: { name: true, artwork_url: true } },
+    },
+  });
+  if (!schedule || !schedule.is_active) return null;
+
+  const image = resolveFileUrl(schedule.cover_image_url) || resolveFileUrl(schedule.station?.artwork_url ?? null) || FALLBACK_IMAGE;
+  return {
+    title: schedule.show_title,
+    description: cleanDescription(schedule.description, `${schedule.station?.name || "BoiAro On Air"}-এর একটি অনুষ্ঠান — সময়সূচী দেখুন।`),
+    image,
+    url: `${SITE_URL}/schedule/${id}`,
+    imageWidth: 1200,
+    imageHeight: 630,
+  };
+}
+
+function buildOnAirHomeMeta() {
+  return {
+    title: "BoiAro On Air",
+    description: "BoiAro On Air-এ সরাসরি রেডিও শুনুন — শো সিডিউল, লাইভ অনুষ্ঠান ও প্রিয় RJ-দের সাথে থাকুন।",
+    image: FALLBACK_IMAGE,
+    url: `${SITE_URL}/schedule`,
+    imageWidth: 1200,
+    imageHeight: 630,
+  };
+}
+
+// req.path is percent-encoded (Express doesn't decode it) — Bengali slugs/ids
+// arrive as UTF-8 escape sequences and must be decoded before a DB lookup.
+function decodeSegment(raw: string): string | null {
+  try { return decodeURIComponent(raw); } catch { return null; }
+}
+
 export async function socialBotMiddleware(req: Request, res: Response, next: NextFunction) {
   if (req.method !== "GET") return next();
 
   const ua = req.headers["user-agent"] ?? "";
   if (!BOT_RE.test(ua)) return next();
 
-  // Match /book/:slug (single path segment, no trailing slash required) —
-  // this is the actual frontend route (src/App.tsx), singular not plural.
-  const m = req.path.match(/^\/book\/([^/?#]+)/);
-  if (!m) return next();
-
-  // req.path is percent-encoded (Express doesn't decode it) — Bengali slugs
-  // arrive as UTF-8 escape sequences and must be decoded before the DB lookup.
-  let slug: string;
   try {
-    slug = decodeURIComponent(m[1]);
-  } catch {
-    return next();
-  }
+    let meta: Awaited<ReturnType<typeof buildBookMeta>> | ReturnType<typeof buildOnAirHomeMeta> | null = null;
 
-  try {
-    const book = await prisma.book.findFirst({
-      where: { slug, is_active: true, submission_status: "approved" },
-      select: { title: true, description: true, description_bn: true, cover_url: true, slug: true },
-    });
+    let m: RegExpMatchArray | null;
+    if ((m = req.path.match(/^\/book\/([^/?#]+)/))) {
+      const slug = decodeSegment(m[1]);
+      meta = slug ? await buildBookMeta(slug) : null;
+    } else if ((m = req.path.match(/^\/live\/([^/?#]+)/))) {
+      const id = decodeSegment(m[1]);
+      meta = id ? await buildLiveSessionMeta(id) : null;
+    } else if ((m = req.path.match(/^\/schedule\/([^/?#]+)/))) {
+      const id = decodeSegment(m[1]);
+      meta = id ? await buildScheduledShowMeta(id) : null;
+    } else if (req.path === "/schedule" || req.path === "/schedule/") {
+      meta = buildOnAirHomeMeta();
+    }
 
-    if (!book) return next();
-
-    const resolvedCover = resolveFileUrl(book.cover_url);
-    const coverUrl = resolvedCover || FALLBACK_IMAGE;
-    // Book covers are portrait; the generated site-wide fallback is a 1200x630 card.
-    const [imageWidth, imageHeight] = resolvedCover ? [800, 1200] : [1200, 630];
-    const rawDescription = book.description || book.description_bn || "বইআরোতে এই বইটি পড়ুন।";
-    const description = rawDescription.replace(/\s+/g, " ").trim().slice(0, 200);
-    const pageUrl = `${SITE_URL}/book/${book.slug}`;
+    if (!meta) return next();
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300, stale-while-revalidate=3600");
-    return res.send(
-      buildHtml({ title: book.title, description, image: coverUrl, url: pageUrl, imageWidth, imageHeight })
-    );
+    return res.send(buildHtml(meta));
   } catch {
     return next();
   }

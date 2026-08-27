@@ -1043,6 +1043,28 @@ export const rjRouter = router({
     }));
   }),
 
+  // Single scheduled show's detail page (/schedule/:id) + the same shape
+  // reused by social-bot.ts for its share preview — one query, one source
+  // of truth for what a "scheduled show" link shows.
+  showScheduleById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      const schedule = await prisma.showSchedule.findUnique({
+        where: { id: input.id },
+        include: { station: { select: { id: true, name: true, artwork_url: true } } },
+      });
+      if (!schedule || !schedule.is_active) return null;
+      const profile = await prisma.rjProfile.findUnique({
+        where: { user_id: schedule.rj_user_id },
+        select: { stage_name: true, avatar_url: true },
+      });
+      return {
+        ...schedule,
+        rj_stage_name: profile?.stage_name ?? null,
+        rj_avatar_url: profile?.avatar_url ?? null,
+      };
+    }),
+
   // An approved RJ's own slots, assigned by admin — read-only from the RJ's
   // side (per the spec, admin owns scheduling; RJs "coordinate with admin").
   myShowSchedules: protectedProcedure.query(({ ctx }) =>

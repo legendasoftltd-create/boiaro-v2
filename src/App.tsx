@@ -37,6 +37,7 @@ const UserDashboard = lazy(() => import("./pages/UserDashboard.tsx"));
 const BookDetail = lazy(() => import("./pages/BookDetail.tsx"));
 const LiveShow = lazy(() => import("./pages/LiveShow.tsx"));
 const RadioSchedule = lazy(() => import("./pages/RadioSchedule.tsx"));
+const ScheduleShowDetail = lazy(() => import("./pages/ScheduleShowDetail.tsx"));
 const PublicRjProfile = lazy(() => import("./pages/PublicRjProfile.tsx"));
 const RadioCatchup = lazy(() => import("./pages/RadioCatchup.tsx"));
 const Checkout = lazy(() => import("./pages/Checkout.tsx"));
@@ -260,6 +261,7 @@ const App = () => {
                 <Route path="/live" element={<LiveShow />} />
                 <Route path="/live/:sessionId" element={<LiveShow />} />
                 <Route path="/schedule" element={<RadioSchedule />} />
+                <Route path="/schedule/:id" element={<ScheduleShowDetail />} />
                 <Route path="/host/:userId" element={<PublicRjProfile />} />
                 <Route path="/catchup" element={<RadioCatchup />} />
                 <Route path="/b/:bookId" element={<BookDetail />} />

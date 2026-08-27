@@ -16,7 +16,8 @@ import type { MasterBook, AudiobookFormat } from "@/lib/types"
 import { trpc } from "@/lib/trpc"
 import { toMediaUrl } from "@/lib/mediaUrl"
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
-import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2, MoreVertical, VolumeX, Ban, Flag, ShieldOff, ChevronUp, ChevronDown, Share2, Clock, WifiOff } from "lucide-react"
+import { Mic, Send, Music, Users, Trash2, Radio, PhoneCall, PhoneOff, MicOff, UserX, Play, Pause, Loader2, Volume2, MoreVertical, VolumeX, Ban, Flag, ShieldOff, ChevronUp, ChevronDown, Clock, WifiOff } from "lucide-react"
+import { ShareButton } from "@/components/ShareButton"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -255,15 +256,6 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
     return () => clearInterval(id)
   }, [startedAt])
 
-  const handleShare = async () => {
-    const url = `${window.location.origin}/live/${sessionId}`
-    if (navigator.share) {
-      try { await navigator.share({ title: showTitle || "BoiAro On Air", url }); return } catch { /* cancelled — fall through to copy */ }
-    }
-    await navigator.clipboard.writeText(url)
-    toast.success("লিংক কপি হয়েছে")
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -306,9 +298,7 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
             <Users className="w-3.5 h-3.5" /> {listenerCount} জন শুনছেন
             {!connected && <span className="text-[10px] text-muted-foreground">(সংযুক্ত হচ্ছে...)</span>}
           </Badge>
-          <Button size="icon" variant="ghost" onClick={handleShare} title="শেয়ার করুন">
-            <Share2 className="w-4 h-4" />
-          </Button>
+          <ShareButton title={showTitle || "BoiAro On Air"} url={`${window.location.origin}/live/${sessionId}`} />
         </div>
       </div>
       {isReconnecting && (
