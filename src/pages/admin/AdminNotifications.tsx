@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Bell, Plus, Send, Search, Trash2, Edit, Eye, Clock, ShoppingCart, CreditCard, Users, Megaphone, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { SiteImageUpload } from "@/components/admin/SiteImageUpload";
 
 interface Notification {
   id: string; title: string; message: string; type: string; audience: string;
@@ -422,17 +423,8 @@ export default function AdminNotifications() {
             {form.audience === "specific" && <div><label className="text-sm font-medium mb-1 block">User ID</label><Input value={form.target_user_id} onChange={(e) => setForm({ ...form, target_user_id: e.target.value })} placeholder="UUID" /></div>}
             <div><label className="text-sm font-medium mb-1 block">Link (optional)</label><Input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="/orders, /dashboard" /></div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Image URL (optional)</label>
-              <Input value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="https://example.com/banner.jpg" />
-              {form.image_url && (
-                <img
-                  src={form.image_url}
-                  alt="Notification preview"
-                  className="mt-2 h-24 w-full rounded-md object-cover border border-border/30"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  onLoad={(e) => { (e.target as HTMLImageElement).style.display = "block"; }}
-                />
-              )}
+              <label className="text-sm font-medium mb-1 block">Image (optional)</label>
+              <SiteImageUpload value={form.image_url} onChange={(url) => setForm({ ...form, image_url: url })} fieldKey="notification-image" />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
@@ -459,17 +451,8 @@ export default function AdminNotifications() {
               <div><label className="text-sm font-medium mb-1 block">CTA Link</label><Input value={tplForm.cta_link} onChange={(e) => setTplForm({ ...tplForm, cta_link: e.target.value })} placeholder="/orders" /></div>
             </div>
             <div>
-              <label className="text-sm font-medium mb-1 block">Image URL (optional)</label>
-              <Input value={tplForm.image_url} onChange={(e) => setTplForm({ ...tplForm, image_url: e.target.value })} placeholder="https://example.com/banner.jpg" />
-              {tplForm.image_url && (
-                <img
-                  src={tplForm.image_url}
-                  alt="Template preview"
-                  className="mt-2 h-24 w-full rounded-md object-cover border border-border/30"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                  onLoad={(e) => { (e.target as HTMLImageElement).style.display = "block"; }}
-                />
-              )}
+              <label className="text-sm font-medium mb-1 block">Image (optional)</label>
+              <SiteImageUpload value={tplForm.image_url} onChange={(url) => setTplForm({ ...tplForm, image_url: url })} fieldKey="notification-template-image" />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setTplDialog(false)}>Cancel</Button>
