@@ -383,6 +383,16 @@ export async function applyPublicReadPolicy(): Promise<void> {
         `arn:aws:s3:::${AWS_S3_BUCKET}/tts-paragraphs/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/tts-tests/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/ambient-tracks/*`,
+        // BoiAro On Air catch-up (MP3, liveRecorder.ts) and Studio master
+        // (WAV, studio-bridge relay) recordings — both need direct browser
+        // <audio> playback and download, same as the audio folders above.
+        // Missing here left every file in these two folders private (403),
+        // even though the app happily saved the URL and rendered a player.
+        `arn:aws:s3:::${AWS_S3_BUCKET}/radio-recordings/*`,
+        `arn:aws:s3:::${AWS_S3_BUCKET}/studio-masters/*`,
+        // Chapter free-preview snippets (audioPreview.ts) — same "must play
+        // directly in the browser" need, found while fixing the two above.
+        `arn:aws:s3:::${AWS_S3_BUCKET}/audio-previews/*`,
       ],
     }],
   });
