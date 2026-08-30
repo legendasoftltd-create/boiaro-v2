@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Link } from "react-router-dom"
-import { Radio, Play, Pause, Loader2, WifiOff, Mic, MessageCircle, Share2, Users, Clock } from "lucide-react"
+import { Radio, Play, Pause, Loader2, WifiOff, Mic, MessageCircle, Users, Clock } from "lucide-react"
+import { ShareButton } from "@/components/ShareButton"
 import { Button } from "@/components/ui/button"
 import { useRadioStations } from "@/hooks/useRadioStation"
 import { useAllLiveSessions } from "@/hooks/useLiveSession"
@@ -174,14 +175,6 @@ function RadioCard({ station, isLive, liveSessionId, liveSessionStatus, startedA
 
   const { data: nextShow } = trpc.rj.nextShowForStation.useQuery({ stationId }, { enabled: !isLive })
 
-  const handleShare = async () => {
-    const url = liveSessionId ? `${window.location.origin}/live/${liveSessionId}` : window.location.origin
-    if (navigator.share) {
-      try { await navigator.share({ title: station.name, url }); return } catch { /* cancelled — fall through to copy */ }
-    }
-    await navigator.clipboard.writeText(url)
-    toast.success("লিংক কপি হয়েছে")
-  }
 
   // Clean up on unmount
   useEffect(() => {
@@ -470,9 +463,13 @@ function RadioCard({ station, isLive, liveSessionId, liveSessionStatus, startedA
         ) : null}
       </div>
 
-      <Button size="icon" variant="ghost" className="shrink-0 text-muted-foreground" onClick={handleShare} title="শেয়ার করুন">
-        <Share2 className="w-4 h-4" />
-      </Button>
+      <ShareButton
+        title={station.name}
+        url={liveSessionId ? `${window.location.origin}/live/${liveSessionId}` : `${window.location.origin}/live`}
+        image={station.artwork_url || undefined}
+        description={station.description || undefined}
+        className="shrink-0 text-muted-foreground"
+      />
 
       {/* Play/Pause Button */}
       {hasError ? (

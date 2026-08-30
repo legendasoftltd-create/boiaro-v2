@@ -54,7 +54,7 @@ export default function ScheduleShowDetail() {
               <h1 className="text-xl font-serif font-bold flex items-center gap-2">
                 <Radio className="w-5 h-5 text-primary shrink-0" /> {schedule.show_title}
               </h1>
-              <ShareButton title={schedule.show_title} url={shareUrl} className="shrink-0" />
+              <ShareButton title={schedule.show_title} url={shareUrl} image={schedule.cover_image_url || undefined} description={schedule.description || undefined} className="shrink-0" />
             </div>
 
             <p className="text-sm text-muted-foreground">
