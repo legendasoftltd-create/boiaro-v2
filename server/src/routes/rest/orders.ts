@@ -4,6 +4,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import { calculateEarnings } from "../../lib/earnings.js";
+import { priceOrder } from "../../lib/orderPricing.js";
 import * as redx from "../../services/redx.service.js";
 import { resolveFileUrl } from "../../lib/mediaUrl.js";
 import { cancelOrder, OrderCancelError } from "../../services/orderCancel.service.js";
@@ -36,6 +37,19 @@ ordersRestRouter.get("/payment-gateways", async (_req, res) => {
   try {
     const gateways = await prisma.paymentGateway.findMany({
       where: { is_enabled: true },
+      // Explicit projection — never spread this row. `config` holds live
+      // gateway credentials (SSLCommerz store_password, bKash app_secret /
+      // username / password) in plaintext, and this endpoint is unauthenticated.
+      // A bare findMany here published those to anyone who called it.
+      select: {
+        id: true,
+        gateway_key: true,
+        label: true,
+        mode: true,
+        sort_priority: true,
+        is_enabled: true,
+        web_enabled: true,
+      },
       orderBy: { sort_priority: "asc" },
     });
     res.json(gateways);
@@ -193,23 +207,40 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
 
     // Look up BookFormat ids (mirrors tRPC bookFormatMap lookup)
     const bookFormatMap: Record<string, string | undefined> = {};
-    for (const item of items) {
-      const fmt = await prisma.bookFormat.findFirst({
-        where: { book_id: item.book_id, format: item.format },
-        select: { id: true },
-      });
-      if (fmt) bookFormatMap[`${item.book_id}:${item.format}`] = fmt.id;
+    // ── Authoritative pricing ──────────────────────────────────────────────
+    // Line prices, coupon discount and grand total are all resolved server-side.
+    // grand_total / item.price / coupon_discount from the client are treated as
+    // a cross-check only — see lib/orderPricing.ts. Previously the client's
+    // grand_total won outright, so any total could be charged for any cart.
+    const pricing = await priceOrder({
+      userId,
+      items: items.map((i: any) => ({
+        book_id: i.book_id,
+        format: i.format,
+        quantity: i.quantity,
+        title: i.book_title ?? i.title,
+      })),
+      couponCode: coupon_code ?? null,
+      shippingCost: shipping_cost ?? null,
+      clientTotal: grand_total !== undefined ? Number(grand_total) : null,
+    });
+    const finalGrandTotal = pricing.total;
+    const pricedByKey = new Map(pricing.items.map((i) => [`${i.book_id}:${i.format}`, i]));
+    for (const pi of pricing.items) {
+      bookFormatMap[`${pi.book_id}:${pi.format}`] = pi.book_format_id ?? undefined;
     }
-
-    // Use grand_total from client when provided (mirrors tRPC input.grandTotal),
-    // otherwise fall back to server-side calculation
-    const clientGrandTotal = grand_total !== undefined ? Number(grand_total) : null;
 
     const isCod = payment_method === "cod";
     const isDemo = payment_method === "demo";
     const isMobile = payment_method === "bkash" || payment_method === "nagad";
     const isSSLCommerz = payment_method === "sslcommerz";
     const isWallet = payment_method === "wallet" || payment_method === "coins";
+
+    // Non-production stub — must not be reachable on a live deployment.
+    if (isDemo && process.env.ALLOW_DEMO_PAYMENTS !== "true") {
+      res.status(400).json({ error: "Unsupported payment method" });
+      return;
+    }
 
     // Wallet/coins payment: verify balance before creating order
     if (isWallet) {
@@ -225,23 +256,6 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
       }
     }
 
-    // Calculate grand total server-side if not provided by client
-    let computedTotal = 0;
-    if (clientGrandTotal === null) {
-      for (const item of items) {
-        const fmt = await prisma.bookFormat.findFirst({
-          where: { book_id: item.book_id, format: item.format },
-          select: { price: true },
-        });
-        computedTotal += Number(fmt?.price ?? item.price ?? 0) * (item.quantity ?? 1);
-      }
-      computedTotal += Number(shipping_cost ?? 0);
-      computedTotal -= Number(coupon_discount ?? 0);
-      computedTotal = Math.max(0, computedTotal);
-    }
-
-    const finalGrandTotal = clientGrandTotal ?? computedTotal;
-
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
     const order = await prisma.order.create({
@@ -251,8 +265,8 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
         total_amount: finalGrandTotal,
         status: "pending",
         payment_method,
-        coupon_code: coupon_code || null,
-        discount_amount: coupon_discount || null,
+        coupon_code: pricing.coupon_code,
+        discount_amount: pricing.discount || null,
         shipping_name: shipping_name || null,
         shipping_phone: shipping_phone || null,
         shipping_address: shipping_address || null,
@@ -263,17 +277,18 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
         shipping_method_id: shipping_method_id || null,
         shipping_method_name: shipping_method_name || null,
         shipping_carrier: shipping_carrier || null,
-        shipping_cost: shipping_cost || null,
+        shipping_cost: pricing.shipping_cost || null,
         estimated_delivery_days: estimated_delivery_days || null,
         total_weight: total_weight || null,
         packaging_cost: packaging_cost || null,
         items: {
-          create: items.map((item: any) => ({
+          create: pricing.items.map((item) => ({
             book_id: item.book_id,
-            book_format_id: bookFormatMap[`${item.book_id}:${item.format}`] || null,
+            book_format_id: item.book_format_id,
             format: item.format,
-            quantity: item.quantity ?? 1,
-            price: item.price ?? 0,
+            quantity: item.quantity,
+            price: item.price,
+            discount_amount: item.discount_amount,
           })),
         },
         status_history: { create: { new_status: "pending", changed_by: userId } },
@@ -300,8 +315,11 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
       },
     });
 
-    // Fulfill digital items for demo / mobile / wallet — mirrors tRPC
-    const shouldFulfill = isDemo || isMobile || isWallet;
+    // Fulfil immediately only for the gated demo stub and for wallet/coin
+    // payments (where the coins are actually debited below — real value moves).
+    // bkash/nagad used to land here too, unlocking paid content before any
+    // gateway call; they now wait for /payments/bkash/callback-order.
+    const shouldFulfill = isDemo || isWallet;
     if (shouldFulfill) {
       const createdItems = await prisma.orderItem.findMany({
         where: { order_id: order.id },
@@ -313,12 +331,15 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
       }
 
       for (const item of digitalItems) {
+        const priced = pricedByKey.get(`${item.book_id}:${item.format}`);
+        // Net of the allocated discount, so earnings reconcile with the ledger.
+        const saleAmount = priced ? priced.net_amount : 0;
         await prisma.userPurchase.create({
           data: {
             user_id: userId,
             book_id: item.book_id,
             format: item.format,
-            amount: item.price ?? 0,
+            amount: saleAmount,
             payment_method,
             status: "active",
             order_id: order.id,
@@ -332,7 +353,7 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
         await calculateEarnings({
           bookId: item.book_id,
           format: item.format,
-          saleAmount: item.price ?? 0,
+          saleAmount,
           orderId: order.id,
           orderItemId: itemIdMap[`${item.book_id}:${item.format}`] ?? null,
         });
@@ -340,12 +361,6 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
 
       await prisma.order.update({ where: { id: order.id }, data: { status: "confirmed" } });
 
-      if (isMobile) {
-        await prisma.payment.updateMany({
-          where: { order_id: order.id },
-          data: { status: "paid", transaction_id: `${String(payment_method).toUpperCase()}-${Date.now()}` },
-        });
-      }
     }
 
     // Deduct coins for wallet payment
@@ -370,17 +385,17 @@ ordersRestRouter.post("/", requireAuth, async (req: AuthenticatedRequest, res) =
     }
 
     // Record coupon usage — mirrors tRPC
-    if (applied_coupon_id && coupon_discount) {
+    if (pricing.coupon_id && pricing.discount > 0) {
       await prisma.couponUsage.create({
         data: {
-          coupon_id: applied_coupon_id,
+          coupon_id: pricing.coupon_id,
           user_id: userId,
           order_id: order.id,
-          discount_amount: coupon_discount,
+          discount_amount: pricing.discount,
         },
       });
       await prisma.coupon.update({
-        where: { id: applied_coupon_id },
+        where: { id: pricing.coupon_id },
         data: { used_count: { increment: 1 } },
       });
     }

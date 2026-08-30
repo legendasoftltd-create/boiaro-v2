@@ -2,6 +2,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure } from "../trpc.js";
+import { resolveAdminAccess, classifyProcedure, can, MODERATOR_DENIED } from "../lib/adminPermissions.js";
 import { prisma } from "../lib/prisma.js";
 import { getListenerCount, emitToUserInSession } from "../realtime/socket.js";
 import { calculateOrderEarnings } from "../lib/earnings.js";
@@ -12,7 +13,7 @@ import { sendSslWirelessSms } from "../lib/sms.js";
 import { sendPushToTokens, testFirebaseCredentials, invalidateFirebaseCache } from "../lib/firebase.js";
 import { notifyUser } from "../lib/notify.js";
 import { cancelOrder, OrderCancelError } from "../services/orderCancel.service.js";
-import { createPresignedDownloadUrl, isS3Url, s3Client } from "../lib/s3.js";
+import { createPresignedDownloadUrl, createPresignedGetUrl, isS3Url, s3Client } from "../lib/s3.js";
 import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClipsForFormat } from "../lib/audioPreview.js";
@@ -30,6 +31,20 @@ import { getStreamHealthForSessions } from "../lib/streamHealth.js";
 import { encryptSecret, decryptSecret } from "../lib/secretEncryption.js";
 import os from "os";
 import fs from "fs";
+
+/**
+ * Admin review screens play submitted audio directly in the browser. Media
+ * objects are private in S3 (a raw URL 403s), so anything an admin is meant to
+ * *play* has to be presigned rather than merely resolved. Download uses
+ * createPresignedDownloadUrl already; this is the play-inline equivalent.
+ */
+async function toAdminPlayableUrl(rawUrl: string | null | undefined): Promise<string | null> {
+  if (!rawUrl) return null;
+  if (isS3Url(rawUrl)) {
+    try { return await createPresignedGetUrl(rawUrl, 3600); } catch { return null; }
+  }
+  return resolveUrl(rawUrl) ?? rawUrl;
+}
 
 function orderSellableAmount(order: { total_amount?: number | null; shipping_cost?: number | null }) {
   return Math.max(0, Number(order.total_amount || 0) - Number(order.shipping_cost || 0));
@@ -61,11 +76,79 @@ function orderItemSaleAmount(item: { price?: number | null; quantity?: number | 
   return Number(item.price || 0) * Number(item.quantity || 1);
 }
 
-const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  const role = await prisma.userRole.findFirst({
-    where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } },
-  });
-  if (!role) throw new TRPCError({ code: "FORBIDDEN" });
+/**
+ * Strip anything that looks like a credential before an input is written to the
+ * audit trail — admin mutations legitimately carry SMTP passwords, gateway
+ * secrets and API keys.
+ */
+function redactForAudit(value: unknown, depth = 0): unknown {
+  if (depth > 3 || value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.slice(0, 20).map((v) => redactForAudit(v, depth + 1));
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = /pass|secret|token|key|credential|otp/i.test(k) ? "[redacted]" : redactForAudit(v, depth + 1);
+    }
+    return out;
+  }
+  if (typeof value === "string" && value.length > 500) return `${value.slice(0, 500)}…`;
+  return value;
+}
+
+/**
+ * Every admin procedure now: (1) resolves the caller's real module permissions
+ * and refuses the call when the required module:action isn't granted, and
+ * (2) writes an audit row for anything that isn't a plain read.
+ *
+ * Both used to be missing. The permission map was frontend-only — a restricted
+ * admin who called the endpoint directly had full access to finance, users,
+ * roles and withdrawals — and only three of ~300 procedures wrote an AuditLog
+ * row. Doing it in the middleware means neither can be forgotten on a new
+ * procedure.
+ */
+/**
+ * Resolve the caller's permissions once per HTTP request. The admin panel
+ * batches many procedures into one request and this middleware runs per
+ * procedure, so without the memo a single dashboard load would re-run the
+ * permission queries for every procedure in the batch.
+ */
+function accessFor(ctx: { userId: string | null; adminAccess?: Promise<unknown> }) {
+  if (!ctx.adminAccess) ctx.adminAccess = resolveAdminAccess(ctx.userId!);
+  return ctx.adminAccess as ReturnType<typeof resolveAdminAccess>;
+}
+
+const adminProcedure = protectedProcedure.use(async ({ ctx, next, path, getRawInput }) => {
+  const access = await accessFor(ctx);
+  if (!access.isAdmin) throw new TRPCError({ code: "FORBIDDEN" });
+
+  const procedureName = String(path).split(".").pop() ?? String(path);
+  const required = classifyProcedure(procedureName);
+
+  if (required && !can(access, required.module, required.action)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `Your role does not allow ${required.action} on ${required.module}`,
+    });
+  }
+
+  if (required && required.action !== "view") {
+    let rawInput: unknown = undefined;
+    try { rawInput = await getRawInput(); } catch { /* input not readable — audit without it */ }
+    prisma.auditLog.create({
+      data: {
+        actor_id: ctx.userId!,
+        action: procedureName,
+        target_type: required.module,
+        details: {
+          module: required.module,
+          permission: `${required.module}:${required.action}`,
+          role: access.roleName,
+          input: redactForAudit(rawInput),
+        } as any,
+      },
+    }).catch(() => {});
+  }
+
   return next({ ctx });
 });
 
@@ -76,9 +159,26 @@ const adminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 // reactivate), station CRUD, and platform-wide radio settings — the exact
 // overreach found in an audit (a moderator could suspend RJs and edit
 // stations, same as admin).
-const strictAdminProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+const strictAdminProcedure = protectedProcedure.use(async ({ ctx, next, path, getRawInput }) => {
   const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: "admin" } });
   if (!role) throw new TRPCError({ code: "FORBIDDEN" });
+
+  // Audit these too — RJ lifecycle, station CRUD and platform radio settings
+  // are exactly the actions worth having a trail for.
+  const procedureName = String(path).split(".").pop() ?? String(path);
+  const required = classifyProcedure(procedureName);
+  if (required && required.action !== "view") {
+    let rawInput: unknown = undefined;
+    try { rawInput = await getRawInput(); } catch { /* ignore */ }
+    prisma.auditLog.create({
+      data: {
+        actor_id: ctx.userId!,
+        action: procedureName,
+        target_type: required.module,
+        details: { module: required.module, role: "admin", strict: true, input: redactForAudit(rawInput) } as any,
+      },
+    }).catch(() => {});
+  }
   return next({ ctx });
 });
 
@@ -1739,18 +1839,23 @@ export const adminRouter = router({
       };
     }
 
-    // 4. Fallback hardcoded defaults (used until role_permissions are seeded)
-    const RESTRICTED = ["roles", "settings"];
+    // 4. Fallback hardcoded defaults (used until role_permissions are seeded).
+    // Must stay identical to the fallback in lib/adminPermissions.ts, which is
+    // what the API actually enforces — if these two disagree, the menu offers a
+    // screen the API then refuses.
     return {
       roleName: "moderator",
       isSuperAdmin: false,
-      permissions: PERM_MODULES.map((m) => ({
-        module: m,
-        can_view:   true,
-        can_create: !RESTRICTED.includes(m),
-        can_edit:   !RESTRICTED.includes(m),
-        can_delete: false,
-      })),
+      permissions: PERM_MODULES.map((m) => {
+        const denied = MODERATOR_DENIED.includes(m);
+        return {
+          module: m,
+          can_view:   !denied,
+          can_create: !denied,
+          can_edit:   !denied,
+          can_delete: false,
+        };
+      }),
     };
   }),
 
@@ -4454,12 +4559,35 @@ export const adminRouter = router({
   }),
 
   processWithdrawal: adminProcedure
-    .input(z.object({ id: z.string(), status: z.string(), adminNotes: z.string().optional() }))
+    // status was z.string() — any value at all was written straight to the row,
+    // and the update had no precondition, so the same request could be approved
+    // repeatedly (each time firing another "approved" email to the creator).
+    .input(z.object({
+      id: z.string(),
+      status: z.enum(["approved", "rejected", "paid"]),
+      adminNotes: z.string().optional(),
+    }))
     .mutation(async ({ input }) => {
-      const withdrawal = await prisma.withdrawalRequest.update({
-        where: { id: input.id },
+      // Only a request that is still pending may be decided; only an approved
+      // one may be marked paid. Anything else is a stale or duplicate click.
+      const allowedFrom = input.status === "paid" ? ["approved"] : ["pending"];
+      const applied = await prisma.withdrawalRequest.updateMany({
+        where: { id: input.id, status: { in: allowedFrom } },
         data: { status: input.status, notes: input.adminNotes ?? null },
       });
+      if (applied.count === 0) {
+        const current = await prisma.withdrawalRequest.findUnique({
+          where: { id: input.id },
+          select: { status: true },
+        });
+        throw new TRPCError({
+          code: current ? "CONFLICT" : "NOT_FOUND",
+          message: current
+            ? `This withdrawal is already "${current.status}" and cannot be set to "${input.status}"`
+            : "Withdrawal request not found",
+        });
+      }
+      const withdrawal = (await prisma.withdrawalRequest.findUnique({ where: { id: input.id } }))!;
       const user = await prisma.user.findUnique({ where: { id: withdrawal.user_id }, select: { email: true } });
       if (user?.email) {
         const approved = input.status === "approved";
@@ -4523,17 +4651,23 @@ export const adminRouter = router({
         ? await prisma.profile.findMany({ where: { user_id: { in: userIds } }, select: { user_id: true, display_name: true } })
         : [];
       const profileMap = Object.fromEntries(profiles.map(p => [p.user_id, p.display_name || "Unknown"]));
-      return books.map((b: any) => ({
+      // Presign every media URL so the review screen can play/preview them —
+      // the underlying objects are private.
+      return Promise.all(books.map(async (b: any) => ({
         ...b,
         _submitter: b.submitted_by ? (profileMap[b.submitted_by] || "Unknown") : "Admin",
-        book_formats: b.formats?.map((f: any) => ({
+        book_formats: await Promise.all((b.formats ?? []).map(async (f: any) => ({
           ...f,
+          file_url: await toAdminPlayableUrl(f.file_url),
           // Rename to camelCase for frontend consistency
-          audiobookTracks: f.audiobook_tracks,
-        })),
+          audiobookTracks: await Promise.all((f.audiobook_tracks ?? []).map(async (t: any) => ({
+            ...t,
+            audio_url: await toAdminPlayableUrl(t.audio_url),
+          }))),
+        }))),
         book_contributors: b.contributors,
         categories: b.category,
-      }));
+      })));
     }),
 
   /** Approve or reject a single audiobook track. */

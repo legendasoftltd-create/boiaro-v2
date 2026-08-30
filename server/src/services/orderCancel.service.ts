@@ -113,6 +113,41 @@ export async function cancelOrder(
       where: { order_id: order.id, status: { not: "reversed" } },
       data: { status: "reversed" },
     });
+
+    // Reverse the accounting income too. finalizePaidOrder writes a book_sale
+    // income entry when an order is confirmed; cancelling used to revoke the
+    // content and reverse contributor earnings but leave that entry standing,
+    // so the ledger overstated income by the value of every order cancelled
+    // after confirmation (and only a manual admin reversal could fix it).
+    //
+    // Same convention as admin.reverseAccountingLedgerEntry: a compensating
+    // negative entry rather than a delete, so the original stays auditable.
+    const incomeEntries = await prisma.accountingLedger.findMany({
+      where: { order_id: order.id, type: "income", category: "book_sale" },
+      select: { id: true, amount: true, description: true, book_id: true },
+    });
+    for (const entry of incomeEntries) {
+      // Idempotent — cancelling twice must not reverse twice.
+      const alreadyReversed = await prisma.accountingLedger.findFirst({
+        where: { reference_type: "reversal", reference_id: entry.id },
+        select: { id: true },
+      });
+      if (alreadyReversed) continue;
+      await prisma.accountingLedger.create({
+        data: {
+          type: "income",
+          category: "book_sale",
+          description: `REVERSAL: order cancelled - ${order.order_number} (original: ${entry.id.slice(0, 8)})`,
+          amount: -Math.abs(Number(entry.amount || 0)),
+          entry_date: new Date(),
+          source: "order_cancel",
+          reference_type: "reversal",
+          reference_id: entry.id,
+          book_id: entry.book_id,
+          order_id: order.id,
+        },
+      });
+    }
   }
 
   // Refund spent wallet coins (dedup: skip if this order was already refunded once)

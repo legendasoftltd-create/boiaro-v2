@@ -648,6 +648,9 @@ authRestRouter.post("/facebook", async (req, res) => {
 
 // ── Phone OTP login ───────────────────────────────────────────────────────────
 
+/** Wrong guesses allowed against a single OTP before it is invalidated. */
+const MAX_OTP_ATTEMPTS = 5;
+
 authRestRouter.post("/phone/send-otp", async (req, res) => {
   try {
     const rawPhone = req.body?.phone;
@@ -701,7 +704,23 @@ authRestRouter.post("/phone/verify-otp", async (req, res) => {
     }
     const valid = await bcrypt.compare(String(otp), record.otp_hash);
     if (!valid) {
-      res.status(400).json({ error: "Incorrect OTP. Please try again." });
+      // Burn the code after a handful of wrong guesses. Previously the record
+      // stayed usable for its full 5-minute window no matter how many times it
+      // was guessed, with only the IP-scoped auth limiter slowing an attacker.
+      const updated = await prisma.phoneOtp.update({
+        where: { id: record.id },
+        data: { attempts: { increment: 1 } },
+        select: { attempts: true },
+      });
+      if (updated.attempts >= MAX_OTP_ATTEMPTS) {
+        await prisma.phoneOtp.update({ where: { id: record.id }, data: { used: true } });
+        res.status(400).json({ error: "Too many incorrect attempts. Please request a new code." });
+        return;
+      }
+      res.status(400).json({
+        error: "Incorrect OTP. Please try again.",
+        attempts_remaining: MAX_OTP_ATTEMPTS - updated.attempts,
+      });
       return;
     }
     await prisma.phoneOtp.update({ where: { id: record.id }, data: { used: true } });

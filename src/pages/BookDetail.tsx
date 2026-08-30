@@ -156,10 +156,16 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
   if (audiobookFmt?.audiobook_tracks?.length > 0) {
     audioTracks = audiobookFmt.audiobook_tracks
       .map((t: any) => {
+        // The API no longer returns audio_url — direct media locations are not
+        // handed out with the catalogue. `has_audio` says the chapter has a
+        // file; the actual URL is fetched per-play through the access-checked
+        // presigned route. (The `t.audio_url` fallback keeps this working
+        // against an older server during a rolling deploy.)
         const rawPath = (t.audio_url || "").trim() || null
         const storagePath = normalizeAudioSource(rawPath)
+        const hasSource = t.has_audio ?? Boolean(storagePath)
         const mimeType = normalizeAudioMimeType(t.mime_type || guessAudioMimeType(storagePath))
-        if (!storagePath) return null
+        if (!hasSource) return null
         const supportedMimes = ["audio/mpeg", "audio/mp4", "audio/wav", "video/mp4"]
         if (mimeType && !supportedMimes.includes(mimeType)) return null
         const isPreview = isBookFree || t.is_preview || false
@@ -170,6 +176,7 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
           duration: t.duration || "0:00",
           audioUrl: storagePath,
           storagePath,
+          hasSource,
           mimeType,
           mediaType: (t.media_type as "audio" | "video") || (mimeType === "video/mp4" ? "video" : "audio"),
           isActive: t.status === "active",

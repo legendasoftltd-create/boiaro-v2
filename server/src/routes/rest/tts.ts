@@ -23,6 +23,7 @@ import type { AuthenticatedRequest } from "../../middleware/auth.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   checkTtsAccess,
+  toSignedTtsUrl,
   generateParagraphAudio,
   getStoredVoices,
   getStoredAmbientTracks,
@@ -245,7 +246,7 @@ ttsRestRouter.post("/generate", requireAuth, async (req: AuthenticatedRequest, r
 
     const audioUrl = await generateParagraphAudio(text, chosenVoice, book_id, userId, Number(paragraph_index) || 0);
 
-    res.json({ success: true, audio_url: resolveFileUrl(audioUrl), voice_id: chosenVoice, paragraph_index: Number(paragraph_index) || 0 });
+    res.json({ success: true, audio_url: await toSignedTtsUrl(audioUrl), voice_id: chosenVoice, paragraph_index: Number(paragraph_index) || 0 });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error";
     if (msg === "QUOTA_EXCEEDED") {

@@ -198,7 +198,11 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
   const displayTracks = isThisBookActive ? tracks : audioTracks
   const realTrackCount = displayTracks.length
   const hasNoTracks = realTrackCount === 0
-  const hasPlayableSource = displayTracks.some((track) => Boolean((track.storagePath || track.audioUrl || "").trim()))
+  // A chapter is playable when the server says it has a file — the URL itself
+  // is not published with the catalogue and is fetched at play time.
+  const hasPlayableSource = displayTracks.some(
+    (track) => track.hasSource ?? Boolean((track.storagePath || track.audioUrl || "").trim())
+  )
   const allNarrators: any[] = (book as any).allNarrators || (audiobook.narrator?.id ? [audiobook.narrator] : [])
   const narratorName = allNarrators.length > 0
     ? allNarrators.map((n: any) => n.name).join(", ")
@@ -432,7 +436,7 @@ export function AudiobookTab({ book, audiobook, audioTracks = [] }: Props) {
               const isActive = isThisBookActive && currentTrackIndex === i
               const isCurrentlyPlaying = isActive && isPlaying
               const isPreview = track?.isPreview
-              const trackHasSource = Boolean((track?.storagePath || track?.audioUrl || "").trim())
+              const trackHasSource = track?.hasSource ?? Boolean((track?.storagePath || track?.audioUrl || "").trim())
 
               return (
                 <button

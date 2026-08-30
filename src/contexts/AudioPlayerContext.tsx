@@ -20,6 +20,9 @@ export interface AudioTrack {
   duration: string
   audioUrl: string | null
   storagePath?: string | null
+  /** The chapter has a media file on the server, even though its URL is not
+   *  exposed in the catalogue — resolve it through getSecureUrl at play time. */
+  hasSource?: boolean
   mimeType?: string | null
   mediaType?: MediaType
   isActive?: boolean
@@ -217,9 +220,13 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const rawSource = (track.storagePath || track.audioUrl || "").trim()
     let url: string | null = null
 
+    // A direct URL is only used if the catalogue happened to carry one (older
+    // server, or local/CDN storage). Normally there is none — the media
+    // location is not published with the catalogue — so every play resolves
+    // through the access-checked, short-lived presigned URL instead.
     if (isHttpUrl(rawSource)) {
       url = rawSource
-    } else if (rawSource) {
+    } else {
       try {
         const result = await getSecureUrl(bookId, "audiobook", track.trackNumber)
         if (result?.url) url = result.url
@@ -259,13 +266,13 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
     const requestId = ++loadRequestRef.current
     setState((prev) => ({ ...prev, isLoading: true, error: null }))
 
-    const rawSource = (track.storagePath || track.audioUrl || "").trim()
+    const hasSource = track.hasSource ?? Boolean((track.storagePath || track.audioUrl || "").trim())
     const url = await resolveTrackUrl(track, currentState.book!.id)
 
     if (requestId !== loadRequestRef.current) return
 
     if (!url) {
-      const errorMsg = rawSource ? "Audio file could not be loaded" : "No audio file available for this track"
+      const errorMsg = hasSource ? "Audio file could not be loaded" : "No audio file available for this track"
       setState((prev) => ({ ...prev, isLoading: false, isPlaying: false, error: errorMsg }))
       return
     }
@@ -718,7 +725,7 @@ export function AudioPlayerProvider({ children }: { children: ReactNode }) {
 
   const loadBook = useCallback((book: MasterBook, audiobook: AudiobookFormat, tracks?: AudioTrack[], autoPlay?: boolean, startTrackId?: string) => {
     const finalTracks: AudioTrack[] = (tracks || [])
-      .filter((track) => (track.isActive ?? true) && Boolean((track.storagePath || track.audioUrl || "").trim()))
+      .filter((track) => (track.isActive ?? true) && (track.hasSource ?? Boolean((track.storagePath || track.audioUrl || "").trim())))
       .sort((a, b) => a.trackNumber - b.trackNumber)
 
     const startIndex = startTrackId ? Math.max(0, finalTracks.findIndex((t) => t.id === startTrackId)) : 0

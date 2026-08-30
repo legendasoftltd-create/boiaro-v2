@@ -378,7 +378,11 @@ export const booksRouter = router({
         },
       });
       if (!book) throw new TRPCError({ code: "NOT_FOUND" });
-      return book;
+      // Must go through resolveBookUrls: `formats` here is a full BookFormat
+      // row, so returning it raw published file_url (and would publish
+      // audio_url for any procedure that also includes tracks) to any caller.
+      // Every other book-returning path already strips; this one did not.
+      return resolveBookUrls(book);
     }),
 
   categories: publicProcedure

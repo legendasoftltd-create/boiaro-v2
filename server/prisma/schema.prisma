@@ -1443,6 +1443,13 @@ model OrderItem {
   order_id            String
   quantity            Int            @default(1)
   unit_cost           Float?
+  // Share of the order-level coupon discount allocated to this line, pro rata
+  // by line value. `price` stays the list price so invoices and reports are
+  // unaffected; the revenue base for this line is (price * quantity) - discount_amount.
+  // Without it, contributor earnings were computed on the undiscounted line
+  // total while the accounting ledger recorded the discounted order total, so
+  // the two disagreed by exactly the discount on every discounted order.
+  discount_amount     Float          @default(0)
 
   order             Order              @relation(fields: [order_id], references: [id])
   book_format       BookFormat?        @relation(fields: [book_format_id], references: [id])
@@ -1958,6 +1965,9 @@ model PhoneOtp {
   otp_hash   String
   expires_at DateTime
   used       Boolean  @default(false)
+  // Wrong-guess counter. Without it a live OTP stayed guessable for its whole
+  // 5-minute window, throttled only by the IP-level auth rate limit.
+  attempts   Int      @default(0)
   created_at DateTime @default(now())
 
   @@index([phone])

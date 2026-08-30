@@ -11,6 +11,18 @@ import { getCreatorBookIds } from "../lib/creatorBooks.js";
 import { ensureReferralCode } from "../lib/referralCode.js";
 import { syncCreatorAvatar } from "../lib/creatorProfileSync.js";
 
+/**
+ * Platform settings the client is allowed to read through
+ * profiles.platformSetting. Add a key here only when the UI genuinely renders
+ * it — never a credential or an operational toggle.
+ */
+const CLIENT_READABLE_SETTINGS = [
+  "minimum_withdrawal_amount",
+  "withdrawal_processing_days",
+  "coin_conversion_ratio",
+  "referral_reward_coins",
+] as const;
+
 export const profilesRouter = router({
   me: protectedProcedure.query(async ({ ctx }) => {
     const profile = await prisma.profile.findUnique({ where: { user_id: ctx.userId } });
@@ -571,45 +583,70 @@ export const profilesRouter = router({
       role: z.enum(["writer", "narrator", "publisher", "translator"]),
     }))
     .mutation(async ({ ctx, input }) => {
-      // Verify available balance before creating request
-      const [earnings, existingWithdrawals] = await Promise.all([
-        prisma.contributorEarning.findMany({
-          where: { user_id: ctx.userId, role: input.role, status: "confirmed" },
-          select: { earned_amount: true },
-        }),
-        prisma.withdrawalRequest.findMany({
-          where: { user_id: ctx.userId, status: { in: ["pending", "approved", "paid"] } },
-          select: { amount: true, status: true },
-        }),
-      ]);
+      const mobileMethod = input.method === "bkash" || input.method === "nagad";
 
-      const confirmedTotal = earnings.reduce((s, e) => s + e.earned_amount, 0);
-      // Subtract both in-flight (pending/approved) AND already-paid withdrawals
-      const alreadyWithdrawn = existingWithdrawals.reduce((s, w) => s + w.amount, 0);
-      const available = confirmedTotal - alreadyWithdrawn;
+      // The balance check and the insert have to be one atomic unit: run as two
+      // separate statements, two simultaneous requests could each see the full
+      // balance and both be created, putting more money in flight than the
+      // creator has actually earned. Serializable makes Postgres abort the
+      // loser of that race.
+      let available = 0;
+      const created = await prisma.$transaction(async (tx: any) => {
+        const [earnings, existingWithdrawals] = await Promise.all([
+          tx.contributorEarning.findMany({
+            where: { user_id: ctx.userId, role: input.role, status: "confirmed" },
+            select: { earned_amount: true },
+          }),
+          tx.withdrawalRequest.findMany({
+            where: { user_id: ctx.userId, status: { in: ["pending", "approved", "paid"] } },
+            select: { amount: true, status: true },
+          }),
+        ]);
 
-      if (input.amount > available) {
+        const confirmedTotal = earnings.reduce((s: number, e: any) => s + e.earned_amount, 0);
+        // Subtract both in-flight (pending/approved) AND already-paid withdrawals
+        const alreadyWithdrawn = existingWithdrawals.reduce((s: number, w: any) => s + w.amount, 0);
+        available = confirmedTotal - alreadyWithdrawn;
+
+        if (input.amount > available) return null;
+
+        return tx.withdrawalRequest.create({
+          data: {
+            user_id: ctx.userId,
+            amount: input.amount,
+            method: input.method,
+            mobile_number: mobileMethod ? input.accountInfo : null,
+            bank_account: !mobileMethod ? input.accountInfo : null,
+            status: "pending",
+          },
+        });
+      }, { isolationLevel: "Serializable" }).catch((err: any) => {
+        if (err?.code === "P2034" || /serializ/i.test(String(err?.message))) return null;
+        throw err;
+      });
+
+      if (!created) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Insufficient balance. Available: ৳${available.toFixed(2)}, Requested: ৳${input.amount.toFixed(2)}`,
         });
       }
-
-      const mobileMethod = input.method === "bkash" || input.method === "nagad";
-      return prisma.withdrawalRequest.create({
-        data: {
-          user_id: ctx.userId,
-          amount: input.amount,
-          method: input.method,
-          mobile_number: mobileMethod ? input.accountInfo : null,
-          bank_account: !mobileMethod ? input.accountInfo : null,
-          status: "pending",
-        },
-      });
+      return created;
     }),
 
+  /**
+   * Reads one platform setting for the client.
+   *
+   * This used to accept any key at all, so any signed-in user could enumerate
+   * the whole settings table — which also holds the ElevenLabs API key, SMTP
+   * password, Firebase credentials and SMS tokens. Those particular values are
+   * encrypted at rest, so this was an exposure of ciphertext and of every
+   * unencrypted operational setting rather than a plaintext credential leak,
+   * but there is no reason for the client to reach anything beyond the handful
+   * of values it actually renders.
+   */
   platformSetting: protectedProcedure
-    .input(z.object({ key: z.string() }))
+    .input(z.object({ key: z.enum(CLIENT_READABLE_SETTINGS) }))
     .query(async ({ input }) => {
       const setting = await prisma.platformSetting.findUnique({ where: { key: input.key } });
       return setting?.value ?? null;

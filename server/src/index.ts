@@ -11,7 +11,9 @@ import helmet from "helmet";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "./routers/_app.js";
 import { createContext } from "./context.js";
-import { attachAuth } from "./middleware/auth.js";
+import { attachAuth, requireAuth, requireUploader } from "./middleware/auth.js";
+import { normalizeErrorShape } from "./middleware/errorShape.js";
+import type { AuthenticatedRequest } from "./middleware/auth.js";
 import { restRouter } from "./routes/rest/index.js";
 import { registerOgImageRoute } from "./routes/og-image.js";
 import { socialBotMiddleware } from "./middleware/social-bot.js";
@@ -86,6 +88,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(attachAuth);
 
+// Normalise every REST error body to { success:false, error, message }.
+// Mounted first so it also wraps the guards and rate limiters below — the
+// 429 body in particular was a bare { error } and escaped normalisation when
+// this sat further down.
+app.use("/api/v1", normalizeErrorShape);
+
 // CSRF protection — require X-Requested-With on state-changing REST calls.
 // Exempt:
 //   - SSLCommerz callbacks (server-to-server, no custom headers possible)
@@ -126,6 +134,11 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeade
 const claimLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests, please try again later" } });
 const globalLimiter = rateLimit({ windowMs: 60 * 1000, max: 150, standardHeaders: true, legacyHeaders: false, message: { error: "Too many requests, please try again later" } });
 
+// Uploads live outside /api/v1 (see below) so they miss globalLimiter — give
+// them their own bucket. Generous enough for a chaptered audiobook upload,
+// tight enough that it can't be used as free storage.
+const uploadLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, message: { error: "Too many uploads, please slow down" } });
+
 app.use("/api/v1/auth", authLimiter);
 app.use("/api/v1/wallet/claim-daily", claimLimiter);
 app.use("/api/v1/wallet/claim-ad", claimLimiter);
@@ -154,7 +167,10 @@ const fallbackConfig = { uploadsDir: UPLOADS_DIR, baseUrl: BASE_URL };
 // When S3 is down (or not configured), uploadWithFallback() writes the buffer
 // to local disk itself, so diskStorage is no longer needed here.
 
-const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"]);
+// SVG is deliberately excluded: it is an active-content format (script,
+// foreignObject, on* handlers) that the magic-byte check in fileValidation.ts
+// cannot screen, and this API serves uploads without a CSP. Raster only.
+const IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 function isAllowedMediaMime(mime: string): boolean {
   if (!mime) return false;
@@ -175,12 +191,12 @@ const uploadImage = multer({
   fileFilter: (_req, file, cb) =>
     IMAGE_MIMES.has(file.mimetype)
       ? cb(null, true)
-      : cb(new Error("Only JPG, PNG, WebP, GIF, or SVG images are allowed")),
+      : cb(new Error("Only JPG, PNG, WebP or GIF images are allowed")),
 });
 
 const uploadMedia = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 1024 * 1024 * 1024 },
+  limits: { fileSize: 512 * 1024 * 1024 },
   fileFilter: (_req, file, cb) =>
     isAllowedMediaMime(file.mimetype)
       ? cb(null, true)
@@ -190,7 +206,12 @@ const uploadMedia = multer({
 // ── Upload routes ─────────────────────────────────────────────────────────────
 
 // /upload — images (covers, banners, avatars, site images)
-app.post("/upload", uploadImage.single("file"), async (req, res) => {
+// requireAuth + uploadLimiter: these routes are mounted on the app root rather
+// than under /api/v1, so they previously bypassed the auth chain, the global
+// rate limiter and the CSRF guard entirely — anyone on the internet could push
+// files into the platform's storage. attachAuth is mounted globally above, so
+// req.auth is populated here.
+app.post("/upload", uploadLimiter, requireAuth as any, requireUploader as any, uploadImage.single("file"), async (req: AuthenticatedRequest, res) => {
   if (!req.file) { res.status(400).json({ error: "No file provided" }); return; }
   if (!verifyFileHeader(req.file.buffer, req.file.mimetype)) {
     res.status(400).json({ error: "File content doesn't match its declared type" });
@@ -225,7 +246,7 @@ app.post("/upload", uploadImage.single("file"), async (req, res) => {
 });
 
 // /upload/media — ebooks (EPUB/PDF), audiobook tracks (MP3/AAC/WAV), large images
-app.post("/upload/media", uploadMedia.single("file"), async (req, res) => {
+app.post("/upload/media", uploadLimiter, requireAuth as any, requireUploader as any, uploadMedia.single("file"), async (req: AuthenticatedRequest, res) => {
   if (!req.file) { res.status(400).json({ error: "No file provided" }); return; }
   if (!verifyFileHeader(req.file.buffer, req.file.mimetype)) {
     res.status(400).json({ error: "File content doesn't match its declared type" });

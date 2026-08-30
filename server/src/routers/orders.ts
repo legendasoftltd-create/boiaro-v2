@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { router, protectedProcedure, publicProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
 import { calculateEarnings } from "../lib/earnings.js";
+import { priceOrder, evaluateCoupon } from "../lib/orderPricing.js";
 import * as redx from "../services/redx.service.js";
 import { cancelOrder, OrderCancelError } from "../services/orderCancel.service.js";
 
@@ -148,10 +149,26 @@ export const ordersRouter = router({
   paymentGateways: publicProcedure.query(() =>
     prisma.paymentGateway.findMany({
       where: { is_enabled: true, web_enabled: true },
+      // Explicit projection — never spread this row. `config` holds live
+      // gateway credentials (SSLCommerz store_password, bKash app_secret /
+      // username / password) in plaintext, and this endpoint is unauthenticated.
+      // A bare findMany here published those to anyone who called it.
+      select: {
+        id: true,
+        gateway_key: true,
+        label: true,
+        mode: true,
+        sort_priority: true,
+        is_enabled: true,
+        web_enabled: true,
+      },
       orderBy: { sort_priority: "asc" },
     })
   ),
 
+  // Pre-checkout quote. Delegates to the same evaluateCoupon() that
+  // placeOrder uses, so the figure quoted here and the figure actually charged
+  // can never drift apart — they are literally the same code path.
   validateCoupon: protectedProcedure
     .input(z.object({
       code: z.string(),
@@ -160,77 +177,42 @@ export const ordersRouter = router({
       hasEbook: z.boolean().optional(),
       hasAudiobook: z.boolean().optional(),
       // items with amounts allow book/category-scoped discount calculation
-      items: z.array(z.object({ bookId: z.string(), amount: z.number() })).optional(),
+      items: z.array(z.object({
+        bookId: z.string(),
+        amount: z.number(),
+        format: z.enum(["ebook", "audiobook", "hardcopy"]).optional(),
+      })).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const coupon = await prisma.coupon.findFirst({
-        where: { code: input.code.toUpperCase(), status: "active" },
-        include: { books: { select: { book_id: true } } },
+      // Older clients send hasHardcopy/hasEbook/hasAudiobook flags rather than
+      // per-item formats; synthesise formats from them so applies_to still works.
+      const flagFormats: ("ebook" | "audiobook" | "hardcopy")[] = [];
+      if (input.hasHardcopy) flagFormats.push("hardcopy");
+      if (input.hasEbook) flagFormats.push("ebook");
+      if (input.hasAudiobook) flagFormats.push("audiobook");
+
+      const items = (input.items ?? []).map((i, idx) => ({
+        book_id: i.bookId,
+        format: i.format ?? flagFormats[idx] ?? flagFormats[0],
+        amount: i.amount,
+      }));
+      if (items.length === 0 && flagFormats.length > 0) {
+        items.push({ book_id: "", format: flagFormats[0], amount: input.totalAmount });
+      }
+
+      const result = await evaluateCoupon({
+        userId: ctx.userId,
+        code: input.code,
+        items,
+        subtotal: input.totalAmount,
       });
-      if (!coupon) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid coupon code" });
 
-      const now = new Date();
-      if (coupon.start_date && coupon.start_date > now) throw new TRPCError({ code: "BAD_REQUEST", message: "Coupon not yet active" });
-      if (coupon.end_date && coupon.end_date < now) throw new TRPCError({ code: "BAD_REQUEST", message: "Coupon expired" });
-      if (coupon.usage_limit && coupon.used_count >= coupon.usage_limit) throw new TRPCError({ code: "BAD_REQUEST", message: "Usage limit reached" });
-      if (coupon.min_order_amount && input.totalAmount < coupon.min_order_amount) throw new TRPCError({ code: "BAD_REQUEST", message: `Min ৳${coupon.min_order_amount} required` });
-
-      if (coupon.applies_to === "hardcopy" && !input.hasHardcopy) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for hardcopy orders only" });
-      if (coupon.applies_to === "ebook" && !input.hasEbook) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for ebook orders only" });
-      if (coupon.applies_to === "audiobook" && !input.hasAudiobook) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for audiobook orders only" });
-
-      // Book-specific coupon: only enforce when items are provided (mobile may not send items)
-      if (coupon.applies_to === "books" && input.items && input.items.length > 0) {
-        const allowedIds = new Set(coupon.books.map((b) => b.book_id));
-        const cartIds = input.items.map((i) => i.bookId);
-        if (!cartIds.some((id) => allowedIds.has(id))) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is not valid for any book in your cart" });
-        }
-      }
-
-      // Category coupon: only enforce when items are provided (mobile may not send items)
-      if (coupon.applies_to === "category" && coupon.category_id && input.items && input.items.length > 0) {
-        const cartIds = input.items.map((i) => i.bookId);
-        const matchCount = await prisma.book.count({
-          where: { id: { in: cartIds }, category_id: coupon.category_id },
-        });
-        if (matchCount === 0) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is not valid for any book in your cart" });
-        }
-      }
-
-      if (coupon.per_user_limit && coupon.per_user_limit > 0) {
-        const usageCount = await prisma.couponUsage.count({ where: { coupon_id: coupon.id, user_id: ctx.userId } });
-        if (usageCount >= coupon.per_user_limit) throw new TRPCError({ code: "BAD_REQUEST", message: "You've already used this coupon" });
-      }
-
-      if (coupon.first_order_only) {
-        const orderCount = await prisma.order.count({
-          where: { user_id: ctx.userId, status: { in: ["confirmed", "paid", "completed", "delivered"] } },
-        });
-        if (orderCount > 0) throw new TRPCError({ code: "BAD_REQUEST", message: "This coupon is for first orders only" });
-      }
-
-      // Compute the eligible base amount for discount
-      let eligibleAmount = input.totalAmount;
-      if (coupon.applies_to === "books" && input.items?.length) {
-        const allowedIds = new Set(coupon.books.map((b) => b.book_id));
-        eligibleAmount = input.items.filter((i) => allowedIds.has(i.bookId)).reduce((s, i) => s + i.amount, 0);
-      } else if (coupon.applies_to === "category" && coupon.category_id && input.items?.length) {
-        const cartIds = input.items.map((i) => i.bookId);
-        const matchingBooks = await prisma.book.findMany({
-          where: { id: { in: cartIds }, category_id: coupon.category_id },
-          select: { id: true },
-        });
-        const matchingIds = new Set(matchingBooks.map((b) => b.id));
-        eligibleAmount = input.items.filter((i) => matchingIds.has(i.bookId)).reduce((s, i) => s + i.amount, 0);
-      }
-
-      const discountAmount = coupon.discount_type === "percentage"
-        ? Math.min(eligibleAmount, (eligibleAmount * coupon.discount_value) / 100)
-        : Math.min(eligibleAmount, coupon.discount_value);
-
-      return { couponId: coupon.id, discountAmount, eligibleAmount, code: coupon.code };
+      return {
+        couponId: result.coupon_id,
+        discountAmount: result.discount_amount,
+        eligibleAmount: result.eligible_amount,
+        code: result.code,
+      };
     }),
 
   placeOrder: protectedProcedure
@@ -239,14 +221,20 @@ export const ordersRouter = router({
         bookId: z.string(),
         format: z.enum(["ebook", "audiobook", "hardcopy"]),
         quantity: z.number().int().min(1).default(1),
-        price: z.number(),
+        // Advisory only — the server reprices every line from BookFormat.price.
+        // Kept in the schema so already-shipped clients keep validating.
+        price: z.number().optional(),
         bookTitle: z.string().optional(),
       })),
-      paymentMethod: z.string(),
+      // Allow-list: 'demo' is a non-production stub and is refused below unless
+      // ALLOW_DEMO_PAYMENTS is explicitly enabled.
+      paymentMethod: z.enum(["sslcommerz", "bkash", "nagad", "cod", "wallet", "demo"]),
       couponCode: z.string().optional(),
+      // Advisory only — the discount is recomputed from the coupon itself.
       couponDiscount: z.number().optional(),
       appliedCouponId: z.string().optional(),
-      grandTotal: z.number(),
+      // Cross-check only — a mismatch against the server's total rejects the order.
+      grandTotal: z.number().optional(),
       shippingName: z.string().optional(),
       shippingPhone: z.string().optional(),
       shippingAddress: z.string().optional(),
@@ -265,6 +253,12 @@ export const ordersRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.userId;
+
+      // 'demo' short-circuits the gateway entirely, so it must never be
+      // reachable in production. Opt in explicitly on staging instead.
+      if (input.paymentMethod === "demo" && process.env.ALLOW_DEMO_PAYMENTS !== "true") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Unsupported payment method" });
+      }
 
       // ── Idempotency: reuse a recent pending/awaiting order for same items ──
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -290,8 +284,21 @@ export const ordersRouter = router({
           .sort()
           .join(",");
         if (existingKeys === inputBookFormatKeys) {
-          // Return the existing order instead of creating a duplicate
           const existingPayment = recentPending.payments[0];
+
+          // Gateway-backed methods can't be short-circuited with gatewayUrl:null
+          // — the checkout page treats a null gatewayUrl as "nothing left to
+          // pay", clears the cart and shows the success screen, even though the
+          // order is still unpaid and the content stays locked. Fail loudly
+          // instead of reporting a success that didn't happen.
+          if (["sslcommerz", "bkash", "nagad"].includes(input.paymentMethod)) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "A payment for these items is already in progress. Complete or cancel it before trying again.",
+            });
+          }
+
+          // Return the existing order instead of creating a duplicate
           return {
             orderId: recentPending.id,
             orderNumber: recentPending.order_number,
@@ -326,15 +333,27 @@ export const ordersRouter = router({
         }
       }
 
-      // Look up BookFormat ids
-      const bookFormatMap: Record<string, string | undefined> = {};
-      for (const item of input.items) {
-        const fmt = await prisma.bookFormat.findFirst({
-          where: { book_id: item.bookId, format: item.format as any },
-          select: { id: true },
-        });
-        if (fmt) bookFormatMap[`${item.bookId}:${item.format}`] = fmt.id;
-      }
+      // ── Authoritative pricing ────────────────────────────────────────────
+      // Every line price, the coupon discount and the grand total are resolved
+      // server-side here. input.price / input.couponDiscount / input.grandTotal
+      // are only cross-checked, never charged.
+      const pricing = await priceOrder({
+        userId,
+        items: input.items.map(i => ({
+          book_id: i.bookId,
+          format: i.format,
+          quantity: i.quantity,
+          title: i.bookTitle,
+        })),
+        couponCode: input.couponCode ?? null,
+        shippingCost: input.shippingCost ?? null,
+        clientTotal: input.grandTotal ?? null,
+      });
+      const grandTotal = pricing.total;
+      const pricedByKey = new Map(pricing.items.map(i => [`${i.book_id}:${i.format}`, i]));
+      const bookFormatMap: Record<string, string | undefined> = Object.fromEntries(
+        pricing.items.map(i => [`${i.book_id}:${i.format}`, i.book_format_id ?? undefined])
+      );
 
       const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
       const isCod = input.paymentMethod === "cod";
@@ -346,11 +365,11 @@ export const ordersRouter = router({
         data: {
           user_id: userId,
           order_number: orderNumber,
-          total_amount: input.grandTotal,
+          total_amount: grandTotal,
           status: "pending",
           payment_method: input.paymentMethod,
-          coupon_code: input.couponCode || null,
-          discount_amount: input.couponDiscount || null,
+          coupon_code: pricing.coupon_code,
+          discount_amount: pricing.discount || null,
           shipping_name: input.shippingName || null,
           shipping_phone: input.shippingPhone || null,
           shipping_address: input.shippingAddress || null,
@@ -361,17 +380,18 @@ export const ordersRouter = router({
           shipping_method_id: input.shippingMethodId || null,
           shipping_method_name: input.shippingMethodName || null,
           shipping_carrier: input.shippingCarrier || null,
-          shipping_cost: input.shippingCost || null,
+          shipping_cost: pricing.shipping_cost || null,
           estimated_delivery_days: input.estimatedDeliveryDays || null,
           total_weight: input.totalWeight || null,
           packaging_cost: input.packagingCost || null,
           items: {
-            create: input.items.map(item => ({
-              book_id: item.bookId,
-              book_format_id: bookFormatMap[`${item.bookId}:${item.format}`] || null,
+            create: pricing.items.map(item => ({
+              book_id: item.book_id,
+              book_format_id: item.book_format_id,
               format: item.format as any,
               quantity: item.quantity,
               price: item.price,
+              discount_amount: item.discount_amount,
             })),
           },
           status_history: { create: { new_status: "pending", changed_by: userId } },
@@ -387,15 +407,18 @@ export const ordersRouter = router({
         data: {
           user_id: userId,
           order_id: order.id,
-          amount: input.grandTotal,
+          amount: grandTotal,
           method: input.paymentMethod,
           status: isCod ? "cod_pending" : isDemo ? "paid" : "awaiting_payment",
           transaction_id: txnId,
         },
       });
 
-      // Fulfill digital items for demo/mobile payments
-      const shouldFulfill = isDemo || isMobile;
+      // Fulfil immediately only for the explicitly-enabled demo stub.
+      // bkash/nagad previously landed here too, which unlocked paid content
+      // before a single taka moved — they now wait for their real gateway
+      // callback (/api/v1/payments/bkash/callback-order), same as SSLCommerz.
+      const shouldFulfill = isDemo;
       if (shouldFulfill) {
         // Fetch created order items to link earnings to the correct item IDs
         const createdItems = await prisma.orderItem.findMany({
@@ -408,8 +431,11 @@ export const ordersRouter = router({
         }
 
         for (const item of digitalItems) {
+          const priced = pricedByKey.get(`${item.bookId}:${item.format}`);
+          // Net of the allocated discount, so earnings reconcile with the ledger.
+          const saleAmount = priced ? priced.net_amount : 0;
           await prisma.userPurchase.create({
-            data: { user_id: userId, book_id: item.bookId, format: item.format, amount: item.price, payment_method: input.paymentMethod, status: "active", order_id: order.id },
+            data: { user_id: userId, book_id: item.bookId, format: item.format, amount: saleAmount, payment_method: input.paymentMethod, status: "active", order_id: order.id },
           });
           await prisma.contentUnlock.upsert({
             where: { user_id_book_id_format: { user_id: userId, book_id: item.bookId, format: item.format } },
@@ -420,7 +446,7 @@ export const ordersRouter = router({
           await calculateEarnings({
             bookId: item.bookId,
             format: item.format,
-            saleAmount: item.price,
+            saleAmount,
             orderId: order.id,
             orderItemId: itemIdMap[`${item.bookId}:${item.format}`] ?? null,
           });
@@ -429,15 +455,8 @@ export const ordersRouter = router({
           where: { id: order.id },
           data: { status: "confirmed" },
         });
-        if (isMobile) {
-          await prisma.payment.updateMany({
-            where: { order_id: order.id },
-            data: { status: "paid", transaction_id: `${input.paymentMethod.toUpperCase()}-${Date.now()}` },
-          });
-        }
-
         // Create accounting ledger income entry for immediately-fulfilled orders (idempotent)
-        const orderSellable = Math.max(0, Number(order.total_amount || 0) - Number(input.shippingCost || 0));
+        const orderSellable = Math.max(0, Number(order.total_amount || 0) - pricing.shipping_cost);
         if (orderSellable > 0) {
           const existingLedger = await prisma.accountingLedger.findFirst({
             where: { order_id: order.id, type: "income", category: "book_sale" },
@@ -460,13 +479,14 @@ export const ordersRouter = router({
         }
       }
 
-      // Record coupon usage
-      if (input.appliedCouponId && input.couponDiscount) {
+      // Record coupon usage — from the server's own validation, not the
+      // client's claimed id/amount.
+      if (pricing.coupon_id && pricing.discount > 0) {
         await prisma.couponUsage.create({
-          data: { coupon_id: input.appliedCouponId, user_id: userId, order_id: order.id, discount_amount: input.couponDiscount },
+          data: { coupon_id: pricing.coupon_id, user_id: userId, order_id: order.id, discount_amount: pricing.discount },
         });
         await prisma.coupon.update({
-          where: { id: input.appliedCouponId },
+          where: { id: pricing.coupon_id },
           data: { used_count: { increment: 1 } },
         });
       }
@@ -484,10 +504,10 @@ export const ordersRouter = router({
             delivery_area: input.shippingArea ?? "",
             delivery_area_id: input.shippingAreaId,
             customer_address: input.shippingAddress ?? "",
-            cash_collection_amount: String(isCod ? input.grandTotal : 0),
+            cash_collection_amount: String(isCod ? grandTotal : 0),
             parcel_weight: weightGrams,
             merchant_invoice_id: orderNumber,
-            value: String(input.grandTotal),
+            value: String(grandTotal),
             pickup_store_id: pickupStoreId,
           });
           await prisma.order.update({
@@ -548,7 +568,7 @@ export const ordersRouter = router({
         const payload = new URLSearchParams({
           store_id: storeId,
           store_passwd: storePassword,
-          total_amount: String(input.grandTotal),
+          total_amount: String(grandTotal),
           currency: "BDT",
           tran_id: txnId || order.id,
           success_url: `${callbackSuccess}?redirect=${encodeURIComponent(successUrl)}`,
@@ -599,7 +619,7 @@ export const ordersRouter = router({
             event_type: "initiate",
             status: String(data?.status || "unknown").toLowerCase(),
             transaction_id: txnId || order.id,
-            amount: input.grandTotal,
+            amount: grandTotal,
             raw_response: data,
             currency: "BDT",
           },
@@ -613,6 +633,98 @@ export const ordersRouter = router({
           });
         }
         return { orderId: order.id, gatewayUrl };
+      }
+
+      // ── bKash / Nagad tokenized checkout ─────────────────────────────────
+      // These used to be "fulfilled" the moment the order was created, with no
+      // gateway call at all — the checkout UI promised a redirect that never
+      // happened. Now they initiate a real tokenized checkout and the order
+      // stays awaiting_payment until /payments/bkash/callback-order executes
+      // the payment against bKash and calls finalizePaidOrder().
+      if (isMobile) {
+        const gateway = await prisma.paymentGateway.findUnique({ where: { gateway_key: input.paymentMethod } });
+        if (gateway && gateway.is_enabled === false) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `${input.paymentMethod} is not enabled` });
+        }
+        const cfg = asGatewayConfig(gateway?.config);
+        const appKey = readConfigString(cfg, "app_key") || process.env.BKASH_APP_KEY;
+        const appSecret = readConfigString(cfg, "app_secret") || process.env.BKASH_APP_SECRET;
+        const username = readConfigString(cfg, "username") || process.env.BKASH_USERNAME;
+        const password = readConfigString(cfg, "password") || process.env.BKASH_PASSWORD;
+        if (!appKey || !appSecret || !username || !password) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `${input.paymentMethod} credentials are missing. Contact admin.` });
+        }
+
+        const frontendBase = (process.env.FRONTEND_URL || "http://localhost:8080").replace(/\/$/, "");
+        const backendBase = (
+          process.env.BACKEND_URL ||
+          process.env.SERVER_URL ||
+          process.env.PUBLIC_API_URL ||
+          `http://localhost:${process.env.PORT || "3001"}`
+        ).replace(/\/$/, "");
+        const mode = (gateway?.mode === "live" || (!gateway?.mode && process.env.BKASH_APP_KEY)) ? "live" : "test";
+        const baseUrl = mode === "live"
+          ? "https://tokenized.pay.bka.sh/v1.2.0-beta"
+          : "https://tokenized.sandbox.bka.sh/v1.2.0-beta";
+
+        const tokenRes = await fetch(`${baseUrl}/tokenized/checkout/token/grant`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json", username, password },
+          body: JSON.stringify({ app_key: appKey, app_secret: appSecret }),
+        });
+        const tokenData = (await tokenRes.json()) as Record<string, unknown>;
+        const idToken = typeof tokenData.id_token === "string" ? tokenData.id_token : undefined;
+        if (!idToken) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "bKash token grant failed." });
+        }
+
+        const callbackUrl =
+          `${backendBase}/api/v1/payments/bkash/callback-order` +
+          `?order_id=${order.id}` +
+          `&redirect=${encodeURIComponent(`${frontendBase}/payment/callback`)}`;
+
+        const createRes = await fetch(`${baseUrl}/tokenized/checkout/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json", authorization: idToken, "x-app-key": appKey },
+          body: JSON.stringify({
+            mode: "0011",
+            payerReference: userId,
+            callbackURL: callbackUrl,
+            amount: grandTotal.toFixed(2),
+            currency: "BDT",
+            intent: "sale",
+            merchantInvoiceNumber: orderNumber,
+          }),
+        });
+        const createData = (await createRes.json()) as Record<string, unknown>;
+        const bkashUrl = typeof createData.bkashURL === "string" ? createData.bkashURL : undefined;
+        const paymentID = typeof createData.paymentID === "string" ? createData.paymentID : undefined;
+        if (!bkashUrl) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: String(createData.statusMessage || "Failed to initiate bKash payment"),
+          });
+        }
+
+        await prisma.order.update({ where: { id: order.id }, data: { status: "awaiting_payment" } });
+        await prisma.payment.updateMany({
+          where: { order_id: order.id },
+          data: { status: "awaiting_payment", transaction_id: paymentID || txnId },
+        });
+        await prisma.paymentEvent.create({
+          data: {
+            order_id: order.id,
+            gateway: input.paymentMethod,
+            event_type: "initiate",
+            status: String(createData.statusCode || "unknown").toLowerCase(),
+            transaction_id: paymentID || txnId,
+            amount: grandTotal,
+            raw_response: createData as any,
+            currency: "BDT",
+          },
+        });
+
+        return { orderId: order.id, gatewayUrl: bkashUrl };
       }
 
       return { orderId: order.id, gatewayUrl: null as string | null };

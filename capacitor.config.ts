@@ -6,7 +6,11 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     url: 'https://boiaro.com',
-    cleartext: true,
+    // cleartext was `true`, which makes Android permit plaintext HTTP traffic
+    // app-wide even though the app itself loads over HTTPS — it only weakens
+    // the transport. Re-enable locally (and only locally) if you point `url`
+    // at an http:// dev server.
+    cleartext: false,
   },
   plugins: {
     PushNotifications: {

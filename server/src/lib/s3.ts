@@ -375,12 +375,44 @@ export async function applyPublicReadPolicy(): Promise<void> {
       Effect: "Allow",
       Principal: "*",
       Action: "s3:GetObject",
+      // ── STAGED ROLLOUT — STEP 1 OF 2 ────────────────────────────────
+      // `audio/*` and `tts-paragraphs/*` are TEMPORARILY still public.
+      //
+      // The rest of the DRM work is live: the catalogue no longer publishes
+      // media locations, every playback route issues a short-lived presigned
+      // URL, and /content/secure-audio enforces entitlement. Making the
+      // objects private is the last step, and it is the one with
+      // platform-wide blast radius — so it ships separately, after real
+      // playback has been verified against production content.
+      //
+      // STEP 2: delete the two lines immediately below (and this block), then
+      // redeploy. Nothing else needs to change. Until then, a media URL
+      // captured before this release still resolves.
+      // NOTE: after step 2, `audio/*` is deliberately NOT here. That prefix holds paid
+      // audiobook chapters; while it was public-read, any direct URL played
+      // for anyone, forever, and the book-detail API handed those URLs out
+      // with the catalogue. Chapters are now served only through the
+      // access-checked presigned routes (content.getSignedUrl /
+      // content.batchSignedUrls, /api/v1/content/secure-audio/:trackId,
+      // /api/v1/content/audio-url, /api/v1/chapters), and admin review
+      // screens presign via toAdminPlayableUrl. Do not re-add it.
+      //
+      // `tts-paragraphs/*` is likewise absent: TTS output is the book's own
+      // text narrated, so it is book content in another format. It is served
+      // presigned via toSignedTtsUrl().
+      //
+      // `audio-previews/*` stays public: those are the free sample clips,
+      // deliberately hot-linkable. `radio-recordings/*` and `studio-masters/*`
+      // are broadcast catch-up, also public by design.
       Resource: [
+        // STEP 2: delete these two lines (and the STAGED ROLLOUT block above)
+        // to make paid audio and TTS private. Nothing else needs to change.
+        `arn:aws:s3:::${AWS_S3_BUCKET}/audio/*`,
+        `arn:aws:s3:::${AWS_S3_BUCKET}/tts-paragraphs/*`,
+
         `arn:aws:s3:::${AWS_S3_BUCKET}/covers/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/images/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/avatars/*`,
-        `arn:aws:s3:::${AWS_S3_BUCKET}/audio/*`,
-        `arn:aws:s3:::${AWS_S3_BUCKET}/tts-paragraphs/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/tts-tests/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/ambient-tracks/*`,
         // BoiAro On Air catch-up (MP3, liveRecorder.ts) and Studio master

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { TRPCError } from "@trpc/server";
 import { sendHttpError } from "../../lib/http.js";
 import { requireAuth } from "../../middleware/auth.js";
 import type { AuthenticatedRequest } from "../../middleware/auth.js";
@@ -8,6 +9,30 @@ import { maybeRecordRead } from "../../lib/readTracking.js";
 import { checkAndAwardBadges, awardPoints, bumpGoalProgress, bumpGoalMinutes, POINTS } from "../../services/gamification.service.js";
 
 export const progressRestRouter = Router();
+
+/**
+ * Progress endpoints feed points, streaks, the monthly leaderboard and
+ * competition payouts — which carry real prize money — so the numbers they
+ * accept have to be plausible. They previously took whatever the client sent:
+ * negative pages, positions far beyond the track length, and an unbounded
+ * session_seconds that credited goal minutes directly.
+ */
+const MAX_SESSION_SECONDS = 4 * 60 * 60; // 4h — longer than any single save interval
+
+function toCount(value: unknown, field: string): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: `${field} must be a non-negative number` });
+  }
+  return n;
+}
+
+/** Clamp a client-reported session length to something a real session could produce. */
+function safeSessionSeconds(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(n, MAX_SESSION_SECONDS);
+}
 
 progressRestRouter.get("/reading", requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -41,22 +66,27 @@ progressRestRouter.put("/reading", requireAuth, async (req: AuthenticatedRequest
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
-    const percentage = total_pages > 0 ? Math.min((current_page / total_pages) * 100, 100) : 0;
+    const pages = toCount(total_pages, "total_pages");
+    const page = Math.min(toCount(current_page, "current_page"), pages);
+    const sessionSeconds = safeSessionSeconds(session_seconds);
+    const percentage = pages > 0 ? Math.min((page / pages) * 100, 100) : 0;
     const existing = await prisma.readingProgress.findUnique({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
     });
-    const isNewRead = await maybeRecordRead(req.auth.userId, book_id, session_seconds, session_pages_read);
+    const isNewRead = await maybeRecordRead(req.auth.userId, book_id, sessionSeconds, session_pages_read);
     if (isNewRead) awardPoints(req.auth.userId!, POINTS.READ_SESSION, "read_session", book_id).catch(() => null);
     if (existing?.last_read_at) {
-      const deltaSeconds = (Date.now() - existing.last_read_at.getTime()) / 1000;
+      // Server-measured elapsed time, capped the same way — the client's own
+      // timer is never the sole source for anything that pays out.
+      const deltaSeconds = Math.min((Date.now() - existing.last_read_at.getTime()) / 1000, MAX_SESSION_SECONDS);
       bumpGoalMinutes(req.auth.userId!, "read_minutes", deltaSeconds).catch(() => null);
-    } else if (session_seconds) {
+    } else if (sessionSeconds) {
       // First save of a fresh reading session for this book — there's no
       // prior last_read_at to diff against, so without this the whole
       // session (e.g. someone testing with a page-turn or two) silently
       // credits zero goal minutes. session_seconds is the client's own
       // elapsed-since-open timer, the best available stand-in here.
-      bumpGoalMinutes(req.auth.userId!, "read_minutes", Number(session_seconds)).catch(() => null);
+      bumpGoalMinutes(req.auth.userId!, "read_minutes", sessionSeconds).catch(() => null);
     }
     if (percentage >= 100 && (existing?.percentage ?? 0) < 100) {
       bumpGoalProgress(req.auth.userId!, "books_month", 1).catch(() => null);
@@ -66,12 +96,12 @@ progressRestRouter.put("/reading", requireAuth, async (req: AuthenticatedRequest
       create: {
         user_id: req.auth.userId!,
         book_id,
-        current_page,
-        total_pages,
+        current_page: page,
+        total_pages: pages,
         percentage,
         last_read_at: new Date(),
       },
-      update: { current_page, total_pages, percentage, last_read_at: new Date() },
+      update: { current_page: page, total_pages: pages, percentage, last_read_at: new Date() },
     });
     checkAndAwardBadges(req.auth.userId!).catch(() => null);
     res.json({ message: "Reading progress saved" });
@@ -113,21 +143,26 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
       res.status(400).json({ error: "book_id is required" });
       return;
     }
-    const percentage = total_seconds > 0 ? Math.min((position_seconds / total_seconds) * 100, 100) : 0;
+    const totalSeconds = toCount(total_seconds, "total_seconds");
+    const positionSeconds = totalSeconds > 0
+      ? Math.min(toCount(position_seconds, "position_seconds"), totalSeconds)
+      : toCount(position_seconds, "position_seconds");
+    const sessionSeconds = safeSessionSeconds(session_seconds);
+    const percentage = totalSeconds > 0 ? Math.min((positionSeconds / totalSeconds) * 100, 100) : 0;
     const speedVal = playback_speed != null ? Math.min(Math.max(Number(playback_speed), 0.25), 4) : undefined;
     const existingListen = await prisma.listeningProgress.findUnique({
       where: { user_id_book_id: { user_id: req.auth.userId!, book_id } },
     });
-    const isNewListen = await maybeRecordListen(req.auth.userId, book_id, position_seconds, total_seconds);
+    const isNewListen = await maybeRecordListen(req.auth.userId, book_id, positionSeconds, totalSeconds);
     if (isNewListen) awardPoints(req.auth.userId!, POINTS.LISTEN_SESSION, "listen_session", book_id).catch(() => null);
     if (existingListen?.last_listened_at) {
-      const deltaSeconds = (Date.now() - existingListen.last_listened_at.getTime()) / 1000;
+      const deltaSeconds = Math.min((Date.now() - existingListen.last_listened_at.getTime()) / 1000, MAX_SESSION_SECONDS);
       bumpGoalMinutes(req.auth.userId!, "listen_minutes", deltaSeconds).catch(() => null);
-    } else if (session_seconds) {
+    } else if (sessionSeconds) {
       // Same first-save gap as reading above — the client saves on a fixed
       // interval, so without this the first tick of every new listening
       // session for a book credits zero goal minutes.
-      bumpGoalMinutes(req.auth.userId!, "listen_minutes", Number(session_seconds)).catch(() => null);
+      bumpGoalMinutes(req.auth.userId!, "listen_minutes", sessionSeconds).catch(() => null);
     }
     if (percentage >= 100 && (existingListen?.percentage ?? 0) < 100) {
       bumpGoalProgress(req.auth.userId!, "books_month", 1).catch(() => null);
@@ -137,17 +172,17 @@ progressRestRouter.put("/listening", requireAuth, async (req: AuthenticatedReque
       create: {
         user_id: req.auth.userId!,
         book_id,
-        current_track: track_number,
-        current_position: position_seconds,
-        total_duration: total_seconds,
+        current_track: Math.max(1, Math.trunc(Number(track_number) || 1)),
+        current_position: positionSeconds,
+        total_duration: totalSeconds,
         percentage,
         last_listened_at: new Date(),
         ...(speedVal != null && { playback_speed: speedVal }),
       },
       update: {
-        current_track: track_number,
-        current_position: position_seconds,
-        total_duration: total_seconds,
+        current_track: Math.max(1, Math.trunc(Number(track_number) || 1)),
+        current_position: positionSeconds,
+        total_duration: totalSeconds,
         percentage,
         last_listened_at: new Date(),
         ...(speedVal != null && { playback_speed: speedVal }),

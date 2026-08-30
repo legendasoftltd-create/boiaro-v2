@@ -7,6 +7,30 @@ import { s3Configured, createPresignedGetUrl, isS3Url } from "../../lib/s3.js";
 import { resolveFileUrl } from "../../lib/mediaUrl.js";
 import { checkBookFormatAccess } from "../../services/bookAccess.service.js";
 
+const AUDIO_URL_TTL = 3600; // seconds
+
+/**
+ * Real, time-limited S3 presigned URL — the same treatment /secure-audio and
+ * the tRPC content router already give. These two endpoints used to return
+ * `<public url>?token=secure_token&expires=<ms>`: a literal placeholder over an
+ * object in the public-read audio/* prefix, so the bare URL played for anyone,
+ * forever, and the `expires` value was never checked by anything.
+ */
+async function toSignedAudioUrl(rawUrl: string | null | undefined): Promise<string | null> {
+  if (!rawUrl) return null;
+  const resolved = resolveFileUrl(rawUrl);
+  if (!resolved) return null;
+  if (s3Configured && isS3Url(resolved)) {
+    try {
+      return await createPresignedGetUrl(resolved, AUDIO_URL_TTL);
+    } catch {
+      return null;
+    }
+  }
+  // Local/CDN storage — nothing to sign against.
+  return resolved;
+}
+
 export const contentRestRouter = Router();
 
 contentRestRouter.get("/download/ebook/:bookId", requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -58,12 +82,12 @@ contentRestRouter.post("/audio-url", requireAuth, async (req: AuthenticatedReque
         return;
       }
     }
-    const expires = Date.now() + 300_000;
-    const resolvedUrl = resolveFileUrl(track.audio_url)!;
-    res.json({
-      signed_url: `${resolvedUrl}?token=secure_token&expires=${expires}`,
-      expires_in: 300,
-    });
+    const signedUrl = await toSignedAudioUrl(track.audio_url);
+    if (!signedUrl) {
+      res.status(404).json({ error: "Track audio is unavailable" });
+      return;
+    }
+    res.json({ signed_url: signedUrl, expires_in: AUDIO_URL_TTL });
   } catch (error) {
     sendHttpError(res, error);
   }
@@ -92,16 +116,17 @@ contentRestRouter.post("/batch-audio-urls", requireAuth, async (req: Authenticat
         select: { track_number: true, audio_url: true, is_preview: true },
       }),
     ]);
-    const expires = Date.now() + 300_000;
     res.json({
-      tracks: tracks.map((t) => {
-        const playable = access.hasAccess || t.is_preview === true;
-        return {
-          track_number: t.track_number,
-          signed_url: playable && t.audio_url ? `${resolveFileUrl(t.audio_url)}?token=secure_token&expires=${expires}` : null,
-          expires_in: 300,
-        };
-      }),
+      tracks: await Promise.all(
+        tracks.map(async (t) => {
+          const playable = access.hasAccess || t.is_preview === true;
+          return {
+            track_number: t.track_number,
+            signed_url: playable ? await toSignedAudioUrl(t.audio_url) : null,
+            expires_in: AUDIO_URL_TTL,
+          };
+        })
+      ),
     });
   } catch (error) {
     sendHttpError(res, error);
@@ -130,21 +155,28 @@ contentRestRouter.get("/secure-audio/:trackId", async (req: AuthenticatedRequest
     }
 
     const isPreview = Boolean(track.is_preview);
-    const isFree = !track.chapter_price || track.chapter_price <= 0;
 
-    if (!isPreview && !isFree) {
-      // Require auth for paid chapters
-      const userId = req.auth?.userId;
-      if (!userId) {
-        res.status(401).json({ error: "Authentication required" });
-        return;
-      }
+    // Only a genuine preview track skips the entitlement check.
+    //
+    // This used to also skip it whenever `chapter_price` was unset, under a
+    // variable called `isFree` — but an empty chapter_price means "this chapter
+    // isn't sold individually", not "this chapter is free". Every audiobook
+    // that prices at the format level (the normal case) has no chapter_price on
+    // any track, so every one of its chapters was served to anyone who asked,
+    // unauthenticated. Whether the content is free is a question only the
+    // access engine can answer, and it answers it correctly for an anonymous
+    // caller too: a genuinely free format returns hasAccess before it ever
+    // needs a user id.
+    if (!isPreview) {
+      const userId = req.auth?.userId ?? null;
       const bookId = track.book_format.book_id;
 
       // Check per-chapter unlock first (cheaper, and independent of whole-format state)
-      const chapterUnlock = await prisma.contentUnlock.findFirst({
-        where: { user_id: userId, book_id: bookId, format: `audiobook_chapter_${trackId}`, status: "active" },
-      });
+      const chapterUnlock = userId
+        ? await prisma.contentUnlock.findFirst({
+            where: { user_id: userId, book_id: bookId, format: `audiobook_chapter_${trackId}`, status: "active" },
+          })
+        : null;
 
       if (!chapterUnlock) {
         // Whole-format entitlement (free / coin unlock / purchase / active subscription),
@@ -152,7 +184,11 @@ contentRestRouter.get("/secure-audio/:trackId", async (req: AuthenticatedRequest
         // own subscriber_access, delay, license window and included plans.
         const access = await checkBookFormatAccess(userId, bookId, "audiobook");
         if (!access.hasAccess) {
-          res.status(403).json({ error: "Chapter not unlocked" });
+          if (!userId) {
+            res.status(401).json({ error: "Authentication required" });
+          } else {
+            res.status(403).json({ error: "Chapter not unlocked" });
+          }
           return;
         }
       }

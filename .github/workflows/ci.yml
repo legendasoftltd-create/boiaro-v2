@@ -1,0 +1,46 @@
+name: CI
+
+# Gate on the test suite and the server typecheck. The suite had drifted red
+# (10 of 26 failing) with nothing enforcing it, which is how the stale
+# assertions survived a product change. Runs on PRs and on pushes to main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests & typecheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install server dependencies
+        run: npm ci
+        working-directory: server
+
+      # Prisma Client is generated into server/src/generated and is imported by
+      # the server sources the tests and typecheck read.
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: server
+
+      - name: Unit tests (web + server)
+        run: npx vitest run
+
+      - name: Server typecheck
+        run: npx tsc --noEmit
+        working-directory: server
+
+      - name: Server build
+        run: npm run build
+        working-directory: server

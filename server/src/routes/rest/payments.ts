@@ -599,6 +599,29 @@ function verifySslCommerzSign(payload: Record<string, unknown>, storePassword: s
   return isValid;
 }
 
+/**
+ * SSLCommerz requires the merchant to confirm that the amount the gateway
+ * validated is the amount the merchant expected — otherwise a transaction for
+ * a different (smaller) sum can be redeemed against an expensive order.
+ * `expected` is the Payment row written at initiate time, which holds the
+ * server-computed total.
+ */
+function amountMatches(
+  expected: number | null | undefined,
+  reported: unknown,
+  currency: unknown
+): { ok: boolean; reason?: string } {
+  if (expected === null || expected === undefined) return { ok: true }; // nothing to compare against
+  const got = Number(reported);
+  if (!Number.isFinite(got)) return { ok: false, reason: "gateway reported no usable amount" };
+  if (Math.abs(got - Number(expected)) > 0.01) {
+    return { ok: false, reason: `expected ${Number(expected).toFixed(2)}, gateway reported ${got.toFixed(2)}` };
+  }
+  const cur = typeof currency === "string" ? currency.toUpperCase() : "";
+  if (cur && cur !== "BDT") return { ok: false, reason: `unexpected currency ${cur}` };
+  return { ok: true };
+}
+
 function isSafeRedirect(url: string): boolean {
   const allowed = [
     process.env.FRONTEND_URL,
@@ -666,8 +689,11 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
     // stable, so a self-computed mismatch alone must not strand a paid order). Only hard-reject
     // a "success" callback when there's no val_id to fall back on. "failed"/"cancelled" carry no
     // unlock risk (no money moved), so a mismatch there is just logged.
+    // null = not attempted (no verify_sign in the payload, or no store password
+    // configured); true/false = attempted with that outcome.
+    let signValid: boolean | null = null;
     if (storePassword && payload["verify_sign"]) {
-      const signValid = verifySslCommerzSign(payload, storePassword);
+      signValid = verifySslCommerzSign(payload, storePassword);
       if (!signValid) {
         console.warn(`[payment] SSLCommerz verify_sign mismatch on ${status} callback`);
         if (status === "success" && !valId) {
@@ -706,7 +732,57 @@ async function handleSslCommerzCallback(req: AuthenticatedRequest, res: any, sta
     });
 
     const validationStatus = String(validationResponse?.status || "").toUpperCase();
-    const isValidated = !validationResponse || validationStatus === "VALID" || validationStatus === "VALIDATED";
+    const validationOk = validationResponse
+      ? validationStatus === "VALID" || validationStatus === "VALIDATED"
+      : null;
+
+    // A success callback is only honoured on *affirmative* proof: either our own
+    // verify_sign check passed, or SSLCommerz's validationserverAPI confirmed the
+    // transaction. Previously `!validationResponse` counted as validated, so a
+    // callback carrying nothing but a known tran_id — no signature, no val_id —
+    // was treated as a confirmed payment and fulfilled the order.
+    let isValidated = signValid === true || validationOk === true;
+
+    if (status === "success" && !isValidated) {
+      console.warn("[payment] rejecting unverified success callback", {
+        tranId, hasSign: signValid !== null, signValid, hasValId: Boolean(valId), validationStatus,
+      });
+      await prisma.paymentEvent.create({
+        data: {
+          gateway: "sslcommerz",
+          event_type: "callback_rejected_unverified",
+          order_id: orderId || null,
+          transaction_id: tranId || null,
+          status: "rejected",
+          raw_response: { payload, reason: "no valid signature and no gateway validation" } as any,
+        },
+      }).catch(() => null);
+      res.status(400).json({ error: "Payment could not be verified" });
+      return;
+    }
+
+    // Amount + currency must match what we recorded at initiate time (BUG-008).
+    if (status === "success" && isValidated && payment) {
+      const reportedAmount = validationResponse?.amount ?? payload["amount"];
+      const reportedCurrency = validationResponse?.currency ?? payload["currency"];
+      const check = amountMatches(payment.amount, reportedAmount, reportedCurrency);
+      if (!check.ok) {
+        console.error("[payment] amount mismatch — refusing to fulfil", { tranId, reason: check.reason });
+        await prisma.paymentEvent.create({
+          data: {
+            gateway: "sslcommerz",
+            event_type: "callback_rejected_amount_mismatch",
+            order_id: orderId || null,
+            transaction_id: tranId || null,
+            status: "rejected",
+            raw_response: { payload, validation: validationResponse, reason: check.reason } as any,
+          },
+        }).catch(() => null);
+        isValidated = false;
+        res.status(400).json({ error: "Payment amount could not be verified" });
+        return;
+      }
+    }
 
     if (status === "success" && isValidated) {
       if (orderId) {
@@ -799,38 +875,56 @@ paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
   // fall back to the official validationserverAPI round-trip (same as the browser-redirect
   // success handler) before rejecting — a self-computed hash mismatch alone must not drop a
   // genuinely paid IPN, since SSLCommerz's own servers are the authoritative source of truth.
-  let ipnGatewayConfig: Record<string, unknown> = {};
-  let ipnStorePass: string | undefined;
-  let ipnStoreId: string | undefined;
-  let ipnMode: "live" | "test" = "test";
-  if (payload["verify_sign"]) {
-    const gw = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
-    ipnGatewayConfig = asObject(gw?.config);
-    ipnStorePass = getString(ipnGatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
-    ipnStoreId = getString(ipnGatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
-    ipnMode = gw?.mode === "live" ? "live" : "test";
-    if (ipnStorePass && !verifySslCommerzSign(payload, ipnStorePass)) {
-      console.warn("[ipn] SSLCommerz verify_sign mismatch");
-      let validatedByApi = false;
-      if (ipnValId && ipnStoreId) {
-        const validationBase = ipnMode === "live"
-          ? "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
-          : "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php";
-        const url = `${validationBase}?val_id=${encodeURIComponent(ipnValId)}&store_id=${encodeURIComponent(ipnStoreId)}&store_passwd=${encodeURIComponent(ipnStorePass)}&v=1&format=json`;
-        try {
-          const response = await fetch(url);
-          const result = (await response.json()) as Record<string, unknown>;
-          const resultStatus = String(result?.status || "").toUpperCase();
-          validatedByApi = resultStatus === "VALID" || resultStatus === "VALIDATED";
-        } catch {
-          validatedByApi = false;
-        }
+  //
+  // Verification is now unconditional. Previously the whole block was skipped
+  // when the payload carried no verify_sign at all, so a POST of
+  // { tran_id, status: "VALID" } with nothing else was enough to fulfil an
+  // order. An IPN must now clear the signature check OR be confirmed by
+  // validationserverAPI; carrying neither is a rejection.
+  const ipnGw = await prisma.paymentGateway.findUnique({ where: { gateway_key: "sslcommerz" } });
+  const ipnGatewayConfig = asObject(ipnGw?.config);
+  const ipnStorePass = getString(ipnGatewayConfig, "store_password") || process.env.SSLCOMMERZ_STORE_PASSWORD;
+  const ipnStoreId = getString(ipnGatewayConfig, "store_id") || process.env.SSLCOMMERZ_STORE_ID;
+  const ipnMode: "live" | "test" = ipnGw?.mode === "live" ? "live" : "test";
+
+  let ipnValidation: Record<string, unknown> | null = null;
+  const ipnSignValid = Boolean(payload["verify_sign"]) && Boolean(ipnStorePass)
+    ? verifySslCommerzSign(payload, ipnStorePass!)
+    : null;
+
+  if (ipnSignValid !== true) {
+    if (ipnSignValid === false) console.warn("[ipn] SSLCommerz verify_sign mismatch");
+    // Fall back to the authoritative round-trip — SSLCommerz's own servers are
+    // the source of truth, and the verify_key field set they send isn't stable.
+    if (ipnValId && ipnStoreId && ipnStorePass) {
+      const validationBase = ipnMode === "live"
+        ? "https://securepay.sslcommerz.com/validator/api/validationserverAPI.php"
+        : "https://sandbox.sslcommerz.com/validator/api/validationserverAPI.php";
+      const url = `${validationBase}?val_id=${encodeURIComponent(ipnValId)}&store_id=${encodeURIComponent(ipnStoreId)}&store_passwd=${encodeURIComponent(ipnStorePass)}&v=1&format=json`;
+      try {
+        const response = await fetch(url);
+        ipnValidation = (await response.json()) as Record<string, unknown>;
+      } catch {
+        ipnValidation = { status: "VALIDATION_FAILED" };
       }
-      if (!validatedByApi) {
-        console.warn("[ipn] SSLCommerz validationserverAPI also failed to confirm — rejecting IPN");
-        res.status(400).json({ error: "Invalid signature" });
-        return;
-      }
+    }
+    const apiStatus = String(ipnValidation?.status || "").toUpperCase();
+    const validatedByApi = apiStatus === "VALID" || apiStatus === "VALIDATED";
+    if (!validatedByApi) {
+      console.warn("[ipn] neither signature nor validationserverAPI confirmed — rejecting IPN");
+      await prisma.paymentEvent.create({
+        data: {
+          gateway: "sslcommerz",
+          event_type: "ipn_rejected_unverified",
+          transaction_id: getString(payload, "tran_id") || null,
+          status: "rejected",
+          raw_response: { payload, validation: ipnValidation } as any,
+        },
+      }).catch(() => null);
+      res.status(400).json({ error: "Payment could not be verified" });
+      return;
+    }
+    if (ipnSignValid === false) {
       console.warn("[ipn] verify_sign mismatch but validationserverAPI confirmed — accepting IPN");
     }
   }
@@ -856,6 +950,29 @@ paymentsRestRouter.post("/sslcommerz/ipn", async (req, res) => {
 
   const IPN_UUID_PATTERN = /^(?:COIN|CHPT)-([\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12})-\d+$/i;
   if (status === "VALID" || status === "VALIDATED") {
+    // Same amount/currency assertion as the redirect callback (BUG-008).
+    if (payment) {
+      const check = amountMatches(
+        payment.amount,
+        ipnValidation?.amount ?? payload["amount"],
+        ipnValidation?.currency ?? payload["currency"]
+      );
+      if (!check.ok) {
+        console.error("[ipn] amount mismatch — refusing to fulfil", { tranId, reason: check.reason });
+        await prisma.paymentEvent.create({
+          data: {
+            gateway: "sslcommerz",
+            event_type: "ipn_rejected_amount_mismatch",
+            order_id: payment.order_id || null,
+            transaction_id: tranId || null,
+            status: "rejected",
+            raw_response: { payload, validation: ipnValidation, reason: check.reason } as any,
+          },
+        }).catch(() => null);
+        res.status(400).json({ error: "Payment amount could not be verified" });
+        return;
+      }
+    }
     if (payment?.order_id) {
       await finalizePaidOrder({ orderId: payment.order_id, paymentMethod: "sslcommerz", transactionId: tranId });
     } else if (payment?.subscription_id) {
@@ -1008,11 +1125,19 @@ paymentsRestRouter.get("/bkash/callback-order", async (req, res) => {
 
   const order = order_id ? await prisma.order.findUnique({ where: { id: order_id }, include: { items: true } }) : null;
   const bookId = order?.items?.[0]?.book_id || "";
-  const redirectBase = `${frontendBase}/b/${bookId}`;
+
+  // Cart checkout (orders.placeOrder) passes ?redirect=<frontend payment callback>
+  // and wants ?status=. The original caller — the single-audiobook QuickUnlockModal
+  // flow — passes no redirect and expects /b/<bookId>?${statusKey}=, so that
+  // stays the default. Same open-redirect allow-list as the SSLCommerz callbacks.
+  const rawRedirect = getString(asObject(req.query), "redirect");
+  const cartRedirect = rawRedirect && isSafeRedirect(rawRedirect) ? rawRedirect : null;
+  const redirectBase = cartRedirect ?? `${frontendBase}/b/${bookId}`;
+  const statusKey = cartRedirect ? "status" : "audiobook_status";
 
   try {
     if (!order_id || !paymentID || status !== "success" || !order) {
-      res.redirect(`${redirectBase}?audiobook_status=${status === "cancel" ? "cancelled" : "failed"}`);
+      res.redirect(`${redirectBase}?${statusKey}=${status === "cancel" ? "cancelled" : "failed"}`);
       return;
     }
 
@@ -1026,7 +1151,7 @@ paymentsRestRouter.get("/bkash/callback-order", async (req, res) => {
     const password = cfgStr("password") || process.env.BKASH_PASSWORD;
 
     if (!appKey || !appSecret || !username || !password) {
-      res.redirect(`${redirectBase}?audiobook_status=failed`); return;
+      res.redirect(`${redirectBase}?${statusKey}=failed`); return;
     }
 
     const mode = (gateway?.mode === "live" || (!gateway?.mode && process.env.BKASH_APP_KEY)) ? "live" : "test";
@@ -1039,7 +1164,7 @@ paymentsRestRouter.get("/bkash/callback-order", async (req, res) => {
     });
     const tokenData = await tokenRes.json() as Record<string, unknown>;
     const idToken = typeof tokenData.id_token === "string" ? tokenData.id_token : undefined;
-    if (!idToken) { res.redirect(`${redirectBase}?audiobook_status=failed`); return; }
+    if (!idToken) { res.redirect(`${redirectBase}?${statusKey}=failed`); return; }
 
     const execRes = await fetch(`${baseUrl}/tokenized/checkout/execute`, {
       method: "POST",
@@ -1052,14 +1177,14 @@ paymentsRestRouter.get("/bkash/callback-order", async (req, res) => {
 
     if (execStatus === "0000") {
       await finalizePaidOrder({ orderId: order_id, paymentMethod: payment?.method || "bkash", transactionId: txnId });
-      res.redirect(`${redirectBase}?audiobook_status=success`);
+      res.redirect(`${redirectBase}?${statusKey}=success`);
     } else {
       await prisma.payment.updateMany({ where: { order_id }, data: { status: "failed" } }).catch((err) => console.error("[payment] DB update failed:", err));
-      res.redirect(`${redirectBase}?audiobook_status=failed`);
+      res.redirect(`${redirectBase}?${statusKey}=failed`);
     }
   } catch (err) {
     console.error("bKash order callback error:", err);
-    res.redirect(`${redirectBase}?audiobook_status=failed`);
+    res.redirect(`${redirectBase}?${statusKey}=failed`);
   }
 });
 

@@ -158,7 +158,7 @@ export async function calculateEarnings(params: EarningParams): Promise<number> 
 export async function calculateOrderEarnings(orderId: string): Promise<number> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { items: { select: { id: true, book_id: true, format: true, price: true, quantity: true } } },
+    include: { items: { select: { id: true, book_id: true, format: true, price: true, quantity: true, discount_amount: true } } },
   });
   if (!order) return 0;
 
@@ -171,10 +171,18 @@ export async function calculateOrderEarnings(orderId: string): Promise<number> {
     });
     if (alreadyExists) continue;
 
+    // Revenue base is the line net of its allocated share of the order-level
+    // coupon discount. Using the gross line total here made contributor
+    // earnings disagree with the accounting ledger — which records the
+    // discounted order total — by exactly the discount on every discounted
+    // order. See OrderItem.discount_amount.
+    const gross = Number(item.price || 0) * Number(item.quantity || 1);
+    const saleAmount = Math.max(0, gross - Number(item.discount_amount || 0));
+
     const count = await calculateEarnings({
       bookId: item.book_id,
       format: item.format,
-      saleAmount: Number(item.price || 0) * Number(item.quantity || 1),
+      saleAmount,
       orderId: order.id,
       orderItemId: item.id,
     });

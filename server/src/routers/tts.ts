@@ -2,7 +2,8 @@ import { router, publicProcedure, protectedProcedure } from "../trpc.js";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { uploadWithFallback } from "../lib/s3.js";
+import { uploadWithFallback, createPresignedGetUrl, isS3Url, s3Configured } from "../lib/s3.js";
+import { resolveFileUrl } from "../lib/mediaUrl.js";
 import { getActiveSubscriptionPlanOverrides } from "../services/bookAccess.service.js";
 import crypto from "crypto";
 import { encryptSecret, decryptSecret } from "../lib/secretEncryption.js";
@@ -39,6 +40,19 @@ const BASE_URL = (process.env.BASE_URL || process.env.FRONTEND_URL || `http://lo
 export type TtsAccessResult =
   | { allowed: true;  access_type: string }
   | { allowed: false; reason: string; access_type: string; coin_price: number };
+
+/**
+ * TTS paragraph audio is generated from the book's own text, so it is book
+ * content in another format and must not be handed out as a permanently
+ * public URL. Objects in tts-paragraphs/* are private; every read presigns.
+ */
+export async function toSignedTtsUrl(rawUrl: string | null | undefined): Promise<string | null> {
+  if (!rawUrl) return null;
+  if (s3Configured && isS3Url(rawUrl)) {
+    try { return await createPresignedGetUrl(rawUrl, 3600); } catch { return null; }
+  }
+  return resolveFileUrl(rawUrl) ?? rawUrl;
+}
 
 export async function checkTtsAccess(
   userId: string,
@@ -340,7 +354,7 @@ export const ttsRouter = router({
           ctx.userId,
           input.paragraphIndex
         );
-        return { success: true, audioUrl, cached: false };
+        return { success: true, audioUrl: await toSignedTtsUrl(audioUrl), cached: false };
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         console.error("[TTS] generateParagraph error:", msg);
@@ -399,7 +413,7 @@ export const ttsRouter = router({
           select: { audio_url: true, created_at: true },
         });
         if (cached?.audio_url) {
-          return { audioUrl: cached.audio_url, cached: true, success: true, generatedAt: cached.created_at };
+          return { audioUrl: await toSignedTtsUrl(cached.audio_url), cached: true, success: true, generatedAt: cached.created_at };
         }
 
         // Split into paragraphs and generate first one immediately
@@ -415,7 +429,7 @@ export const ttsRouter = router({
           );
         }
 
-        return { audioUrl: firstUrl, cached: false, success: true, generatedAt: new Date() };
+        return { audioUrl: await toSignedTtsUrl(firstUrl), cached: false, success: true, generatedAt: new Date() };
       } catch (err) {
         console.error("[TTS] Error:", err);
         return { audioUrl: null, cached: false, success: false, error: err instanceof Error ? err.message : "Unknown error" };
@@ -423,15 +437,29 @@ export const ttsRouter = router({
     }),
 
   // Get book audio URL (query)
-  getBookAudioUrl: publicProcedure
+  //
+  // This was a publicProcedure that returned the generated TTS audio for any
+  // book to anyone, with no access check at all — TTS is narrated book text, so
+  // that handed out book content for free. It now requires a session and the
+  // same checkTtsAccess() gate as generation, and returns a presigned URL.
+  getBookAudioUrl: protectedProcedure
     .input(z.object({ bookId: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const access = await checkTtsAccess(ctx.userId, input.bookId);
+      if (access.allowed === false) {
+        throw new TRPCError({ code: "FORBIDDEN", message: access.reason ?? "TTS is not available for this book" });
+      }
       const audio = await prisma.ttsAudio.findFirst({
         where: { book_id: input.bookId, status: "completed" },
         orderBy: { created_at: "desc" },
         select: { audio_url: true, created_at: true },
       });
-      return { exists: !!audio, audioUrl: audio?.audio_url ?? null, generatedAt: audio?.created_at ?? null, success: true };
+      return {
+        exists: !!audio,
+        audioUrl: await toSignedTtsUrl(audio?.audio_url),
+        generatedAt: audio?.created_at ?? null,
+        success: true,
+      };
     }),
 
   // Admin: check ElevenLabs API status + quota
@@ -540,7 +568,11 @@ export const ttsRouter = router({
         }),
         prisma.ttsAudio.count({ where: { status: "completed" } }),
       ]);
-      return { items, total };
+      // Objects are private — presign so the admin player can still play them.
+      const signed = await Promise.all(
+        items.map(async (i) => ({ ...i, audio_url: await toSignedTtsUrl(i.audio_url) }))
+      );
+      return { items: signed, total };
     }),
 
   // Admin: delete specific cached audio

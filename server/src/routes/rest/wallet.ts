@@ -69,10 +69,27 @@ walletRestRouter.post("/claim-daily", requireAuth, async (req: AuthenticatedRequ
     const day = ((streak.current_streak ?? 1) - 1) % 7 + 1;
     const REWARD = schedule[day - 1] ?? schedule[schedule.length - 1];
 
-    const [, wallet] = await prisma.$transaction([
-      prisma.coinTransaction.create({ data: { user_id: userId, amount: REWARD, type: "earn", description: `Daily login reward (day ${day})`, source: "daily_login" } }),
-      prisma.userCoin.upsert({ where: { user_id: userId }, create: { user_id: userId, balance: REWARD, total_earned: REWARD, total_spent: 0 }, update: { balance: { increment: REWARD }, total_earned: { increment: REWARD } } }),
-    ]);
+    // The "already claimed today" check above is a read, so concurrent requests
+    // could both pass it and both credit. Re-checking inside a Serializable
+    // transaction makes Postgres abort the loser of the race instead.
+    let alreadyClaimed = false;
+    const wallet = await prisma.$transaction(async (tx: any) => {
+      const dupe = await tx.coinTransaction.findFirst({
+        where: { user_id: userId, source: "daily_login", created_at: { gte: todayStart } },
+      });
+      if (dupe) { alreadyClaimed = true; return null; }
+      await tx.coinTransaction.create({ data: { user_id: userId, amount: REWARD, type: "earn", description: `Daily login reward (day ${day})`, source: "daily_login" } });
+      return tx.userCoin.upsert({ where: { user_id: userId }, create: { user_id: userId, balance: REWARD, total_earned: REWARD, total_spent: 0 }, update: { balance: { increment: REWARD }, total_earned: { increment: REWARD } } });
+    }, { isolationLevel: "Serializable" }).catch((err: any) => {
+      // 40001 = serialization failure: another request won the race.
+      if (err?.code === "P2034" || /serializ/i.test(String(err?.message))) { alreadyClaimed = true; return null; }
+      throw err;
+    });
+
+    if (alreadyClaimed || !wallet) {
+      res.status(400).json({ error: "Daily reward already claimed" });
+      return;
+    }
     checkAndAwardBadges(userId).catch(() => null);
     res.json({ reward: REWARD, day, schedule, current_streak: streak.current_streak, message: "Daily reward claimed", new_balance: wallet.balance });
   } catch (error) {
@@ -98,16 +115,32 @@ walletRestRouter.post("/claim-ad", requireAuth, async (req: AuthenticatedRequest
       res.status(400).json({ error: "Daily ad reward limit reached" });
       return;
     }
-    const [, wallet] = await prisma.$transaction([
-      prisma.coinTransaction.create({
+
+    // Re-count inside a Serializable transaction so parallel claims can't both
+    // slip past the cap (the count above is only an early, friendly rejection).
+    let capReached = false;
+    const wallet = await prisma.$transaction(async (tx: any) => {
+      const count = await tx.coinTransaction.count({
+        where: { user_id: req.auth.userId!, source: "ad_reward", created_at: { gte: todayStart } },
+      });
+      if (count >= MAX_PER_DAY) { capReached = true; return null; }
+      await tx.coinTransaction.create({
         data: { user_id: req.auth.userId!, amount: AD_REWARD, type: "earn", description: `Ad reward - ${placement}`, source: "ad_reward", reference_id: placement },
-      }),
-      prisma.userCoin.upsert({
+      });
+      return tx.userCoin.upsert({
         where: { user_id: req.auth.userId! },
         create: { user_id: req.auth.userId!, balance: AD_REWARD, total_earned: AD_REWARD, total_spent: 0 },
         update: { balance: { increment: AD_REWARD }, total_earned: { increment: AD_REWARD } },
-      }),
-    ]);
+      });
+    }, { isolationLevel: "Serializable" }).catch((err: any) => {
+      if (err?.code === "P2034" || /serializ/i.test(String(err?.message))) { capReached = true; return null; }
+      throw err;
+    });
+
+    if (capReached || !wallet) {
+      res.status(400).json({ error: "Daily ad reward limit reached" });
+      return;
+    }
     checkAndAwardBadges(req.auth.userId!).catch(() => null);
     res.json({ reward: AD_REWARD, message: "Ad reward claimed", new_balance: wallet.balance });
   } catch (error) {
@@ -226,13 +259,30 @@ walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, 
       return;
     }
 
+    // Cheap pre-check purely for a friendly error message. The check that
+    // actually protects the balance is the conditional update inside the
+    // transaction below — this read alone used to be the only guard, so two
+    // concurrent unlocks of different books could both pass it and overdraw
+    // the wallet into a negative balance.
     const wallet = await prisma.userCoin.findUnique({ where: { user_id: req.auth.userId! } });
     if (!wallet || wallet.balance < coin_cost) {
       res.status(400).json({ error: "Insufficient coins", required: coin_cost, balance: wallet?.balance ?? 0 });
       return;
     }
 
+    let insufficient = false;
     const unlock = await prisma.$transaction(async (tx: any) => {
+      // Compare-and-set: only debits when the balance is still sufficient at
+      // the moment of the write, and takes a row lock for the rest of the
+      // transaction so a concurrent spend has to queue behind it.
+      const debited = await tx.userCoin.updateMany({
+        where: { user_id: req.auth.userId!, balance: { gte: coin_cost } },
+        data: { balance: { decrement: coin_cost }, total_spent: { increment: coin_cost } },
+      });
+      if (debited.count === 0) {
+        insufficient = true;
+        return null;
+      }
       const created = await tx.contentUnlock.upsert({
         where: { user_id_book_id_format: { user_id: req.auth.userId!, book_id, format } },
         create: { user_id: req.auth.userId!, book_id, format, coins_spent: coin_cost, unlock_method: "coin", status: "active" },
@@ -241,12 +291,14 @@ walletRestRouter.post("/unlock", requireAuth, async (req: AuthenticatedRequest, 
       await tx.coinTransaction.create({
         data: { user_id: req.auth.userId!, amount: -coin_cost, type: "spend", description: `Content unlock - ${format}`, reference_id: book_id, source: "content_unlock" },
       });
-      await tx.userCoin.update({
-        where: { user_id: req.auth.userId! },
-        data: { balance: { decrement: coin_cost }, total_spent: { increment: coin_cost } },
-      });
       return created;
     });
+
+    if (insufficient || !unlock) {
+      const current = await prisma.userCoin.findUnique({ where: { user_id: req.auth.userId! } });
+      res.status(400).json({ error: "Insufficient coins", required: coin_cost, balance: current?.balance ?? 0 });
+      return;
+    }
 
     if (salePriceTaka > 0) {
       await calculateEarnings({ bookId: book_id, format, saleAmount: salePriceTaka, contentUnlockId: unlock.id });
