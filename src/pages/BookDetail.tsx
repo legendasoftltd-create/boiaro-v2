@@ -30,7 +30,7 @@ function normalizeFileSize(raw: string | null | undefined): string {
   return raw;
 }
 
-function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterBook & { allNarrators: Narrator[] }; audioTracks: AudioTrack[] } {
+export function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterBook & { allNarrators: Narrator[] }; audioTracks: AudioTrack[] } {
   const author: Author = dbBook.author ? {
     id: dbBook.author_id || "",
     name: dbBook.author.name || "",
@@ -185,7 +185,12 @@ function buildMasterBook(dbBook: any, contributors: any[] = []): { book: MasterB
           chapterTakaPrice: isPreview ? undefined : (t.chapter_taka_price != null ? Number(t.chapter_taka_price) : undefined),
         } as AudioTrack
       })
-      .filter((t: AudioTrack | null): t is AudioTrack => Boolean((t?.audioUrl || "").trim()))
+      // Must mirror the `hasSource` guard inside the map above. This used to
+      // test audioUrl directly, which silently dropped every track once the
+      // API stopped publishing audio_url with the catalogue — the chapter list
+      // rendered as "0 episodes" for every audiobook.
+      .filter((t: AudioTrack | null): t is AudioTrack =>
+        Boolean(t) && (t!.hasSource ?? Boolean((t!.audioUrl || "").trim())))
   }
 
   const bookFormats: MasterBook["formats"] = {}
