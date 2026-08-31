@@ -102,8 +102,13 @@ radioRestRouter.get("/live/:sessionId/chat", async (req, res) => {
 });
 
 // ── GET /api/v1/radio/live/:sessionId/listener-count ──────────────────────────
-radioRestRouter.get("/live/:sessionId/listener-count", (req, res) => {
-  res.json({ count: getListenerCount(String(req.params.sessionId)) });
+// count is null when an admin has hidden the listener count
+// (radio_listener_count_visible) — the same gate the socket, tRPC and
+// /live payload apply. This endpoint is the one a client would reach for
+// if the others went quiet, so leaving it open would defeat all three.
+radioRestRouter.get("/live/:sessionId/listener-count", async (req, res) => {
+  const visible = await getRadioSettingBool("radio_listener_count_visible");
+  res.json({ count: visible ? getListenerCount(String(req.params.sessionId)) : null });
 });
 
 // ── POST /api/v1/radio/live/:sessionId/song-request ───────────────────────────
