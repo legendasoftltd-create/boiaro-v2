@@ -102,7 +102,7 @@ export async function signInUser(
   const deviceResult = await resolveDeviceSessionOnLogin(user.id, { ...input, ...requestInfo });
   if (deviceResult.allowed === false) throw deviceLimitError(deviceResult.limit, deviceResult.devices);
 
-  const { accessToken, refreshToken } = signTokens(user.id, user.email);
+  const { accessToken, refreshToken } = signTokens(user.id, user.email, input.platform);
 
   return {
     accessToken,
@@ -137,8 +137,33 @@ export async function getMe(userId: string) {
 export async function refreshAuthTokens(refreshToken: string, deviceParams: DeviceLoginParams = {}) {
   try {
     const payload = verifyRefreshToken(refreshToken);
+
+    // Kill switch: "sign out from all devices", a password change or a security
+    // revoke stamps sessions_valid_from, and every token issued before that
+    // instant stops renewing. Access tokens already in flight keep working
+    // until they expire (1h), which bounds how long a revoked session lives.
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { sessions_valid_from: true },
+    });
+    if (!user) {
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "Session is no longer valid" });
+    }
+    if (user.sessions_valid_from && payload.iat) {
+      const issuedAt = payload.iat * 1000;
+      if (issuedAt < user.sessions_valid_from.getTime()) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Session was revoked. Please sign in again." });
+      }
+    }
+
     await touchOrCreateDeviceSessionOnRefresh(payload.sub, deviceParams);
-    return signTokens(payload.sub, payload.email);
+
+    // Renewal keeps the lifetime the session was opened with, so an app
+    // session stays a 90-day one even when the refresh call carries no
+    // platform hint. Rotating on every refresh is what makes the window a
+    // sliding inactivity window rather than a hard expiry.
+    const platform = deviceParams.platform ?? (payload.plt === "app" ? "android" : undefined);
+    return signTokens(payload.sub, payload.email, platform);
   } catch (err) {
     if (err instanceof TRPCError) throw err;
     throw new TRPCError({
@@ -146,4 +171,17 @@ export async function refreshAuthTokens(refreshToken: string, deviceParams: Devi
       message: "Invalid refresh token",
     });
   }
+}
+
+/**
+ * Ends every session for a user: "sign out from all devices", and the forced
+ * revoke after a password change or reset. Device rows are cleared too so the
+ * plan's device-count allowance is freed.
+ */
+export async function revokeAllSessions(userId: string) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: { sessions_valid_from: new Date() },
+  });
+  await prisma.deviceSession.deleteMany({ where: { user_id: userId } });
 }

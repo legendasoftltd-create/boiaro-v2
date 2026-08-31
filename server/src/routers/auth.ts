@@ -11,6 +11,7 @@ import {
   deviceLimitError,
   getMe,
   refreshAuthTokens,
+  revokeAllSessions,
   signInUser,
 } from "../services/auth.service.js";
 import { resolveDeviceSessionOnLogin } from "../services/deviceSession.service.js";
@@ -320,6 +321,17 @@ export const authRouter = router({
 
   me: protectedProcedure.query(async ({ ctx }) => getMe(ctx.userId!)),
 
+  /**
+   * Ends every session for the caller, on every device.
+   *
+   * Plain sign-out is deliberately not this — it only drops the tokens held by
+   * the current browser or app, leaving the user's other devices signed in.
+   */
+  signOutAllDevices: protectedProcedure.mutation(async ({ ctx }) => {
+    await revokeAllSessions(ctx.userId!);
+    return { success: true };
+  }),
+
   requestPasswordReset: publicProcedure
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input }) => {
@@ -378,8 +390,16 @@ export const authRouter = router({
       const password_hash = await bcrypt.hash(input.password, 12);
       await prisma.user.update({
         where: { id: user.id },
-        data: { password_hash, reset_otp: null, reset_otp_expires: null },
+        data: {
+          password_hash,
+          reset_otp: null,
+          reset_otp_expires: null,
+          // Resetting a password ends every existing session — that is the
+          // point of resetting it.
+          sessions_valid_from: new Date(),
+        },
       });
+      await prisma.deviceSession.deleteMany({ where: { user_id: user.id } });
       return { message: "Password reset successfully" };
     }),
 

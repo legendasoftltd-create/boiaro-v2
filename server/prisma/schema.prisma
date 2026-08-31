@@ -49,6 +49,12 @@ model User {
   updated_at          DateTime  @updatedAt
   reset_otp           String?
   reset_otp_expires   DateTime?
+  // Sessions issued before this instant are refused at refresh time. Bumping it
+  // is how "sign out from all devices", a password change and a security revoke
+  // end every session at once — stateless JWTs have no other kill switch.
+  // Normal sign-out does NOT touch this: it only drops the local tokens, so the
+  // user's other devices stay signed in.
+  sessions_valid_from DateTime?
   // Apple's `sub` claim — the only stable identifier across logins, since Apple
   // omits email/name from the client payload after the first authorization.
   apple_id            String?   @unique

@@ -43,10 +43,24 @@ export function refreshSession(): Promise<boolean> {
     const refresh_token = getRefreshToken();
     if (!refresh_token) return false;
     try {
+      // Device info rides along so the refresh keeps the device session's
+      // last-seen time current (that session is what the plan's device limit
+      // counts) and so the renewed token keeps the platform's own lifetime.
+      let device: Record<string, string> = {};
+      try {
+        const [{ getOrCreateDeviceId, getDeviceDisplayInfo }] = await Promise.all([
+          import("./deviceId"),
+        ]);
+        const info = await getDeviceDisplayInfo();
+        device = { deviceId: await getOrCreateDeviceId(), deviceName: info.deviceName, platform: info.platform };
+      } catch {
+        // Device details are an optimisation, never a precondition for renewal.
+      }
+
       const res = await fetch(`${API_BASE}/api/v1/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Requested-With": "boiaro-web" },
-        body: JSON.stringify({ refresh_token }),
+        body: JSON.stringify({ refresh_token, ...device }),
       });
       if (res.status >= 400 && res.status < 500) {
         // The refresh token itself is bad or expired — this is a real sign-out.

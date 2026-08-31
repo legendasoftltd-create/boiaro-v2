@@ -9,6 +9,7 @@ import {
   deviceLimitError,
   getMe,
   refreshAuthTokens,
+  revokeAllSessions,
   signInUser,
 } from "../../services/auth.service.js";
 import { resolveDeviceSessionOnLogin } from "../../services/deviceSession.service.js";
@@ -243,7 +244,14 @@ authRestRouter.post("/reset-password-confirm", async (req, res) => {
     const password_hash = await bcrypt.hash(password, 12);
     await prisma.user.update({
       where: { id: user.id },
-      data: { password_hash, reset_otp: null, reset_otp_expires: null },
+      data: {
+        password_hash,
+        reset_otp: null,
+        reset_otp_expires: null,
+        // A password reset ends every existing session — that is the point of
+        // resetting it. Device rows are cleared alongside (revokeAllSessions).
+        sessions_valid_from: new Date(),
+      },
     });
     res.json({ message: "Password reset successfully" });
   } catch (error) {
@@ -641,6 +649,22 @@ authRestRouter.post("/facebook", async (req, res) => {
       jwtAccessToken,
       jwtRefreshToken
     );
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── POST /api/v1/auth/logout-all ─────────────────────────────────────────────
+// Ends every session for the signed-in user, on every device.
+//
+// Plain sign-out is deliberately NOT this: it just drops the tokens the client
+// holds, so the user's other devices stay signed in. This is the explicit
+// "Sign out from all devices" action, and it is also what a password change or
+// a security revoke performs.
+authRestRouter.post("/logout-all", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    await revokeAllSessions(req.auth.userId!);
+    res.json({ success: true, message: "Signed out from all devices" });
   } catch (error) {
     sendHttpError(res, error);
   }

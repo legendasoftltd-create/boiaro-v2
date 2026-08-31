@@ -25,7 +25,7 @@ import { shareCardImage } from "@/lib/shareCard"
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? ""
 
 export default function Profile() {
-  const { user, profile, signOut, updateProfile, setProfileAvatar } = useAuth()
+  const { user, profile, signOut, signOutAllDevices, updateProfile, setProfileAvatar } = useAuth()
   const navigate = useNavigate()
   const { toast } = useToast()
   const [searchParams] = useSearchParams()
@@ -38,6 +38,7 @@ export default function Profile() {
   const [email, setEmail] = useState("")
   const [saving, setSaving] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [signingOutAll, setSigningOutAll] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -149,6 +150,21 @@ export default function Profile() {
   const handleSignOut = async () => {
     await signOut()
     navigate("/")
+  }
+
+  // Distinct from the button above: that one only signs out this browser/app,
+  // this one ends every session on every device.
+  const handleSignOutAll = async () => {
+    setSigningOutAll(true)
+    try {
+      await signOutAllDevices()
+      toast({ title: "সব ডিভাইস থেকে সাইন আউট হয়েছে" })
+      navigate("/")
+    } catch {
+      toast({ title: "সাইন আউট করা যায়নি", variant: "destructive" })
+    } finally {
+      setSigningOutAll(false)
+    }
   }
 
   const removeBookmark = (bookId: string) => {
@@ -593,6 +609,16 @@ export default function Profile() {
                     </Button>
                     <Button variant="outline" onClick={handleSignOut} className="gap-1.5 text-destructive border-destructive/20 hover:bg-destructive/10 text-[13px] rounded-xl">
                       <LogOut className="w-4 h-4" /> Sign Out
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={handleSignOutAll}
+                      disabled={signingOutAll}
+                      title="এই অ্যাকাউন্টের সব ডিভাইসের সেশন বন্ধ হবে"
+                      className="gap-1.5 text-muted-foreground hover:text-destructive text-[13px] rounded-xl"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      {signingOutAll ? "সাইন আউট হচ্ছে…" : "সব ডিভাইস থেকে সাইন আউট"}
                     </Button>
                   </div>
                 </CardContent>

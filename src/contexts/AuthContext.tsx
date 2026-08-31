@@ -46,7 +46,10 @@ interface AuthContextType {
   signInWithGoogle: (accessToken: string, revokeDeviceId?: string) => Promise<SignInResult>
   signInWithFacebook: (accessToken: string, revokeDeviceId?: string) => Promise<SignInResult>
   signInWithPhone: (phone: string, otp: string, revokeDeviceId?: string) => Promise<SignInResult>
+  /** Signs out this browser/app only — other devices stay signed in. */
   signOut: () => Promise<void>
+  /** Ends every session everywhere. Also what a password reset performs. */
+  signOutAllDevices: () => Promise<void>
   updateProfile: (updates: Partial<Profile>) => Promise<void>
   setProfileAvatar: (url: string) => void
 }
@@ -75,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyPhoneOtpMutation = trpc.auth.verifyPhoneOtp.useMutation()
   const signUpMutation = trpc.auth.signUp.useMutation()
   const updateProfileMutation = trpc.auth.updateProfile.useMutation()
+  const signOutAllMutation = trpc.auth.signOutAllDevices.useMutation()
 
   const loadUser = useCallback(async () => {
     const token = localStorage.getItem("access_token")
@@ -200,13 +204,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const signOut = async () => {
-    localStorage.removeItem("access_token")
-    localStorage.removeItem("refresh_token")
+  /** Local sign-out: drops this device's tokens only. Other devices keep theirs. */
+  const clearLocalSession = () => {
+    clearTokens()
     setUser(null)
     setProfile(null)
     setSentryUser(null)
     queryClient.clear()
+  }
+
+  const signOut = async () => {
+    clearLocalSession()
+  }
+
+  /**
+   * Ends every session for this account by stamping sessions_valid_from on the
+   * server, so no refresh token issued before now can renew. Local tokens are
+   * dropped either way — if the call fails the user is still signed out here.
+   */
+  const signOutAllDevices = async () => {
+    try {
+      await signOutAllMutation.mutateAsync()
+    } finally {
+      clearLocalSession()
+    }
   }
 
   const updateProfile = async (updates: Partial<Profile> & { email?: string }) => {
@@ -224,7 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, session: null, profile, loading, signIn, signInWithGoogle, signInWithFacebook, signInWithPhone, signUp, signOut, updateProfile, setProfileAvatar }}>
+    <AuthContext.Provider value={{ user, session: null, profile, loading, signIn, signInWithGoogle, signInWithFacebook, signInWithPhone, signUp, signOut, signOutAllDevices, updateProfile, setProfileAvatar }}>
       {children}
     </AuthContext.Provider>
   )
