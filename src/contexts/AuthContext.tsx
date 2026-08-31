@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc"
 import { setSentryUser } from "@/lib/sentry"
 import { useQueryClient } from "@tanstack/react-query"
 import { getOrCreateDeviceId, getDeviceDisplayInfo } from "@/lib/deviceId"
+import { clearTokens, isAuthError } from "@/lib/authTokens"
 
 export interface DeviceSessionSummary {
   id: string
@@ -86,10 +87,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser({ id: me.id, email: me.email, roles: me.roles })
       setProfile(me.profile as Profile)
       setSentryUser({ id: me.id, email: me.email })
-    } catch {
-      localStorage.removeItem("access_token")
-      localStorage.removeItem("refresh_token")
-      setUser(null)
+    } catch (err) {
+      // This used to sign the user out on ANY failure. A dropped connection, a
+      // 500, or an API restart therefore logged everyone out — and because the
+      // refresh token was never spent, so did every ordinary 7-day expiry.
+      //
+      // Only a rejected session ends the session now. The tRPC client already
+      // tries a refresh on 401, so reaching here with an auth error means that
+      // refresh failed too.
+      if (isAuthError(err)) {
+        clearTokens()
+        setUser(null)
+      }
+      // Anything else is treated as transient: keep the user we decoded from
+      // the token, and let the next query re-sync when the network recovers.
     } finally {
       setLoading(false)
     }
