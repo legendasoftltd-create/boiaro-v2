@@ -152,6 +152,7 @@ const TOGGLE_KEYS: { key: string; label: string; help: string }[] = [
   { key: "radio_catchup_enabled", label: "Catch-up archive", help: "Public catch-up listing returns empty when off" },
   { key: "radio_recording_enabled", label: "Recording", help: "Whether sessions are eligible to have a recording attached" },
   { key: "radio_guest_listening_enabled", label: "Guest listening", help: "Signed-out visitors get a playable stream URL" },
+  { key: "radio_listener_count_visible", label: "Show listener count", help: "Off hides \"X জন শুনছেন\" from listeners on both web and the app — the count is never sent, not just hidden. Your Live Now monitoring still shows it." },
   { key: "radio_callin_enabled", label: "Listener call-in", help: "Peer-to-peer WebRTC audio (public STUN only until a TURN relay is provisioned — see docs). Off by default." },
   { key: "radio_chat_links_enabled", label: "Links in chat", help: "Turn off to strip any message containing a URL" },
   { key: "radio_mixer_enabled", label: "Mixer feature (§14)", help: "Hard off switch for music/jingle/SFX mixing and voice DSP in BoiAro Studio" },

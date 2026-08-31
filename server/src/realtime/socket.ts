@@ -96,7 +96,12 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     const userId = socket.userId;
     let joinedSessionId: string | null = null;
 
-    const emitListenerCount = (sessionId: string) => {
+    // Admins can hide the listener count from listeners entirely
+    // (radio_listener_count_visible). Hiding it means not sending it — a
+    // count suppressed only in the UI still rides down the socket, where
+    // anyone can read a quiet show off the network tab.
+    const emitListenerCount = async (sessionId: string) => {
+      if (!(await getRadioSettingBool("radio_listener_count_visible"))) return;
       const count = io!.sockets.adapter.rooms.get(room(sessionId))?.size ?? 0;
       io!.to(room(sessionId)).emit("listener_count", { sessionId, count });
     };
@@ -137,7 +142,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
       }
       socket.join(room(sessionId));
       joinedSessionId = sessionId;
-      emitListenerCount(sessionId);
+      void emitListenerCount(sessionId);
 
       const country = detectCountryCode({ headers: socket.handshake.headers, ip: socket.handshake.address });
       const city = detectCityName({ headers: socket.handshake.headers, ip: socket.handshake.address });
@@ -207,7 +212,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     socket.on("leave_session", async () => {
       if (!joinedSessionId) return;
       socket.leave(room(joinedSessionId));
-      emitListenerCount(joinedSessionId);
+      void emitListenerCount(joinedSessionId);
       await closeListenerSessionRow();
       joinedSessionId = null;
     });
@@ -437,7 +442,7 @@ export function initLiveSocket(httpServer: HttpServer): SocketIOServer {
     });
 
     socket.on("disconnect", async () => {
-      if (joinedSessionId) emitListenerCount(joinedSessionId);
+      if (joinedSessionId) void emitListenerCount(joinedSessionId);
       await closeListenerSessionRow();
       if (userId) {
         lastMessageAt.delete(userId);
@@ -481,8 +486,11 @@ export function kickUserFromSession(sessionId: string, userId: string, reason: s
       s.leave(room(sessionId));
     }
   }
-  const count = io.sockets.adapter.rooms.get(room(sessionId))?.size ?? 0;
-  io.to(room(sessionId)).emit("listener_count", { sessionId, count });
+  void (async () => {
+    if (!(await getRadioSettingBool("radio_listener_count_visible"))) return;
+    const count = io!.sockets.adapter.rooms.get(room(sessionId))?.size ?? 0;
+    io!.to(room(sessionId)).emit("listener_count", { sessionId, count });
+  })();
 }
 
 // Targeted send to one specific user's socket(s) within a session's room —

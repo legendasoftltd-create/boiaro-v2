@@ -49,7 +49,11 @@ export function useLiveSocket(sessionId: string | undefined) {
   const { user } = useAuth();
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
-  const [listenerCount, setListenerCount] = useState(0);
+  // null = the count is unknown to us, either because it hasn't arrived yet
+  // or because an admin has hidden it (radio_listener_count_visible), in
+  // which case the server never sends it. Distinct from 0, which would
+  // wrongly tell a room full of people that nobody is listening.
+  const [listenerCount, setListenerCount] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
   const [songRequests, setSongRequests] = useState<SongRequestItem[]>([]);
@@ -144,6 +148,7 @@ export function useLiveSocket(sessionId: string | undefined) {
       }
       socketRef.current = null;
       setConnected(false);
+      setListenerCount(null);
       setMessages([]);
       setSongRequests([]);
     };

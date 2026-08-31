@@ -767,9 +767,17 @@ export const rjRouter = router({
         return requests.map((r) => ({ ...r, display_name: pMap.get(r.user_id) ?? null }));
       }),
 
+    // count is null when an admin has hidden the listener count
+    // (radio_listener_count_visible) — distinct from a real zero, so the UI
+    // can drop the badge entirely rather than claim nobody is listening.
     listenerCount: publicProcedure
       .input(z.object({ sessionId: z.string() }))
-      .query(({ input }) => ({ sessionId: input.sessionId, count: getListenerCount(input.sessionId) })),
+      .query(async ({ input }) => ({
+        sessionId: input.sessionId,
+        count: (await getRadioSettingBool("radio_listener_count_visible"))
+          ? getListenerCount(input.sessionId)
+          : null,
+      })),
 
     // Real Icecast-level health (source actually reachable), distinct from
     // listenerCount above (Socket.IO chat participants) and from the

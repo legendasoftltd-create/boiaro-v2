@@ -68,7 +68,8 @@ radioRestRouter.get("/live", async (req: AuthenticatedRequest, res) => {
     const isAuthed = !!req.auth?.userId;
     const streamUrl = guestAllowed || isAuthed ? session.stream_url : null;
 
-    res.json({ live: { ...session, stream_url: streamUrl, rj_profile: rjProfile, listener_count: getListenerCount(session.id) } });
+    const countVisible = await getRadioSettingBool("radio_listener_count_visible");
+    res.json({ live: { ...session, stream_url: streamUrl, rj_profile: rjProfile, listener_count: countVisible ? getListenerCount(session.id) : null } });
   } catch (error) {
     sendHttpError(res, error);
   }

@@ -294,10 +294,12 @@ function LiveShowRoom({ sessionId, showTitle, rjName, rjUserId, isHost, callinEn
               {streamStatus === "playing" ? "প্লে হচ্ছে" : streamStatus === "loading" ? "সংযুক্ত হচ্ছে..." : "শুনুন"}
             </Button>
           )}
-          <Badge variant="outline" className="gap-1.5">
-            <Users className="w-3.5 h-3.5" /> {listenerCount} জন শুনছেন
-            {!connected && <span className="text-[10px] text-muted-foreground">(সংযুক্ত হচ্ছে...)</span>}
-          </Badge>
+          {listenerCount !== null && (
+            <Badge variant="outline" className="gap-1.5">
+              <Users className="w-3.5 h-3.5" /> {listenerCount} জন শুনছেন
+              {!connected && <span className="text-[10px] text-muted-foreground">(সংযুক্ত হচ্ছে...)</span>}
+            </Badge>
+          )}
           <ShareButton title={showTitle || "BoiAro On Air"} url={`${window.location.origin}/live/${sessionId}`} />
         </div>
       </div>

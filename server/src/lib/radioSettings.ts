@@ -12,6 +12,11 @@ export const RADIO_SETTINGS_DEFAULTS = {
   radio_callin_enabled: "false",
   radio_callin_max_concurrent: "1",
   radio_guest_listening_enabled: "true",
+  // Whether listeners are shown how many people are tuned in. Off means the
+  // count is never sent to a listener at all — not merely hidden in the UI —
+  // so a quiet show cannot be read off the network tab either. Admin's own
+  // "Live Now" monitoring is unaffected.
+  radio_listener_count_visible: "true",
   radio_max_concurrent_listeners: "", // empty = unlimited
   radio_reconnect_grace_seconds: "120",
   radio_reconnect_timeout_seconds: "600", // auto-end after this much total silence
