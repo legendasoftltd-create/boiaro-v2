@@ -15,6 +15,7 @@ import { deriveIcecastMountPath } from "../lib/icecastMount.js";
 import { getRadioSetting, getRadioSettingBool, getRadioSettingNumber } from "../lib/radioSettings.js";
 import { isCallinAllowedForBroadcast } from "../lib/callinPolicy.js";
 import { isBandwidthBudgetAvailable } from "../lib/radioCostControl.js";
+import { runningShowMessage } from "../lib/runningShow.js";
 
 // Host capabilities are a strict superset of Co-host/RJ/Producer/Guest, so a
 // participant who is both "the RJ" and "running the room" just holds the
@@ -307,6 +308,21 @@ export const studioRouter = router({
       const session = await assertBroadcastControl(input.sessionId, ctx.userId!);
       if (session.status === "live") {
         throw new TRPCError({ code: "CONFLICT", message: "This studio session is already live" });
+      }
+
+      // One live broadcast per RJ, full stop. Nothing enforced this before:
+      // the check above only catches restarting the *same* studio session,
+      // and the station clash further down only fires when a station is set
+      // — and blames "another host" when the other host is you. So an RJ
+      // whose show had gone quiet would just start another, and another:
+      // ten sessions in ninety minutes on 2026-08-31, listeners split
+      // across them with no way to tell which was the real show.
+      const mine = await prisma.liveSession.findFirst({
+        where: { rj_user_id: session.host_user_id, status: { in: ["live", "reconnecting"] } },
+        select: { id: true, show_title: true, started_at: true },
+      });
+      if (mine) {
+        throw new TRPCError({ code: "CONFLICT", message: runningShowMessage(mine) });
       }
 
       if (input.callinEnabled && !(await isCallinAllowedForBroadcast(input.stationId, session.host_user_id))) {

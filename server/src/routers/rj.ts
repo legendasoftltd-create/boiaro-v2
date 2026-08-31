@@ -18,6 +18,7 @@ import { getStreamHealth } from "../lib/streamHealth.js";
 import { RJ_TERMS_CLAUSE_KEYS } from "../lib/rjTermsClauses.js";
 import { dhakaWallClock, fromDhakaShifted } from "../lib/timezone.js";
 import { ensureStudioEgressAlive } from "./studio.js";
+import { runningShowMessage } from "../lib/runningShow.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
   if (userId === session.rj_user_id) return;
@@ -597,6 +598,20 @@ export const rjRouter = router({
         const currentTermsVersion = await getRadioSetting("radio_terms_version");
         if (profile.terms_accepted_version !== currentTermsVersion) {
           throw new TRPCError({ code: "FORBIDDEN", message: "You must accept the current broadcaster terms before going live" });
+        }
+
+        // Same one-broadcast-per-RJ rule the Studio flow enforces — an RJ
+        // must end the running show before starting another, rather than
+        // stacking sessions listeners get split across. Test broadcasts are
+        // exempt so an RJ can still rehearse while genuinely off air.
+        if (!input.isTest) {
+          const mine = await prisma.liveSession.findFirst({
+            where: { rj_user_id: ctx.userId!, is_test: false, status: { in: ["live", "reconnecting"] } },
+            select: { id: true, show_title: true, started_at: true },
+          });
+          if (mine) {
+            throw new TRPCError({ code: "CONFLICT", message: runningShowMessage(mine) });
+          }
         }
 
         // Real (non-test) broadcasts: no two RJs live on the same station at once.

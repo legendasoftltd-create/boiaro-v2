@@ -160,6 +160,31 @@ export default function StudioRoom() {
   const isModerator = !!myRole && MODERATOR_ROLES.includes(myRole)
   const canControlBroadcast = !!myRole && BROADCAST_ROLES.includes(myRole)
 
+  // An incoming call was effectively invisible on a phone. The queue only
+  // polls from inside CallInPanel, and that panel is collapsed by default —
+  // so a caller sat in "requested" while the RJ, who has no second screen to
+  // watch, never knew anyone had rung. That is the 07:27:55 call on
+  // 2026-08-31: it reached the show and was simply never seen. Poll at the
+  // page level instead so the button can carry a badge, and speak up once
+  // per new caller rather than waiting to be opened.
+  const callInVisible =
+    isLive && !!liveSessionId && callInFeatureEnabled && (canControlBroadcast || isModerator)
+  const { data: callQueue } = trpc.rj.callIn.queue.useQuery(
+    { sessionId: liveSessionId ?? "" },
+    { enabled: callInVisible, refetchInterval: 4000 }
+  )
+  const pendingCalls = ((callQueue as { status: string }[] | undefined) ?? []).filter(
+    (c) => c.status === "requested"
+  ).length
+  const prevPendingRef = useRef(0)
+  useEffect(() => {
+    if (pendingCalls > prevPendingRef.current) {
+      toast.info(pendingCalls > 1 ? `📞 নতুন কল — ${pendingCalls}টি অপেক্ষমাণ` : "📞 নতুন কল এসেছে")
+      setCallInOpen(true)
+    }
+    prevPendingRef.current = pendingCalls
+  }, [pendingCalls])
+
   useEffect(() => {
     if (!sessionId || connecting.current) return
     connecting.current = true
@@ -370,9 +395,19 @@ export default function StudioRoom() {
                   </Button>
                 )}
 
-                {isLive && liveSessionId && callInFeatureEnabled && (canControlBroadcast || isModerator) && (
-                  <Button size="sm" variant={callInOpen ? "default" : "outline"} onClick={() => setCallInOpen((v) => !v)} className="gap-1.5">
+                {callInVisible && (
+                  <Button
+                    size="sm"
+                    variant={callInOpen ? "default" : pendingCalls > 0 ? "destructive" : "outline"}
+                    onClick={() => setCallInOpen((v) => !v)}
+                    className="gap-1.5"
+                  >
                     <PhoneCall className="w-3.5 h-3.5" /> Call-in
+                    {pendingCalls > 0 && (
+                      <span className="ml-0.5 min-w-[1.25rem] rounded-full bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground">
+                        {pendingCalls}
+                      </span>
+                    )}
                   </Button>
                 )}
 
@@ -393,7 +428,7 @@ export default function StudioRoom() {
                 <StudioVoicePanel voiceProcessor={room.voiceProcessor} />
               )}
 
-              {callInOpen && isLive && liveSessionId && callInFeatureEnabled && (canControlBroadcast || isModerator) && user && (
+              {callInOpen && callInVisible && user && (
                 <CallInPanel
                   sessionId={liveSessionId}
                   isHost

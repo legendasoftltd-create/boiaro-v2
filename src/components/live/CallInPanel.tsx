@@ -144,43 +144,43 @@ export function CallInPanel({ sessionId, isHost, hostUserId, getSocket, onRemote
         ) : (
           <div className="space-y-2">
             {(queue as any[]).map((c) => (
-              <div key={c.id} className="flex items-center justify-between p-2 rounded-lg bg-secondary/20 text-[12px]">
-                <div className="flex items-center gap-2">
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-lg bg-secondary/20 text-[12px]">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
                   <Avatar className="w-6 h-6"><AvatarImage src={toMediaUrl(c.avatar_url) || undefined} /><AvatarFallback className="text-[9px]">{(c.display_name || "U")[0]}</AvatarFallback></Avatar>
-                  <div>
-                    <p className="font-medium">{c.display_name || "Anonymous"}</p>
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{c.display_name || "Anonymous"}</p>
                     <Badge variant="outline" className={`text-[9px] ${c.status === "previewing" ? "border-amber-500/40 text-amber-500" : c.status === "on_air" ? "border-destructive/40 text-destructive" : ""}`}>
                       {c.status === "previewing" ? "🎧 previewing" : c.status}
                     </Badge>
                   </div>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap items-center gap-1.5">
                   {c.status === "requested" && (
                     <>
-                      <Button size="sm" className="h-6 text-[10px] px-2" onClick={() => acceptMutation.mutate({ callId: c.id })}>Accept</Button>
-                      <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => rejectMutation.mutate({ callId: c.id })}>Reject</Button>
+                      <Button size="sm" className="h-9 px-3 text-[11px] sm:h-6 sm:px-2 sm:text-[10px]" onClick={() => acceptMutation.mutate({ callId: c.id })}>Accept</Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-3 text-[11px] sm:h-6 sm:px-2 sm:text-[10px]" onClick={() => rejectMutation.mutate({ callId: c.id })}>Reject</Button>
                     </>
                   )}
                   {c.status === "waiting" && (
-                    <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => previewMutation.mutate({ callId: c.id })}>Preview</Button>
+                    <Button size="sm" variant="outline" className="h-9 px-3 text-[11px] sm:h-6 sm:px-2 sm:text-[10px]" onClick={() => previewMutation.mutate({ callId: c.id })}>Preview</Button>
                   )}
                   {c.status === "previewing" && (
                     <>
-                      <Button size="sm" className="h-6 text-[10px] px-2 bg-destructive hover:bg-destructive/90" onClick={() => goOnAirMutation.mutate({ callId: c.id })}>Send to Air</Button>
-                      <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => removeMutation.mutate({ callId: c.id })}>End Preview</Button>
+                      <Button size="sm" className="h-9 px-3 text-[11px] sm:h-6 sm:px-2 sm:text-[10px] bg-destructive hover:bg-destructive/90" onClick={() => goOnAirMutation.mutate({ callId: c.id })}>Send to Air</Button>
+                      <Button size="sm" variant="ghost" className="h-9 px-3 text-[11px] sm:h-6 sm:px-2 sm:text-[10px]" onClick={() => removeMutation.mutate({ callId: c.id })}>End Preview</Button>
                     </>
                   )}
                   {(c.status === "on_air" || c.status === "muted") && (
                     <>
                       {c.status === "muted" ? (
-                        <Button size="icon" variant="ghost" className="h-6 w-6 text-amber-500" title="Unmute" onClick={() => unmuteCallerMutation.mutate({ callId: c.id })}><Mic className="w-3 h-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-9 w-9 sm:h-6 sm:w-6 text-amber-500" title="Unmute" onClick={() => unmuteCallerMutation.mutate({ callId: c.id })}><Mic className="w-3 h-3" /></Button>
                       ) : (
-                        <Button size="icon" variant="ghost" className="h-6 w-6" title="Mute" onClick={() => muteMutation.mutate({ callId: c.id })}><MicOff className="w-3 h-3" /></Button>
+                        <Button size="icon" variant="ghost" className="h-9 w-9 sm:h-6 sm:w-6" title="Mute" onClick={() => muteMutation.mutate({ callId: c.id })}><MicOff className="w-3 h-3" /></Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive" onClick={() => removeMutation.mutate({ callId: c.id })}><UserX className="w-3 h-3" /></Button>
+                      <Button size="icon" variant="ghost" className="h-9 w-9 sm:h-6 sm:w-6 text-destructive" onClick={() => removeMutation.mutate({ callId: c.id })}><UserX className="w-3 h-3" /></Button>
                     </>
                   )}
-                  <Button size="icon" variant="ghost" className="h-6 w-6 text-muted-foreground" title="রিপোর্ট করুন" onClick={() => handleReportCaller(c.id)}>
+                  <Button size="icon" variant="ghost" className="h-9 w-9 sm:h-6 sm:w-6 text-muted-foreground" title="রিপোর্ট করুন" onClick={() => handleReportCaller(c.id)}>
                     <Flag className="w-3 h-3" />
                   </Button>
                 </div>
