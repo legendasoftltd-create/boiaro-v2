@@ -689,6 +689,16 @@ export const rjRouter = router({
           select: { rj_user_id: true, status: true, studio_session: { select: { id: true } } },
         });
         if (!session || session.rj_user_id !== ctx.userId) throw new TRPCError({ code: "FORBIDDEN" });
+        // A session the watchdog already ended must not keep being ticked by
+        // a client that hasn't noticed. There was no status guard here, so an
+        // ended session's last_heartbeat_at was bumped forever while the RJ's
+        // page still showed "live" and listeners heard nothing. Seeing no way
+        // back, the RJ would start another broadcast, and another: ten
+        // sessions in ninety minutes on 2026-08-31, several under five
+        // minutes. Reject it so the client can stop and resync instead.
+        if (session.status === "ended") {
+          throw new TRPCError({ code: "CONFLICT", message: "session_ended" });
+        }
         const data: { last_heartbeat_at: Date; status?: string } = { last_heartbeat_at: new Date() };
         if (session.status === "reconnecting") data.status = "live"; // recovered before the grace period expired
         const updated = await prisma.liveSession.update({ where: { id: input.sessionId }, data });

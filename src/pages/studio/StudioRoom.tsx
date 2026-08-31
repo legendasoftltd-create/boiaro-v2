@@ -86,7 +86,7 @@ export default function StudioRoom() {
   // refresh mid-broadcast, which previously lost this state entirely and —
   // combined with there being no heartbeat at all — silently stopped the
   // session from ever being recognized as live again).
-  const { sessions: myStudioSessions } = useMyStudioSessions()
+  const { sessions: myStudioSessions, refetch: refetchStudioSessions } = useMyStudioSessions()
   const restoredRef = useRef(false)
   useEffect(() => {
     if (restoredRef.current || !sessionId || myStudioSessions.length === 0) return
@@ -98,6 +98,25 @@ export default function StudioRoom() {
     restoredRef.current = true
   }, [sessionId, myStudioSessions])
 
+  // startBroadcast is meant to hand back the LiveSession id, but when it came
+  // back without one, isLive was true while liveSessionId stayed null — and
+  // the heartbeat effect below bails out on a null id, so the broadcast was
+  // never ticked even once and the watchdog ended a session whose audio was
+  // perfectly fine. That is ea423c45 on 2026-08-31: started 07:26:38, not a
+  // single heartbeat, dead on arrival, and a caller who reached it could
+  // never be answered. mySessions has no refetch interval, so poll it until
+  // the id turns up rather than stranding the broadcast.
+  useEffect(() => {
+    if (!isLive || liveSessionId || !sessionId) return
+    const found = myStudioSessions.find((s) => s.id === sessionId)?.live_session_id
+    if (found) {
+      setLiveSessionId(found)
+      return
+    }
+    const t = setTimeout(() => void refetchStudioSessions(), 3000)
+    return () => clearTimeout(t)
+  }, [isLive, liveSessionId, sessionId, myStudioSessions, refetchStudioSessions])
+
   // Without this, every Studio broadcast silently drifts into "reconnecting"
   // (jobs/streamReconnect.ts) after ~2 minutes and auto-ends ~10 minutes
   // after that — REGARDLESS of whether the mic/WebRTC connection is fine —
@@ -108,7 +127,25 @@ export default function StudioRoom() {
     if (!isLive || !liveSessionId) return
     const id = liveSessionId
     const timer = setInterval(() => {
-      heartbeatMutation.mutate({ sessionId: id })
+      // `isLive` is local state that nothing ever syncs back from the server,
+      // so when the watchdog ended a session this loop kept ticking a corpse
+      // and the page kept claiming "live" while listeners heard silence. The
+      // server now rejects a heartbeat for an ended session; treat that as
+      // the authoritative answer, stop, and tell the RJ — otherwise the only
+      // symptom is dead air, and the RJ just starts broadcast after
+      // broadcast trying to find one that sticks.
+      heartbeatMutation.mutate(
+        { sessionId: id },
+        {
+          onError: (err) => {
+            if (err.message !== "session_ended") return
+            clearInterval(timer)
+            setIsLive(false)
+            setLiveSessionId(null)
+            toast.error("সম্প্রচার বন্ধ হয়ে গেছে — সংযোগ বিচ্ছিন্ন ছিল। আবার Go Live চাপুন।")
+          },
+        }
+      )
     }, HEARTBEAT_INTERVAL_MS)
     return () => clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
