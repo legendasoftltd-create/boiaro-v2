@@ -5,6 +5,8 @@ import { AccessToken, RoomServiceClient, EgressClient } from "livekit-server-sdk
 import { StreamOutput, StreamProtocol, TrackSource } from "@livekit/protocol";
 import { router, protectedProcedure } from "../trpc.js";
 import { prisma } from "../lib/prisma.js";
+import { createPresignedGetUrl, isS3Url, s3Configured } from "../lib/s3.js";
+import { resolveFileUrl } from "../lib/mediaUrl.js";
 import { logRadioAction } from "../lib/radioAudit.js";
 import { shouldAutoRecord, startRecording, stopRecording } from "../lib/liveRecorder.js";
 import { notifyFollowersOfGoLive } from "../lib/radioNotify.js";
@@ -124,6 +126,29 @@ function mintToken(identity: string, roomName: string, canPublish: boolean) {
   const at = new AccessToken(apiKey, apiSecret, { identity });
   at.addGrant({ room: roomName, roomJoin: true, canPublish, canSubscribe: true });
   return at.toJwt();
+}
+
+/**
+ * Studio music lives under the private `audio/` prefix, so its stored URL is
+ * not fetchable on its own — every asset handed to a client must be presigned.
+ *
+ * The mixer fetches these with the Web Audio API (loadBuffer -> decodeAudioData)
+ * and the admin library plays them in an <audio> element; both need a URL that
+ * resolves without credentials, which is exactly what a presigned GET is. An
+ * hour is comfortably longer than a show.
+ */
+const STUDIO_ASSET_URL_TTL = 3600;
+
+async function withPlayableUrl<T extends { file_url: string | null }>(asset: T): Promise<T> {
+  if (!asset.file_url) return asset;
+  if (!(s3Configured && isS3Url(asset.file_url))) {
+    return { ...asset, file_url: resolveFileUrl(asset.file_url) ?? asset.file_url };
+  }
+  try {
+    return { ...asset, file_url: await createPresignedGetUrl(asset.file_url, STUDIO_ASSET_URL_TTL) };
+  } catch {
+    return asset;
+  }
 }
 
 export const studioRouter = router({
@@ -517,7 +542,9 @@ export const studioRouter = router({
         prisma.studioAssetFavorite.findMany({ where: { user_id: ctx.userId }, select: { audio_asset_id: true } }),
       ]);
       const favoriteIds = new Set(favoriteRows.map((f) => f.audio_asset_id));
-      const withFavorite = assets.map((a) => ({ ...a, isFavorite: favoriteIds.has(a.id) }));
+      const withFavorite = await Promise.all(
+        assets.map(async (a) => ({ ...(await withPlayableUrl(a)), isFavorite: favoriteIds.has(a.id) }))
+      );
       return input.favoritesOnly ? withFavorite.filter((a) => a.isFavorite) : withFavorite;
     }),
 
@@ -617,7 +644,8 @@ export const studioRouter = router({
   libraryModeration: protectedProcedure.query(async ({ ctx }) => {
     const role = await prisma.userRole.findFirst({ where: { user_id: ctx.userId, role: { in: ["admin", "moderator"] } } });
     if (!role) throw new TRPCError({ code: "FORBIDDEN" });
-    return prisma.studioAudioAsset.findMany({ where: { status: "pending" }, orderBy: { created_at: "asc" } });
+    const pending = await prisma.studioAudioAsset.findMany({ where: { status: "pending" }, orderBy: { created_at: "asc" } });
+    return Promise.all(pending.map(withPlayableUrl));
   }),
 
   moderateLibraryAsset: protectedProcedure
@@ -650,11 +678,17 @@ export const studioRouter = router({
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ ctx, input }) => {
       await assertModerator(input.sessionId, ctx.userId!);
-      return prisma.studioPlaylistItem.findMany({
+      // The mixer plays straight from this list, so each item's asset needs a
+      // playable (presigned) URL — the stored one points into the private
+      // audio/ prefix and 403s on its own.
+      const items = await prisma.studioPlaylistItem.findMany({
         where: { studio_session_id: input.sessionId },
         include: { asset: true },
         orderBy: { position: "asc" },
       });
+      return Promise.all(
+        items.map(async (item) => ({ ...item, asset: await withPlayableUrl(item.asset) }))
+      );
     }),
 
   addToPlaylist: protectedProcedure

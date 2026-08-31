@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { getValidAccessToken } from "@/lib/authTokens";
 
 const ACCEPTED = ".jpg,.jpeg,.png,.webp,.svg,.ico";
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -44,7 +45,7 @@ export function SiteImageUpload({ value, onChange, fieldKey }: SiteImageUploadPr
       const formData = new FormData();
       formData.append("file", file, `${fieldKey}-${Date.now()}${getExt(file.name)}`);
 
-      const token = localStorage.getItem("access_token");
+      const token = await getValidAccessToken();
       const res = await fetch(`${API_BASE}/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},

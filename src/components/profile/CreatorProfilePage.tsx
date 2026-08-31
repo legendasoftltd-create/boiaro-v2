@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { toMediaUrl } from "@/lib/mediaUrl";
+import { getValidAccessToken } from "@/lib/authTokens";
 import {
   User, Link as LinkIcon, Shield, Save, Loader2, Camera,
   Facebook, Instagram, Youtube, Globe, ExternalLink, Calendar,
@@ -113,7 +114,7 @@ export default function CreatorProfilePage({
     e.target.value = "";
     setUploadingAvatar(true);
     try {
-      const token = localStorage.getItem("access_token");
+      const token = await getValidAccessToken();
       const formData = new FormData();
       formData.append("image", file);
       const res = await fetch(`${API_BASE}/api/v1/profile/upload-image`, {

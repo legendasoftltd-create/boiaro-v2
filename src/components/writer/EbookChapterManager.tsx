@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Loader2, BookOpen, Lock, FileText, Hash, Upload, Check } from "lucide-react";
 import { toast } from "sonner";
+import { getValidAccessToken } from "@/lib/authTokens";
 
 interface EbookChapterManagerProps {
   bookFormatId: string;
@@ -22,7 +23,7 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/
 async function uploadFile(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
-  const token = localStorage.getItem("access_token");
+  const token = await getValidAccessToken();
   const res = await fetch(`${API_BASE}/upload/media`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},

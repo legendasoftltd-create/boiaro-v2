@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Upload, X, Loader2, FileAudio } from "lucide-react";
 import { toast } from "sonner";
 import { validateMediaFile, ACCEPTED_FILE_INPUT } from "@/lib/audioValidation";
+import { getValidAccessToken } from "@/lib/authTokens";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
@@ -14,11 +15,13 @@ interface AudioFileUploadProps {
   placeholder?: string;
 }
 
-function uploadViaApi(file: File, onProgress: (pct: number) => void): Promise<string> {
+async function uploadViaApi(file: File, onProgress: (pct: number) => void): Promise<string> {
+  // Resolved before the executor: the token may need renewing, and a
+  // Promise executor cannot await.
+  const token = await getValidAccessToken();
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     formData.append("file", file);
-    const token = localStorage.getItem("access_token");
     const xhr = new XMLHttpRequest();
     xhr.upload.addEventListener("progress", (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));

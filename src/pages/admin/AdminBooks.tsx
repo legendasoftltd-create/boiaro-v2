@@ -25,6 +25,7 @@ import { SmartPricingAssistant } from "@/components/admin/SmartPricingAssistant"
 import { AdminSearchBar } from "@/components/admin/AdminSearchBar";
 import { validateMediaFile, sanitizeTrackTitle, ACCEPTED_FILE_INPUT } from "@/lib/audioValidation";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+import { getValidAccessToken } from "@/lib/authTokens";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
@@ -228,11 +229,13 @@ export default function AdminBooks() {
 
   // XHR-based upload with progress events and timeout safety net.
   // fetch() has no built-in timeout — large files (WAV/MP4) appeared stuck forever.
-  const uploadViaApi = (file: File, media = false, onProgress?: (pct: number) => void, type?: string): Promise<string> => {
+  const uploadViaApi = async (file: File, media = false, onProgress?: (pct: number) => void, type?: string): Promise<string> => {
+    // Resolved before the executor: the token may need renewing, and a Promise
+    // executor cannot await.
+    const token = await getValidAccessToken();
     return new Promise((resolve, reject) => {
       const formData = new FormData();
       formData.append("file", file);
-      const token = localStorage.getItem("access_token");
       const base = media ? "/upload/media" : "/upload";
       const endpoint = type ? `${base}?type=${type}` : base;
       const xhr = new XMLHttpRequest();

@@ -91,6 +91,40 @@ export function refreshSession(): Promise<boolean> {
   return attempt;
 }
 
+/** Seconds of remaining life below which a token is treated as already expired. */
+const EXPIRY_SKEW_SECONDS = 60;
+
+function secondsUntilExpiry(token: string): number | null {
+  try {
+    const [, payload] = token.split(".");
+    const claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    if (typeof claims?.exp !== "number") return null;
+    return claims.exp - Math.floor(Date.now() / 1000);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * An access token that is actually usable right now, renewing first if the
+ * current one has expired or is about to.
+ *
+ * Anything that hands the token to a long-lived connection must use this
+ * rather than reading localStorage directly. The realtime socket sends the
+ * token once at handshake and the server rejects an expired one outright, so
+ * a stale read there silently kills chat and call-in until a reload.
+ */
+export async function getValidAccessToken(): Promise<string | null> {
+  const token = getAccessToken();
+  if (!token) return null;
+  const left = secondsUntilExpiry(token);
+  if (left !== null && left <= EXPIRY_SKEW_SECONDS) {
+    await refreshSession();
+    return getAccessToken();
+  }
+  return token;
+}
+
 /** True when an error means "your session is no longer valid", not "the network hiccuped". */
 export function isAuthError(err: unknown): boolean {
   const e = err as any;

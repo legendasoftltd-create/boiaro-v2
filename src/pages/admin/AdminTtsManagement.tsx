@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
+import { getValidAccessToken } from "@/lib/authTokens";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
@@ -444,7 +445,7 @@ function AmbientManagement() {
     const target = uploadTargetRef.current;
     setUploadingFor(target);
     try {
-      const token = localStorage.getItem("access_token");
+      const token = await getValidAccessToken();
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch(`${API_BASE}/api/v1/tts/ambient-upload`, {

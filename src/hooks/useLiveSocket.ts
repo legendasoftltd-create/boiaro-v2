@@ -3,6 +3,7 @@ import { io, type Socket } from "socket.io-client";
 import { Capacitor } from "@capacitor/core";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOrCreateDeviceId } from "@/lib/deviceId";
+import { getValidAccessToken, getAccessToken, refreshSession } from "@/lib/authTokens";
 import { toast } from "sonner";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
@@ -55,14 +56,29 @@ export function useLiveSocket(sessionId: string | undefined) {
 
   useEffect(() => {
     if (!sessionId) return;
-    const token = localStorage.getItem("access_token");
+    let disposed = false;
+    let socket: Socket | null = null;
 
-    const socket = io(API_BASE || window.location.origin, {
-      path: "/socket.io",
-      auth: token ? { token } : {},
-      transports: ["websocket", "polling"],
-    });
-    socketRef.current = socket;
+    // The handshake token must be valid at connect time: the server verifies it
+    // and rejects an expired one outright rather than downgrading to guest. The
+    // access token is short-lived, so read it through getValidAccessToken(),
+    // which renews first when it is expired or about to be. Reading
+    // localStorage directly here meant chat and call-in died once the token
+    // aged out, and stayed dead because connect_error disconnects for good.
+    (async () => {
+      const token = await getValidAccessToken();
+      if (disposed) return;
+
+      socket = io(API_BASE || window.location.origin, {
+        path: "/socket.io",
+        auth: token ? { token } : {},
+        transports: ["websocket", "polling"],
+      });
+      socketRef.current = socket;
+      wire(socket);
+    })();
+
+    function wire(socket: Socket) {
 
     socket.on("connect", async () => {
       setConnected(true);
@@ -75,7 +91,26 @@ export function useLiveSocket(sessionId: string | undefined) {
     socket.on("disconnect", () => setConnected(false));
     // A rejected connection (e.g. guest listening disabled) shouldn't keep
     // retrying forever — audio playback itself never depended on this socket.
-    socket.on("connect_error", () => socket.disconnect());
+    // An *auth* rejection is different: the token simply aged out, so renew
+    // once and reconnect rather than leaving chat and call-in dead until a
+    // page reload.
+    let retriedAuth = false;
+    socket.on("connect_error", async (err: Error) => {
+      const isAuth = /token|auth|unauthor/i.test(err?.message ?? "");
+      if (isAuth && !retriedAuth) {
+        retriedAuth = true;
+        const renewed = await refreshSession();
+        if (renewed && !disposed) {
+          const fresh = getAccessToken();
+          if (fresh) {
+            socket.auth = { token: fresh };
+            socket.connect();
+            return;
+          }
+        }
+      }
+      socket.disconnect();
+    });
 
     socket.on("listener_count", (data: { sessionId: string; count: number }) => {
       if (data.sessionId === sessionId) setListenerCount(data.count);
@@ -99,9 +134,14 @@ export function useLiveSocket(sessionId: string | undefined) {
       if (data?.message) toast.error(data.message);
     });
 
+    }
+
     return () => {
-      socket.emit("leave_session");
-      socket.disconnect();
+      disposed = true;
+      if (socket) {
+        socket.emit("leave_session");
+        socket.disconnect();
+      }
       socketRef.current = null;
       setConnected(false);
       setMessages([]);

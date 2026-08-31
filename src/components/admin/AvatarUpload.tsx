@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Upload, X, User, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { resizeAndCropAvatar } from "@/lib/imageResize";
+import { getValidAccessToken } from "@/lib/authTokens";
 
 const ACCEPTED = ".jpg,.jpeg,.png,.webp";
 const MAX_INPUT_SIZE = 5 * 1024 * 1024;
@@ -54,7 +55,7 @@ export function AvatarUpload({
       const formData = new FormData();
       formData.append("file", processed, "avatar.jpg");
 
-      const token = localStorage.getItem("access_token");
+      const token = await getValidAccessToken();
       const res = await fetch(`${API_BASE}/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},

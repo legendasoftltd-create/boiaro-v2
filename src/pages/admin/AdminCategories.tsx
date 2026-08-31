@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { toMediaUrl } from "@/lib/mediaUrl";
+import { getValidAccessToken } from "@/lib/authTokens";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 const ACCEPTED = ".jpg,.jpeg,.png,.webp,.svg";
@@ -43,7 +44,7 @@ function CategoryIconUpload({ value, onChange }: { value: string; onChange: (url
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const token = localStorage.getItem("access_token");
+      const token = await getValidAccessToken();
       const res = await fetch(`${API_BASE}/upload`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},

@@ -11,11 +11,17 @@ import { CheckCircle, XCircle, Eye, BookOpen, Image, Loader2, User2, RotateCcw, 
 import { stripHtml } from "@/lib/stripHtml";
 import { toast } from "sonner";
 import { toMediaUrl } from "@/lib/mediaUrl";
+import { getAccessToken } from "@/lib/authTokens";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
+// Built synchronously because it feeds an <iframe src> in JSX. Uses the stored
+// token rather than the renewing getValidAccessToken(): this screen is reached
+// through tRPC queries, which renew on 401, so the token is fresh by the time
+// anything renders. Making this async would mean resolving the URL into state
+// before the iframe can mount, for no practical gain here.
 function ebookProxyUrl(fileUrl: string): string {
-  const token = localStorage.getItem("access_token") ?? "";
+  const token = getAccessToken() ?? "";
   return `${API_BASE}/api/v1/ebook-preview?token=${encodeURIComponent(token)}&url=${encodeURIComponent(fileUrl)}`;
 }
 

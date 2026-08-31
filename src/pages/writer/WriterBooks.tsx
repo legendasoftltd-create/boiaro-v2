@@ -17,6 +17,7 @@ import { useCreatorPermissions } from "@/hooks/useCreatorPermissions";
 import { AttachToExistingBook } from "@/components/book-submission/AttachToExistingBook";
 import { VendorEarningsPreview } from "@/components/vendor/VendorEarningsPreview";
 import { useContentEditRequest } from "@/hooks/useContentEditRequest";
+import { getValidAccessToken } from "@/lib/authTokens";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 const MAX_COVER_SIZE = 5 * 1024 * 1024;
@@ -30,7 +31,7 @@ const emptyForm = () => ({
 async function uploadEbookFile(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
-  const token = localStorage.getItem("access_token");
+  const token = await getValidAccessToken();
   const res = await fetch(`${API_BASE}/upload/media`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -130,7 +131,7 @@ export default function WriterBooks() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const token = localStorage.getItem("access_token");
+      const token = await getValidAccessToken();
       const response = await fetch(`${API_BASE}/upload?type=cover`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
