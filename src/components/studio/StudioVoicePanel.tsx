@@ -10,11 +10,53 @@ import type { useVoiceProcessor } from "@/hooks/useVoiceProcessor"
 // is (the host/co-host using their own local voice processor instance) —
 // there's nothing here for a moderator to control on someone else's audio.
 export function StudioVoicePanel({ voiceProcessor }: { voiceProcessor: ReturnType<typeof useVoiceProcessor> }) {
-  const { settings, gateActive, peakLevel, isOverloaded } = voiceProcessor
+  const { settings, gateActive, peakLevel, isOverloaded, micMode, setMicMode } = voiceProcessor
 
   return (
     <Card className="border-primary/20">
       <CardContent className="p-3 space-y-3">
+        {/* Mic mode decides the capture constraints, and it matters most on a
+            phone: with echo cancellation on, the browser switches to its
+            voice-call audio path and cancels the music bed and the caller's
+            voice as if they were echo. Headphones lets us turn it off. */}
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium">মাইক মোড</span>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setMicMode("headphones")}
+              className={`rounded-lg border px-2 py-2 text-left transition-colors ${
+                micMode === "headphones"
+                  ? "border-primary bg-primary/10"
+                  : "border-border/50 hover:bg-secondary/50"
+              }`}
+            >
+              <span className="block text-[11px] font-medium">🎧 হেডফোন</span>
+              <span className="block text-[10px] text-muted-foreground leading-tight mt-0.5">
+                সেরা সাউন্ড — মিউজিক ও কলার ঠিক শোনা যাবে
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMicMode("speaker")}
+              className={`rounded-lg border px-2 py-2 text-left transition-colors ${
+                micMode === "speaker"
+                  ? "border-primary bg-primary/10"
+                  : "border-border/50 hover:bg-secondary/50"
+              }`}
+            >
+              <span className="block text-[11px] font-medium">🔊 স্পিকার</span>
+              <span className="block text-[10px] text-muted-foreground leading-tight mt-0.5">
+                ইকো বন্ধ থাকবে, তবে সাউন্ড কিছুটা কমে যাবে
+              </span>
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            মোবাইল থেকে শো করলে হেডফোন ব্যবহার করুন — তাহলে মিউজিক আর কলারের কথা
+            পরিষ্কার শোনা যাবে। মোড বদলালে মাইক আবার চালু করতে হবে।
+          </p>
+        </div>
+
         <div className="flex items-center gap-2">
           <Mic2 className="w-3.5 h-3.5 text-primary shrink-0" />
           <span className="text-xs font-medium flex-1">Voice Processing</span>

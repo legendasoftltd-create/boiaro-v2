@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Mic, MicOff, UserX, ArrowUpCircle, Radio, PhoneOff, PhoneCall, LogOut, MessageCircle, Music, Mic2 } from "lucide-react"
 import { toast } from "sonner"
 import { useStudioRoom } from "@/hooks/useStudioRoom"
+import { useWakeLock } from "@/hooks/useWakeLock"
 import { useJoinToken, useStudioParticipants, useStudioModeration, useBroadcastControl, useMyStudioSessions } from "@/hooks/useStudioSession"
 import { useLiveSessionById } from "@/hooks/useLiveSession"
 import { useRadioStations } from "@/hooks/useRadioStation"
@@ -39,6 +40,12 @@ export default function StudioRoom() {
   const { user } = useAuth()
   const { getToken } = useJoinToken()
   const room = useStudioRoom()
+
+  // Keep the screen awake for as long as we are on air. On a phone a sleeping
+  // screen throttles timers and suspends audio, the heartbeat stops, and the
+  // server ends the session as a heartbeat timeout — which is what was cutting
+  // mobile shows off after a few minutes.
+  const { supported: wakeLockSupported } = useWakeLock(room.state === "connected")
   const { participants, refetch } = useStudioParticipants(sessionId)
   const { promoteToPublish, removeParticipant } = useStudioModeration(sessionId!)
   const { startBroadcast, endBroadcast, isStarting, isEnding } = useBroadcastControl(sessionId!)
@@ -196,8 +203,27 @@ export default function StudioRoom() {
 
   if (!sessionId) return null
 
+  // Capacitor reports the real platform in the app; on mobile web fall back to
+  // a coarse UA check. Only used to decide whether to show the mobile guidance.
+  const isMobile =
+    typeof navigator !== "undefined" &&
+    /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
+
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-6">
+    <div className="max-w-2xl mx-auto p-3 sm:p-4 space-y-4 sm:space-y-6 pb-24">
+      {isMobile && (
+        <div className="rounded-xl border border-primary/25 bg-primary/5 p-3 space-y-1.5">
+          <p className="text-xs font-medium">📱 মোবাইল থেকে শো করছেন?</p>
+          <ul className="text-[11px] text-muted-foreground leading-relaxed list-disc pl-4 space-y-0.5">
+            <li><strong>হেডফোন লাগান</strong> — নাহলে মিউজিক ও কলারের কথা কেটে যাবে</li>
+            <li>শো চলাকালীন <strong>স্ক্রিন বন্ধ করবেন না</strong> এবং অন্য অ্যাপে যাবেন না</li>
+            {!wakeLockSupported && (
+              <li>এই ব্রাউজারে স্ক্রিন নিজে থেকে জাগিয়ে রাখা যায় না — ফোনের সেটিংসে
+                  স্ক্রিন টাইমআউট বাড়িয়ে নিন</li>
+            )}
+          </ul>
+        </div>
+      )}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center justify-between text-lg">

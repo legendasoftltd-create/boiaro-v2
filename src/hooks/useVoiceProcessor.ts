@@ -1,5 +1,16 @@
 import { useCallback, useRef, useState } from "react";
 
+/**
+ * How the RJ is listening, which decides the mic capture constraints.
+ *
+ * "headphones" is the correct way to broadcast and turns the browser's echo
+ * cancellation and noise suppression off, keeping the mic wideband and leaving
+ * the music bed and callers untouched. "speaker" keeps them on, because
+ * without headphones the speaker feeds back into the mic — at the cost of the
+ * audio quality RJs have been reporting on mobile.
+ */
+export type MicMode = "headphones" | "speaker";
+
 export interface VoiceProcessorSettings {
   gateThresholdDb: number;
   eqLowGainDb: number;
@@ -38,6 +49,9 @@ function dbToLinear(db: number): number {
  * getUserMedia track useStudioRoom would otherwise publish directly.
  */
 export function useVoiceProcessor() {
+  // Headphones is the default: it is what a broadcast should use, and it is
+  // the setting that makes music and call-in audio survive on a phone.
+  const [micMode, setMicMode] = useState<MicMode>("headphones");
   const ctxRef = useRef<AudioContext | null>(null);
   const rawStreamRef = useRef<MediaStream | null>(null);
   const gateNodeRef = useRef<AudioWorkletNode | null>(null);
@@ -57,8 +71,30 @@ export function useVoiceProcessor() {
   const [isActive, setIsActive] = useState(false);
 
   const buildProcessedMicTrack = useCallback(async (): Promise<MediaStreamTrack> => {
+    // Mic constraints matter far more on a phone than on a laptop.
+    //
+    // With echoCancellation on, a mobile browser puts the device into its
+    // voice-call audio mode: the AEC treats everything coming out of the
+    // speaker as echo to remove — which on a broadcast means it actively
+    // cancels the music bed and the caller's voice. That is precisely the
+    // "sound texture is poor / I can't hear the caller" report from RJs
+    // broadcasting on mobile. Noise suppression compounds it by gating music
+    // it mistakes for background noise.
+    //
+    // So: with headphones (the correct way to broadcast) both are off and the
+    // mic stays wideband and clean. Without headphones they have to stay on or
+    // the speaker feeds straight back into the mic.
+    const wantsBroadcastQuality = micMode === "headphones";
     const rawStream = await navigator.mediaDevices.getUserMedia({
-      audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: false },
+      audio: wantsBroadcastQuality
+        ? {
+            noiseSuppression: false,
+            echoCancellation: false,
+            autoGainControl: false,
+            channelCount: 1,
+            sampleRate: 48000,
+          }
+        : { noiseSuppression: true, echoCancellation: true, autoGainControl: false },
     });
     rawStreamRef.current = rawStream;
 
@@ -230,6 +266,8 @@ export function useVoiceProcessor() {
   }, []);
 
   return {
+    micMode,
+    setMicMode,
     settings, gateActive, peakLevel, isOverloaded, isActive,
     buildProcessedMicTrack, teardown, applyDefaults,
     setGateThresholdDb, setEqLowGainDb, setEqMidGainDb, setEqHighGainDb, setGainDb, setCompThresholdDb, setCompRatio,
