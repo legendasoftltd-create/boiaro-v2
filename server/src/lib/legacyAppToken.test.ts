@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { isLegacyAppUserAgent } from "./auth.js";
+import jwt from "jsonwebtoken";
+import { isLegacyAppUserAgent, accessTokenExpiresInSeconds } from "./auth.js";
 
 /**
  * The legacy Flutter app is told apart from every other client by its
@@ -38,5 +39,31 @@ describe("isLegacyAppUserAgent", () => {
     expect(isLegacyAppUserAgent(null)).toBe(false);
     expect(isLegacyAppUserAgent("")).toBe(false);
     expect(isLegacyAppUserAgent("   ")).toBe(false);
+  });
+});
+
+/**
+ * `expires_in` is how a client decides when to renew. It reported a hardcoded
+ * constant, so once the legacy app started receiving a 90-day token it was
+ * being told it had one hour — which would have kept it re-prompting on the
+ * old schedule and quietly undone the fix.
+ */
+describe("accessTokenExpiresInSeconds", () => {
+  const sign = (expiresIn: string) => jwt.sign({ sub: "u" }, "test-secret", { expiresIn } as jwt.SignOptions);
+
+  it("reports 90 days for the legacy app's token", () => {
+    expect(accessTokenExpiresInSeconds(sign("90d"))).toBe(90 * 24 * 3600);
+  });
+
+  it("reports one hour for everyone else", () => {
+    expect(accessTokenExpiresInSeconds(sign("1h"))).toBe(3600);
+  });
+
+  it("reads the token rather than a constant, so the two cannot drift", () => {
+    expect(accessTokenExpiresInSeconds(sign("7d"))).toBe(7 * 24 * 3600);
+  });
+
+  it("falls back instead of throwing on a token it cannot read", () => {
+    expect(accessTokenExpiresInSeconds("not-a-jwt")).toBeGreaterThan(0);
   });
 });

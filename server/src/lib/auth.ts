@@ -118,6 +118,23 @@ export function signTokens(userId: string, email: string, platform?: string | nu
   return { accessToken, refreshToken };
 }
 
+/**
+ * The real lifetime of an access token we just issued, in seconds.
+ *
+ * `expires_in` used to report a hardcoded constant. Once the legacy mobile
+ * app started getting a 90-day token that constant became a lie — the app was
+ * handed a 90-day session and told it had an hour, which is exactly the
+ * signal a client uses to decide when to renew or re-prompt. Read it off the
+ * token itself so the two can never drift again.
+ */
+export function accessTokenExpiresInSeconds(accessToken: string): number {
+  const payload = jwt.decode(accessToken) as { exp?: number; iat?: number } | null;
+  if (typeof payload?.exp === "number" && typeof payload?.iat === "number") {
+    return payload.exp - payload.iat;
+  }
+  return ACCESS_TOKEN_EXPIRES_IN_SECONDS;
+}
+
 export function verifyRefreshToken(refreshToken: string) {
   return jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET!) as {
     sub: string;
