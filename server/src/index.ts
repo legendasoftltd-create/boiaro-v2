@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { requestContextMiddleware } from "./lib/requestContext.js";
 import express from "express";
 import { createServer } from "http";
 import cors from "cors";
@@ -87,6 +88,11 @@ app.use("/trpc", createExpressMiddleware({ router: appRouter, createContext }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(attachAuth);
+
+// Make the requesting client visible to code that cannot take a parameter —
+// the token layer needs the User-Agent to spot the legacy Flutter app.
+// Mounted before everything that issues a token, REST and tRPC alike.
+app.use(requestContextMiddleware);
 
 // Normalise every REST error body to { success:false, error, message }.
 // Mounted first so it also wraps the guards and rate limiters below — the

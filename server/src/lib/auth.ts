@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import ms from "ms";
+import { getRequestUserAgent } from "./requestContext.js";
 
 export interface AuthUser {
   userId: string | null;
@@ -70,9 +71,33 @@ export function getAuthUserFromAuthorizationHeader(
   }
 }
 
+/**
+ * The legacy Flutter app (User-Agent "Dart/…") does not renew on a 401. It
+ * only ever worked because the access token used to last 7 days; shortening
+ * it to 1h on 2026-08-30 started logging those users out every hour, and
+ * production bore that out — 29,118 requests, 1,139 of them 401, just 21
+ * refresh calls, and 42 forced re-logins in a single day.
+ *
+ * Until that app renews on 401, hand it the lifetime it was built against.
+ * Every other client — web and the Capacitor app, which both refresh
+ * correctly — keeps the short token. Delete this once the app is fixed.
+ */
+const LEGACY_APP_ACCESS_TOKEN_EXPIRES_IN =
+  (process.env.JWT_ACCESS_EXPIRES_IN_LEGACY_APP ?? "7d") as jwt.SignOptions["expiresIn"];
+
+export function isLegacyAppUserAgent(userAgent?: string | null): boolean {
+  return /^Dart\//i.test((userAgent ?? "").trim());
+}
+
+export function accessTokenTtlFor(userAgent?: string | null): jwt.SignOptions["expiresIn"] {
+  return isLegacyAppUserAgent(userAgent)
+    ? LEGACY_APP_ACCESS_TOKEN_EXPIRES_IN
+    : ACCESS_TOKEN_EXPIRES_IN;
+}
+
 export function signTokens(userId: string, email: string, platform?: string | null) {
   const accessToken = jwt.sign({ sub: userId, email }, process.env.JWT_SECRET!, {
-    expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+    expiresIn: accessTokenTtlFor(getRequestUserAgent()),
   });
   const refreshToken = jwt.sign(
     { sub: userId, email, plt: isNativePlatform(platform) ? "app" : "web" },
