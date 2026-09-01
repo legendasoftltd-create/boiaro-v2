@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { getValidAccessToken } from "@/lib/authTokens"
 import { useAuth } from "@/contexts/AuthContext"
 import { trpc } from "@/lib/trpc"
 import { Navbar } from "@/components/Navbar"
@@ -122,7 +123,7 @@ export default function Profile() {
 
     setUploadingAvatar(true)
     try {
-      const token = localStorage.getItem("access_token")
+      const token = await getValidAccessToken()
       const formData = new FormData()
       formData.append("image", file)
 

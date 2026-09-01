@@ -1,3 +1,5 @@
+import { getValidAccessToken } from "./authTokens";
+
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
 
 /**
@@ -7,7 +9,9 @@ const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/
  * save/share manually on platforms without File-based Web Share support.
  */
 export async function shareCardImage(path: string, filename: string, title: string, text?: string): Promise<void> {
-  const token = localStorage.getItem("access_token");
+  // Renew first. Reading localStorage raw sent whatever token was there,
+  // expired or not — and with a 1h access token that is often expired.
+  const token = await getValidAccessToken();
   const res = await fetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

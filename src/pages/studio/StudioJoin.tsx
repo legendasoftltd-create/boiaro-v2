@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { getValidAccessToken } from "@/lib/authTokens"
 import { useParams, useNavigate } from "react-router-dom"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -16,9 +17,10 @@ export default function StudioJoin() {
     started.current = true
 
     const redeem = async () => {
-      // ProtectedRoute (wrapping this route) already guarantees we're logged
-      // in before this component renders — access_token is expected here.
-      const accessToken = localStorage.getItem("access_token")
+      // ProtectedRoute (wrapping this route) guarantees we're logged in, but
+      // not that the stored access token is still fresh. Reading it raw meant
+      // an RJ whose 1h token had aged out simply could not redeem an invite.
+      const accessToken = await getValidAccessToken()
       try {
         const res = await fetch(`${API_BASE}/api/v1/studio/join/${token}`, {
           method: "POST",
