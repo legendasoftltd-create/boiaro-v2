@@ -8,6 +8,7 @@ import type { DeviceLoginParams, DeviceSessionInfo } from "./deviceSession.servi
 import type { signInSchema } from "../schemas/auth.js";
 import type { z } from "zod";
 import { POINTS } from "./gamification.service.js";
+import { bustRevocationCache } from "../lib/sessionRevocation.js";
 
 export function deviceLimitError(limit: number, devices: DeviceSessionInfo[]): TRPCError {
   return new TRPCError({
@@ -183,5 +184,8 @@ export async function revokeAllSessions(userId: string) {
     where: { id: userId },
     data: { sessions_valid_from: new Date() },
   });
+  // Without this the cached "not revoked" answer would keep letting existing
+  // access tokens through until the TTL lapsed.
+  bustRevocationCache(userId);
   await prisma.deviceSession.deleteMany({ where: { user_id: userId } });
 }

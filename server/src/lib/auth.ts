@@ -5,6 +5,8 @@ import { getRequestUserAgent } from "./requestContext.js";
 export interface AuthUser {
   userId: string | null;
   userEmail: string | null;
+  /** JWT iat, for the revoke check. */
+  issuedAt?: number;
 }
 
 // Short access token, long rotating refresh token — the standard split, and
@@ -60,11 +62,14 @@ export function getAuthUserFromAuthorizationHeader(
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as {
       sub: string;
       email: string;
+      /** Needed to place this token against the user's last revoke. */
+      iat?: number;
     };
 
     return {
       userId: payload.sub,
       userEmail: payload.email,
+      issuedAt: payload.iat,
     };
   } catch {
     return { userId: null, userEmail: null };
@@ -72,18 +77,23 @@ export function getAuthUserFromAuthorizationHeader(
 }
 
 /**
- * The legacy Flutter app (User-Agent "Dart/…") does not renew on a 401. It
- * only ever worked because the access token used to last 7 days; shortening
- * it to 1h on 2026-08-30 started logging those users out every hour, and
- * production bore that out — 29,118 requests, 1,139 of them 401, just 21
- * refresh calls, and 42 forced re-logins in a single day.
+ * The legacy Flutter app (User-Agent "Dart/…") does not renew on a 401 —
+ * production showed 29,118 requests, 1,139 of them 401, and just 21 refresh
+ * calls in one day, forcing 42 re-logins. Its refresh token is already 90
+ * days, but a refresh token it never spends buys those users nothing.
  *
- * Until that app renews on 401, hand it the lifetime it was built against.
- * Every other client — web and the Capacitor app, which both refresh
- * correctly — keeps the short token. Delete this once the app is fixed.
+ * So the *access* token has to carry the 90-day mobile session on its own for
+ * that client. That is only safe because a revoke is now enforced on access
+ * tokens too (isSessionRevoked), so a password change or "sign out from all
+ * devices" still ends the session on the next request rather than in three
+ * months.
+ *
+ * Every other client — web and the Capacitor app, which both renew correctly
+ * — keeps the short token and slides on the refresh token as designed.
+ * Delete this once the app renews on 401.
  */
 const LEGACY_APP_ACCESS_TOKEN_EXPIRES_IN =
-  (process.env.JWT_ACCESS_EXPIRES_IN_LEGACY_APP ?? "7d") as jwt.SignOptions["expiresIn"];
+  (process.env.JWT_ACCESS_EXPIRES_IN_LEGACY_APP ?? "90d") as jwt.SignOptions["expiresIn"];
 
 export function isLegacyAppUserAgent(userAgent?: string | null): boolean {
   return /^Dart\//i.test((userAgent ?? "").trim());

@@ -1,5 +1,6 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import { getAuthUserFromAuthorizationHeader } from "./lib/auth.js";
+import { isSessionRevoked } from "./lib/sessionRevocation.js";
 
 export interface Context {
   userId: string | null;
@@ -21,10 +22,13 @@ export interface Context {
   adminAccess?: Promise<unknown>;
 }
 
-export function createContext({ req }: CreateExpressContextOptions): Context {
+export async function createContext({ req }: CreateExpressContextOptions): Promise<Context> {
   const auth = getAuthUserFromAuthorizationHeader(req.headers.authorization);
+  // Same revoke check the REST middleware applies — a tRPC caller must not be
+  // able to keep using a token issued before the user revoked their sessions.
+  const revoked = auth.userId ? await isSessionRevoked(auth.userId, auth.issuedAt) : false;
   return {
-    ...auth,
+    ...(revoked ? { userId: null, userEmail: null } : auth),
     ip: req.ip ?? null,
     userAgent: req.headers["user-agent"] ?? null,
   };

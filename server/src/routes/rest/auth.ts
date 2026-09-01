@@ -21,6 +21,7 @@ import { signTokens, ACCESS_TOKEN_EXPIRES_IN_SECONDS } from "../../lib/auth.js";
 import { sendMail } from "../../lib/mailer.js";
 import { sendOtpSms, normalizeBdPhone } from "../../lib/sms.js";
 import { verifyAppleIdToken, findOrCreateAppleUser } from "../../lib/appleAuth.js";
+import { bustRevocationCache } from "../../lib/sessionRevocation.js";
 
 export const authRestRouter = Router();
 
@@ -253,6 +254,9 @@ authRestRouter.post("/reset-password-confirm", async (req, res) => {
         sessions_valid_from: new Date(),
       },
     });
+    // The revoke must land on existing access tokens immediately, not
+    // when the cached lookup lapses.
+    bustRevocationCache(user.id);
     res.json({ message: "Password reset successfully" });
   } catch (error) {
     sendHttpError(res, error);

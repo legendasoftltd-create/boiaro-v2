@@ -18,6 +18,7 @@ import { resolveDeviceSessionOnLogin } from "../services/deviceSession.service.j
 import { sendNotificationEmail } from "../lib/mailer.js";
 import { sendOtpSms, normalizeBdPhone } from "../lib/sms.js";
 import { verifyAppleIdToken, findOrCreateAppleUser } from "../lib/appleAuth.js";
+import { bustRevocationCache } from "../lib/sessionRevocation.js";
 
 function generateReferralCode() {
   return crypto.randomBytes(4).toString("hex").toUpperCase();
@@ -399,6 +400,9 @@ export const authRouter = router({
           sessions_valid_from: new Date(),
         },
       });
+    // The revoke must land on existing access tokens immediately, not
+    // when the cached lookup lapses.
+    bustRevocationCache(user.id);
       await prisma.deviceSession.deleteMany({ where: { user_id: user.id } });
       return { message: "Password reset successfully" };
     }),

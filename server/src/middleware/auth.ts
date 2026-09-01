@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { getAuthUserFromAuthorizationHeader } from "../lib/auth.js";
 import { prisma } from "../lib/prisma.js";
+import { isSessionRevoked } from "../lib/sessionRevocation.js";
 
 export interface AuthenticatedRequest extends Request {
   auth: {
@@ -9,12 +10,23 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-export function attachAuth(
+export async function attachAuth(
   req: AuthenticatedRequest,
   _res: Response,
   next: NextFunction
 ) {
-  req.auth = getAuthUserFromAuthorizationHeader(req.header("authorization"));
+  const auth = getAuthUserFromAuthorizationHeader(req.header("authorization"));
+  // A token that predates the user's last revoke is treated as absent, so
+  // "sign out from all devices" and a password change take effect on the very
+  // next request instead of waiting out the token's lifetime. That wait used
+  // to be an hour; for the legacy mobile app, whose token must last 90 days,
+  // it would otherwise be three months.
+  if (auth.userId && (await isSessionRevoked(auth.userId, auth.issuedAt))) {
+    req.auth = { userId: null, userEmail: null };
+    next();
+    return;
+  }
+  req.auth = auth;
   next();
 }
 
@@ -39,13 +51,13 @@ export function requireAuth(
 // attachAuth and guarded by this would have silently seen no auth at all.
 // It now populates req.auth itself, so it is safe in isolation, and is
 // idempotent when attachAuth has already run.
-export function optionalAuth(
+export async function optionalAuth(
   req: AuthenticatedRequest,
   _res: Response,
   next: NextFunction
 ) {
   if (!req.auth) {
-    req.auth = getAuthUserFromAuthorizationHeader(req.header("authorization"));
+    await attachAuth(req, _res, () => {});
   }
   next();
 }
