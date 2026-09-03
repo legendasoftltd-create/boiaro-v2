@@ -80,6 +80,7 @@ export const MODULE_MAP: Record<string, string> = {
   "/admin/homepage-sections":   "cms",
   "/admin/radio":               "cms",
   "/admin/rj-management":       "cms",
+  "/admin/social-live":         "cms",
   "/admin/site-settings":       "settings",
 
   // Notifications / Email

@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   ShieldAlert, Activity, Cpu, MemoryStick, HardDrive, Users, Radio,
-  AlertTriangle, RefreshCw, Flag, ScrollText, SlidersHorizontal, CheckCircle2, BarChart3, PhoneOff,
+  AlertTriangle, RefreshCw, Flag, ScrollText, SlidersHorizontal, CheckCircle2, BarChart3, PhoneOff, Share2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
@@ -22,6 +22,7 @@ const TABS = [
   { value: "toggles", label: "Feature Toggles", icon: SlidersHorizontal },
   { value: "callins", label: "Call-ins", icon: PhoneOff },
   { value: "reports", label: "Reports", icon: Flag },
+  { value: "social", label: "Social Live", icon: Share2 },
   { value: "audit", label: "Audit Log", icon: ScrollText },
 ] as const
 
@@ -648,6 +649,137 @@ function AdminRadioSafetyAudit() {
   )
 }
 
+
+/**
+ * §17 Social Live monitoring.
+ *
+ * Every value here is read from the encoder and the database, never from what
+ * a button last did — the brief is explicit that a Live indicator must not
+ * depend on a click. The dangerous actions sit behind a confirmation, and say
+ * plainly that BoiAro On Air itself is unaffected.
+ */
+function AdminRadioSafetySocial() {
+  const utils = trpc.useUtils()
+  const statusQuery = trpc.admin.socialBroadcastStatus.useQuery(undefined, { refetchInterval: 3000 })
+  const stopMutation = trpc.admin.stopSocialBroadcast.useMutation()
+  const emergencyMutation = trpc.admin.emergencyStopAllSocialBroadcasts.useMutation()
+  const status = statusQuery.data
+  const broadcasts = status?.broadcasts ?? []
+
+  const emergency = async () => {
+    if (!confirm("Stop every social stream immediately?\n\nBoiAro On Air is not affected — the app and website keep broadcasting.")) return
+    try {
+      const r = await emergencyMutation.mutateAsync()
+      await utils.admin.socialBroadcastStatus.invalidate()
+      toast.success(`Stopped ${r.stopped} stream(s)`)
+    } catch (e: any) { toast.error(e.message || "Emergency stop failed") }
+  }
+
+  const stopOne = async (id: string) => {
+    if (!confirm("Stop this social broadcast?")) return
+    try {
+      await stopMutation.mutateAsync({ broadcastId: id })
+      await utils.admin.socialBroadcastStatus.invalidate()
+      toast.success("Stopped")
+    } catch (e: any) { toast.error(e.message || "Could not stop") }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2"><Share2 className="w-4 h-4" /> Broadcast engine</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3 text-sm">
+          <div className="rounded-lg border p-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Engine</p>
+            <p className="font-medium">{status?.featureEnabled ? "Enabled" : "Switched off"}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Encoder processes</p>
+            <p className="font-medium tabular-nums">{status?.activeEncoders ?? 0}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Audio source</p>
+            <p className="font-medium">{status?.onAir ? "On air" : "Off air"}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {broadcasts.length === 0 ? (
+        <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No social broadcast is running.</CardContent></Card>
+      ) : (
+        broadcasts.map((b) => (
+          <Card key={b.id}>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center justify-between gap-3 flex-wrap">
+                <span className="flex items-center gap-2">
+                  <Badge variant="outline" className={b.state === "LIVE" ? "border-red-500/50 text-red-500" : "text-muted-foreground"}>{b.state}</Badge>
+                  <span className="text-xs font-normal text-muted-foreground">
+                    started {new Date(b.startedAt).toLocaleTimeString()} · {b.trigger}
+                  </span>
+                </span>
+                <Button size="sm" variant="outline" onClick={() => stopOne(b.id)} disabled={stopMutation.isPending}>Stop</Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Process</p><p>{b.processRunning ? "running" : "not running"}</p></div>
+                <div><p className="text-[11px] uppercase tracking-wide text-muted-foreground">Scene on air</p><p>{b.scene ?? "—"}</p></div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Source checks</p>
+                  <p className={b.supervisor?.degraded ? "text-destructive" : b.supervisor?.failures ? "text-amber-500" : ""}>
+                    {b.supervisor ? (b.supervisor.degraded ? "degraded" : b.supervisor.failures ? `${b.supervisor.failures} missed` : "healthy") : "—"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                {b.destinations.map((d) => (
+                  <div key={d.id} className="flex items-center justify-between gap-3 rounded-lg border p-2.5 text-xs">
+                    <span className="capitalize font-medium">{d.platform} · <span className="font-normal text-muted-foreground">{d.accountName}</span></span>
+                    <span className="flex items-center gap-2">
+                      {d.reconnectAttempts > 0 ? <span className="text-muted-foreground">{d.reconnectAttempts} reconnect(s)</span> : null}
+                      <Badge variant="outline" className={d.state === "LIVE" ? "border-red-500/50 text-red-500" : d.state === "FAILED" ? "border-destructive/60 text-destructive" : "text-muted-foreground"}>{d.state}</Badge>
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {b.destinations.some((d) => d.lastError) ? (
+                <div className="space-y-1">
+                  {b.destinations.filter((d) => d.lastError).map((d) => (
+                    <p key={d.id} className="text-xs text-destructive break-all">{d.platform}: {d.lastError}</p>
+                  ))}
+                </div>
+              ) : null}
+
+              {b.diagnostics ? (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-muted-foreground">Encoder output</summary>
+                  <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-muted/40 p-2">{b.diagnostics}</pre>
+                </details>
+              ) : null}
+            </CardContent>
+          </Card>
+        ))
+      )}
+
+      <Card className="border-destructive/30">
+        <CardContent className="pt-6 flex items-center justify-between gap-4 flex-wrap">
+          <div className="text-sm">
+            <p className="font-medium">Stop all social streams</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              BoiAro On Air is not affected — the app and website keep playing throughout.
+            </p>
+          </div>
+          <Button variant="destructive" onClick={emergency} disabled={emergencyMutation.isPending}>Emergency stop</Button>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export default function AdminRadioSafety() {
   const [tab, setTab] = useState<(typeof TABS)[number]["value"]>("health")
 
@@ -675,6 +807,7 @@ export default function AdminRadioSafety() {
       {tab === "toggles" && <AdminRadioSafetyToggles />}
       {tab === "callins" && <AdminRadioSafetyCallIns />}
       {tab === "reports" && <AdminRadioSafetyReports />}
+      {tab === "social" && <AdminRadioSafetySocial />}
       {tab === "audit" && <AdminRadioSafetyAudit />}
     </div>
   )

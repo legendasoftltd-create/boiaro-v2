@@ -29,6 +29,22 @@ import { computeRadioAnalytics, computeRadioAnalyticsSeries } from "../lib/radio
 import { getRecordingStorageUsedGb, getEstimatedBandwidthGb30d } from "../lib/radioCostControl.js";
 import { getStreamHealthForSessions } from "../lib/streamHealth.js";
 import { encryptSecret, decryptSecret } from "../lib/secretEncryption.js";
+import {
+  validateRtmpUrl,
+  validateStreamKey,
+  encryptStreamKey,
+  decryptStreamKey,
+  maskStoredStreamKey,
+  redactStreamKeys,
+} from "../lib/socialCredentials.js";
+import { probeTcp } from "../lib/tcpProbe.js";
+import {
+  preflight as socialPreflight,
+  startBroadcast as startSocialBroadcast,
+  stopBroadcast as stopSocialBroadcast,
+  emergencyStopAll as emergencyStopAllSocial,
+  getStatus as getSocialStatus,
+} from "../services/socialLive.service.js";
 import os from "os";
 import fs from "fs";
 
@@ -81,7 +97,34 @@ function orderItemSaleAmount(item: { price?: number | null; quantity?: number | 
  * audit trail — admin mutations legitimately carry SMTP passwords, gateway
  * secrets and API keys.
  */
-function redactForAudit(value: unknown, depth = 0): unknown {
+/**
+ * Throttle for Social Live start/stop.
+ *
+ * A repeated start is the most likely way to end up with two encoders for
+ * one broadcast, and the operator most likely to produce one is an admin
+ * double-clicking a button that has not visibly responded yet. The database
+ * constraint is the real guard; this stops the pile-up reaching it.
+ *
+ * In-memory, like the encoder registry, and safe for the same reason: PM2
+ * runs a single fork-mode instance.
+ */
+const socialActionTimestamps = new Map<string, number>();
+const SOCIAL_ACTION_COOLDOWN_MS = 5000;
+
+function assertSocialRateLimit(userId: string, action: string): void {
+  const key = `${userId}:${action}`;
+  const last = socialActionTimestamps.get(key) ?? 0;
+  const elapsed = Date.now() - last;
+  if (elapsed < SOCIAL_ACTION_COOLDOWN_MS) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: `Wait ${Math.ceil((SOCIAL_ACTION_COOLDOWN_MS - elapsed) / 1000)}s before trying that again.`,
+    });
+  }
+  socialActionTimestamps.set(key, Date.now());
+}
+
+export function redactForAudit(value: unknown, depth = 0): unknown {
   if (depth > 3 || value === null || value === undefined) return value;
   if (Array.isArray(value)) return value.slice(0, 20).map((v) => redactForAudit(v, depth + 1));
   if (typeof value === "object") {
@@ -6398,6 +6441,309 @@ export const adminRouter = router({
       const result = await prisma.radioStation.update({ where: { id: input.id }, data: { is_active: input.is_active } });
       syncStationMountsWithBridge().catch((err) => console.error("[admin] syncStationMountsWithBridge failed:", err));
       return result;
+    }),
+
+  // ── Social Live — platform connections ──────────────────────────────────
+  // Facebook / YouTube ingest credentials. strictAdminProcedure (admin only,
+  // no moderator) because holding one of these keys means being able to
+  // broadcast to the Page or channel as BoiAro.
+  //
+  // Procedure names begin with their verb on purpose: classifyProcedure's
+  // action verbs are anchored to the start of the name, so a mutation named
+  // socialBroadcastConnectionSave would be classified as a *view* and would
+  // pass a read-only permission check. Naming it saveSocialBroadcastConnection
+  // is what makes it cms:edit. The "Broadcast" in the middle is what puts it
+  // in the cms module.
+  socialBroadcastConnections: strictAdminProcedure.query(async () => {
+    const rows = await prisma.socialPlatformConnection.findMany({
+      orderBy: [{ platform: "asc" }, { created_at: "asc" }],
+    });
+    // The full stream key never leaves the server — masked here, at the only
+    // point where these rows become an API response.
+    return rows.map((r) => ({
+      id: r.id,
+      platform: r.platform,
+      account_name: r.account_name,
+      account_ref: r.account_ref,
+      rtmp_url: r.rtmp_url,
+      stream_key_masked: maskStoredStreamKey(r.stream_key_encrypted),
+      has_stream_key: Boolean(r.stream_key_encrypted),
+      enabled: r.enabled,
+      status: r.status,
+      last_tested_at: r.last_tested_at,
+      last_error: r.last_error,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    }));
+  }),
+
+  saveSocialBroadcastConnection: strictAdminProcedure
+    .input(
+      z.object({
+        id: z.string().optional(),
+        platform: z.enum(["facebook", "youtube"]),
+        account_name: z.string().trim().min(1).max(120),
+        account_ref: z.string().trim().max(120).optional(),
+        rtmp_url: z.string().trim().max(512),
+        // Omitted on edit = "leave the stored key alone", which is what lets
+        // an admin rename a connection without re-entering the key (they
+        // only ever see it masked, so they may not have it to hand).
+        stream_key: z.string().max(512).optional(),
+        enabled: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const urlCheck = validateRtmpUrl(input.rtmp_url);
+      if (!urlCheck.ok) throw new TRPCError({ code: "BAD_REQUEST", message: urlCheck.error! });
+
+      const existing = input.id
+        ? await prisma.socialPlatformConnection.findUnique({ where: { id: input.id } })
+        : null;
+      if (input.id && !existing) throw new TRPCError({ code: "NOT_FOUND", message: "That connection no longer exists." });
+
+      const providedKey = input.stream_key?.trim();
+      if (providedKey) {
+        const keyCheck = validateStreamKey(providedKey);
+        if (!keyCheck.ok) throw new TRPCError({ code: "BAD_REQUEST", message: keyCheck.error! });
+      } else if (!existing) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A stream key is required to create a connection." });
+      }
+
+      // Enabling a connection with no key would let it pass a later
+      // "destination enabled" preflight and then fail at spawn time, which
+      // reads as an encoder bug rather than a missing credential.
+      const willHaveKey = providedKey ? true : Boolean(existing?.stream_key_encrypted);
+      if (input.enabled && !willHaveKey) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Add a stream key before enabling this connection." });
+      }
+
+      const data = {
+        platform: input.platform,
+        account_name: input.account_name,
+        account_ref: input.account_ref?.trim() || null,
+        rtmp_url: input.rtmp_url.trim(),
+        enabled: input.enabled,
+        // Any credential change invalidates whatever the last test proved.
+        ...(providedKey
+          ? {
+              stream_key_encrypted: encryptStreamKey(providedKey),
+              status: "unconfigured",
+              last_tested_at: null,
+              last_error: null,
+            }
+          : {}),
+      };
+
+      const result = existing
+        ? await prisma.socialPlatformConnection.update({ where: { id: existing.id }, data })
+        : await prisma.socialPlatformConnection.create({ data: { ...data, stream_key_encrypted: encryptStreamKey(providedKey!) } });
+
+      // Records *that* a key changed, never what it changed to.
+      await logRadioAction(
+        ctx.userId!,
+        existing ? "social_connection_updated" : "social_connection_created",
+        { connectionId: result.id, platform: result.platform, keyChanged: Boolean(providedKey), enabled: result.enabled }
+      );
+      return { id: result.id };
+    }),
+
+  deleteSocialBroadcastConnection: strictAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      // A connection that any broadcast leg still references is kept — the
+      // destination rows are the broadcast history, and the FK is RESTRICT
+      // rather than CASCADE precisely so history cannot be erased by tidying
+      // up a connection.
+      const inUse = await prisma.socialBroadcastDestination.count({ where: { connection_id: input.id } });
+      if (inUse > 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `This connection has been used by ${inUse} broadcast(s), so deleting it would erase that history. Disable it instead.`,
+        });
+      }
+      await prisma.socialPlatformConnection.delete({ where: { id: input.id } });
+      await logRadioAction(ctx.userId!, "social_connection_deleted", { connectionId: input.id });
+      return { ok: true };
+    }),
+
+  testSocialBroadcastConnection: strictAdminProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const conn = await prisma.socialPlatformConnection.findUnique({ where: { id: input.id } });
+      if (!conn) throw new TRPCError({ code: "NOT_FOUND", message: "That connection no longer exists." });
+
+      // Phase 1 deliberately does NOT publish a stream to check this. It
+      // verifies that the credentials are well-formed, decryptable and that
+      // the ingest host is reachable on its port. A real end-to-end check
+      // means going live on the platform, which belongs to the phase that
+      // has an encoder — claiming more than this was actually verified would
+      // be worse than checking less.
+      const problems: string[] = [];
+      const urlCheck = validateRtmpUrl(conn.rtmp_url);
+      if (!urlCheck.ok) problems.push(urlCheck.error!);
+
+      const key = decryptStreamKey(conn.stream_key_encrypted);
+      if (!key) {
+        problems.push("The stored stream key could not be decrypted — re-enter it.");
+      } else {
+        const keyCheck = validateStreamKey(key);
+        if (!keyCheck.ok) problems.push(keyCheck.error!);
+      }
+
+      let reachable = false;
+      if (urlCheck.ok) {
+        try {
+          const parsed = new URL(conn.rtmp_url);
+          const port = Number(parsed.port) || (parsed.protocol === "rtmps:" ? 443 : 1935);
+          reachable = await probeTcp(parsed.hostname, port, 6000);
+          if (!reachable) problems.push(`Could not reach ${parsed.hostname}:${port} from this server.`);
+        } catch {
+          problems.push("Ingest URL could not be parsed.");
+        }
+      }
+
+      const ok = problems.length === 0;
+      const lastError = ok ? null : redactStreamKeys(problems.join(" "));
+      await prisma.socialPlatformConnection.update({
+        where: { id: conn.id },
+        data: { status: ok ? "ready" : "error", last_tested_at: new Date(), last_error: lastError },
+      });
+      await logRadioAction(ctx.userId!, "social_connection_tested", { connectionId: conn.id, platform: conn.platform, ok });
+
+      return {
+        ok,
+        reachable,
+        problems,
+        // Says exactly what was and was not proven, so nobody reads a green
+        // tick here as "the broadcast will work".
+        note: ok
+          ? "Credentials are well-formed and the ingest host is reachable. This does not prove the key is accepted — only going live does that."
+          : undefined,
+      };
+    }),
+
+  // ── Social Live — broadcast control ─────────────────────────────────────
+  // Names put the verb first on purpose (see the note above the connection
+  // procedures): classifyProcedure anchors its action verbs to the start of
+  // the name, so startSocialBroadcast is cms:edit while a name beginning
+  // "social" would have been classified as a read-only view.
+  socialBroadcastStatus: strictAdminProcedure.query(async () => getSocialStatus()),
+
+  socialBroadcastHistory: strictAdminProcedure
+    .input(z.object({ limit: z.number().min(1).max(100).default(20) }).optional())
+    .query(async ({ input }) => {
+      const rows = await prisma.socialBroadcast.findMany({
+        orderBy: { started_at: "desc" },
+        take: input?.limit ?? 20,
+        include: { destinations: { include: { connection: { select: { platform: true, account_name: true } } } } },
+      });
+      return rows.map((b) => ({
+        id: b.id,
+        state: b.state,
+        trigger: b.trigger,
+        startedAt: b.started_at,
+        endedAt: b.ended_at,
+        stopReason: b.stop_reason,
+        title: b.social_title,
+        destinations: b.destinations.map((d) => ({
+          platform: d.connection.platform,
+          accountName: d.connection.account_name,
+          state: d.state,
+          lastError: d.last_error,
+        })),
+      }));
+    }),
+
+  socialBroadcastPreflight: strictAdminProcedure
+    .input(z.object({ connectionIds: z.array(z.string()).default([]) }))
+    .query(async ({ input }) => socialPreflight(input.connectionIds)),
+
+  startSocialBroadcast: strictAdminProcedure
+    .input(
+      z.object({
+        connectionIds: z.array(z.string()).min(1),
+        // Encode but publish nowhere. This is how the pipeline gets proven
+        // before any platform credential is involved.
+        dryRun: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      assertSocialRateLimit(ctx.userId!, "start");
+      return startSocialBroadcast({
+        connectionIds: input.connectionIds,
+        actorId: ctx.userId!,
+        trigger: "manual",
+        dryRun: input.dryRun,
+      });
+    }),
+
+  stopSocialBroadcast: strictAdminProcedure
+    .input(z.object({ broadcastId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      assertSocialRateLimit(ctx.userId!, "stop");
+      return stopSocialBroadcast(input.broadcastId, ctx.userId!, "manual");
+    }),
+
+  emergencyStopAllSocialBroadcasts: strictAdminProcedure.mutation(async ({ ctx }) => {
+    // Deliberately NOT rate limited. Everything else here is throttled to
+    // stop a repeated click producing a duplicate encoder, but the emergency
+    // stop is the control someone reaches for when something is already
+    // wrong — refusing it because they pressed it twice would be the wrong
+    // failure.
+    return emergencyStopAllSocial(ctx.userId!);
+  }),
+
+  // ── Social Live — per-show automation (§12 / §13) ───────────────────────
+  showSocialSettings: strictAdminProcedure
+    .input(z.object({ scheduleIds: z.array(z.string()).max(200) }))
+    .query(async ({ input }) => {
+      if (!input.scheduleIds.length) return [];
+      return prisma.showSocialSetting.findMany({ where: { show_schedule_id: { in: input.scheduleIds } } });
+    }),
+
+  saveShowSocialSettings: strictAdminProcedure
+    .input(
+      z.object({
+        show_schedule_id: z.string(),
+        facebook_enabled: z.boolean().default(false),
+        youtube_enabled: z.boolean().default(false),
+        auto_start: z.boolean().default(false),
+        auto_stop: z.boolean().default(false),
+        // Bounded so a typo cannot schedule a broadcast hours early or leave
+        // one running long after the show is over.
+        start_before_minutes: z.number().int().min(0).max(60).default(5),
+        stop_after_minutes: z.number().int().min(0).max(60).default(5),
+        social_title: z.string().max(200).optional(),
+        social_description: z.string().max(1000).optional(),
+        cover_url: z.string().max(1000).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const schedule = await prisma.showSchedule.findUnique({ where: { id: input.show_schedule_id }, select: { id: true } });
+      if (!schedule) throw new TRPCError({ code: "NOT_FOUND", message: "That show no longer exists." });
+
+      const data = {
+        facebook_enabled: input.facebook_enabled,
+        youtube_enabled: input.youtube_enabled,
+        auto_start: input.auto_start,
+        auto_stop: input.auto_stop,
+        start_before_minutes: input.start_before_minutes,
+        stop_after_minutes: input.stop_after_minutes,
+        social_title: input.social_title?.trim() || null,
+        social_description: input.social_description?.trim() || null,
+        cover_url: input.cover_url?.trim() || null,
+      };
+      const row = await prisma.showSocialSetting.upsert({
+        where: { show_schedule_id: input.show_schedule_id },
+        create: { show_schedule_id: input.show_schedule_id, ...data },
+        update: data,
+      });
+      await logRadioAction(ctx.userId!, "social_show_settings_saved", {
+        scheduleId: input.show_schedule_id,
+        autoStart: input.auto_start,
+        autoStop: input.auto_stop,
+      });
+      return row;
     }),
 
   // ── Show Schedule (EPG) ─────────────────────────────────────────────────

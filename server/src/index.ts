@@ -31,6 +31,7 @@ import {
 import { startStorageSyncService } from "./services/storageSync.service.js";
 import { startScheduledJobs } from "./jobs/index.js";
 import { reconcileOrphanedStudioSessions } from "./jobs/streamReconnect.js";
+import { reconcileOrphanedEncoders } from "./lib/socialEncoder.js";
 import { syncStationMountsWithBridge } from "./lib/studioBridge.js";
 import { applyWatermark } from "./lib/watermark.js";
 import { verifyFileHeader } from "./lib/fileValidation.js";
@@ -375,6 +376,13 @@ httpServer.listen(PORT, () => {
   reconcileOrphanedStudioSessions()
     .then((n) => n && console.log(`[boot] reconciled ${n} orphaned studio session(s)`))
     .catch((err) => console.error("[boot] reconcileOrphanedStudioSessions failed:", err));
+  // Same idea for Social Live: a restart leaves encoder legs still claiming
+  // to be live, and possibly an orphan ffmpeg this process no longer
+  // controls. Settling both at boot is what stops a duplicate encoder the
+  // next time someone starts that broadcast.
+  reconcileOrphanedEncoders()
+    .then((r) => r.reconciled && console.log(`[boot] reconciled ${r.reconciled} social encoder leg(s), killed ${r.killed} orphan process(es)`))
+    .catch((err) => console.error("[boot] reconcileOrphanedEncoders failed:", err));
   // Apply S3 bucket policy so TTS/ambient audio folders are publicly readable
   if (s3Configured) {
     applyPublicReadPolicy()

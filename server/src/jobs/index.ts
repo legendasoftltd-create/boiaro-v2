@@ -9,6 +9,7 @@ import { runRecordingRetentionSweep } from "./recordingRetention.js";
 import { runIcecastListenerPoll } from "./icecastListenerPoll.js";
 import { runDatabaseBackup } from "./databaseBackup.js";
 import { runPaymentExpirySweep } from "./paymentExpiry.js";
+import { runSocialAutoBroadcast } from "./socialAutoBroadcast.js";
 
 /**
  * Registers all recurring background jobs. Called once at server startup
@@ -109,6 +110,16 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] paymentExpiry failed:", err));
   });
 
+  // Every minute — scheduled Social Live auto-start / auto-stop. Idempotent:
+  // it checks for a broadcast already attached to the schedule before acting,
+  // so a repeated run (or an overlapping manual invocation) cannot produce a
+  // second encoder.
+  cron.schedule("* * * * *", () => {
+    runSocialAutoBroadcast()
+      .then((r) => (r.started || r.stopped) && console.log(`[jobs] socialAutoBroadcast: started=${r.started} stopped=${r.stopped}`))
+      .catch((err) => console.error("[jobs] socialAutoBroadcast failed:", err));
+  });
+
   // Daily at 03:00 Dhaka — full database backup to S3/R2 (see
   // AdminBackupStatus.tsx for the real catalog this feeds). Runs before the
   // 04:00 recording-retention sweep so a backup always reflects what's about
@@ -119,5 +130,5 @@ export function startScheduledJobs(): void {
       .catch((err) => console.error("[jobs] databaseBackup failed:", err));
   }, DHAKA);
 
-  console.log("[jobs] scheduled jobs registered (inactivity, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll, payment expiry, database backup)");
+  console.log("[jobs] scheduled jobs registered (inactivity, weekly summary, competition payouts, monthly leaderboard lock, show reminders, stream reconnect, recording retention, icecast listener poll, payment expiry, database backup, social auto-broadcast)");
 }

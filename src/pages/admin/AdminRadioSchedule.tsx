@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Calendar, Plus, Edit, Trash2, Clock, Inbox, Check, X } from "lucide-react"
+import { Calendar, Plus, Edit, Trash2, Clock, Inbox, Check, X, Share2 } from "lucide-react"
 import { toast } from "sonner"
 import { SiteImageUpload } from "@/components/admin/SiteImageUpload"
+import { ShowSocialSettingsDialog } from "@/components/admin/ShowSocialSettingsDialog"
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -60,6 +61,7 @@ function ScheduleChangeRequests() {
 export default function AdminRadioSchedule() {
   const utils = trpc.useUtils()
   const { data: schedules = [], isLoading } = trpc.admin.listShowSchedules.useQuery()
+  const [socialFor, setSocialFor] = useState<{ id: string; title: string } | null>(null)
   const { data: stations = [] } = trpc.admin.listRadioStations.useQuery()
   const { data: rjProfiles = [] } = trpc.admin.listRjProfiles.useQuery()
 
@@ -273,12 +275,20 @@ export default function AdminRadioSchedule() {
                   <span className="text-muted-foreground">(+1d)</span>
                 )}
               </Badge>
+              <Button size="icon" variant="ghost" className="h-7 w-7" title="Social broadcasting" onClick={() => setSocialFor({ id: s.id, title: s.show_title })}><Share2 className="w-3.5 h-3.5" /></Button>
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(s)}><Edit className="w-3.5 h-3.5" /></Button>
               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { if (confirm("Delete this show?")) deleteMutation.mutate({ id: s.id }) }}><Trash2 className="w-3.5 h-3.5 text-destructive" /></Button>
             </div>
           ))
         )}
       </div>
+
+      <ShowSocialSettingsDialog
+        scheduleId={socialFor?.id ?? null}
+        showTitle={socialFor?.title ?? ""}
+        open={Boolean(socialFor)}
+        onOpenChange={(v) => { if (!v) setSocialFor(null) }}
+      />
     </div>
   )
 }

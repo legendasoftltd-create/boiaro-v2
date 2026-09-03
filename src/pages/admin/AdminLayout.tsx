@@ -4,7 +4,7 @@ import { useAdminPermissions } from "@/hooks/useAdminPermissions";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   LayoutDashboard, BookOpen, Users, Mic2, Building2, ShoppingCart,
-  Star, Layers, ChevronLeft, ChevronRight, LogOut, CreditCard, UserCheck, DollarSign, Wallet, FileCheck, Settings, Truck, Crown, Ticket, Bell, Mail, FileText, BarChart3, PanelTop, Newspaper, Globe, ImageIcon, HeadphonesIcon, Shield, ShieldAlert, Activity, Coins, LayoutGrid, Megaphone, MonitorPlay, Sparkles, Gift, ChevronDown, Menu, AlertTriangle, MessageSquare, Package, ShieldCheck, Languages, Calendar, Trophy, FileAudio, Disc3,
+  Star, Layers, ChevronLeft, ChevronRight, LogOut, CreditCard, UserCheck, DollarSign, Wallet, FileCheck, Settings, Truck, Crown, Ticket, Bell, Mail, FileText, BarChart3, PanelTop, Newspaper, Globe, ImageIcon, HeadphonesIcon, Shield, ShieldAlert, Activity, Coins, LayoutGrid, Megaphone, MonitorPlay, Sparkles, Gift, ChevronDown, Menu, AlertTriangle, MessageSquare, Package, ShieldCheck, Languages, Calendar, Trophy, FileAudio, Disc3, Share2,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -128,6 +128,7 @@ const navGroups: NavGroup[] = [
       { label: "RJ Management", path: "/admin/rj-management", icon: Mic2 },
       { label: "Recordings", path: "/admin/recordings", icon: FileAudio },
       { label: "Studio Music Library", path: "/admin/studio-library", icon: Disc3 },
+      { label: "Social Live", path: "/admin/social-live", icon: Share2 },
       { label: "Radio Safety & Controls", path: "/admin/radio-safety", icon: ShieldAlert },
       { label: "Site Settings", path: "/admin/site-settings", icon: Settings },
     ],

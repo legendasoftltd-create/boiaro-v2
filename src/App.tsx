@@ -178,6 +178,7 @@ const AdminRjManagement = lazy(() => import("./pages/admin/AdminRjManagement.tsx
 const AdminRecordings = lazy(() => import("./pages/admin/AdminRecordings.tsx"));
 const AdminStudioLibrary = lazy(() => import("./pages/admin/AdminStudioLibrary.tsx"));
 const AdminRadioSafety = lazy(() => import("./pages/admin/AdminRadioSafety.tsx"));
+const AdminSocialLive = lazy(() => import("./pages/admin/AdminSocialLive.tsx"));
 const AdminSms = lazy(() => import("./pages/admin/AdminSms.tsx"));
 const TtsDemo = lazy(() => import("./pages/TtsDemo.tsx"));
 
@@ -363,6 +364,7 @@ const App = () => {
                   <Route path="rj-management" element={<AdminRjManagement />} />
                   <Route path="recordings" element={<AdminRecordings />} />
                   <Route path="studio-library" element={<AdminStudioLibrary />} />
+                  <Route path="social-live" element={<AdminSocialLive />} />
                   <Route path="radio-safety" element={<AdminRadioSafety />} />
                   <Route path="referrals" element={<AdminReferrals />} />
                   <Route path="gamification" element={<AdminGamification />} />

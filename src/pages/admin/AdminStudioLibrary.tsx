@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AudioFileUpload } from "@/components/admin/AudioFileUpload"
 import { Music, Trash2, Loader2, Disc3, CheckCircle2, XCircle, EyeOff, Eye, Clock } from "lucide-react"
@@ -32,6 +33,12 @@ export default function AdminStudioLibrary() {
   const [licenseType, setLicenseType] = useState<LicenseType>("royalty_free")
   const [licenseDocumentUrl, setLicenseDocumentUrl] = useState("")
   const [allowedUsage, setAllowedUsage] = useState("")
+  // Social Broadcast Rights (§16). Kept separate from allowedUsage because
+  // Facebook and YouTube run automated content matching — a track that is
+  // fine on BoiAro's own app can mute a video or strike the Page.
+  const [socialRights, setSocialRights] = useState({
+    app: true, website: true, facebook: false, youtube: false, other: false,
+  })
 
   const uploadMutation = trpc.studio.libraryUpload.useMutation({
     onSuccess: () => {
@@ -75,6 +82,7 @@ export default function AdminStudioLibrary() {
       rightsHolder: rightsHolder.trim(), licenseType,
       licenseDocumentUrl: licenseDocumentUrl.trim() || undefined,
       allowedUsage: allowedUsage.trim() || undefined,
+      socialRights,
     })
   }
 
@@ -136,6 +144,32 @@ export default function AdminStudioLibrary() {
               <Input value={allowedUsage} onChange={(e) => setAllowedUsage(e.target.value)} placeholder="e.g. broadcast only, no resale" />
             </div>
           </div>
+
+          <div className="space-y-2 rounded-lg border p-3">
+            <Label>Social broadcast rights</Label>
+            <p className="text-[11px] text-muted-foreground">
+              Where this track is cleared to be broadcast. Facebook and YouTube match audio automatically,
+              so an uncleared track can mute a video or put a strike on the Page or channel. Leaving a box
+              unticked shows the RJ a warning — it does not block playback.
+            </p>
+            <div className="flex flex-wrap gap-4 pt-1">
+              {([
+                ["app", "BoiAro App"],
+                ["website", "BoiAro Website"],
+                ["facebook", "Facebook"],
+                ["youtube", "YouTube"],
+                ["other", "Other social platforms"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 text-xs cursor-pointer">
+                  <Checkbox
+                    checked={socialRights[key]}
+                    onCheckedChange={(v) => setSocialRights((r) => ({ ...r, [key]: Boolean(v) }))}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
           <Button size="sm" onClick={handleAdd} disabled={uploadMutation.isPending}>
             {uploadMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
             Add to Library
@@ -193,6 +227,12 @@ export default function AdminStudioLibrary() {
                   <p className="font-medium truncate">{a.title}</p>
                   <p className="text-[11px] text-muted-foreground truncate">
                     {a.rights_holder || "—"} · {a.license_type ? LICENSE_TYPE_LABEL[a.license_type as LicenseType] ?? a.license_type : "—"}
+                    {(() => {
+                      const cleared = [a.social_rights_facebook && "FB", a.social_rights_youtube && "YT"].filter(Boolean)
+                      return cleared.length
+                        ? <span className="text-green-600 dark:text-green-500"> · cleared for {cleared.join(" + ")}</span>
+                        : <span className="text-amber-600 dark:text-amber-500"> · not cleared for social</span>
+                    })()}
                   </p>
                 </div>
                 {a.status === "unpublished" && <Badge variant="outline" className="text-[9px] shrink-0">unpublished</Badge>}

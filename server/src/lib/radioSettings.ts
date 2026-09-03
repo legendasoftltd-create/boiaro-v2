@@ -46,6 +46,40 @@ export const RADIO_SETTINGS_DEFAULTS = {
   radio_mixer_allowed_formats: "mp3,wav,m4a,ogg,aac", // comma-separated file extensions
   radio_mixer_max_playlist_length: "50", // per-broadcast queue cap
 
+  // Social Live Broadcasting (Facebook / YouTube). The encoder is a pure
+  // consumer of the Icecast feed — nothing here can affect the App/Website
+  // broadcast, and social_live_enabled is the hard off switch that makes the
+  // whole feature inert without needing a deploy.
+  social_live_enabled: "false", // master kill switch — off until a phase is signed off
+  social_auto_start_enabled: "false", // scheduled auto-start/auto-stop (built in a later phase)
+  social_max_concurrent_encoders: "1", // refuse to start beyond this many encoder processes
+  social_video_bitrate_kbps: "4500",
+  social_audio_bitrate_kbps: "128",
+  social_framerate: "30",
+  social_keyframe_seconds: "2", // platforms want a keyframe every 2s
+  social_x264_preset: "veryfast", // measured: ~1 core for a static scene at 1080p30
+  // Hard cap on encoder CPU. A realtime Icecast source paces the encode on
+  // its own, but a source that is NOT realtime (a misconfigured stream_url
+  // pointing at a plain file, say) makes ffmpeg encode as fast as it can —
+  // observed at ~690% CPU in local testing. Capping threads bounds that to a
+  // fraction of the box instead of all of it. 2 is ample: a static 1080p30
+  // scene was measured at about one core.
+  social_encoder_threads: "2",
+  // How many PNG frames per second the encoder pushes into ffmpeg. Low on
+  // purpose — the scene is a still image, and ffmpeg duplicates frames up to
+  // the output framerate. Raising this only matters if a scene ever animates.
+  social_scene_fps: "2",
+  // §14: a few seconds of lost audio must not stop the broadcast. ffmpeg
+  // retries the Icecast source itself for this long before giving up.
+  social_source_reconnect_max_seconds: "120",
+  // How often the supervisor re-checks that the audio source is answering.
+  social_source_check_seconds: "15",
+  // Consecutive failed source checks before the broadcast is called degraded
+  // and the admin is alerted. At the default check interval this is ~1 minute
+  // of real silence, not one unlucky probe.
+  social_source_failure_threshold: "4",
+  social_resolution: "1920x1080",
+
   // Chat safety.
   radio_slow_mode_seconds: "2", // minimum gap between messages from the same user
   radio_blocked_words: "", // comma-separated, case-insensitive substrings

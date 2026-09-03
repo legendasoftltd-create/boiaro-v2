@@ -594,6 +594,19 @@ export const studioRouter = router({
       licenseType: z.enum(["royalty_free", "creative_commons", "purchased", "original", "other"]),
       licenseDocumentUrl: z.string().url().optional(),
       allowedUsage: z.string().max(500).optional(),
+      // Social Broadcast Rights (§16). Optional: left unset they mean "not
+      // stated", which the warning-first policy treats as not cleared for
+      // Facebook/YouTube — a warning to the RJ and an audit entry, never a
+      // block in this phase.
+      socialRights: z
+        .object({
+          app: z.boolean().optional(),
+          website: z.boolean().optional(),
+          facebook: z.boolean().optional(),
+          youtube: z.boolean().optional(),
+          other: z.boolean().optional(),
+        })
+        .optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (!(await getRadioSettingBool("radio_mixer_enabled"))) {
@@ -652,8 +665,54 @@ export const studioRouter = router({
           license_type: input.licenseType,
           license_document_url: input.licenseDocumentUrl ?? null,
           allowed_usage: input.allowedUsage ?? null,
+          social_rights_app: input.socialRights?.app ?? null,
+          social_rights_website: input.socialRights?.website ?? null,
+          social_rights_facebook: input.socialRights?.facebook ?? null,
+          social_rights_youtube: input.socialRights?.youtube ?? null,
+          social_rights_other: input.socialRights?.other ?? null,
         },
       });
+    }),
+
+  /**
+   * Which tracks in a broadcast's queue are not cleared for the platforms it
+   * is going out on (§16).
+   *
+   * Warning-first by design: this reports, it does not block. Facebook and
+   * YouTube run automated content matching, so an uncleared track can mute a
+   * video or put a strike on the Page — but silently refusing to play an
+   * RJ's music mid-show would be a worse failure than warning them. Every
+   * warning is written to the audit trail, so a later decision to start
+   * enforcing has evidence behind it.
+   */
+  socialRightsWarnings: protectedProcedure
+    .input(z.object({ assetIds: z.array(z.string()).max(200), platforms: z.array(z.enum(["facebook", "youtube"])).min(1) }))
+    .query(async ({ ctx, input }) => {
+      if (!input.assetIds.length) return { warnings: [] as { assetId: string; title: string; missing: string[] }[] };
+      const assets = await prisma.studioAudioAsset.findMany({
+        where: { id: { in: input.assetIds } },
+        select: {
+          id: true, title: true, rights_holder: true,
+          social_rights_facebook: true, social_rights_youtube: true,
+        },
+      });
+      const warnings = assets
+        .map((a) => {
+          const missing: string[] = [];
+          if (input.platforms.includes("facebook") && a.social_rights_facebook !== true) missing.push("Facebook");
+          if (input.platforms.includes("youtube") && a.social_rights_youtube !== true) missing.push("YouTube");
+          return { assetId: a.id, title: a.title, missing };
+        })
+        .filter((w) => w.missing.length > 0);
+
+      if (warnings.length) {
+        await logRadioAction(ctx.userId!, "social_rights_warning_shown", {
+          platforms: input.platforms,
+          uncleared: warnings.length,
+          assetIds: warnings.map((w) => w.assetId).slice(0, 50),
+        });
+      }
+      return { warnings };
     }),
 
   // Admin review queue for RJ self-uploads awaiting approval.

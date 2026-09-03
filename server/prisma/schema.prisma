@@ -59,8 +59,8 @@ model User {
   // omits email/name from the client payload after the first authorization.
   apple_id            String?   @unique
 
-  profile   Profile?
-  roles     UserRole[]
+  profile Profile?
+  roles   UserRole[]
 
   @@map("users")
 }
@@ -87,20 +87,20 @@ model AccountingLedger {
 }
 
 model AdBanner {
-  id              String   @id @default(uuid())
-  clicks          Int?     @default(0)
-  created_at      DateTime @default(now())
+  id              String          @id @default(uuid())
+  clicks          Int?            @default(0)
+  created_at      DateTime        @default(now())
   destination_url String?
   device          String?
   display_order   Int?
   end_date        DateTime?
   image_url       String?
-  impressions     Int?     @default(0)
+  impressions     Int?            @default(0)
   placement_key   String
   start_date      DateTime?
-  status          String   @default("active")
+  status          String          @default("active")
   title           String?
-  updated_at      DateTime @updatedAt
+  updated_at      DateTime        @updatedAt
   slides          AdBannerSlide[]
 
   @@map("ad_banners")
@@ -126,33 +126,33 @@ model AdBannerSlide {
 }
 
 model AdCampaign {
-  id            String   @id @default(uuid())
-  ad_type       String   @default("banner")
-  created_at    DateTime @default(now())
+  id            String    @id @default(uuid())
+  ad_type       String    @default("banner")
+  created_at    DateTime  @default(now())
   end_date      DateTime?
   name          String
   notes         String?
   placement_key String?
   start_date    DateTime?
-  status        String   @default("active")
+  status        String    @default("active")
   target_page   String?
-  updated_at    DateTime @updatedAt
+  updated_at    DateTime  @updatedAt
 
   @@map("ad_campaigns")
 }
 
 model AdPlacement {
-  id                String   @id @default(uuid())
-  ad_type           String   @default("banner")
-  created_at        DateTime @default(now())
-  device_visibility String?
-  display_priority  Int?
-  frequency         String?
-  is_enabled        Boolean  @default(true)
-  label             String
-  notes             String?
-  placement_key     String   @unique
-  updated_at        DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  ad_type              String   @default("banner")
+  created_at           DateTime @default(now())
+  device_visibility    String?
+  display_priority     Int?
+  frequency            String?
+  is_enabled           Boolean  @default(true)
+  label                String
+  notes                String?
+  placement_key        String   @unique
+  updated_at           DateTime @updatedAt
   // Gates a "delayed" placement (e.g. reader_delayed/player_delayed) — the ad
   // doesn't render until the reader/listener crosses whichever of these is
   // set (either can gate; null means that condition doesn't apply). Read by
@@ -195,8 +195,8 @@ model AdminRole {
   name        String   @unique
   updated_at  DateTime @updatedAt
 
-  admin_user_roles   AdminUserRole[]
-  admin_permissions  AdminRolePermission[]
+  admin_user_roles  AdminUserRole[]
+  admin_permissions AdminRolePermission[]
 
   @@map("admin_roles")
 }
@@ -216,11 +216,11 @@ model AdminRolePermission {
 }
 
 model AdminUserRole {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   admin_role_id String
-  created_at    DateTime  @default(now())
-  is_active     Boolean   @default(true)
-  updated_at    DateTime  @updatedAt
+  created_at    DateTime @default(now())
+  is_active     Boolean  @default(true)
+  updated_at    DateTime @updatedAt
   user_id       String
 
   admin_role AdminRole @relation(fields: [admin_role_id], references: [id])
@@ -244,7 +244,7 @@ model AudiobookTrack {
   track_number       Int
   preview_audio_url  String?
 
-  book_format      BookFormat       @relation(fields: [book_format_id], references: [id], onDelete: Cascade)
+  book_format       BookFormat        @relation(fields: [book_format_id], references: [id], onDelete: Cascade)
   chapter_purchases ChapterPurchase[]
 
   @@map("audiobook_tracks")
@@ -291,21 +291,21 @@ model IapTransaction {
 }
 
 model Author {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   avatar_url  String?
   bio         String?
-  created_at  DateTime @default(now())
+  created_at  DateTime  @default(now())
   email       String?
   genre       String?
-  is_featured Boolean? @default(false)
-  is_trending Boolean? @default(false)
+  is_featured Boolean?  @default(false)
+  is_trending Boolean?  @default(false)
   linked_at   DateTime?
   name        String
   name_en     String?
   phone       String?
-  priority    Int      @default(0)
-  status      String   @default("active")
-  updated_at  DateTime @updatedAt
+  priority    Int       @default(0)
+  status      String    @default("active")
+  updated_at  DateTime  @updatedAt
   user_id     String?
 
   books Book[]
@@ -314,21 +314,21 @@ model Author {
 }
 
 model Translator {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   avatar_url  String?
   bio         String?
-  created_at  DateTime @default(now())
+  created_at  DateTime  @default(now())
   email       String?
   genre       String?
-  is_featured Boolean? @default(false)
-  is_trending Boolean? @default(false)
+  is_featured Boolean?  @default(false)
+  is_trending Boolean?  @default(false)
   linked_at   DateTime?
   name        String
   name_en     String?
   phone       String?
-  priority    Int      @default(0)
-  status      String   @default("active")
-  updated_at  DateTime @updatedAt
+  priority    Int       @default(0)
+  status      String    @default("active")
+  updated_at  DateTime  @updatedAt
   user_id     String?
 
   books Book[]
@@ -337,16 +337,16 @@ model Translator {
 }
 
 model BadgeDefinition {
-  id              String   @id @default(uuid())
-  category        String   @default("reading")
+  id              String    @id @default(uuid())
+  category        String    @default("reading")
   coin_reward     Int?
-  condition_type  String   @default("count")
+  condition_type  String    @default("count")
   condition_value Int?
   created_at      DateTime? @default(now())
   description     String?
   icon_url        String?
-  is_active       Boolean? @default(true)
-  key             String   @unique
+  is_active       Boolean?  @default(true)
+  key             String    @unique
   sort_order      Int?
   title           String
   updated_at      DateTime? @updatedAt
@@ -357,23 +357,23 @@ model BadgeDefinition {
 }
 
 model BlogPost {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   author_name     String?
   category        String?
-  content         String   @default("")
+  content         String    @default("")
   cover_image     String?
-  created_at      DateTime @default(now())
+  created_at      DateTime  @default(now())
   excerpt         String?
-  is_featured     Boolean? @default(false)
+  is_featured     Boolean?  @default(false)
   publish_date    DateTime?
   seo_description String?
   seo_keywords    String?
   seo_title       String?
-  slug            String   @unique
-  status          String   @default("draft")
+  slug            String    @unique
+  status          String    @default("draft")
   tags            String[]
   title           String
-  updated_at      DateTime @updatedAt
+  updated_at      DateTime  @updatedAt
 
   @@map("blog_posts")
 }
@@ -387,8 +387,8 @@ model BookComment {
   updated_at DateTime @updatedAt
   user_id    String
 
-  book    Book         @relation(fields: [book_id], references: [id], onDelete: Cascade)
-  parent  BookComment? @relation("CommentReplies", fields: [parent_id], references: [id])
+  book    Book          @relation(fields: [book_id], references: [id], onDelete: Cascade)
+  parent  BookComment?  @relation("CommentReplies", fields: [parent_id], references: [id])
   replies BookComment[] @relation("CommentReplies")
   likes   CommentLike[]
 
@@ -409,58 +409,58 @@ model BookContributor {
 }
 
 model BookFormat {
-  id                          String         @id @default(uuid())
-  audio_quality               AudioQuality?
-  binding                     BindingType?
-  book_id                     String
-  chapters_count              Int?
-  coin_price                  Int?
-  created_at                  DateTime       @default(now())
-  default_packaging_cost      Float?
-  delivery_days               Int?
-  dimensions                  String?
-  discount                    Float?
-  duration                    String?
-  file_size                   String?
-  file_url                    String?
-  format                      BookFormatType
-  in_stock                    Boolean?       @default(true)
-  is_available                Boolean?       @default(true)
-  isbn                        String?
-  subscriber_access           Boolean?       @default(false)
-  purchase_allowed            Boolean?       @default(true)
-  free_access                 Boolean?       @default(false)
-  subscription_delay_days     Int?           @default(0)
-  license_start_date          DateTime?
-  license_end_date            DateTime?
-  rights_status               String         @default("active")
-  narrator_id                 String?
-  narrator_ids                String[]       @default([])
-  original_price              Float?
-  pages                       Int?
-  payout_model                String         @default("standard")
-  preview_chapters            Int?
-  preview_percentage          Float?
-  price                       Float?
-  printing_cost               Float?
+  id                           String         @id @default(uuid())
+  audio_quality                AudioQuality?
+  binding                      BindingType?
+  book_id                      String
+  chapters_count               Int?
+  coin_price                   Int?
+  created_at                   DateTime       @default(now())
+  default_packaging_cost       Float?
+  delivery_days                Int?
+  dimensions                   String?
+  discount                     Float?
+  duration                     String?
+  file_size                    String?
+  file_url                     String?
+  format                       BookFormatType
+  in_stock                     Boolean?       @default(true)
+  is_available                 Boolean?       @default(true)
+  isbn                         String?
+  subscriber_access            Boolean?       @default(false)
+  purchase_allowed             Boolean?       @default(true)
+  free_access                  Boolean?       @default(false)
+  subscription_delay_days      Int?           @default(0)
+  license_start_date           DateTime?
+  license_end_date             DateTime?
+  rights_status                String         @default("active")
+  narrator_id                  String?
+  narrator_ids                 String[]       @default([])
+  original_price               Float?
+  pages                        Int?
+  payout_model                 String         @default("standard")
+  preview_chapters             Int?
+  preview_percentage           Float?
+  price                        Float?
+  printing_cost                Float?
   publisher_commission_percent Float?
-  publisher_id                String?
-  stock_count                 Int?
-  submission_status           String         @default("pending")
-  submitted_by                String?
-  unit_cost                   Float?
-  updated_at                  DateTime       @updatedAt
-  weight                      String?
-  weight_kg_per_copy          Float?
+  publisher_id                 String?
+  stock_count                  Int?
+  submission_status            String         @default("pending")
+  submitted_by                 String?
+  unit_cost                    Float?
+  updated_at                   DateTime       @updatedAt
+  weight                       String?
+  weight_kg_per_copy           Float?
 
-  book            Book             @relation(fields: [book_id], references: [id])
-  narrator        Narrator?        @relation(fields: [narrator_id], references: [id])
-  publisher       Publisher?       @relation(fields: [publisher_id], references: [id])
+  book             Book                         @relation(fields: [book_id], references: [id])
+  narrator         Narrator?                    @relation(fields: [narrator_id], references: [id])
+  publisher        Publisher?                   @relation(fields: [publisher_id], references: [id])
   audiobook_tracks AudiobookTrack[]
-  ebook_chapters  EbookChapter[]
-  order_items     OrderItem[]
-  included_plans  BookFormatSubscriptionPlan[]
-  early_access    BookFormatEarlyAccess[]
+  ebook_chapters   EbookChapter[]
+  order_items      OrderItem[]
+  included_plans   BookFormatSubscriptionPlan[]
+  early_access     BookFormatEarlyAccess[]
 
   @@unique([book_id, format])
   @@map("book_formats")
@@ -560,61 +560,61 @@ model Bookmark {
 }
 
 model Book {
-  id                String   @id @default(uuid())
-  author_id         String?
-  translator_id     String?
-  category_id       String?
-  coin_price        Int?
-  cover_url         String?
-  created_at        DateTime @default(now())
-  description       String?
-  description_bn    String?
-  is_active         Boolean  @default(true)
-  is_bestseller     Boolean? @default(false)
-  is_featured       Boolean? @default(false)
-  is_free           Boolean? @default(false)
-  is_new            Boolean? @default(false)
-  is_premium        Boolean? @default(false)
-  language          String?
-  priority          Int?
-  published_date    DateTime?
-  publisher_id      String?
-  rating            Float?
-  reviews_count     Int?     @default(0)
-  slug              String   @unique
-  premium_voice_enabled Boolean? @default(false)
-  submission_status String   @default("pending")
-  submitted_by      String?
-  tags              String[]
-  title             String
-  title_en          String?
-  total_reads       Int?     @default(0)
-  total_listens     Int?     @default(0)
-  total_views       Int?     @default(0)
-  updated_at        DateTime @updatedAt
-  subscriber_access Boolean? @default(false)
-  voice_access_type String?  @default("paid")
-  voice_coin_price  Int?
+  id                    String    @id @default(uuid())
+  author_id             String?
+  translator_id         String?
+  category_id           String?
+  coin_price            Int?
+  cover_url             String?
+  created_at            DateTime  @default(now())
+  description           String?
+  description_bn        String?
+  is_active             Boolean   @default(true)
+  is_bestseller         Boolean?  @default(false)
+  is_featured           Boolean?  @default(false)
+  is_free               Boolean?  @default(false)
+  is_new                Boolean?  @default(false)
+  is_premium            Boolean?  @default(false)
+  language              String?
+  priority              Int?
+  published_date        DateTime?
+  publisher_id          String?
+  rating                Float?
+  reviews_count         Int?      @default(0)
+  slug                  String    @unique
+  premium_voice_enabled Boolean?  @default(false)
+  submission_status     String    @default("pending")
+  submitted_by          String?
+  tags                  String[]
+  title                 String
+  title_en              String?
+  total_reads           Int?      @default(0)
+  total_listens         Int?      @default(0)
+  total_views           Int?      @default(0)
+  updated_at            DateTime  @updatedAt
+  subscriber_access     Boolean?  @default(false)
+  voice_access_type     String?   @default("paid")
+  voice_coin_price      Int?
 
   author     Author?     @relation(fields: [author_id], references: [id])
   translator Translator? @relation(fields: [translator_id], references: [id])
-  category  Category?  @relation(fields: [category_id], references: [id])
-  publisher Publisher? @relation(fields: [publisher_id], references: [id])
+  category   Category?   @relation(fields: [category_id], references: [id])
+  publisher  Publisher?  @relation(fields: [publisher_id], references: [id])
 
-  formats           BookFormat[]
-  comments          BookComment[]
-  contributors      BookContributor[]
-  reads             BookRead[]
-  listens           BookListen[]
-  views             BookView[]
-  bookmarks         Bookmark[]
-  reviews           Review[]
-  reading_progress  ReadingProgress[]
+  formats            BookFormat[]
+  comments           BookComment[]
+  contributors       BookContributor[]
+  reads              BookRead[]
+  listens            BookListen[]
+  views              BookView[]
+  bookmarks          Bookmark[]
+  reviews            Review[]
+  reading_progress   ReadingProgress[]
   listening_progress ListeningProgress[]
-  content_unlocks   ContentUnlock[]
-  daily_stats       DailyBookStat[]
-  user_presence     UserPresence[]
-  coupon_books      CouponBook[]
+  content_unlocks    ContentUnlock[]
+  daily_stats        DailyBookStat[]
+  user_presence      UserPresence[]
+  coupon_books       CouponBook[]
 
   @@map("books")
 }
@@ -633,8 +633,8 @@ model Category {
   slug        String?
   status      String   @default("active")
 
-  books                     Book[]
-  coupons                   Coupon[]
+  books                      Book[]
+  coupons                    Coupon[]
   homepage_category_sections HomepageCategorySection[]
 
   @@map("categories")
@@ -708,14 +708,14 @@ model CoinPurchase {
 }
 
 model CoinTransaction {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   amount       Int
-  created_at   DateTime @default(now())
+  created_at   DateTime  @default(now())
   description  String?
   expires_at   DateTime?
   reference_id String?
   source       String?
-  type         String   @default("earn")
+  type         String    @default("earn")
   user_id      String
 
   @@index([user_id, created_at])
@@ -774,16 +774,16 @@ model ContentConsumptionTime {
 }
 
 model ContentEditRequest {
-  id          String   @id @default(uuid())
-  book_id     String
-  created_at  DateTime @default(now())
-  details     String?
-  format      String?
-  request_type String  @default("edit")
-  reviewer_id String?
-  status      String   @default("pending")
-  updated_at  DateTime @updatedAt
-  user_id     String
+  id           String   @id @default(uuid())
+  book_id      String
+  created_at   DateTime @default(now())
+  details      String?
+  format       String?
+  request_type String   @default("edit")
+  reviewer_id  String?
+  status       String   @default("pending")
+  updated_at   DateTime @updatedAt
+  user_id      String
 
   @@map("content_edit_requests")
 }
@@ -845,23 +845,23 @@ model CouponUsage {
 }
 
 model Coupon {
-  id               String   @id @default(uuid())
-  applies_to       String   @default("all")
+  id               String    @id @default(uuid())
+  applies_to       String    @default("all")
   category_id      String?
-  code             String   @unique
-  created_at       DateTime @default(now())
+  code             String    @unique
+  created_at       DateTime  @default(now())
   description      String?
-  discount_type    String   @default("percentage")
-  discount_value   Float    @default(0)
+  discount_type    String    @default("percentage")
+  discount_value   Float     @default(0)
   end_date         DateTime?
-  first_order_only Boolean  @default(false)
+  first_order_only Boolean   @default(false)
   min_order_amount Float?
   per_user_limit   Int?
-  start_date       DateTime @default(now())
-  status           String   @default("active")
-  updated_at       DateTime @updatedAt
+  start_date       DateTime  @default(now())
+  status           String    @default("active")
+  updated_at       DateTime  @updatedAt
   usage_limit      Int?
-  used_count       Int      @default(0)
+  used_count       Int       @default(0)
 
   usages   CouponUsage[]
   books    CouponBook[]
@@ -871,9 +871,9 @@ model Coupon {
 }
 
 model CouponBook {
-  id         String @id @default(uuid())
-  coupon_id  String
-  book_id    String
+  id        String @id @default(uuid())
+  coupon_id String
+  book_id   String
 
   coupon Coupon @relation(fields: [coupon_id], references: [id], onDelete: Cascade)
   book   Book   @relation(fields: [book_id], references: [id], onDelete: Cascade)
@@ -930,13 +930,13 @@ model EbookChapter {
 }
 
 model EmailLog {
-  id              String   @id @default(uuid())
-  created_at      DateTime @default(now())
+  id              String    @id @default(uuid())
+  created_at      DateTime  @default(now())
   error_message   String?
   recipient_email String
   sent_at         DateTime?
-  status          String   @default("pending")
-  subject         String   @default("")
+  status          String    @default("pending")
+  subject         String    @default("")
   template_type   String
 
   @@map("email_logs")
@@ -956,29 +956,29 @@ model EmailSendLog {
 }
 
 model EmailSendState {
-  id              String   @id @default(uuid())
-  created_at      DateTime @default(now())
-  idempotency_key String   @unique
+  id              String    @id @default(uuid())
+  created_at      DateTime  @default(now())
+  idempotency_key String    @unique
   last_attempt_at DateTime?
   recipient_email String
-  retry_count     Int      @default(0)
-  status          String   @default("pending")
+  retry_count     Int       @default(0)
+  status          String    @default("pending")
   template_name   String
-  updated_at      DateTime @updatedAt
+  updated_at      DateTime  @updatedAt
 
   @@map("email_send_state")
 }
 
 model EmailTemplate {
-  id          String   @id @default(uuid())
-  body        String   @default("")
-  created_at  DateTime @default(now())
-  is_active   Boolean  @default(true)
-  name        String
-  subject     String
-  template_type String  @unique
-  updated_at  DateTime @updatedAt
-  variables   String[]
+  id            String   @id @default(uuid())
+  body          String   @default("")
+  created_at    DateTime @default(now())
+  is_active     Boolean  @default(true)
+  name          String
+  subject       String
+  template_type String   @unique
+  updated_at    DateTime @updatedAt
+  variables     String[]
 
   @@map("email_templates")
 }
@@ -1019,23 +1019,23 @@ model FormatRevenueSplit {
 }
 
 model FreeShippingCampaign {
-  id              String   @id @default(uuid())
-  created_at      DateTime @default(now())
+  id              String    @id @default(uuid())
+  created_at      DateTime  @default(now())
   end_date        DateTime?
-  is_active       Boolean  @default(true)
-  min_order_value Float    @default(0)
+  is_active       Boolean   @default(true)
+  min_order_value Float     @default(0)
   name            String
-  start_date      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  start_date      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
 
   @@map("free_shipping_campaigns")
 }
 
 model GamificationPoint {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   created_at   DateTime? @default(now())
   event_type   String
-  points       Int      @default(0)
+  points       Int       @default(0)
   reference_id String?
   user_id      String
 
@@ -1087,16 +1087,16 @@ model HomepageCategorySection {
 }
 
 model ListeningProgress {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   book_id          String
-  created_at       DateTime @default(now())
+  created_at       DateTime  @default(now())
   current_position Float?
   current_track    Int?
   last_listened_at DateTime?
   percentage       Float?
   playback_speed   Float?
   total_duration   Float?
-  updated_at       DateTime @updatedAt
+  updated_at       DateTime  @updatedAt
   user_id          String
 
   book Book @relation(fields: [book_id], references: [id], onDelete: Cascade)
@@ -1106,40 +1106,40 @@ model ListeningProgress {
 }
 
 model LiveSession {
-  id                String   @id @default(uuid())
-  created_at        DateTime @default(now())
-  disconnect_reason String?
-  ended_at          DateTime?
-  rj_user_id        String
-  show_title        String?
-  description       String?
-  cover_image_url   String?
-  started_at        DateTime @default(now())
-  station_id        String?
+  id                         String    @id @default(uuid())
+  created_at                 DateTime  @default(now())
+  disconnect_reason          String?
+  ended_at                   DateTime?
+  rj_user_id                 String
+  show_title                 String?
+  description                String?
+  cover_image_url            String?
+  started_at                 DateTime  @default(now())
+  station_id                 String?
   // scheduled | preparing | testing | live | reconnecting | ended
-  status            String   @default("live")
-  stream_url        String?
+  status                     String    @default("live")
+  stream_url                 String?
   // Populated either automatically (ffmpeg capture, see lib/liveRecorder.ts)
   // or manually attached by the RJ/admin after the show ends.
-  recording_url     String?
+  recording_url              String?
   // null (no recording) | recording | processing | draft | published | rejected | deleted
-  recording_status         String?
-  recording_source         String?   // "automatic" | "manual"
+  recording_status           String?
+  recording_source           String? // "automatic" | "manual"
   recording_duration_seconds Int?
   recording_file_size_bytes  Int?
-  recording_approved_by    String?
-  recording_approved_at    DateTime?
-  recording_published_at   DateTime?
+  recording_approved_by      String?
+  recording_approved_at      DateTime?
+  recording_published_at     DateTime?
 
   // Private test broadcast — never surfaced in the public "current live"
   // queries, only visible to the host and admins.
-  is_test           Boolean  @default(false)
-  category          String?
-  chat_enabled      Boolean  @default(true)
-  requests_enabled  Boolean  @default(true)
-  recording_enabled Boolean  @default(true)
-  callin_enabled    Boolean  @default(false)
-  reaction_count    Int      @default(0)
+  is_test            Boolean @default(false)
+  category           String?
+  chat_enabled       Boolean @default(true)
+  requests_enabled   Boolean @default(true)
+  recording_enabled  Boolean @default(true)
+  callin_enabled     Boolean @default(false)
+  reaction_count     Int     @default(0)
   catchup_play_count Int     @default(0)
 
   // Liveness heartbeat from the RJ client — a stale heartbeat past the
@@ -1147,7 +1147,7 @@ model LiveSession {
   // the session if it stays stale (see jobs/streamReconnect.ts).
   last_heartbeat_at DateTime @default(now())
 
-  station RadioStation?     @relation(fields: [station_id], references: [id])
+  station           RadioStation?           @relation(fields: [station_id], references: [id])
   chat_messages     LiveChatMessage[]
   song_requests     SongRequest[]
   listener_sessions ListenerSession[]
@@ -1329,22 +1329,22 @@ model SongRequest {
 }
 
 model Narrator {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   avatar_url  String?
   bio         String?
-  created_at  DateTime @default(now())
+  created_at  DateTime  @default(now())
   email       String?
-  is_featured Boolean? @default(false)
-  is_trending Boolean? @default(false)
+  is_featured Boolean?  @default(false)
+  is_trending Boolean?  @default(false)
   linked_at   DateTime?
   name        String
   name_en     String?
   phone       String?
-  priority    Int      @default(0)
+  priority    Int       @default(0)
   rating      Float?
   specialty   String?
-  status      String   @default("active")
-  updated_at  DateTime @updatedAt
+  status      String    @default("active")
+  updated_at  DateTime  @updatedAt
   user_id     String?
 
   book_formats BookFormat[]
@@ -1386,22 +1386,22 @@ model NotificationTemplate {
 }
 
 model Notification {
-  id             String   @id @default(uuid())
-  audience       String   @default("all")
-  channel        String   @default("in_app")
-  created_at     DateTime @default(now())
+  id             String    @id @default(uuid())
+  audience       String    @default("all")
+  channel        String    @default("in_app")
+  created_at     DateTime  @default(now())
   created_by     String?
   image_url      String?
   link           String?
   message        String
-  priority       String   @default("normal")
+  priority       String    @default("normal")
   scheduled_at   DateTime?
   sent_at        DateTime?
-  status         String   @default("draft")
+  status         String    @default("draft")
   target_user_id String?
   template_id    String?
   title          String
-  type           String   @default("general")
+  type           String    @default("general")
 
   user_notifications UserNotification[]
 
@@ -1440,25 +1440,25 @@ model DeviceSession {
 }
 
 model OrderItem {
-  id                  String         @id @default(uuid())
-  book_id             String?
-  created_at          DateTime       @default(now())
-  format              BookFormatType
-  price               Float          @default(0)
-  book_format_id      String?
-  order_id            String
-  quantity            Int            @default(1)
-  unit_cost           Float?
+  id              String         @id @default(uuid())
+  book_id         String?
+  created_at      DateTime       @default(now())
+  format          BookFormatType
+  price           Float          @default(0)
+  book_format_id  String?
+  order_id        String
+  quantity        Int            @default(1)
+  unit_cost       Float?
   // Share of the order-level coupon discount allocated to this line, pro rata
   // by line value. `price` stays the list price so invoices and reports are
   // unaffected; the revenue base for this line is (price * quantity) - discount_amount.
   // Without it, contributor earnings were computed on the undiscounted line
   // total while the accounting ledger recorded the discounted order total, so
   // the two disagreed by exactly the discount on every discounted order.
-  discount_amount     Float          @default(0)
+  discount_amount Float          @default(0)
 
-  order             Order              @relation(fields: [order_id], references: [id])
-  book_format       BookFormat?        @relation(fields: [book_format_id], references: [id])
+  order                Order                @relation(fields: [order_id], references: [id])
+  book_format          BookFormat?          @relation(fields: [book_format_id], references: [id])
   contributor_earnings ContributorEarning[]
 
   @@map("order_items")
@@ -1479,49 +1479,49 @@ model OrderStatusHistory {
 }
 
 model Order {
-  id                         String   @id @default(uuid())
-  cod_collected_amount       Float?
-  cod_payment_status         String   @default("unpaid")
-  cod_settled_at             DateTime?
-  cod_settlement_reference   String?
-  coupon_code                String?
-  created_at                 DateTime @default(now())
-  discount_amount            Float?
-  estimated_delivery_days    String?
-  fulfillment_cost           Float?
-  is_purchased               Boolean? @default(false)
-  notes                      String?
-  order_number               String   @unique
-  packaging_cost             Float?
-  payment_method             String?
-  purchase_cost_per_unit     Float?
-  shipping_address           String?
-  shipping_area              String?
-  shipping_carrier           String?
-  shipping_city              String?
-  shipping_cost              Float?
-  shipping_district          String?
-  shipping_method_id         String?
-  shipping_method_name       String?
-  shipping_name              String?
-  shipping_phone             String?
-  shipping_zip               String?
-  status                     String?  @default("pending")
-  redx_tracking_id           String?
-  redx_area_id               Int?
-  total_amount               Float?
-  total_weight               Float?
-  updated_at                 DateTime @updatedAt
-  updated_by_admin           Boolean? @default(false)
-  user_id                    String
+  id                       String    @id @default(uuid())
+  cod_collected_amount     Float?
+  cod_payment_status       String    @default("unpaid")
+  cod_settled_at           DateTime?
+  cod_settlement_reference String?
+  coupon_code              String?
+  created_at               DateTime  @default(now())
+  discount_amount          Float?
+  estimated_delivery_days  String?
+  fulfillment_cost         Float?
+  is_purchased             Boolean?  @default(false)
+  notes                    String?
+  order_number             String    @unique
+  packaging_cost           Float?
+  payment_method           String?
+  purchase_cost_per_unit   Float?
+  shipping_address         String?
+  shipping_area            String?
+  shipping_carrier         String?
+  shipping_city            String?
+  shipping_cost            Float?
+  shipping_district        String?
+  shipping_method_id       String?
+  shipping_method_name     String?
+  shipping_name            String?
+  shipping_phone           String?
+  shipping_zip             String?
+  status                   String?   @default("pending")
+  redx_tracking_id         String?
+  redx_area_id             Int?
+  total_amount             Float?
+  total_weight             Float?
+  updated_at               DateTime  @updatedAt
+  updated_by_admin         Boolean?  @default(false)
+  user_id                  String
 
-  items           OrderItem[]
-  status_history  OrderStatusHistory[]
-  payments        Payment[]
-  coupon_usages   CouponUsage[]
+  items                OrderItem[]
+  status_history       OrderStatusHistory[]
+  payments             Payment[]
+  coupon_usages        CouponUsage[]
   contributor_earnings ContributorEarning[]
-  payment_events  PaymentEvent[]
-  purchases       UserPurchase[]
+  payment_events       PaymentEvent[]
+  purchases            UserPurchase[]
 
   @@map("orders")
 }
@@ -1588,30 +1588,30 @@ model PlatformSetting {
 }
 
 model Profile {
-  id                      String   @id @default(uuid())
-  avatar_url              String?
-  bio                     String?
-  created_at              DateTime @default(now())
+  id                        String    @id @default(uuid())
+  avatar_url                String?
+  bio                       String?
+  created_at                DateTime  @default(now())
   daily_reward_last_claimed DateTime?
-  deleted_at              DateTime?
-  deleted_reason          String?
-  display_name            String?
-  experience              String?
-  facebook_url            String?
-  full_name               String?
-  genre                   String?
-  instagram_url           String?
-  is_active               Boolean  @default(true)
-  phone                   String?
-  portfolio_url           String?
-  preferred_language      String?
-  referral_code           String?  @unique
-  referred_by             String?
-  specialty               String?
-  updated_at              DateTime @updatedAt
-  user_id                 String   @unique
-  website_url             String?
-  youtube_url             String?
+  deleted_at                DateTime?
+  deleted_reason            String?
+  display_name              String?
+  experience                String?
+  facebook_url              String?
+  full_name                 String?
+  genre                     String?
+  instagram_url             String?
+  is_active                 Boolean   @default(true)
+  phone                     String?
+  portfolio_url             String?
+  preferred_language        String?
+  referral_code             String?   @unique
+  referred_by               String?
+  specialty                 String?
+  updated_at                DateTime  @updatedAt
+  user_id                   String    @unique
+  website_url               String?
+  youtube_url               String?
 
   user User @relation(fields: [user_id], references: [id])
 
@@ -1619,21 +1619,21 @@ model Profile {
 }
 
 model Publisher {
-  id          String   @id @default(uuid())
-  created_at  DateTime @default(now())
+  id          String    @id @default(uuid())
+  created_at  DateTime  @default(now())
   description String?
   email       String?
-  is_featured Boolean? @default(false)
-  is_trending Boolean? @default(false)
-  is_verified Boolean? @default(false)
+  is_featured Boolean?  @default(false)
+  is_trending Boolean?  @default(false)
+  is_verified Boolean?  @default(false)
   linked_at   DateTime?
   logo_url    String?
   name        String
   name_en     String?
   phone       String?
-  priority    Int      @default(0)
-  status      String   @default("active")
-  updated_at  DateTime @updatedAt
+  priority    Int       @default(0)
+  status      String    @default("active")
+  updated_at  DateTime  @updatedAt
   user_id     String?
 
   books        Book[]
@@ -1643,21 +1643,21 @@ model Publisher {
 }
 
 model RadioStation {
-  id          String   @id @default(uuid())
-  artwork_url String?
-  created_at  DateTime @default(now())
-  description String?
-  is_active   Boolean  @default(true)
-  name        String
-  sort_order  Int      @default(0)
-  stream_url  String   // default / high-quality mount — always required
+  id                String   @id @default(uuid())
+  artwork_url       String?
+  created_at        DateTime @default(now())
+  description       String?
+  is_active         Boolean  @default(true)
+  name              String
+  sort_order        Int      @default(0)
+  stream_url        String // default / high-quality mount — always required
   // Optional lower-bitrate mounts, if the station runs them (common on
   // Icecast setups with multiple mount points). Null = quality selector
   // just isn't shown for that tier; there's no server-side transcoding
   // here, so these must be real alternate mounts the station provides.
   stream_url_medium String?
   stream_url_low    String?
-  updated_at  DateTime @updatedAt
+  updated_at        DateTime @updatedAt
 
   // Station-level automatic-recording control — a session only auto-records
   // when this AND the platform-wide toggle AND the session's own
@@ -1674,7 +1674,7 @@ model RadioStation {
   // offers more than one (stream_url_medium/low) — "high" | "medium" | "low".
   default_quality String @default("high")
 
-  live_sessions LiveSession[]
+  live_sessions  LiveSession[]
   show_schedules ShowSchedule[]
 
   @@map("radio_stations")
@@ -1699,17 +1699,17 @@ model ReadingProgress {
 }
 
 model Referral {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   completed_at     DateTime?
-  created_at       DateTime @default(now())
+  created_at       DateTime  @default(now())
   ip_address       String?
   referral_code    String
   referred_user_id String?
   referrer_id      String
-  reward_amount    Float    @default(0)
-  reward_status    String   @default("pending")
+  reward_amount    Float     @default(0)
+  reward_status    String    @default("pending")
   source           String?
-  status           String   @default("pending")
+  status           String    @default("pending")
 
   @@index([referrer_id])
   @@map("referrals")
@@ -1792,31 +1792,31 @@ model RjProfile {
 }
 
 model RoleApplication {
-  id           String   @id @default(uuid())
-  applied_role String
-  created_at   DateTime @default(now())
-  display_name String?
-  notes        String?
+  id            String    @id @default(uuid())
+  applied_role  String
+  created_at    DateTime  @default(now())
+  display_name  String?
+  notes         String?
   portfolio_url String?
-  reviewed_at  DateTime?
-  reviewed_by  String?
-  sample_work  String?
-  status       String   @default("pending")
-  updated_at   DateTime @updatedAt
-  user_id      String
-  verified     Boolean  @default(false)
+  reviewed_at   DateTime?
+  reviewed_by   String?
+  sample_work   String?
+  status        String    @default("pending")
+  updated_at    DateTime  @updatedAt
+  user_id       String
+  verified      Boolean   @default(false)
 
   @@map("role_applications")
 }
 
 model RoleChangeLog {
-  id          String   @id @default(uuid())
-  changed_by  String
-  created_at  DateTime @default(now())
-  new_role    String
-  old_role    String?
-  reason      String?
-  user_id     String
+  id         String   @id @default(uuid())
+  changed_by String
+  created_at DateTime @default(now())
+  new_role   String
+  old_role   String?
+  reason     String?
+  user_id    String
 
   @@map("role_change_logs")
 }
@@ -1847,15 +1847,15 @@ model ShipmentEvent {
 }
 
 model Shipment {
-  id              String   @id @default(uuid())
-  carrier         String?
-  created_at      DateTime @default(now())
+  id                 String    @id @default(uuid())
+  carrier            String?
+  created_at         DateTime  @default(now())
   estimated_delivery DateTime?
-  order_id        String   @unique
-  shipped_at      DateTime?
-  status          String   @default("pending")
-  tracking_number String?
-  updated_at      DateTime @updatedAt
+  order_id           String    @unique
+  shipped_at         DateTime?
+  status             String    @default("pending")
+  tracking_number    String?
+  updated_at         DateTime  @updatedAt
 
   events ShipmentEvent[]
 
@@ -1863,16 +1863,16 @@ model Shipment {
 }
 
 model ShippingMethod {
-  id             String   @id @default(uuid())
-  base_cost      Float    @default(0)
-  created_at     DateTime @default(now())
-  delivery_days  String?
-  description    String?
-  is_active      Boolean  @default(true)
-  name           String
-  per_kg_cost    Float    @default(0)
-  updated_at     DateTime @updatedAt
-  zone           String?
+  id            String   @id @default(uuid())
+  base_cost     Float    @default(0)
+  created_at    DateTime @default(now())
+  delivery_days String?
+  description   String?
+  is_active     Boolean  @default(true)
+  name          String
+  per_kg_cost   Float    @default(0)
+  updated_at    DateTime @updatedAt
+  zone          String?
 
   @@map("shipping_methods")
 }
@@ -1996,26 +1996,26 @@ model SubscriptionPlan {
   support_priority     String?
   updated_at           DateTime @updatedAt
 
-  subscriptions       UserSubscription[]
-  included_in_formats BookFormatSubscriptionPlan[]
+  subscriptions        UserSubscription[]
+  included_in_formats  BookFormatSubscriptionPlan[]
   early_access_formats BookFormatEarlyAccess[]
 
   @@map("subscription_plans")
 }
 
 model SupportTicket {
-  id           String   @id @default(uuid())
-  assigned_to  String?
-  category     String?
-  closed_at    DateTime?
-  created_at   DateTime @default(now())
-  description  String
-  priority     String   @default("normal")
-  resolved_at  DateTime?
-  status       String   @default("open")
-  subject      String
-  updated_at   DateTime @updatedAt
-  user_id      String
+  id          String    @id @default(uuid())
+  assigned_to String?
+  category    String?
+  closed_at   DateTime?
+  created_at  DateTime  @default(now())
+  description String
+  priority    String    @default("normal")
+  resolved_at DateTime?
+  status      String    @default("open")
+  subject     String
+  updated_at  DateTime  @updatedAt
+  user_id     String
 
   replies TicketReply[]
 
@@ -2142,9 +2142,9 @@ model UserGoal {
 }
 
 model UserNotification {
-  id              String   @id @default(uuid())
-  created_at      DateTime @default(now())
-  is_read         Boolean  @default(false)
+  id              String    @id @default(uuid())
+  created_at      DateTime  @default(now())
+  is_read         Boolean   @default(false)
   notification_id String
   read_at         DateTime?
   user_id         String
@@ -2213,13 +2213,13 @@ model UserRole {
 }
 
 model UserStreak {
-  id                 String   @id @default(uuid())
-  best_streak        Int?     @default(0)
+  id                 String    @id @default(uuid())
+  best_streak        Int?      @default(0)
   created_at         DateTime? @default(now())
-  current_streak     Int?     @default(0)
+  current_streak     Int?      @default(0)
   last_activity_date String?
   streak_updated_at  DateTime? @updatedAt
-  user_id            String   @unique
+  user_id            String    @unique
 
   @@map("user_streaks")
 }
@@ -2307,20 +2307,20 @@ model QuizAttempt {
 // once the end-of-competition cron sweep has paid out prizes, so it never
 // double-pays on a re-run.
 model Competition {
-  id                 String    @id @default(uuid())
-  title              String
-  description        String?
-  metric             String
-  start_at           DateTime
-  end_at             DateTime
-  prize_coin_top1    Int?
-  prize_coin_top2    Int?
-  prize_coin_top3    Int?
-  prize_description  String?
-  status             String    @default("active")
-  winners_processed  Boolean   @default(false)
-  created_at         DateTime  @default(now())
-  updated_at         DateTime  @updatedAt
+  id                String   @id @default(uuid())
+  title             String
+  description       String?
+  metric            String
+  start_at          DateTime
+  end_at            DateTime
+  prize_coin_top1   Int?
+  prize_coin_top2   Int?
+  prize_coin_top3   Int?
+  prize_description String?
+  status            String   @default("active")
+  winners_processed Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
 
   @@map("competitions")
 }
@@ -2354,20 +2354,20 @@ model MonthlyLeaderboardEntry {
 }
 
 model UserSubscription {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   amount_paid     Float?
   coupon_code     String?
-  created_at      DateTime @default(now())
+  created_at      DateTime  @default(now())
   discount_amount Float?
   end_date        DateTime?
   plan_id         String
-  start_date      DateTime @default(now())
-  status          String   @default("pending")
-  updated_at      DateTime @updatedAt
+  start_date      DateTime  @default(now())
+  status          String    @default("pending")
+  updated_at      DateTime  @updatedAt
   user_id         String
   // Set only for a RevenueCat/IAP-activated subscription (subscribe-iap) —
   // the store's own record of this purchase, not derived from plan.price.
-  store           String?    // "app_store" | "play_store"
+  store           String? // "app_store" | "play_store"
   is_sandbox      Boolean?
   purchase_date   DateTime?
   expires_date    DateTime?
@@ -2408,31 +2408,31 @@ model SmsSid {
 }
 
 model WithdrawalRequest {
-  id             String   @id @default(uuid())
-  amount         Float
-  bank_account   String?
-  bank_name      String?
-  created_at     DateTime @default(now())
-  mobile_number  String?
-  method         String   @default("bank")
-  notes          String?
-  processed_at   DateTime?
-  processed_by   String?
-  status         String   @default("pending")
-  updated_at     DateTime @updatedAt
-  user_id        String
+  id            String    @id @default(uuid())
+  amount        Float
+  bank_account  String?
+  bank_name     String?
+  created_at    DateTime  @default(now())
+  mobile_number String?
+  method        String    @default("bank")
+  notes         String?
+  processed_at  DateTime?
+  processed_by  String?
+  status        String    @default("pending")
+  updated_at    DateTime  @updatedAt
+  user_id       String
 
   @@map("withdrawal_requests")
 }
 
 model AuditLog {
-  id         String   @id @default(uuid())
-  actor_id   String
-  action     String
-  target_id  String?
+  id          String   @id @default(uuid())
+  actor_id    String
+  action      String
+  target_id   String?
   target_type String?
-  details    Json?
-  created_at DateTime @default(now())
+  details     Json?
+  created_at  DateTime @default(now())
 
   @@index([actor_id, created_at])
   @@index([action])
@@ -2445,16 +2445,16 @@ model AuditLog {
 // LiveSession/Icecast/listener pipeline as its audio source rather than
 // duplicating it — live_session_id links the two once broadcast starts.
 model StudioSession {
-  id                String    @id @default(uuid())
-  room_name         String    @unique
-  show_schedule_id  String?
-  host_user_id      String
-  status            String    @default("scheduled") // scheduled | live | ended
-  started_at        DateTime?
-  ended_at          DateTime?
-  created_at        DateTime  @default(now())
-  media_type        String    @default("audio") // audio | video — video reserved for future use
-  live_session_id   String?   @unique
+  id               String    @id @default(uuid())
+  room_name        String    @unique
+  show_schedule_id String?
+  host_user_id     String
+  status           String    @default("scheduled") // scheduled | live | ended
+  started_at       DateTime?
+  ended_at         DateTime?
+  created_at       DateTime  @default(now())
+  media_type       String    @default("audio") // audio | video — video reserved for future use
+  live_session_id  String?   @unique
 
   // Higher-quality recording tapped at the Bridge Relay before Icecast's
   // 128kbps compression — separate from LiveSession's existing MP3-from-
@@ -2468,7 +2468,7 @@ model StudioSession {
   // regardless of this setting.
   recording_mode String @default("voice_only") // mixed | voice_only
 
-  live_session   LiveSession?          @relation(fields: [live_session_id], references: [id])
+  live_session   LiveSession?         @relation(fields: [live_session_id], references: [id])
   participants   StudioParticipant[]
   invite_links   StudioInviteLink[]
   playlist_items StudioPlaylistItem[]
@@ -2477,12 +2477,12 @@ model StudioSession {
 }
 
 model StudioParticipant {
-  id                 String    @id @default(uuid())
-  studio_session_id  String
-  user_id            String
-  role               String // host | co_host | producer | rj | guest
-  joined_at          DateTime  @default(now())
-  left_at            DateTime?
+  id                String    @id @default(uuid())
+  studio_session_id String
+  user_id           String
+  role              String // host | co_host | producer | rj | guest
+  joined_at         DateTime  @default(now())
+  left_at           DateTime?
 
   session StudioSession @relation(fields: [studio_session_id], references: [id])
 
@@ -2492,14 +2492,14 @@ model StudioParticipant {
 }
 
 model StudioInviteLink {
-  id                 String    @id @default(uuid())
-  studio_session_id  String
-  token              String    @unique
-  role               String // role this invite grants on redemption
-  expires_at         DateTime
-  used_at            DateTime?
-  created_by         String
-  created_at         DateTime  @default(now())
+  id                String    @id @default(uuid())
+  studio_session_id String
+  token             String    @unique
+  role              String // role this invite grants on redemption
+  expires_at        DateTime
+  used_at           DateTime?
+  created_by        String
+  created_at        DateTime  @default(now())
 
   session StudioSession @relation(fields: [studio_session_id], references: [id])
 
@@ -2543,6 +2543,20 @@ model StudioAudioAsset {
   license_type            String? // royalty_free | creative_commons | purchased | original | other
   license_document_url    String?
   allowed_usage           String?
+
+  // Social Broadcast Rights — which surfaces this track is actually cleared
+  // for. Distinct from allowed_usage (free text) because Facebook and
+  // YouTube run automated content matching: a track that is perfectly fine
+  // on BoiAro's own app can mute a video or put a strike on the Page or
+  // channel. Null means "not stated", which is treated as "not cleared" for
+  // the social platforms and produces a warning rather than a block — the
+  // warning-first policy the brief asks for in phase 1.
+  social_rights_app       Boolean?
+  social_rights_website   Boolean?
+  social_rights_facebook  Boolean?
+  social_rights_youtube   Boolean?
+  social_rights_other     Boolean?
+
   created_at              DateTime  @default(now())
 
   playlist_items StudioPlaylistItem[]
@@ -2577,7 +2591,7 @@ model StudioPlaylistItem {
   played_at         DateTime?
   created_at        DateTime  @default(now())
 
-  session StudioSession   @relation(fields: [studio_session_id], references: [id], onDelete: Cascade)
+  session StudioSession    @relation(fields: [studio_session_id], references: [id], onDelete: Cascade)
   asset   StudioAudioAsset @relation(fields: [audio_asset_id], references: [id])
 
   @@index([studio_session_id, position])
@@ -2605,4 +2619,147 @@ model IcecastListenerSample {
 
   @@index([live_session_id, sampled_at])
   @@map("icecast_listener_samples")
+}
+
+// ── BoiAro On Air — Social Live Broadcasting (Facebook / YouTube) ─────────────
+// A pure OUTPUT CONSUMER of the existing Icecast feed: a server-side encoder
+// reads the same public stream URL a listener reads and pushes H.264+AAC to
+// the platforms. Nothing in the radio path reads or writes any of these
+// tables, which is what guarantees a social-side failure can never interrupt
+// the App or Website broadcast (the plan's critical acceptance test).
+//
+// Note the deliberate absence of Prisma relations to LiveSession /
+// ShowSchedule / RadioStation below: those links are plain id columns. A real
+// relation would put social rows into the radio models' delete and cascade
+// paths, which is exactly the coupling this layer exists to avoid. The cost
+// is that cleanup of orphaned rows is the service layer's job, not the
+// database's — a trade deliberately made in that direction.
+//
+// See SOCIAL_LIVE_PLAN.md for the full design.
+
+/// One Facebook Page or YouTube channel the platform can broadcast to.
+model SocialPlatformConnection {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  platform     String // facebook | youtube
+  account_name String // Page / channel display name, admin-entered
+  account_ref  String? // Page id / channel id — optional in the manual-key MVP
+
+  // Ingest endpoint. Validated against a strict rtmp(s):// allowlist pattern
+  // at write time, so a malformed or hostile value never reaches storage,
+  // let alone an ffmpeg argument array.
+  rtmp_url String
+
+  // AES-256-GCM at rest via lib/secretEncryption.ts (the "enc:v1:" prefix).
+  // NEVER returned by any query, procedure or route — reads go through
+  // maskStreamKey() in lib/socialCredentials.ts instead. Decrypted in exactly
+  // one place: where the encoder builds its argument array.
+  stream_key_encrypted String
+
+  enabled Boolean @default(false)
+
+  // unconfigured | ready | error — reflects the last real test or use, never
+  // an optimistic UI guess.
+  status         String    @default("unconfigured")
+  last_tested_at DateTime?
+  last_error     String?
+
+  destinations SocialBroadcastDestination[]
+
+  @@index([platform, enabled])
+  @@map("social_platform_connections")
+}
+
+/// One social broadcast attempt — the unit an admin starts, stops and reviews.
+model SocialBroadcast {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Read-only links to the radio side — plain columns by design, see above.
+  live_session_id  String?
+  show_schedule_id String?
+  station_id       String?
+
+  trigger    String    @default("manual") // manual | scheduled
+  started_by String? // admin user id; null when a scheduled job started it
+  started_at DateTime  @default(now())
+  ended_at   DateTime?
+
+  // OFFLINE | STARTING | LIVE | RECONNECTING | STOPPING | FAILED
+  state       String  @default("STARTING")
+  stop_reason String? // manual | scheduled | emergency | source_lost | failed
+
+  social_title       String?
+  social_description String?
+  cover_url          String?
+
+  destinations SocialBroadcastDestination[]
+
+  @@index([state, started_at])
+  @@index([live_session_id])
+  @@map("social_broadcasts")
+}
+
+/// The per-platform leg of a broadcast — the row an encoder process owns.
+model SocialBroadcastDestination {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  broadcast_id  String
+  connection_id String
+
+  // Same vocabulary as SocialBroadcast.state. The parent broadcast is LIVE
+  // while any leg is; a single failed leg never ends the other one.
+  state String @default("STARTING")
+
+  // OS pid of the ffmpeg process owning this leg, persisted so a server
+  // restart can reconcile rows still claiming to be live — the same idea as
+  // reconcileOrphanedStudioSessions in jobs/streamReconnect.ts. In-memory
+  // state alone cannot survive a restart; this can.
+  encoder_pid Int?
+
+  reconnect_attempts Int       @default(0)
+  last_disconnect_at DateTime?
+  last_reconnect_at  DateTime?
+  last_error         String?
+  platform_watch_url String? // public watch URL, once the platform reports one
+  ended_at           DateTime?
+
+  broadcast  SocialBroadcast          @relation(fields: [broadcast_id], references: [id], onDelete: Cascade)
+  connection SocialPlatformConnection @relation(fields: [connection_id], references: [id])
+
+  // A partial unique index enforcing "at most one non-terminal leg per
+  // connection" is added by the migration — Prisma's schema language cannot
+  // express a WHERE clause on a unique index, and that constraint is the one
+  // duplicate-encoder guard that survives a process restart.
+  @@index([broadcast_id])
+  @@index([connection_id, state])
+  @@map("social_broadcast_destinations")
+}
+
+/// Per-show social automation preferences (the Show Schedule panel).
+model ShowSocialSetting {
+  id         String   @id @default(uuid())
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  show_schedule_id String @unique
+
+  facebook_enabled Boolean @default(false)
+  youtube_enabled  Boolean @default(false)
+
+  auto_start           Boolean @default(false)
+  auto_stop            Boolean @default(false)
+  start_before_minutes Int     @default(5)
+  stop_after_minutes   Int     @default(5)
+
+  social_title       String?
+  social_description String?
+  cover_url          String?
+
+  @@map("show_social_settings")
 }
