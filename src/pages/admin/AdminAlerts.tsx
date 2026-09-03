@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Bell, CheckCircle2, AlertTriangle, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface SystemAlert {
   id: string;
@@ -37,7 +38,7 @@ export default function AdminAlerts() {
   });
 
   const runCheck = useMutation({
-    mutationFn: () => utils.admin.runSystemAlertCheck.fetch(),
+    mutationFn: () => trpcVanilla.admin.runSystemAlertCheck.mutate(),
     onSuccess: (d) => {
       toast.success(`Check complete: ${d.alerts_found} issues found, ${d.alerts_inserted} new alerts`);
       refetch();
@@ -46,7 +47,7 @@ export default function AdminAlerts() {
   });
 
   const resolve = useMutation({
-    mutationFn: (id: string) => utils.admin.resolveSystemAlert.fetch({ id }),
+    mutationFn: (id: string) => trpcVanilla.admin.resolveSystemAlert.mutate({ id }),
     onSuccess: () => { toast.success("Alert resolved"); qc.invalidateQueries({ queryKey: ["system-alerts"] }); },
   });
 

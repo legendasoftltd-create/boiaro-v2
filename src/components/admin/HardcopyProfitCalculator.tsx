@@ -6,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Package, TrendingDown, TrendingUp, AlertTriangle, Info } from "lucide-react";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface HardcopyProfitCalculatorProps {
   bookId: string;
@@ -52,7 +53,7 @@ export function HardcopyProfitCalculator({
       fulfillment_cost_percentage: 0,
     };
     try {
-      await utils.admin.upsertRevenueOverride.fetch(payload);
+      await trpcVanilla.admin.upsertRevenueOverride.mutate(payload);
     } catch (error) {
       console.error("Failed to sync hardcopy revenue split:", error);
     }

@@ -15,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { AdminSpinWheelTab } from "@/components/admin/AdminSpinWheelTab";
 import { AdminQuizzesTab } from "@/components/admin/AdminQuizzesTab";
 import { AdminCompetitionsTab } from "@/components/admin/AdminCompetitionsTab";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface BadgeDef {
   id: string; key: string; title: string; description: string | null;
@@ -84,9 +85,9 @@ export default function AdminGamification() {
       sort_order: sortOrder,
     };
     if (editBadge) {
-      await utils.admin.upsertBadgeDefinition.fetch({ ...payload, id: editBadge.id });
+      await trpcVanilla.admin.upsertBadgeDefinition.mutate({ ...payload, id: editBadge.id });
     } else {
-      await utils.admin.upsertBadgeDefinition.fetch(payload);
+      await trpcVanilla.admin.upsertBadgeDefinition.mutate(payload);
     }
     setShowForm(false);
     toast({ title: editBadge ? "Badge updated" : "Badge created" });
@@ -94,7 +95,7 @@ export default function AdminGamification() {
   };
 
   const toggleBadge = async (id: string, active: boolean) => {
-    await utils.admin.setBadgeDefinitionActive.fetch({ id, is_active: active });
+    await trpcVanilla.admin.setBadgeDefinitionActive.mutate({ id, is_active: active });
     setBadges(prev => prev.map(b => b.id === id ? { ...b, is_active: active } : b));
   };
 

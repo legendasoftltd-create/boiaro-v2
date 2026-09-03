@@ -12,6 +12,7 @@ import { useConfirmDialog } from "@/hooks/useConfirmDialog";
 import { toast } from "sonner";
 import { Mail, Plus, Search, Edit, Eye, Trash2, FileText, ShoppingCart, CreditCard, Users, Key, Crown, Wallet } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface EmailTemplate {
   id: string; name: string; template_type: string; subject: string;
@@ -73,10 +74,10 @@ export default function AdminEmailTemplates() {
     }
     const payload = { name: form.name, template_type: form.template_type, subject: form.subject, body_html: form.body_html, body_text: form.body_text, status: form.status };
     if (selected) {
-      await utils.admin.upsertEmailTemplate.fetch({ id: selected.id, ...payload });
+      await trpcVanilla.admin.upsertEmailTemplate.mutate({ id: selected.id, ...payload });
       toast.success("Template updated");
     } else {
-      await utils.admin.upsertEmailTemplate.fetch(payload);
+      await trpcVanilla.admin.upsertEmailTemplate.mutate(payload);
       toast.success("Template created");
     }
     setEditOpen(false);
@@ -87,7 +88,7 @@ export default function AdminEmailTemplates() {
     openConfirm({
       message: "Are you sure you want to delete this email template?",
       onConfirm: async () => {
-        await utils.admin.deleteEmailTemplate.fetch({ id });
+        await trpcVanilla.admin.deleteEmailTemplate.mutate({ id });
         toast.success("Template deleted");
         fetchTemplates();
       },
@@ -96,7 +97,7 @@ export default function AdminEmailTemplates() {
 
   const toggleStatus = async (t: EmailTemplate) => {
     const newStatus = t.status === "active" ? "inactive" : "active";
-    await utils.admin.upsertEmailTemplate.fetch({
+    await trpcVanilla.admin.upsertEmailTemplate.mutate({
       id: t.id,
       name: t.name,
       template_type: t.template_type,

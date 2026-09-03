@@ -16,6 +16,7 @@ import {
   Shield, Zap, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface RolloutConfig {
   current_percent: number;
@@ -76,7 +77,7 @@ export default function AdminR2Dashboard() {
 
   const updateConfig = useMutation({
     mutationFn: async (updates: Partial<RolloutConfig> & { reset_circuit_breaker?: boolean }) =>
-      utils.admin.updateR2RolloutConfig.fetch(updates as any),
+      trpcVanilla.admin.updateR2RolloutConfig.mutate(updates as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["r2-rollout-status"] });
       toast.success("R2 config updated");
@@ -86,7 +87,7 @@ export default function AdminR2Dashboard() {
   });
 
   const triggerAutoAdjust = useMutation({
-    mutationFn: () => utils.admin.autoAdjustR2Rollout.fetch(),
+    mutationFn: () => trpcVanilla.admin.autoAdjustR2Rollout.mutate(),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["r2-rollout-status"] });
       if (data.adjusted) {

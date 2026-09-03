@@ -8,6 +8,7 @@ import { Shield, Search, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 const ALL_PERMISSIONS = [
   { key: "add_ebook", label: "Add eBook", desc: "Can submit eBook formats" },
@@ -64,7 +65,7 @@ export default function AdminUserPermissions() {
         permission_key: key,
         is_allowed: is_allowed as boolean,
       }));
-    await utils.admin.replaceUserPermissionOverrides.fetch({
+    await trpcVanilla.admin.replaceUserPermissionOverrides.mutate({
       userId: selectedUser.user_id,
       grantedBy: admin.id,
       overrides: payload,

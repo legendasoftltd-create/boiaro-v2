@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { CreatorLinkSummary } from "@/components/admin/CreatorLinkSummary";
 import { trpc } from "@/lib/trpc";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 export default function AdminUserDetail() {
   const { type, id } = useParams<{ type: string; id: string }>();
@@ -100,7 +101,7 @@ export default function AdminUserDetail() {
     setSaving(true);
     try {
       if (type === "user") {
-        await utils.admin.updateAdminUserProfile.fetch({
+        await trpcVanilla.admin.updateAdminUserProfile.mutate({
           userId: id!,
           display_name: form.display_name,
           bio: form.bio,
@@ -108,7 +109,7 @@ export default function AdminUserDetail() {
           phone: (form as any).phone || null,
         });
       } else if (isCreator && id) {
-        await utils.admin.updateAdminCreatorProfile.fetch({
+        await trpcVanilla.admin.updateAdminCreatorProfile.mutate({
           type: type as "author" | "narrator" | "publisher" | "translator",
           id,
           name: form.name,

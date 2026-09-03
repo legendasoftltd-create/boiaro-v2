@@ -173,7 +173,7 @@ function RadioCard({ station, isLive, liveSessionId, liveSessionStatus, startedA
     { enabled: isLive && !!liveSessionId, refetchInterval: 20_000 }
   )
 
-  const { data: nextShow } = trpc.rj.nextShowForStation.useQuery({ stationId }, { enabled: !isLive })
+  const { data: nextShow } = trpc.rj.liveSession.nextShowForStation.useQuery({ stationId }, { enabled: !isLive })
 
 
   // Clean up on unmount

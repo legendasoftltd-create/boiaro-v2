@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Wallet, Coins, TrendingUp, TrendingDown, Search, Plus, Minus, ArrowUpDown, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface UserWallet {
   id: string;
@@ -86,7 +87,7 @@ export default function AdminWallets() {
     const coinChange = adjustType === "add" ? amt : -amt;
     const txType = adjustType === "add" ? "bonus" : "adjustment";
 
-    await utils.admin.adjustUserCoins.fetch({
+    await trpcVanilla.admin.adjustUserCoins.mutate({
       userId: selectedWallet.user_id,
       amount: coinChange,
       type: txType,

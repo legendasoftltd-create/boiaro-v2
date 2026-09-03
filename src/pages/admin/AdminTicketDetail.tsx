@@ -13,6 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "@/hooks/use-toast";
 import { ArrowLeft, Send, User, Shield, Lock, Paperclip, Clock } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 export default function AdminTicketDetail() {
   const { id } = useParams<{ id: string }>();
@@ -36,7 +37,7 @@ export default function AdminTicketDetail() {
 
   const updateMutation = useMutation({
     mutationFn: async (updates: Record<string, string>) => {
-      await utils.admin.updateSupportTicket.fetch({
+      await trpcVanilla.admin.updateSupportTicket.mutate({
         id: id!,
         status: updates.status,
         priority: updates.priority,
@@ -48,7 +49,7 @@ export default function AdminTicketDetail() {
 
   const replyMutation = useMutation({
     mutationFn: async () => {
-      await utils.admin.addSupportTicketReply.fetch({
+      await trpcVanilla.admin.addSupportTicketReply.mutate({
         ticketId: id!,
         userId: user!.id,
         message: replyText,

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface EditRequestPayload {
   contentType: "book" | "book_format";
@@ -35,7 +36,7 @@ export function useContentEditRequest() {
 
   const checkPendingRequest = async (contentType: string, contentId: string) => {
     try {
-      const result = await checkQuery.fetch({ contentType, contentId });
+      const result = await trpcVanilla.admin.checkPendingEditRequest.query({ contentType, contentId });
       return result as { id: string; status: string; created_at: string } | null;
     } catch {
       return null;

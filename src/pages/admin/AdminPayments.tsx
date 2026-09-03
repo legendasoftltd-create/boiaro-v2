@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Eye, Search, CheckCircle2, XCircle, DollarSign, Clock, CreditCard, Banknote } from "lucide-react";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
 import { trpc } from "@/lib/trpc";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400",
@@ -59,7 +60,7 @@ export default function AdminPayments() {
   const confirmCodPayment = async (payment: any) => {
     setConfirming(true);
     try {
-      if (payment.order_id) await utils.admin.markCodPaid.fetch({ orderId: payment.order_id });
+      if (payment.order_id) await trpcVanilla.admin.markCodPaid.mutate({ orderId: payment.order_id });
       await log({ module: "payments", action: "COD payment confirmed", actionType: "approve", targetType: "payment", targetId: payment.id, details: `Confirmed payment ৳${payment.amount} for order ${payment.order_id?.slice(0, 8)}`, riskLevel: "high" });
       toast.success("Payment confirmed & earnings calculated");
       setSelected(null);
@@ -287,7 +288,7 @@ export default function AdminPayments() {
                     {confirming ? "Confirming..." : "Confirm COD Payment"}
                   </Button>
                   <Button variant="destructive" className="gap-2" onClick={async () => {
-                    await utils.admin.markPaymentFailed.fetch({ paymentId: selected.id });
+                    await trpcVanilla.admin.markPaymentFailed.mutate({ paymentId: selected.id });
                     toast.success("Marked as failed");
                     setSelected(null);
                     load();

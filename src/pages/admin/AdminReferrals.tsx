@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface Referral {
   id: string;
@@ -94,7 +95,7 @@ export default function AdminReferrals() {
   const handleSave = async () => {
     setSaving(true);
     const entries = Object.entries(settings).map(([key, val]) => ({ key, value: String(val) }));
-    await utils.admin.bulkSetPlatformSettings.fetch(entries);
+    await trpcVanilla.admin.bulkSetPlatformSettings.mutate(entries);
     toast.success("Referral settings saved");
     setSaving(false);
   };

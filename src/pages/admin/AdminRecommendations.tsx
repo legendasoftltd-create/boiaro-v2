@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sparkles, Save, TrendingUp, BookOpen, Eye, BarChart3, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 interface RecommendationSetting {
   key: string;
@@ -115,7 +116,7 @@ export default function AdminRecommendations() {
     const pairs = Object.entries(settings)
       .filter(([key]) => key.startsWith("rec_"))
       .map(([key, value]) => ({ key, value }));
-    await utils.admin.bulkSetPlatformSettings.fetch({ pairs });
+    await trpcVanilla.admin.bulkSetPlatformSettings.mutate({ pairs });
     toast.success("Recommendation settings saved");
     setSaving(false);
   };

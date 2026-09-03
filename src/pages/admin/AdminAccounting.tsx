@@ -16,6 +16,7 @@ import { AdminSearchBar } from "@/components/admin/AdminSearchBar";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { useAdminLogger } from "@/hooks/useAdminLogger";
+import { trpcVanilla } from "@/lib/trpcVanilla";
 
 const LEDGER_CATEGORIES = ["creator_payout", "gateway_fee", "server_cost", "marketing", "development", "inventory_cost", "delivery_cost", "office_expense", "other"];
 
@@ -59,7 +60,7 @@ export default function AdminAccounting() {
 
     console.log("[Ledger] Creating manual entry:", payload, "user:", user.id);
 
-    const data = await utils.admin.createAccountingLedgerEntry.fetch(payload as any);
+    const data = await trpcVanilla.admin.createAccountingLedgerEntry.mutate(payload as any);
 
     console.log("[Ledger] Entry created successfully:", data);
 
@@ -100,7 +101,7 @@ export default function AdminAccounting() {
 
     setReversingId(entry.id);
 
-    await utils.admin.reverseAccountingLedgerEntry.fetch({ entryId: entry.id });
+    await trpcVanilla.admin.reverseAccountingLedgerEntry.mutate({ entryId: entry.id });
 
     await log({
       module: "accounting",
