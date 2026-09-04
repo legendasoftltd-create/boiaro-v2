@@ -45,7 +45,12 @@ export async function preflight(connectionIds: string[]): Promise<{
   stationName?: string | null;
   showTitle?: string | null;
   rjName?: string | null;
-  coverUrl?: string | null;
+  /** The image the scene will actually use, after precedence is applied. */
+  posterUrl?: string | null;
+  /** Where that image came from — so the admin screen can say so. */
+  posterSource?: "custom" | "show" | "station" | "none";
+  /** The current show's own cover, offered as a one-click choice. */
+  showCoverUrl?: string | null;
   destinations?: { connectionId: string; url: string; platform: string }[];
 }> {
   const problems: PreflightProblem[] = [];
@@ -145,7 +150,20 @@ export async function preflight(connectionIds: string[]): Promise<{
     stationName = station.name;
     sourceUrl = liveSession?.stream_url || station.stream_url;
   }
-  const coverUrl = liveSession?.cover_image_url ?? station?.artwork_url ?? null;
+  // Poster precedence, most specific first: an admin override set on the
+  // Social Live page, then the cover on the show that is actually on air,
+  // then the station's own artwork. Nothing left means the plain branded
+  // card, which is the long-standing default.
+  const posterOverride = (await getRadioSetting("social_poster_url")).trim();
+  const showCoverUrl = liveSession?.cover_image_url ?? null;
+  const posterUrl = posterOverride || showCoverUrl || station?.artwork_url || null;
+  const posterSource = posterOverride
+    ? ("custom" as const)
+    : showCoverUrl
+      ? ("show" as const)
+      : station?.artwork_url
+        ? ("station" as const)
+        : ("none" as const);
   if (!sourceUrl) {
     problems.push({ code: "NO_SOURCE", message: "No station stream URL is configured to broadcast from." });
   } else {
@@ -162,7 +180,9 @@ export async function preflight(connectionIds: string[]): Promise<{
     stationName,
     showTitle: liveSession?.show_title ?? null,
     rjName: rjProfile?.stage_name ?? null,
-    coverUrl,
+    posterUrl,
+    posterSource,
+    showCoverUrl,
     destinations,
   };
 }
@@ -342,6 +362,7 @@ export async function startBroadcast(opts: StartOptions): Promise<{ broadcastId:
       started_by: opts.actorId,
       state: "STARTING",
       social_title: check.showTitle ?? null,
+      cover_url: check.posterUrl ?? null,
     },
   });
 
@@ -374,7 +395,7 @@ export async function startBroadcast(opts: StartOptions): Promise<{ broadcastId:
     showTitle: check.showTitle,
     stationName: check.stationName,
     rjName: check.rjName ?? null,
-    coverUrl: check.coverUrl ?? null,
+    posterUrl: check.posterUrl ?? null,
   });
 
   const encoderDestinations: EncoderDestination[] = destinationRows.map((row, i) => ({

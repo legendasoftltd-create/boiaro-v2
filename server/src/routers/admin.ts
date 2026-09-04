@@ -20,7 +20,7 @@ import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClip
 import { logRadioAction } from "../lib/radioAudit.js";
 import { stopRecording } from "../lib/liveRecorder.js";
 import { notifyFollowersOfScheduleCancelled, notifyFollowersOfScheduleRescheduled } from "../lib/radioNotify.js";
-import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSettingNumber, type RadioSettingKey } from "../lib/radioSettings.js";
+import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSetting, getRadioSettingNumber, type RadioSettingKey } from "../lib/radioSettings.js";
 import { getMonthlyLeaderboard, recalculateMonth, upsertPrizeConfig, type LeaderboardMetric } from "../services/monthlyLeaderboard.service.js";
 import { getGaRealtimeReport } from "../lib/gaRealtime.js";
 import { syncStationMountsWithBridge } from "../lib/studioBridge.js";
@@ -38,6 +38,8 @@ import {
   redactStreamKeys,
 } from "../lib/socialCredentials.js";
 import { probeTcp } from "../lib/tcpProbe.js";
+import { renderScene, loadPoster } from "../lib/socialScenes.js";
+import sharp from "sharp";
 import {
   preflight as socialPreflight,
   startBroadcast as startSocialBroadcast,
@@ -6692,6 +6694,86 @@ export const adminRouter = router({
     // failure.
     return emergencyStopAllSocial(ctx.userId!);
   }),
+
+  // ── Social Live — live poster ───────────────────────────────────────────
+  socialPosterSettings: strictAdminProcedure.query(async () => {
+    const override = (await getRadioSetting("social_poster_url")).trim();
+    const check = await socialPreflight([]);
+    return {
+      // What the admin explicitly chose, if anything.
+      customPosterUrl: override || null,
+      // The cover on the show that is on air right now, offered as a
+      // one-click choice.
+      showCoverUrl: check.showCoverUrl ?? null,
+      // What a broadcast started this instant would actually use, and why.
+      effectivePosterUrl: check.posterUrl ?? null,
+      effectiveSource: check.posterSource ?? "none",
+      showTitle: check.showTitle ?? null,
+      rjName: check.rjName ?? null,
+      stationName: check.stationName ?? null,
+    };
+  }),
+
+  setSocialPoster: strictAdminProcedure
+    .input(
+      z.object({
+        // null or "" clears the override, which returns the scene to the
+        // automatic choice (show cover, then station artwork, then the plain
+        // branded card).
+        posterUrl: z.string().trim().max(1000).nullable(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const value = (input.posterUrl ?? "").trim();
+      if (value) {
+        // Only ever an image we serve or a plain https image URL — this
+        // string is fetched by the renderer, so it does not get to be
+        // arbitrary.
+        const ok = /^\/uploads\/[A-Za-z0-9/._-]+$/.test(value) || /^https:\/\/[A-Za-z0-9.-]+\/[\w./%-]*$/.test(value);
+        if (!ok) throw new TRPCError({ code: "BAD_REQUEST", message: "That does not look like an uploaded image path or an https image URL." });
+      }
+      await prisma.platformSetting.upsert({
+        where: { key: "social_poster_url" },
+        create: { key: "social_poster_url", value },
+        update: { value },
+      });
+      await logRadioAction(ctx.userId!, value ? "social_poster_set" : "social_poster_cleared", { posterUrl: value || null });
+      return { posterUrl: value || null };
+    }),
+
+  /**
+   * Renders the actual scene the encoder would publish, as a data URL.
+   *
+   * Deliberately renders the real thing rather than showing the chosen image
+   * on its own: what matters is whether the poster sits well with the Bengali
+   * title, the LIVE badge and the branding at 1920x1080 — which a thumbnail of
+   * the source image cannot tell you. Scaled down for transport only.
+   */
+  socialScenePreview: strictAdminProcedure
+    .input(z.object({ posterUrl: z.string().trim().max(1000).nullable().optional() }).optional())
+    .query(async ({ input }) => {
+      const check = await socialPreflight([]);
+      // An explicit value in the input previews a candidate before saving it;
+      // undefined previews whatever is currently in effect.
+      const posterUrl =
+        input?.posterUrl === undefined ? (check.posterUrl ?? null) : input.posterUrl || null;
+      const poster = await loadPoster(posterUrl);
+      const png = await renderScene(
+        {
+          kind: "live",
+          showTitle: check.showTitle ?? null,
+          rjName: check.rjName ?? null,
+          stationName: check.stationName ?? null,
+        },
+        poster
+      );
+      const small = await sharp(png).resize(960, 540).jpeg({ quality: 82 }).toBuffer();
+      return {
+        dataUrl: `data:image/jpeg;base64,${small.toString("base64")}`,
+        posterLoaded: Boolean(poster),
+        posterUrl,
+      };
+    }),
 
   // ── Social Live — per-show automation (§12 / §13) ───────────────────────
   showSocialSettings: strictAdminProcedure

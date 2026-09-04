@@ -13,6 +13,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { SocialLiveControls } from "./AdminSocialLiveControls"
+import { SocialLivePoster } from "@/components/admin/SocialLivePoster"
 
 type Platform = "facebook" | "youtube"
 
@@ -162,6 +163,8 @@ export default function AdminSocialLive() {
       </div>
 
       <SocialLiveControls />
+
+      <SocialLivePoster />
 
       <Card>
         <CardHeader>

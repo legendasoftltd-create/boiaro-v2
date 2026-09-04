@@ -78,6 +78,11 @@ export const RADIO_SETTINGS_DEFAULTS = {
   // and the admin is alerted. At the default check interval this is ~1 minute
   // of real silence, not one unlucky probe.
   social_source_failure_threshold: "4",
+  // Live poster shown in the social video scene. Empty means "decide
+  // automatically": the current show's cover, then the station artwork, then
+  // the plain branded card. Setting it here overrides all of that, which is
+  // what the admin's "Live Poster" control writes to.
+  social_poster_url: "",
   social_resolution: "1920x1080",
 
   // Chat safety.
