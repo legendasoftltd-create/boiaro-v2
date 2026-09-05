@@ -14,6 +14,16 @@ import { deleteFromS3 } from "../../lib/s3.js";
 import { PUBLIC_RJ_PROFILE_SELECT } from "../../lib/rjProfile.js";
 import { isCallinAllowedForBroadcast } from "../../lib/callinPolicy.js";
 import { isBandwidthBudgetAvailable } from "../../lib/radioCostControl.js";
+import {
+  publicEpisodeWhere,
+  toPublicEpisodes,
+  viewerHasActiveSubscription,
+  canViewEpisode,
+  listArchiveFilters,
+  recordEpisodePlay,
+  saveEpisodeProgress,
+  EpisodeNotFoundError,
+} from "../../services/onAirEpisode.service.js";
 
 export const radioRestRouter = Router();
 
@@ -787,6 +797,183 @@ radioRestRouter.get("/catchup/history", requireAuth, async (req: AuthenticatedRe
       include: { session: { select: { id: true, show_title: true, started_at: true, recording_url: true } } },
     });
     res.json({ history: rows });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  🎬  RECORDED SHOWS — On Air "Latest Shows" / আগের অনুষ্ঠান
+// ═══════════════════════════════════════════════════════════════════════════
+// Published, admin-approved recordings only, and always the transcoded MP3 —
+// the Studio master WAV is a backup and is never exposed here. Everything
+// below shares its access rules with the tRPC copy in routers/rj.ts via
+// services/onAirEpisode.service.ts, so web and app can't drift apart on who
+// may hear what.
+
+// ── GET /api/v1/radio/shows/latest ────────────────────────────────────────────
+// The On Air screen's "Latest Shows / সম্প্রতি প্রচারিত" strip. Newest first;
+// the app shows the first 3–5 and links to /shows for the rest.
+radioRestRouter.get("/shows/latest", async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.auth?.userId ?? null;
+    const limit = Math.min(Number(req.query.limit ?? 5) || 5, 20);
+    const hasSub = await viewerHasActiveSubscription(userId);
+    const rows = await prisma.onAirEpisode.findMany({
+      where: publicEpisodeWhere({ hasActiveSubscription: hasSub }),
+      orderBy: { published_at: "desc" },
+      take: limit,
+    });
+    res.json({ shows: await toPublicEpisodes(rows, { userId, includeProgress: !!userId }) });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── GET /api/v1/radio/shows/filters ───────────────────────────────────────────
+// Programme and RJ filter options for the archive screen — only ones that
+// actually have a published show behind them.
+radioRestRouter.get("/shows/filters", async (req: AuthenticatedRequest, res) => {
+  try {
+    const hasSub = await viewerHasActiveSubscription(req.auth?.userId ?? null);
+    res.json(await listArchiveFilters(hasSub));
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── GET /api/v1/radio/shows ───────────────────────────────────────────────────
+// The archive ("View All / সব অনুষ্ঠান"): cursor-paginated, filterable by
+// show_id / rj_id, sortable latest|oldest.
+radioRestRouter.get("/shows", async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.auth?.userId ?? null;
+    const limit = Math.min(Number(req.query.limit ?? 20) || 20, 50);
+    const cursor = req.query.cursor ? String(req.query.cursor) : undefined;
+    const sort = String(req.query.sort ?? "latest") === "oldest" ? "asc" : "desc";
+    const hasSub = await viewerHasActiveSubscription(userId);
+
+    const rows = await prisma.onAirEpisode.findMany({
+      where: publicEpisodeWhere({
+        hasActiveSubscription: hasSub,
+        showScheduleId: req.query.show_id ? String(req.query.show_id) : null,
+        rjUserId: req.query.rj_id ? String(req.query.rj_id) : null,
+        stationId: req.query.station_id ? String(req.query.station_id) : null,
+      }),
+      orderBy: { published_at: sort },
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    });
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    res.json({
+      shows: await toPublicEpisodes(page, { userId, includeProgress: !!userId }),
+      next_cursor: hasMore ? page[page.length - 1].id : null,
+    });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── GET /api/v1/radio/shows/:id ───────────────────────────────────────────────
+// Also the only way to reach an `unlisted` show — that's what unlisted means.
+// A premium show a non-subscriber opens comes back with its card but no
+// audio_url and locked:true, so the app can show an upgrade prompt rather
+// than a bare 404.
+radioRestRouter.get("/shows/:id", async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.auth?.userId ?? null;
+    const row = await prisma.onAirEpisode.findUnique({ where: { id: String(req.params.id) } });
+    if (!row || !row.stream_audio_url) { res.status(404).json({ message: "Show not found" }); return; }
+
+    const hasSub = await viewerHasActiveSubscription(userId);
+    if (!canViewEpisode(row, hasSub)) {
+      if (row.status === "published" && row.visibility === "premium") {
+        const [pub] = await toPublicEpisodes([row], { userId });
+        res.json({ show: { ...pub, audio_url: null, locked: true, lock_reason: "premium" } });
+        return;
+      }
+      res.status(404).json({ message: "Show not found" });
+      return;
+    }
+    const [pub] = await toPublicEpisodes([row], { userId, includeProgress: !!userId });
+    res.json({ show: { ...pub, locked: false } });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── POST /api/v1/radio/shows/:id/play ─────────────────────────────────────────
+// Call on playback start. Returns the listener's saved resume position so the
+// app can seek straight to it (requirement 7).
+radioRestRouter.post("/shows/:id/play", async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.auth?.userId ?? null;
+    const row = await prisma.onAirEpisode.findUnique({ where: { id: String(req.params.id) } });
+    if (!row) { res.status(404).json({ message: "Show not found" }); return; }
+    const hasSub = await viewerHasActiveSubscription(userId);
+    if (!canViewEpisode(row, hasSub)) { res.status(403).json({ message: "This show is for subscribers" }); return; }
+    res.json(await recordEpisodePlay(row.id, userId));
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── GET /api/v1/radio/shows/:id/progress ──────────────────────────────────────
+radioRestRouter.get("/shows/:id/progress", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const progress = await prisma.onAirEpisodeProgress.findUnique({
+      where: { user_id_episode_id: { user_id: req.auth.userId!, episode_id: String(req.params.id) } },
+    });
+    res.json(progress ?? { position_seconds: 0, duration_seconds: null, completed: false });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── POST /api/v1/radio/shows/:id/progress ─────────────────────────────────────
+// Called periodically while playing (and on pause/stop) so a show resumes
+// where it was left off.
+radioRestRouter.post("/shows/:id/progress", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { position_seconds, duration_seconds } = z.object({
+      position_seconds: z.number().int().min(0),
+      duration_seconds: z.number().int().min(0).optional(),
+    }).parse(req.body);
+    try {
+      res.json(await saveEpisodeProgress(String(req.params.id), req.auth.userId!, position_seconds, duration_seconds ?? null));
+    } catch (err) {
+      if (err instanceof EpisodeNotFoundError) { res.status(404).json({ message: err.message }); return; }
+      throw err;
+    }
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// ── GET /api/v1/radio/shows-history ───────────────────────────────────────────
+// "আমার শোনা" — this listener's partially-played and finished shows.
+// Deliberately not under /shows/ so it can't be read as a show id.
+radioRestRouter.get("/shows-history", requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.auth.userId!;
+    const progress = await prisma.onAirEpisodeProgress.findMany({
+      where: { user_id: userId },
+      orderBy: { last_played_at: "desc" },
+      take: 50,
+    });
+    if (!progress.length) { res.json({ history: [] }); return; }
+    const hasSub = await viewerHasActiveSubscription(userId);
+    const rows = await prisma.onAirEpisode.findMany({
+      where: { id: { in: progress.map((p) => p.episode_id) }, ...publicEpisodeWhere({ hasActiveSubscription: hasSub }) },
+    });
+    const shows = await toPublicEpisodes(rows, { userId, includeProgress: true });
+    const byId = new Map(shows.map((s) => [s.id, s]));
+    res.json({
+      history: progress
+        .map((p) => (byId.has(p.episode_id) ? { ...p, show: byId.get(p.episode_id) } : null))
+        .filter(Boolean),
+    });
   } catch (error) {
     sendHttpError(res, error);
   }

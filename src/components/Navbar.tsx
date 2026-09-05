@@ -102,11 +102,7 @@ export function Navbar() {
                   aria-label="BoiAro On Air"
                   title="BoiAro On Air"
                   className={`relative rounded-full h-9 w-9 ${isRadioLive ? "text-destructive" : "text-muted-foreground hover:text-foreground"}`}
-                  onClick={() => {
-                    const el = document.querySelector("[data-section='live_radio']")
-                    if (el) el.scrollIntoView({ behavior: "smooth" })
-                    else navigate("/#live_radio")
-                  }}
+                  onClick={() => navigate("/on-air")}
                 >
                   <Radio className="w-[18px] h-[18px]" />
                   {isRadioLive && (

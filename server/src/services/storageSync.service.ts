@@ -58,6 +58,11 @@ async function patchAllDbUrls(localUrl: string, s3Url: string): Promise<void> {
 
     // Radio / TTS / Gamification
     prisma.radioStation.updateMany({ where: { artwork_url: localUrl }, data: { artwork_url: s3Url } }),
+    // Published On Air shows — both the master WAV reference and the streaming
+    // MP3. Without this a show that fell back to local disk keeps serving the
+    // unsigned /uploads URL forever, which also bypasses the premium gate.
+    prisma.onAirEpisode.updateMany({ where: { stream_audio_url: localUrl }, data: { stream_audio_url: s3Url } }),
+    prisma.onAirEpisode.updateMany({ where: { master_audio_url: localUrl }, data: { master_audio_url: s3Url } }),
     prisma.badgeDefinition.updateMany({ where: { icon_url: localUrl }, data: { icon_url: s3Url } }),
     prisma.ttsAudio.updateMany({ where: { audio_url: localUrl }, data: { audio_url: s3Url } }),
 

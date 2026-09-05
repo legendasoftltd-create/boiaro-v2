@@ -2763,3 +2763,100 @@ model ShowSocialSetting {
 
   @@map("show_social_settings")
 }
+
+// ── BoiAro On Air — Published Recorded Shows ─────────────────────────────────
+// A recorded broadcast that an admin has reviewed and released to the app's
+// "Latest Shows" / archive. Deliberately a separate row from the LiveSession
+// and StudioSession it came from: those describe *a broadcast that happened*
+// (and keep their own raw recording columns as the master/backup), while this
+// describes *a published piece of on-demand content* with its own title,
+// cover, visibility and publish schedule. That separation is what makes
+// requirement 9 hold — a show that just ended is never public until a row
+// here exists with status "published".
+//
+// Referenced sessions are held as plain ids rather than Prisma relations,
+// matching the existing LiveSession.rj_user_id ↔ RjProfile.user_id convention
+// in this schema: an episode must outlive a purged session, so a cascading FK
+// would be actively wrong here.
+model OnAirEpisode {
+  id                String  @id @default(uuid())
+  // Whichever session produced the audio. studio_session_id is unique so one
+  // Studio master can only ever be published once (re-publishing edits that
+  // row instead of creating a duplicate episode).
+  studio_session_id String? @unique
+  live_session_id   String?
+  // The recurring programme this episode belongs to, for the archive's
+  // "Show/Program" filter. Null for one-off broadcasts with no schedule slot.
+  show_schedule_id  String?
+  station_id        String?
+  rj_user_id        String
+
+  title           String // Show title
+  episode_title   String?
+  description     String?
+  cover_image_url String?
+
+  // The Studio WAV — kept as the master/backup (requirement 9) and never
+  // handed to a listening client. Only stream_audio_url is ever served.
+  master_audio_url  String?
+  // Optimised MP3/AAC produced at publish time by lib/episodeTranscoder.ts.
+  stream_audio_url  String?
+  stream_mime_type  String?
+  stream_size_bytes Int?
+  duration_seconds  Int?
+
+  // mixed (mic + music/jingles) | voice_only. Voice-only masters are an
+  // internal editing artefact and are refused a public publish.
+  recording_type String @default("mixed")
+  // processing | draft | pending_review | published | unpublished
+  status         String @default("draft")
+  // public | premium | unlisted
+  visibility     String @default("public")
+
+  recorded_at  DateTime
+  // Set when an admin schedules a future release; jobs/episodePublish.ts
+  // flips status to published once it passes.
+  publish_at   DateTime?
+  published_at DateTime?
+
+  // queued | processing | completed | failed — the WAV→MP3 conversion, which
+  // runs in the background because it takes minutes on a long show.
+  transcode_status String?
+  transcode_error  String?
+
+  play_count Int     @default(0)
+  created_by String?
+  updated_by String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  progress OnAirEpisodeProgress[]
+
+  @@index([status, published_at])
+  @@index([status, publish_at])
+  @@index([show_schedule_id])
+  @@index([rj_user_id])
+  @@map("onair_episodes")
+}
+
+// Resume-playback position per listener per episode. Separate from
+// CatchupProgress, which is keyed to a LiveSession and tracks the older
+// Icecast catch-up recordings.
+model OnAirEpisodeProgress {
+  id               String   @id @default(uuid())
+  episode_id       String
+  user_id          String
+  position_seconds Int      @default(0)
+  duration_seconds Int?
+  completed        Boolean  @default(false)
+  total_plays      Int      @default(1)
+  last_played_at   DateTime @default(now())
+  created_at       DateTime @default(now())
+
+  episode OnAirEpisode @relation(fields: [episode_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, episode_id])
+  @@index([episode_id])
+  @@map("onair_episode_progress")
+}

@@ -40,6 +40,8 @@ const RadioSchedule = lazy(() => import("./pages/RadioSchedule.tsx"));
 const ScheduleShowDetail = lazy(() => import("./pages/ScheduleShowDetail.tsx"));
 const PublicRjProfile = lazy(() => import("./pages/PublicRjProfile.tsx"));
 const RadioCatchup = lazy(() => import("./pages/RadioCatchup.tsx"));
+const OnAir = lazy(() => import("./pages/OnAir.tsx"));
+const OnAirShows = lazy(() => import("./pages/OnAirShows.tsx"));
 const Checkout = lazy(() => import("./pages/Checkout.tsx"));
 const Orders = lazy(() => import("./pages/Orders.tsx"));
 const EbookReader = lazy(() => import("./pages/EbookReader.tsx"));
@@ -265,6 +267,11 @@ const App = () => {
                 <Route path="/schedule" element={<RadioSchedule />} />
                 <Route path="/schedule/:id" element={<ScheduleShowDetail />} />
                 <Route path="/host/:userId" element={<PublicRjProfile />} />
+                <Route path="/on-air" element={<OnAir />} />
+                {/* User-facing archive of published shows — deliberately
+                    "shows", not "recordings" (requirement 6). */}
+                <Route path="/shows" element={<OnAirShows />} />
+                <Route path="/shows/:showId" element={<OnAirShows />} />
                 <Route path="/catchup" element={<RadioCatchup />} />
                 <Route path="/b/:bookId" element={<BookDetail />} />
                 <Route path="/books" element={<BooksPage />} />

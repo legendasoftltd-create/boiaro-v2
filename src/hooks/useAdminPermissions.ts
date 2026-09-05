@@ -81,6 +81,11 @@ export const MODULE_MAP: Record<string, string> = {
   "/admin/radio":               "cms",
   "/admin/rj-management":       "cms",
   "/admin/social-live":         "cms",
+  "/admin/radio-schedule":      "cms",
+  "/admin/radio-safety":        "cms",
+  "/admin/studio-library":      "cms",
+  // Recorded-show publishing (Studio masters → the app's Latest Shows).
+  "/admin/recordings":          "cms",
   "/admin/site-settings":       "settings",
 
   // Notifications / Email
