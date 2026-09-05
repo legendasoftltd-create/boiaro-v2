@@ -13,20 +13,22 @@ import { sendSslWirelessSms } from "../lib/sms.js";
 import { sendPushToTokens, testFirebaseCredentials, invalidateFirebaseCache } from "../lib/firebase.js";
 import { notifyUser } from "../lib/notify.js";
 import { cancelOrder, OrderCancelError } from "../services/orderCancel.service.js";
-import { createPresignedDownloadUrl, createPresignedGetUrl, isS3Url, s3Client } from "../lib/s3.js";
+import { createPresignedDownloadUrl, createPresignedGetUrl, isS3Url, s3Client, deleteFromS3 } from "../lib/s3.js";
 import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { resolveFileUrl as resolveUrl } from "../lib/mediaUrl.js";
 import { computePreviewTargetSeconds, generatePreviewClip, regeneratePreviewClipsForFormat } from "../lib/audioPreview.js";
 import { logRadioAction } from "../lib/radioAudit.js";
 import { stopRecording } from "../lib/liveRecorder.js";
-import { notifyFollowersOfScheduleCancelled, notifyFollowersOfScheduleRescheduled } from "../lib/radioNotify.js";
+import { notifyFollowersOfScheduleCancelled, notifyFollowersOfScheduleRescheduled, notifyFollowersOfShowPublished } from "../lib/radioNotify.js";
 import { RADIO_SETTINGS_DEFAULTS, getRadioSettings, getRadioSetting, getRadioSettingNumber, type RadioSettingKey } from "../lib/radioSettings.js";
 import { getMonthlyLeaderboard, recalculateMonth, upsertPrizeConfig, type LeaderboardMetric } from "../services/monthlyLeaderboard.service.js";
 import { getGaRealtimeReport } from "../lib/gaRealtime.js";
 import { syncStationMountsWithBridge } from "../lib/studioBridge.js";
 import { deriveIcecastMountPath } from "../lib/icecastMount.js";
 import { computeRadioAnalytics, computeRadioAnalyticsSeries } from "../lib/radioAnalytics.js";
-import { getRecordingStorageUsedGb, getEstimatedBandwidthGb30d } from "../lib/radioCostControl.js";
+import { getRecordingStorageUsedGb, getEstimatedBandwidthGb30d, isRecordingStorageBudgetAvailable } from "../lib/radioCostControl.js";
+import { startEpisodeTranscode, isTranscoding } from "../lib/episodeTranscoder.js";
+import { EPISODE_STATUSES, EPISODE_VISIBILITIES, RECORDING_TYPES, DEFAULT_PUBLISH_RECORDING_TYPE } from "../services/onAirEpisode.service.js";
 import { getStreamHealthForSessions } from "../lib/streamHealth.js";
 import { encryptSecret, decryptSecret } from "../lib/secretEncryption.js";
 import {
@@ -6443,6 +6445,369 @@ export const adminRouter = router({
       const result = await prisma.radioStation.update({ where: { id: input.id }, data: { is_active: input.is_active } });
       syncStationMountsWithBridge().catch((err) => console.error("[admin] syncStationMountsWithBridge failed:", err));
       return result;
+    }),
+
+  // ── On Air — Recorded Show Publishing ────────────────────────────────────
+  // A finished broadcast is never public on its own (requirement 9): its
+  // Studio master WAV lands here as a *candidate*, and only an admin creating
+  // an OnAirEpisode row with status "published" puts it in the app's Latest
+  // Shows. The WAV itself is never served — publishing kicks off a background
+  // MP3 transcode (lib/episodeTranscoder.ts) and the episode stays in
+  // "processing" until that finishes.
+
+  /**
+   * Ended broadcasts whose Studio master recording finished, annotated with
+   * the episode (if any) already made from them. This is the "Studio Master
+   * Recordings" list on Admin → Recordings.
+   */
+  listOnAirRecordingCandidates: adminProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(200).default(50) }).optional())
+    .query(async ({ input }) => {
+      const sessions = await prisma.liveSession.findMany({
+        where: { status: "ended", studio_session: { master_recording_status: { not: null } } },
+        include: {
+          station: { select: { id: true, name: true, artwork_url: true } },
+          studio_session: { select: { id: true, master_recording_url: true, master_recording_status: true, recording_mode: true } },
+        },
+        orderBy: { ended_at: "desc" },
+        take: input?.limit ?? 50,
+      });
+
+      const studioIds = sessions.map((s) => s.studio_session?.id).filter(Boolean) as string[];
+      const [episodes, profiles] = await Promise.all([
+        studioIds.length
+          ? prisma.onAirEpisode.findMany({
+              where: { studio_session_id: { in: studioIds } },
+              select: {
+                id: true, studio_session_id: true, status: true, visibility: true,
+                publish_at: true, published_at: true, transcode_status: true,
+                title: true, episode_title: true, description: true, cover_image_url: true,
+                show_schedule_id: true, duration_seconds: true, recording_type: true,
+              },
+            })
+          : Promise.resolve([]),
+        prisma.rjProfile.findMany({
+          where: { user_id: { in: [...new Set(sessions.map((s) => s.rj_user_id))] } },
+          select: { user_id: true, stage_name: true },
+        }),
+      ]);
+      const epMap = new Map(episodes.map((e) => [e.studio_session_id as string, e]));
+      const pMap = new Map(profiles.map((p) => [p.user_id, p.stage_name]));
+
+      return sessions.map((s) => ({
+        ...s,
+        studio_session: s.studio_session
+          ? { ...s.studio_session, master_recording_url: resolveFileUrl(s.studio_session.master_recording_url) }
+          : null,
+        rj_stage_name: pMap.get(s.rj_user_id) ?? null,
+        episode: s.studio_session ? epMap.get(s.studio_session.id) ?? null : null,
+      }));
+    }),
+
+  listOnAirEpisodes: adminProcedure
+    .input(z.object({
+      status: z.enum([...EPISODE_STATUSES]).optional(),
+      limit: z.number().int().min(1).max(200).default(100),
+    }).optional())
+    .query(async ({ input }) => {
+      const rows = await prisma.onAirEpisode.findMany({
+        where: input?.status ? { status: input.status } : undefined,
+        orderBy: [{ published_at: "desc" }, { recorded_at: "desc" }],
+        take: input?.limit ?? 100,
+      });
+      const [profiles, stations, schedules] = await Promise.all([
+        prisma.rjProfile.findMany({
+          where: { user_id: { in: [...new Set(rows.map((r) => r.rj_user_id))] } },
+          select: { user_id: true, stage_name: true },
+        }),
+        prisma.radioStation.findMany({ select: { id: true, name: true } }),
+        prisma.showSchedule.findMany({ select: { id: true, show_title: true } }),
+      ]);
+      const pMap = new Map(profiles.map((p) => [p.user_id, p.stage_name]));
+      const sMap = new Map(stations.map((s) => [s.id, s.name]));
+      const schedMap = new Map(schedules.map((s) => [s.id, s.show_title]));
+
+      return Promise.all(rows.map(async (r) => ({
+        ...r,
+        // Both URLs are admin-visible here — the WAV so it can be previewed
+        // and downloaded as the backup copy, the MP3 to check what listeners
+        // actually get. Only the MP3 ever reaches a listener client.
+        master_audio_url: resolveFileUrl(r.master_audio_url),
+        // The MP3 sits in a private S3 prefix (premium shows are gated on it),
+        // so the admin preview player needs a presigned URL. The WAV master's
+        // studio-masters/ prefix is public and needs no such treatment.
+        stream_audio_url: await toAdminPlayableUrl(r.stream_audio_url),
+        cover_image_url: resolveFileUrl(r.cover_image_url),
+        rj_stage_name: pMap.get(r.rj_user_id) ?? null,
+        station_name: r.station_id ? sMap.get(r.station_id) ?? null : null,
+        show_name: r.show_schedule_id ? schedMap.get(r.show_schedule_id) ?? null : null,
+      })));
+    }),
+
+  /** Options for the publish form's "Show/Program" select. */
+  listOnAirShowOptions: adminProcedure.query(async () => {
+    const schedules = await prisma.showSchedule.findMany({
+      where: { is_active: true },
+      select: { id: true, show_title: true, cover_image_url: true, rj_user_id: true, station_id: true },
+      orderBy: { show_title: "asc" },
+    });
+    // Several weekly slots can belong to one programme — collapse by title so
+    // the admin picks a show, not a timeslot.
+    const seen = new Set<string>();
+    return schedules.filter((s) => {
+      const key = s.show_title.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }),
+
+  /**
+   * Creates or updates an episode and moves it toward release.
+   *
+   * `action`:
+   *   draft    — save without releasing (the Publish form's "Save as Draft")
+   *   review   — mark pending review
+   *   publish  — release now, or at publishAt if that's in the future
+   *
+   * Whenever the source audio changes (a first publish, or a swapped master),
+   * a background MP3 transcode is started and the episode parks in
+   * "processing" until it lands. A published episode is only ever listed by
+   * the app once it has a stream_audio_url, so there is no window where a
+   * listener can tap a show with no audio behind it.
+   */
+  publishOnAirEpisode: adminProcedure
+    .input(z.object({
+      episodeId: z.string().optional(),
+      /** LiveSession id of the source broadcast — required when creating. */
+      sessionId: z.string().optional(),
+      action: z.enum(["draft", "review", "publish"]).default("publish"),
+      title: z.string().min(1).max(200),
+      episodeTitle: z.string().max(200).nullable().optional(),
+      description: z.string().max(4000).nullable().optional(),
+      coverImageUrl: z.string().max(1000).nullable().optional(),
+      showScheduleId: z.string().nullable().optional(),
+      rjUserId: z.string().optional(),
+      recordedAt: z.string().datetime().optional(),
+      /** Overrides the source master — for an externally edited/mastered file. */
+      audioUrl: z.string().url().nullable().optional(),
+      recordingType: z.enum([...RECORDING_TYPES]).optional(),
+      visibility: z.enum([...EPISODE_VISIBILITIES]).default("public"),
+      publishAt: z.string().datetime().nullable().optional(),
+      /** Required to publish a voice-only master publicly (requirement 3). */
+      allowVoiceOnly: z.boolean().default(false),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = input.episodeId
+        ? await prisma.onAirEpisode.findUnique({ where: { id: input.episodeId } })
+        : null;
+      if (input.episodeId && !existing) throw new TRPCError({ code: "NOT_FOUND", message: "Episode not found" });
+
+      let session: Awaited<ReturnType<typeof prisma.liveSession.findUnique>> | null = null;
+      let studio: { id: string; master_recording_url: string | null; master_recording_status: string | null; recording_mode: string } | null = null;
+
+      const sourceSessionId = input.sessionId ?? existing?.live_session_id ?? null;
+      if (sourceSessionId) {
+        session = await prisma.liveSession.findUnique({ where: { id: sourceSessionId } });
+        if (!session) throw new TRPCError({ code: "NOT_FOUND", message: "Source broadcast not found" });
+        studio = await prisma.studioSession.findUnique({
+          where: { live_session_id: sourceSessionId },
+          select: { id: true, master_recording_url: true, master_recording_status: true, recording_mode: true },
+        });
+      }
+      if (!existing && !session) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "sessionId is required when creating an episode" });
+      }
+
+      const recordingType = input.recordingType ?? existing?.recording_type ?? studio?.recording_mode ?? DEFAULT_PUBLISH_RECORDING_TYPE;
+      const masterUrl = input.audioUrl ?? existing?.master_audio_url ?? studio?.master_recording_url ?? null;
+
+      const publishAt = input.publishAt ? new Date(input.publishAt) : null;
+      const scheduled = !!publishAt && publishAt.getTime() > Date.now();
+      const wantsRelease = input.action === "publish";
+
+      if (wantsRelease) {
+        if (!masterUrl) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "No audio to publish — the Studio master recording is missing or still processing." });
+        }
+        if (studio && studio.master_recording_status !== "completed" && !input.audioUrl) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "The Studio master recording hasn't finished saving yet — try again once it shows as completed." });
+        }
+        // Requirement 3 — voice-only is a mastering artefact, not something a
+        // listener should be handed by default.
+        if (recordingType === "voice_only" && !input.allowVoiceOnly) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This is a Voice Only recording (no music or jingles). Full Mix is the default publish source — tick \"Publish this Voice Only recording anyway\" if you really want it public.",
+          });
+        }
+        if (input.visibility !== "unlisted" && !(await isRecordingStorageBudgetAvailable())) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Recording storage limit reached — free up space or raise the limit before publishing more shows." });
+        }
+      }
+
+      // Cover default (requirement 2): the episode's own cover if given, else
+      // the programme's, else whatever the source broadcast used.
+      let coverImageUrl = input.coverImageUrl !== undefined ? input.coverImageUrl : existing?.cover_image_url ?? null;
+      if (!coverImageUrl) {
+        const showCover = input.showScheduleId
+          ? (await prisma.showSchedule.findUnique({ where: { id: input.showScheduleId }, select: { cover_image_url: true } }))?.cover_image_url ?? null
+          : null;
+        coverImageUrl = showCover ?? session?.cover_image_url ?? null;
+      }
+
+      const sourceChanged = !!masterUrl && masterUrl !== existing?.master_audio_url;
+      const needsTranscode = !!masterUrl && (sourceChanged || !existing?.stream_audio_url);
+
+      const data = {
+        title: input.title,
+        episode_title: input.episodeTitle ?? null,
+        description: input.description ?? null,
+        cover_image_url: coverImageUrl,
+        // `?? existing` would swallow an explicit null — picking "Not part of a
+        // programme" has to actually detach it, not silently keep the old one.
+        show_schedule_id: input.showScheduleId !== undefined ? input.showScheduleId : existing?.show_schedule_id ?? null,
+        station_id: session?.station_id ?? existing?.station_id ?? null,
+        rj_user_id: input.rjUserId ?? existing?.rj_user_id ?? session!.rj_user_id,
+        live_session_id: sourceSessionId,
+        studio_session_id: studio?.id ?? existing?.studio_session_id ?? null,
+        master_audio_url: masterUrl,
+        recording_type: recordingType,
+        visibility: input.visibility,
+        recorded_at: input.recordedAt
+          ? new Date(input.recordedAt)
+          : existing?.recorded_at ?? session?.started_at ?? new Date(),
+        publish_at: publishAt,
+        duration_seconds: existing?.duration_seconds ?? session?.recording_duration_seconds ?? null,
+        updated_by: ctx.userId,
+      };
+
+      // "processing" while the MP3 is being made; otherwise the requested
+      // state. A scheduled publish parks in draft — jobs/episodePublish.ts
+      // releases it when publish_at passes.
+      const status = needsTranscode
+        ? "processing"
+        : input.action === "draft"
+        ? "draft"
+        : input.action === "review"
+        ? "pending_review"
+        : scheduled
+        ? "draft"
+        : "published";
+
+      const publishedAt = status === "published" ? existing?.published_at ?? new Date() : existing?.published_at ?? null;
+
+      const episode = existing
+        ? await prisma.onAirEpisode.update({
+            where: { id: existing.id },
+            data: { ...data, status, published_at: publishedAt },
+          })
+        : await prisma.onAirEpisode.create({
+            data: { ...data, status, published_at: publishedAt, created_by: ctx.userId },
+          });
+
+      if (needsTranscode) {
+        const target = input.action === "draft" ? "draft" : input.action === "review" ? "pending_review" : scheduled ? "draft" : "published";
+        startEpisodeTranscode(episode.id, masterUrl!, target);
+      }
+
+      await logRadioAction(ctx.userId!, existing ? "onair_episode_updated" : "onair_episode_created", {
+        episodeId: episode.id,
+        action: input.action,
+        visibility: input.visibility,
+        scheduled,
+      });
+
+      // Only announce a release that's live right now. A first publish always
+      // parks in "processing" while the MP3 encodes, so that case is announced
+      // by episodeTranscoder.ts when the audio actually lands; a scheduled one
+      // is announced by episodePublish.ts when it flips. This branch covers the
+      // remaining case: re-releasing an episode whose MP3 already exists.
+      if (status === "published" && !existing?.published_at) {
+        notifyFollowersOfShowPublished(episode.rj_user_id, episode.title, episode.id).catch(() => null);
+      }
+
+      return episode;
+    }),
+
+  /** Edit display metadata without touching status — the "Edit Details" action. */
+  updateOnAirEpisode: adminProcedure
+    .input(z.object({
+      episodeId: z.string(),
+      title: z.string().min(1).max(200).optional(),
+      episodeTitle: z.string().max(200).nullable().optional(),
+      description: z.string().max(4000).nullable().optional(),
+      coverImageUrl: z.string().max(1000).nullable().optional(),
+      showScheduleId: z.string().nullable().optional(),
+      recordedAt: z.string().datetime().optional(),
+      visibility: z.enum([...EPISODE_VISIBILITIES]).optional(),
+      publishAt: z.string().datetime().nullable().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.onAirEpisode.findUnique({ where: { id: input.episodeId } });
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      const updated = await prisma.onAirEpisode.update({
+        where: { id: input.episodeId },
+        data: {
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.episodeTitle !== undefined ? { episode_title: input.episodeTitle } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          ...(input.coverImageUrl !== undefined ? { cover_image_url: input.coverImageUrl } : {}),
+          ...(input.showScheduleId !== undefined ? { show_schedule_id: input.showScheduleId } : {}),
+          ...(input.recordedAt !== undefined ? { recorded_at: new Date(input.recordedAt) } : {}),
+          ...(input.visibility !== undefined ? { visibility: input.visibility } : {}),
+          ...(input.publishAt !== undefined ? { publish_at: input.publishAt ? new Date(input.publishAt) : null } : {}),
+          updated_by: ctx.userId,
+        },
+      });
+      await logRadioAction(ctx.userId!, "onair_episode_details_updated", { episodeId: input.episodeId });
+      return updated;
+    }),
+
+  unpublishOnAirEpisode: adminProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.onAirEpisode.findUnique({ where: { id: input.episodeId } });
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      const updated = await prisma.onAirEpisode.update({
+        where: { id: input.episodeId },
+        // publish_at is cleared too, so an unpublish doesn't get silently
+        // undone by the scheduled-publish sweep a minute later.
+        data: { status: "unpublished", publish_at: null, updated_by: ctx.userId },
+      });
+      await logRadioAction(ctx.userId!, "onair_episode_unpublished", { episodeId: input.episodeId });
+      return updated;
+    }),
+
+  /**
+   * Removes the episode and its streaming MP3. The master WAV is deliberately
+   * left alone (requirement 9 — "Master WAV delete না করে আলাদা backup হিসেবে
+   * রাখতে হবে"); deleting that is a separate, explicit action on the Studio
+   * master recording itself.
+   */
+  deleteOnAirEpisode: adminProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.onAirEpisode.findUnique({ where: { id: input.episodeId } });
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (existing.stream_audio_url) {
+        await deleteFromS3(existing.stream_audio_url).catch((err) => console.error("[deleteOnAirEpisode] S3 delete failed:", err?.message));
+      }
+      await prisma.onAirEpisode.delete({ where: { id: input.episodeId } });
+      await logRadioAction(ctx.userId!, "onair_episode_deleted", { episodeId: input.episodeId, masterKept: !!existing.master_audio_url });
+      return { ok: true, masterKept: !!existing.master_audio_url };
+    }),
+
+  retryOnAirEpisodeTranscode: adminProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await prisma.onAirEpisode.findUnique({ where: { id: input.episodeId } });
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!existing.master_audio_url) throw new TRPCError({ code: "BAD_REQUEST", message: "This episode has no master audio to convert." });
+      if (isTranscoding(existing.id)) throw new TRPCError({ code: "CONFLICT", message: "Already converting — give it a moment." });
+      startEpisodeTranscode(existing.id, existing.master_audio_url, existing.published_at ? "published" : "draft");
+      await logRadioAction(ctx.userId!, "onair_episode_transcode_retried", { episodeId: input.episodeId });
+      return { ok: true };
     }),
 
   // ── Social Live — platform connections ──────────────────────────────────

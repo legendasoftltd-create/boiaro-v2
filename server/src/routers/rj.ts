@@ -19,6 +19,16 @@ import { RJ_TERMS_CLAUSE_KEYS } from "../lib/rjTermsClauses.js";
 import { dhakaWallClock, fromDhakaShifted } from "../lib/timezone.js";
 import { ensureStudioEgressAlive } from "./studio.js";
 import { runningShowMessage } from "../lib/runningShow.js";
+import {
+  publicEpisodeWhere,
+  toPublicEpisodes,
+  viewerHasActiveSubscription,
+  canViewEpisode,
+  listArchiveFilters,
+  recordEpisodePlay,
+  saveEpisodeProgress,
+  EpisodeNotFoundError,
+} from "../services/onAirEpisode.service.js";
 
 async function assertHostOrModerator(userId: string, session: { rj_user_id: string }) {
   if (userId === session.rj_user_id) return;
@@ -421,6 +431,139 @@ export const rjRouter = router({
       await logRadioAction(ctx.userId!, "master_recording_deleted", { sessionId: input.sessionId });
       return { ok: true };
     }),
+
+  // ── On Air — published recorded shows (Latest Shows / আগের অনুষ্ঠান) ──────
+  // Only ever serves episodes an admin published, and only their transcoded
+  // MP3 — never a Studio master WAV. See services/onAirEpisode.service.ts.
+  onAir: router({
+    /** The "Latest Shows / সম্প্রতি প্রচারিত" strip — newest published first. */
+    latestShows: publicProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(20).default(5) }).optional())
+      .query(async ({ ctx, input }) => {
+        const hasSub = await viewerHasActiveSubscription(ctx.userId ?? null);
+        const rows = await prisma.onAirEpisode.findMany({
+          where: publicEpisodeWhere({ hasActiveSubscription: hasSub }),
+          orderBy: { published_at: "desc" },
+          take: input?.limit ?? 5,
+        });
+        return toPublicEpisodes(rows, { userId: ctx.userId ?? null, includeProgress: !!ctx.userId });
+      }),
+
+    /** The full archive page — filterable by programme and RJ, sortable both ways. */
+    shows: publicProcedure
+      .input(z.object({
+        limit: z.number().int().min(1).max(50).default(20),
+        cursor: z.string().optional(),
+        showScheduleId: z.string().optional(),
+        rjUserId: z.string().optional(),
+        sort: z.enum(["latest", "oldest"]).default("latest"),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const hasSub = await viewerHasActiveSubscription(ctx.userId ?? null);
+        const limit = input?.limit ?? 20;
+        const rows = await prisma.onAirEpisode.findMany({
+          where: publicEpisodeWhere({
+            hasActiveSubscription: hasSub,
+            showScheduleId: input?.showScheduleId ?? null,
+            rjUserId: input?.rjUserId ?? null,
+          }),
+          orderBy: { published_at: input?.sort === "oldest" ? "asc" : "desc" },
+          take: limit + 1,
+          ...(input?.cursor ? { cursor: { id: input.cursor }, skip: 1 } : {}),
+        });
+        const hasMore = rows.length > limit;
+        const page = hasMore ? rows.slice(0, limit) : rows;
+        return {
+          shows: await toPublicEpisodes(page, { userId: ctx.userId ?? null, includeProgress: !!ctx.userId }),
+          nextCursor: hasMore ? page[page.length - 1].id : null,
+        };
+      }),
+
+    filters: publicProcedure.query(async ({ ctx }) => {
+      const hasSub = await viewerHasActiveSubscription(ctx.userId ?? null);
+      return listArchiveFilters(hasSub);
+    }),
+
+    /**
+     * One episode by id — the only path an `unlisted` show is reachable
+     * through, which is what "unlisted" means (shareable link, absent from
+     * every list).
+     */
+    show: publicProcedure
+      .input(z.object({ id: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const row = await prisma.onAirEpisode.findUnique({ where: { id: input.id } });
+        if (!row || !row.stream_audio_url) return null;
+        const hasSub = await viewerHasActiveSubscription(ctx.userId ?? null);
+        if (!canViewEpisode(row, hasSub)) {
+          // Premium-gated shows still return their card so the app can offer
+          // an upgrade prompt — just never the audio URL.
+          if (row.status === "published" && row.visibility === "premium") {
+            const [pub] = await toPublicEpisodes([row], { userId: ctx.userId ?? null });
+            return { ...pub, audio_url: null, locked: true as const, lock_reason: "premium" as const };
+          }
+          return null;
+        }
+        const [pub] = await toPublicEpisodes([row], { userId: ctx.userId ?? null, includeProgress: !!ctx.userId });
+        return { ...pub, locked: false as const };
+      }),
+
+    myShowProgress: protectedProcedure
+      .input(z.object({ episodeId: z.string() }))
+      .query(({ ctx, input }) =>
+        prisma.onAirEpisodeProgress.findUnique({
+          where: { user_id_episode_id: { user_id: ctx.userId!, episode_id: input.episodeId } },
+        })
+      ),
+
+    /** Bumps the play counter and hands back where this listener left off. */
+    recordShowPlay: publicProcedure
+      .input(z.object({ episodeId: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const row = await prisma.onAirEpisode.findUnique({ where: { id: input.episodeId } });
+        if (!row) throw new TRPCError({ code: "NOT_FOUND" });
+        const hasSub = await viewerHasActiveSubscription(ctx.userId ?? null);
+        if (!canViewEpisode(row, hasSub)) throw new TRPCError({ code: "FORBIDDEN" });
+        return recordEpisodePlay(input.episodeId, ctx.userId ?? null);
+      }),
+
+    saveShowProgress: protectedProcedure
+      .input(z.object({
+        episodeId: z.string(),
+        positionSeconds: z.number().int().min(0),
+        durationSeconds: z.number().int().min(0).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          return await saveEpisodeProgress(input.episodeId, ctx.userId!, input.positionSeconds, input.durationSeconds ?? null);
+        } catch (err) {
+          if (err instanceof EpisodeNotFoundError) throw new TRPCError({ code: "NOT_FOUND", message: err.message });
+          throw err;
+        }
+      }),
+
+    /** "আমার শোনা" — partially-played shows first, so resuming is one tap. */
+    myShowHistory: protectedProcedure.query(async ({ ctx }) => {
+      const progress = await prisma.onAirEpisodeProgress.findMany({
+        where: { user_id: ctx.userId! },
+        orderBy: { last_played_at: "desc" },
+        take: 50,
+      });
+      if (!progress.length) return [];
+      const hasSub = await viewerHasActiveSubscription(ctx.userId!);
+      const rows = await prisma.onAirEpisode.findMany({
+        where: { id: { in: progress.map((p) => p.episode_id) }, ...publicEpisodeWhere({ hasActiveSubscription: hasSub }) },
+      });
+      const shows = await toPublicEpisodes(rows, { userId: ctx.userId!, includeProgress: true });
+      const byId = new Map(shows.map((s) => [s.id, s]));
+      return progress
+        .map((p) => {
+          const show = byId.get(p.episode_id);
+          return show ? { ...p, show } : null;
+        })
+        .filter(Boolean);
+    }),
+  }),
 
   // Public podcast-style archive — ended sessions with a recording attached.
   catchupSessions: publicProcedure

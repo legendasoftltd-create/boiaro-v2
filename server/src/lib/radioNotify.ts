@@ -67,6 +67,24 @@ export function notifyFollowersOfCatchupPublished(rjUserId: string, showTitle: s
   }));
 }
 
+/**
+ * A recorded show an admin published to the app's On Air → Latest Shows.
+ *
+ * Distinct from notifyFollowersOfCatchupPublished above, which is about the
+ * older Icecast catch-up feed and links to /catchup: this deep-links straight
+ * to the episode, so the tap lands on the show rather than on a list the
+ * listener then has to search.
+ */
+export function notifyFollowersOfShowPublished(rjUserId: string, showTitle: string, episodeId: string): Promise<void> {
+  return dispatchToFollowers(rjUserId, () => ({
+    title: `🎧 "${showTitle}" এখন শোনা যাচ্ছে`,
+    message: "সম্প্রতি প্রচারিত অনুষ্ঠানটি যেকোনো সময় শুনুন।",
+    type: "catchup_published",
+    link: `/shows/${episodeId}`,
+    preferenceKey: "radio_enabled",
+  }));
+}
+
 // Manual, RJ- or admin-initiated announcement — for anything that doesn't
 // fit the automatic triggers above (a surprise show, a special guest, an
 // off-schedule live). Distinct from admin.sendNotification's generic

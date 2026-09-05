@@ -6,6 +6,7 @@ import { runMonthlyLeaderboardLock } from "./monthlyLeaderboardLock.js";
 import { runShowReminders } from "./showReminders.js";
 import { runStreamReconnectSweep } from "./streamReconnect.js";
 import { runRecordingRetentionSweep } from "./recordingRetention.js";
+import { runEpisodeScheduledPublish } from "./episodePublish.js";
 import { runIcecastListenerPoll } from "./icecastListenerPoll.js";
 import { runDatabaseBackup } from "./databaseBackup.js";
 import { runPaymentExpirySweep } from "./paymentExpiry.js";
@@ -84,6 +85,14 @@ export function startScheduledJobs(): void {
     runStreamReconnectSweep()
       .then((r) => (r.markedReconnecting || r.autoEnded) && console.log(`[jobs] streamReconnect: reconnecting=${r.markedReconnecting} ended=${r.autoEnded}`))
       .catch((err) => console.error("[jobs] streamReconnect failed:", err));
+  });
+
+  // Every minute — release On Air episodes whose scheduled publish time has
+  // passed (the publish form's "Schedule Publish")
+  cron.schedule("* * * * *", () => {
+    runEpisodeScheduledPublish()
+      .then((r) => r.published && console.log(`[jobs] episodePublish: published ${r.published}`))
+      .catch((err) => console.error("[jobs] episodePublish failed:", err));
   });
 
   // Daily at 04:00 Dhaka — delete draft/rejected recordings past retention, and

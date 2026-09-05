@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react"
 import { Link } from "react-router-dom"
-import { Radio, Play, Pause, Loader2, WifiOff, Mic, MessageCircle, Users, Clock } from "lucide-react"
+import { Radio, Play, Pause, Loader2, WifiOff, Mic, MessageCircle, Users, Clock, ChevronRight } from "lucide-react"
 import { ShareButton } from "@/components/ShareButton"
 import { Button } from "@/components/ui/button"
 import { useRadioStations } from "@/hooks/useRadioStation"
@@ -50,6 +50,9 @@ export function LiveRadioSection() {
               </p>
             </div>
           </div>
+          <Button asChild size="sm" variant="ghost" className="gap-1 text-xs shrink-0">
+            <Link to="/on-air">সব দেখুন <ChevronRight className="w-3.5 h-3.5" /></Link>
+          </Button>
         </div>
 
         <div className={stations.length > 1 ? "grid grid-cols-1 md:grid-cols-2 gap-4" : undefined}>
@@ -102,7 +105,10 @@ type StreamStatus = "idle" | "loading" | "playing" | "error"
 
 type Quality = "high" | "medium" | "low"
 
-function RadioCard({ station, isLive, liveSessionId, liveSessionStatus, startedAt, rjAvatarUrl, stationId }: {
+// Exported so the dedicated On Air page can lay out its "Live Radio" and
+// "Radio Stations" sections separately (requirement 4) without a second copy
+// of the stream player, quality switching and listener tracking below.
+export function RadioCard({ station, isLive, liveSessionId, liveSessionStatus, startedAt, rjAvatarUrl, stationId }: {
   station: { id: string; name: string; stream_url: string; stream_url_medium?: string | null; stream_url_low?: string | null; artwork_url: string | null; description: string | null }
   isLive: boolean
   liveSessionId?: string

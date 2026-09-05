@@ -391,6 +391,12 @@ export async function applyPublicReadPolicy(): Promise<void> {
       // `audio-previews/*` stays public: those are the free sample clips,
       // deliberately hot-linkable. `radio-recordings/*` and `studio-masters/*`
       // are broadcast catch-up, also public by design.
+      //
+      // `onair-episodes/*` is deliberately NOT here either. Those are the
+      // transcoded MP3s of published recorded shows, and an episode can be
+      // marked `premium` (subscribers only) at any time — a public prefix
+      // would make that gate meaningless for anyone who ever held the URL.
+      // They are served presigned via onAirEpisode.service.ts's toPlayableUrl.
       Resource: [
         `arn:aws:s3:::${AWS_S3_BUCKET}/covers/*`,
         `arn:aws:s3:::${AWS_S3_BUCKET}/images/*`,
