@@ -1,17 +1,45 @@
-# BoiAro Push Notifications — Payload Reference (Mobile App)
+# BoiAro Push Notifications — Complete Payload Reference
 
-Every FCM message the BoiAro server sends, and exactly what the app receives.
+Every push payload the BoiAro server sends, on every surface, and exactly what each
+client receives.
 
-This is the **payload contract**. For architecture, Firebase project setup and the
-web-push side, see [PUSH_NOTIFICATIONS_API.md](PUSH_NOTIFICATIONS_API.md).
+For architecture, Firebase project setup and the admin UI, see
+[PUSH_NOTIFICATIONS_API.md](PUSH_NOTIFICATIONS_API.md). This document is the **wire
+format**.
 
 Server source of truth: `server/src/lib/firebase.ts` → `sendPushToTokens()`.
+One send path feeds all three surfaces — Android, iOS and web browser.
 
 ---
 
-## 1. The message shape — identical for every notification
+## ⚠️ Read this first — the two traps
 
-The server always sends a **multicast notification message** built like this:
+**1. `data.notification_id` is NOT the id you mark as read.**
+
+The push carries `Notification.id` (the *content* row, shared by every recipient).
+`GET /api/v1/notifications` returns, and `POST /api/v1/notifications/read` expects,
+`UserNotification.id` (the *per-user delivery* row). One content row fans out to many
+delivery rows, so **the two ids are never equal**:
+
+```
+push data.notification_id = 59829abe-7d78-400b-8fd8-38f638382c6f   ← one content row
+list id / read id         = bd8857b8-ae4b-4395-bece-e76135254468   ← per user
+                            93c702cf-005c-4490-974e-d6f66077c746
+                            d085a85c-13db-4b6c-b960-1dab3876db62
+```
+
+Passing `data.notification_id` to `/read` matches zero rows and **still returns
+`{"success": true}`** — a silent no-op. To mark the tapped notification read, fetch the
+list and use the `id` from there. Treat `data.notification_id` as a correlation key only.
+
+**2. `data.link` and `data.notification_id` are optional.** They're conditionally added,
+so many pushes arrive as just `{"type": "..."}`. Never index into them unguarded.
+
+---
+
+## 1. The FCM message the server builds
+
+Identical construction for every notification, on every surface:
 
 ```json
 {
@@ -25,123 +53,142 @@ The server always sends a **multicast notification message** built like this:
     "link": "/shows/c69f6b44-b2bb-4004-8851-77dc70a8b644",
     "notification_id": "9f1c2d3e-4567-890a-bcde-f1234567890a"
   },
-  "android": {
-    "priority": "high",
-    "notification": { "sound": "default" }
-  },
-  "apns": {
-    "payload": { "aps": { "sound": "default" } }
-  }
+  "android": { "priority": "high", "notification": { "sound": "default" } },
+  "apns":    { "payload": { "aps": { "sound": "default" } } }
 }
 ```
 
-### Field rules — read these before coding
-
-| Field | Always present? | Notes |
+| Field | Always? | Notes |
 |---|---|---|
-| `notification.title` | **yes** | Often contains an emoji and Bengali text. |
-| `notification.body` | **yes** | Sent as `message` server-side, delivered as `body`. |
-| `notification.imageUrl` | **no** | Only ever set on **admin-composed** notifications. Every code-triggered type omits it. |
-| `data.type` | **yes** | Falls back to `"general"` when the sender omits it. Use it to route/categorise. |
-| `data.link` | **no** | Absent on several types (see §3). Never assume it exists. |
-| `data.notification_id` | **no** | Present for user-targeted sends; absent for some broadcast paths. Use it to mark-as-read via the API. |
+| `notification.title` | **yes** | Bengali text, usually with a leading emoji |
+| `notification.body` | **yes** | Called `message` server-side, delivered as `body` |
+| `notification.imageUrl` | **no** | **Only** on admin-composed sends. Every code-triggered type omits it |
+| `data.type` | **yes** | Falls back to `"general"` when the sender omits it |
+| `data.link` | **no** | App-relative path. Absent on several types — see §4 |
+| `data.notification_id` | **no** | `Notification.id`. See the warning above |
 
-**All `data` values are strings.** FCM transports `data` as a string map — there are no
-numbers, booleans or nested objects anywhere in `data`.
+**All `data` values are strings.** FCM transports `data` as a string map — no numbers,
+booleans or nested objects.
 
-**There is a `notification` block**, so this is a *notification message*, not a
-data-only message. That means:
+**A `notification` block is always present**, so these are *notification messages*, not
+data-only messages:
 
-- **Background / killed:** the OS renders the tray notification itself. Your code runs
-  only when the user **taps** it — read `data` there.
-- **Foreground:** nothing is shown automatically. The app must render its own in-app
-  banner from `title` / `body`.
+- **Background / killed** → the OS renders the tray item itself. Your code runs only on
+  **tap**; read `data` there.
+- **Foreground** → nothing is shown automatically. The app renders its own banner.
 
-Not set by the server, so don't rely on them: `collapse_key`, `ttl`, `channel_id`,
-`click_action`, `badge`, `priority` inside `data`.
+Never set by the server, so don't depend on them: `collapse_key`, `ttl`, `channel_id`,
+`click_action`, `badge`, `sound` beyond `"default"`.
 
-> **Android channel:** the payload sets `sound: "default"` but no `channel_id`. Create a
-> default channel in the app or Android 8+ will use the system fallback.
+> **Android:** `sound: "default"` is set but **no `channel_id`**. Create a default
+> channel in the app, or Android 8+ falls back to system defaults.
 
 ---
 
-## 2. Registering for push
+## 2. What each surface actually receives
 
-**`POST /api/v1/notifications/register-token`** *(auth)*
+The server sends one message; the three clients unwrap it differently.
 
-```json
-{ "token": "<FCM registration token>", "platform": "android" }
+### Android / iOS — Capacitor (`@capacitor/push-notifications`)
+
+```js
+PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+  const link = action.notification?.data?.link;   // may be undefined
+  const type = action.notification?.data?.type;   // always present
+});
 ```
 
-`platform`: `"android"` | `"ios"` | `"web"` — anything else is stored as `"android"`.
+`data` arrives exactly as sent. On iOS the `aps.sound` drives the alert sound; on
+Android `priority: "high"` gets it delivered promptly in Doze.
 
-Response:
-```json
-{ "success": true, "push_enabled": true, "firebase_configured": true }
+### Web — service worker, background (`public/firebase-messaging-sw.js`)
+
+FCM's JS SDK exposes the image as **`payload.notification.image`**, not `imageUrl`. The
+service worker re-shapes the message before displaying it, and **passes only `link`
+through** — `type` and `notification_id` are dropped at this point:
+
+```js
+messaging.onBackgroundMessage((payload) => {
+  self.registration.showNotification(payload.notification?.title || "BoiAro", {
+    body:  payload.notification?.body || "",
+    icon:  "/favicon-64.png",
+    badge: "/favicon-32.png",
+    image: payload.notification?.image,   // note: .image, not .imageUrl
+    data:  { link: payload.data?.link || "/" },
+  });
+});
 ```
 
-**`DELETE /api/v1/notifications/register-token`** *(auth)* — body `{ "token": "..." }`.
-Call on logout and when the user turns push off; otherwise the device keeps receiving
-the previous account's notifications.
+On click it focuses an existing tab and navigates, else opens a new window.
 
-Tokens are unique per `(user_id, token)`, so re-registering the same token is safe and
-idempotent. Register on every app start — FCM rotates tokens.
+### Web — foreground (`src/lib/webPush.ts`)
+
+Normalised to a flat object before reaching UI code:
+
+```ts
+{ title?: string; body?: string; link?: string; image?: string }
+```
 
 ---
 
-## 3. Every notification type
+## 3. Complete type list
 
-`data.type` values the app can receive, with the `link` each one carries.
+Every `data.type` the application can emit. Types marked **live** have been observed in
+production; the rest are wired up and will fire when their trigger occurs.
 
-### Radio / On Air
+### Radio / On Air — all gated by `radio_enabled`
 
-| `type` | `link` | Trigger |
-|---|---|---|
-| `rj_live` | `/live/{liveSessionId}` | An RJ the user follows goes live |
-| `show_reminder_30` | `/schedule#{scheduleId}` | 30 min before a scheduled show |
-| `show_reminder_10` | `/schedule#{scheduleId}` | 10 min before a scheduled show |
-| `show_cancelled` | `/schedule` | A followed RJ's show is cancelled |
-| `show_rescheduled` | `/schedule` | A followed RJ's show moves |
-| `catchup_published` | `/shows/{episodeId}` **or** `/catchup` | A recording is published — see note |
-| `special_announcement` | custom, defaults to `/schedule` | Manual RJ/admin announcement |
+| `type` | `link` | Trigger | |
+|---|---|---|---|
+| `rj_live` | `/live/{liveSessionId}` | A followed RJ goes live | **live** |
+| `show_reminder_30` | `/schedule#{scheduleId}` | 30 min before a scheduled show | |
+| `show_reminder_10` | `/schedule#{scheduleId}` | 10 min before a scheduled show | |
+| `show_cancelled` | `/schedule` | A followed RJ's show is cancelled | |
+| `show_rescheduled` | `/schedule` | A followed RJ's show moves | |
+| `catchup_published` | `/shows/{episodeId}` **or** `/catchup` | A recording is published — see note | |
+| `special_announcement` | custom, defaults to `/schedule` | Manual RJ/admin announcement | |
 
-> **`catchup_published` carries two different link shapes.** A newly published
-> **recorded show** links to `/shows/{episodeId}` (deep-link to that episode). The older
-> Icecast catch-up feed links to the bare `/catchup` list. Route on the path, not on the
-> type — do not assume an id is present.
+> **`catchup_published` carries two different link shapes.** A published **recorded
+> show** deep-links to `/shows/{episodeId}`; the older Icecast catch-up feed links to the
+> bare `/catchup` list. Route on the path, not the type — don't assume an id is there.
 
-### Orders, support, account
+### Orders & support
 
-| `type` | `link` | Trigger |
-|---|---|---|
-| `order` | `/orders` | Order cancelled |
-| `support` | `/support/tickets/{ticketId}` | Admin replies to a support ticket |
+| `type` | `link` | Trigger | Gate | |
+|---|---|---|---|---|
+| `order` | `/orders` | Order cancelled | `order_enabled` | **live** |
+| `support` | `/support/tickets/{ticketId}` | Admin replies to a ticket | `support_enabled` | |
 
-### Engagement / rewards
+### Engagement & rewards
 
-| `type` | `link` | Trigger |
-|---|---|---|
-| `weekly_summary` | `/profile?tab=weekly-report` | Weekly reading report ready (Sun 18:00 Dhaka) |
-| `inactivity_alert` | `/book/{bookSlug}` | User inactive — points at their last book |
-| `competition_won` | *(none)* | Competition payout |
-| `monthly_leaderboard_won` | *(none)* | Monthly leaderboard prize |
-| `streak_alert` | *(none)* | **Not currently sent** — deliberately unscheduled, see note |
+| `type` | `link` | Trigger | Gate | |
+|---|---|---|---|---|
+| `weekly_summary` | `/profile?tab=weekly-report` | Weekly report ready (Sun 18:00 Dhaka) | `reminder_enabled` | **live** |
+| `inactivity_alert` | `/book/{bookSlug}` | User inactive — points at their last book | `reminder_enabled` | **live** |
+| `competition_won` | *(none)* | Competition payout | `promotional_enabled` | **live** |
+| `monthly_leaderboard_won` | *(none)* | Monthly leaderboard prize | *push_enabled only* | |
+| `streak_alert` | *(none)* | Streak about to lapse | `reminder_enabled` | **retired** |
 
-> `streak_alert` exists in the code but is **not scheduled**: sending it daily caused an
-> unwanted evening spike in app opens. Handle the type defensively, but expect none.
+> `streak_alert` sent 4,771 notifications up to **2026-08-20** and is now
+> **deliberately unscheduled** — the nightly send caused an unwanted spike in evening app
+> opens. Handle the type defensively; expect none.
 
 ### Admin-composed broadcasts
 
-Sent from Admin → Notifications. The admin picks the type from a fixed list, writes the
-link freehand, and may attach an image (**the only types that can carry `imageUrl`**):
+Chosen from a fixed list in Admin → Notifications. The admin writes the link freehand and
+may attach an image — **the only types that can carry `imageUrl`**.
 
-| `type` | `link` | `imageUrl` |
-|---|---|---|
-| `system` | admin-supplied, may be empty | optional |
-| `order` | admin-supplied, may be empty | optional |
-| `payment` | admin-supplied, may be empty | optional |
-| `creator` | admin-supplied, may be empty | optional |
-| `promotional` | admin-supplied, may be empty | optional |
+| `type` | `link` | `imageUrl` | |
+|---|---|---|---|
+| `system` | admin-supplied, may be empty | optional | **live** |
+| `order` | admin-supplied, may be empty | optional | |
+| `payment` | admin-supplied, may be empty | optional | |
+| `creator` | admin-supplied, may be empty | optional | |
+| `promotional` | admin-supplied, may be empty | optional | **live** |
+
+Admin **templates** (`notification_templates`) additionally store `cta_text` / `cta_link`,
+but those are **not** part of the push payload — only `title`, `message`, `type`, `link`
+and `image_url` reach FCM.
 
 ### Fallback
 
@@ -149,19 +196,19 @@ link freehand, and may attach an image (**the only types that can carry `imageUr
 |---|---|
 | `general` | Emitted when a sender omits the type. Treat as `system`. |
 
-**Handle unknown types gracefully** — open the app's notification list rather than
-crashing or dropping the tap. New types get added server-side without an app release.
+**Handle unknown types gracefully** — open the notification list rather than dropping the
+tap. New types ship server-side without an app release.
 
 ---
 
 ## 4. Deep-link routing
 
-`link` is always an **app-relative path**, never a full URL. Map it to a screen:
+`link` is always an **app-relative path**, never an absolute URL.
 
 | Link pattern | Screen |
 |---|---|
 | `/live/{sessionId}` | Live show / player |
-| `/schedule` · `/schedule#{id}` | Show schedule (scroll to the id when present) |
+| `/schedule` · `/schedule#{id}` | Show schedule (scroll to id when present) |
 | `/shows/{episodeId}` | Recorded show detail → play |
 | `/shows` | Recorded show archive ("আগের অনুষ্ঠান") |
 | `/catchup` | Legacy catch-up list |
@@ -171,55 +218,97 @@ crashing or dropping the tap. New types get added server-side without an app rel
 | `/book/{slug}` | Book detail |
 | *(absent or empty)* | Open the in-app notification list |
 
-Because `link` may be missing, treat "no link" as a first-class case, not an error.
+"No link" is a normal case, not an error.
 
 ---
 
-## 5. Delivery gating — why a user may get nothing
+## 5. Why a push may never arrive
 
-A push is dropped, silently, unless **all** of these hold:
+Delivery is dropped, silently, unless **all four** hold:
 
-1. `firebase_push_enabled` platform setting is not `"false"` *(global kill switch)*
-2. The user's `NotificationPreference.push_enabled` is not `false`
-3. The type's category preference is not `false` — this is per-type:
+1. Platform setting `firebase_push_enabled` ≠ `"false"` *(global kill switch)*
+2. The user's `NotificationPreference.push_enabled` ≠ `false`
+3. The type's category preference ≠ `false`:
 
-| Category preference | Gates these types |
+| Preference | Gates |
 |---|---|
 | `radio_enabled` | `rj_live`, `show_reminder_*`, `show_cancelled`, `show_rescheduled`, `catchup_published`, `special_announcement` |
 | `order_enabled` | `order` (cancellation) |
 | `support_enabled` | `support` |
 | `reminder_enabled` | `weekly_summary`, `inactivity_alert`, `streak_alert` |
 | `promotional_enabled` | `competition_won` |
-| *(none — only 1 & 2)* | `monthly_leaderboard_won`, admin-composed broadcasts |
+| *(none — 1 & 2 only)* | `monthly_leaderboard_won`, admin-composed broadcasts |
 
 4. The user has at least one registered device token.
 
-**The in-app notification row is still created even when the push is suppressed.** So
-`GET /api/v1/notifications` can legitimately show items the device never got a push for
-— always sync the list on app open rather than building it purely from pushes.
+**The in-app row is created even when the push is suppressed.** So the notification list
+can legitimately contain items the device never got a push for — always sync the list on
+app open rather than building it from pushes.
 
 ---
 
-## 6. Reading and clearing notifications
+## 6. Token registration
 
-**`GET /api/v1/notifications`** *(auth)* — the user's in-app list.
+**`POST /api/v1/notifications/register-token`** *(auth)*
 
-**`POST /api/v1/notifications/read`** *(auth)* — mark as read. Use the
-`data.notification_id` from the payload when it's present.
+```json
+{ "token": "<FCM registration token>", "platform": "android" }
+```
 
-Both need `X-Requested-With: XMLHttpRequest` on the `POST` unless the request carries a
-bearer token (it will, since these are authenticated).
+`platform`: `"android"` | `"ios"` | `"web"` — anything else is stored as `"android"`.
+
+```json
+{ "success": true, "push_enabled": true, "firebase_configured": true }
+```
+
+**`DELETE /api/v1/notifications/register-token`** *(auth)* — body `{ "token": "..." }`.
+
+Unique per `(user_id, token)`, so re-registering is idempotent. Register on every app
+start (FCM rotates tokens) and delete on logout, or the device keeps receiving the
+previous account's notifications.
 
 ---
 
-## 7. Test checklist
+## 7. The in-app notification list
 
-- [ ] Token registered on login **and** on every app start (FCM rotates tokens)
-- [ ] Token deleted on logout
+**`GET /api/v1/notifications?limit=20&offset=0`** *(auth)*
+
+```json
+{
+  "notifications": [
+    {
+      "id": "bd8857b8-ae4b-4395-bece-e76135254468",
+      "title": "🎧 \"রাতও কথা বলে\" এখন শোনা যাচ্ছে",
+      "message": "সম্প্রতি প্রচারিত অনুষ্ঠানটি যেকোনো সময় শুনুন।",
+      "type": "catchup_published",
+      "link": "/shows/c69f6b44-…",
+      "image_url": null,
+      "is_read": false,
+      "created_at": "2026-09-05T11:24:08.591Z"
+    }
+  ],
+  "total": 42, "limit": 20, "offset": 0, "has_more": true
+}
+```
+
+`limit` 1–100 (default 20). Note the payload field is `message` here but `body` in the
+push, and `image_url` here but `imageUrl` in the push.
+
+**`POST /api/v1/notifications/read`** *(auth)* — `{ "ids": ["<id from this list>"] }`.
+Omit `ids`, or send `[]`, to mark **all** as read. These are `UserNotification.id`s — see
+the warning at the top.
+
+---
+
+## 8. Test checklist
+
+- [ ] Token registered on login **and** every app start; deleted on logout
 - [ ] Foreground push renders an in-app banner (the OS shows nothing)
-- [ ] Background tap opens the right screen for each `link` pattern in §4
+- [ ] Background tap routes correctly for every `link` pattern in §4
 - [ ] Push with **no** `link` opens the notification list
 - [ ] Push with an **unknown** `type` does not crash
+- [ ] Mark-as-read uses the id from `GET /notifications`, **not** `data.notification_id`
 - [ ] Bengali text and emoji render correctly in the tray
-- [ ] `imageUrl` renders on admin broadcasts; absence is handled everywhere else
-- [ ] Android: a notification channel exists (the payload sets no `channel_id`)
+- [ ] `imageUrl` renders on admin broadcasts; its absence is handled everywhere else
+- [ ] Android notification channel exists (payload sets no `channel_id`)
+- [ ] Notification list is synced on app open, not built from pushes alone
