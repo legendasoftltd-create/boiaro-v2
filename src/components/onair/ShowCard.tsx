@@ -16,10 +16,18 @@ export function formatDuration(seconds?: number | null): string {
   return m > 0 ? `${m}m` : `${seconds}s`
 }
 
-/** "04 Sep 2026" */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+/**
+ * "04 Sep 2026" — built from parts rather than toLocaleDateString, because
+ * en-GB renders September as "Sept" (four letters), which makes the card's
+ * date column jump width against every other month.
+ */
 export function formatShowDate(iso: string | null): string {
   if (!iso) return ""
-  return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ""
+  return `${String(d.getDate()).padStart(2, "0")} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
 }
 
 export function ShowCard({

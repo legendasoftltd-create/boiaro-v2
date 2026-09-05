@@ -57,52 +57,27 @@ is **refused** unless the admin ticks the explicit per-episode override.
 
 ---
 
-## 2. App REST API — `/api/v1/radio`
+## 2. Mobile app API
 
-Auth is optional on the read endpoints; sending a bearer token adds the
-listener's premium access and `resume_position_seconds`.
+Documented separately, in full, in **[RECORDED_SHOWS_MOBILE_API.md](RECORDED_SHOWS_MOBILE_API.md)** —
+that is the reference to hand the app team.
 
-### `GET /shows/latest?limit=5`
-Newest published first — the On Air screen's "Latest Shows / সম্প্রতি প্রচারিত" strip.
+Summary of the surface (`{API_BASE}/api/v1/radio`):
 
-```json
-{ "shows": [ {
-  "id": "…", "title": "রাতও কথা বলে", "episode_title": "পর্ব ১২",
-  "description": "…", "cover_image_url": "…", "audio_url": "https://…mp3?X-Amz-…",
-  "mime_type": "audio/mpeg", "duration_seconds": 4680,
-  "recorded_at": "2026-09-04T17:00:00.000Z", "published_at": "2026-09-05T05:00:00.000Z",
-  "visibility": "public", "play_count": 128, "show_schedule_id": "…",
-  "rj_user_id": "…", "rj_stage_name": "RJ শুভ্র ধ্রুব", "rj_avatar_url": "…",
-  "station": { "id": "…", "name": "…", "artwork_url": "…" },
-  "resume_position_seconds": 930, "completed": false
-} ] }
-```
+| Endpoint | |
+|---|---|
+| `GET /shows/latest?limit=5` | The "Latest Shows / সম্প্রতি প্রচারিত" strip, newest first |
+| `GET /shows` | Archive, cursor-paged, `show_id` / `rj_id` / `station_id` / `sort` |
+| `GET /shows/filters` | Programme + RJ filter options that actually have shows |
+| `GET /shows/:id` | One show; the only route to an `unlisted` one |
+| `POST /shows/:id/play` | Count a play, get the resume position |
+| `GET`/`POST /shows/:id/progress` | Read/write the resume position *(auth)* |
+| `GET /shows-history` | "আমার শোনা" *(auth)* |
 
-`resume_position_seconds` / `completed` are present only for an authenticated caller.
-
-### `GET /shows?limit=20&cursor=&show_id=&rj_id=&station_id=&sort=latest|oldest`
-The archive behind **View All**. Cursor-paginated; returns `next_cursor` (null at the end).
-
-### `GET /shows/filters`
-`{ "shows": [{id, name}], "rjs": [{id, name}] }` — only entries that actually have a published show.
-
-### `GET /shows/:id`
-`{ "show": { …, "locked": false } }`. 404 for anything not published.
-A premium show a non-subscriber opens returns `locked: true` with `audio_url: null`.
-
-### `POST /shows/:id/play`
-Call on playback start. Bumps `play_count`, returns
-`{ "resume_position_seconds": 930, "completed": false }` — seek straight to it.
-403 if the show is premium and the caller isn't subscribed.
-
-### `GET /shows/:id/progress` *(auth)*
-### `POST /shows/:id/progress` *(auth)* — `{ "position_seconds": 930, "duration_seconds": 4680 }`
-Post every ~15s while playing and once on pause/stop. ≥95% marks `completed`.
-
-### `GET /shows-history` *(auth)*
-`{ "history": [ { …progress, "show": {…} } ] }`, most recently played first.
-
----
+Two things that bite if missed, both covered in the mobile doc: every `POST` needs
+`X-Requested-With: XMLHttpRequest` unless it carries a bearer token (and
+`/shows/:id/play` is callable logged out), and `audio_url` is a pre-signed URL that
+expires in ~6 hours, so it must not be cached across sessions.
 
 ## 3. Web tRPC equivalents
 

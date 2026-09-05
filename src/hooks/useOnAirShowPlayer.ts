@@ -53,9 +53,26 @@ export function useOnAirShowPlayer() {
   const currentTimeRef = useRef(0)
   const durationRef = useRef(0)
   const userRef = useRef(user)
+  const activeShowIdRef = useRef<string | null>(null)
   currentTimeRef.current = currentTime ?? 0
   durationRef.current = duration ?? 0
   userRef.current = user
+  activeShowIdRef.current = activeShowId
+
+  /** Writes the current position, unless nothing has moved since the last write. */
+  const flushPosition = useCallback(() => {
+    const showId = activeShowIdRef.current
+    if (!showId || !userRef.current) return
+    const position = Math.floor(currentTimeRef.current)
+    if (position <= 0 || position === lastSavedRef.current) return
+    lastSavedRef.current = position
+    saveProgress.mutate({
+      episodeId: showId,
+      positionSeconds: position,
+      durationSeconds: durationRef.current ? Math.floor(durationRef.current) : undefined,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Persist playback position for whichever show is active, so tapping it
   // again later continues from where the listener stopped.
@@ -63,36 +80,35 @@ export function useOnAirShowPlayer() {
     // saveShowProgress is a protected procedure — an anonymous listener would
     // just collect a 401 every 15 seconds for the whole show.
     if (!activeShowId || !isPlaying || !user) return
-    const timer = setInterval(() => {
-      const position = Math.floor(currentTimeRef.current)
-      if (position <= 0 || position === lastSavedRef.current) return
-      lastSavedRef.current = position
-      saveProgress.mutate({
-        episodeId: activeShowId,
-        positionSeconds: position,
-        durationSeconds: durationRef.current ? Math.floor(durationRef.current) : undefined,
-      })
-    }, 15_000)
-    return () => clearInterval(timer)
+    const timer = setInterval(flushPosition, 15_000)
+    // Pausing has to write too: the interval above only runs while playing, so
+    // without this the last stretch before a pause is lost — and pausing is
+    // exactly when someone is about to walk away from the show.
+    return () => { clearInterval(timer); flushPosition() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeShowId, isPlaying, user])
+  }, [activeShowId, isPlaying, user, flushPosition])
 
-  // Flush the final position when playback stops or the page unmounts —
-  // without this, up to 15 seconds of listening is lost on every pause.
+  // Backgrounding the app or closing the tab never unmounts React, so neither
+  // the interval nor the cleanup above would ever run — on mobile that is the
+  // normal way a listening session ends, and it would silently cost up to 15
+  // seconds of progress every time. pagehide is the one event iOS Safari
+  // reliably fires; visibilitychange covers Android backgrounding.
   useEffect(() => {
+    const onHide = () => flushPosition()
+    const onVisibility = () => { if (document.visibilityState === "hidden") flushPosition() }
+    window.addEventListener("pagehide", onHide)
+    document.addEventListener("visibilitychange", onVisibility)
     return () => {
-      if (!activeShowId || !userRef.current) return
-      const position = Math.floor(currentTimeRef.current)
-      if (position > 5 && position !== lastSavedRef.current) {
-        saveProgress.mutate({
-          episodeId: activeShowId,
-          positionSeconds: position,
-          durationSeconds: durationRef.current ? Math.floor(durationRef.current) : undefined,
-        })
-      }
+      window.removeEventListener("pagehide", onHide)
+      document.removeEventListener("visibilitychange", onVisibility)
     }
+  }, [flushPosition])
+
+  // Leaving the page entirely (route change) — same reason as the pause flush.
+  useEffect(() => {
+    return () => { flushPosition() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeShowId])
+  }, [])
 
   const play = useCallback(async (show: OnAirShow) => {
     if (!show.audio_url) return
