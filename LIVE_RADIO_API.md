@@ -72,14 +72,73 @@ subtle "reconnecting" badge (see `session:reconnecting` socket event).
 `live` is `null` when nobody's broadcasting — fall back to the station's
 own `stream_url`.
 
-> **Known gap — multiple concurrent stations.** This endpoint returns only
-> the platform's single most-recently-started live session, even when
-> several stations are live at once — it was never updated for
-> multi-station concurrency, and there's no REST alternative yet either
-> (web has an internal fix; mobile doesn't). If you need "what's live on
-> *this* station" or "every station that's live right now," ask backend
-> for a REST endpoint that returns all current sessions rather than
-> working around it client-side.
+> **This endpoint returns only ONE session.** It surfaces the platform's
+> single most-recently-started live session, so it cannot represent several
+> stations broadcasting at once. It is kept unchanged for backward
+> compatibility with shipped app builds — **use `GET /live/all` below for
+> anything multi-station.**
+
+---
+
+## Every station that is live right now
+
+**`GET /api/v1/radio/live/all`**
+
+Public. Returns every currently-live (non-test) session — one per
+broadcasting station. This is the multi-station answer `/live` structurally
+cannot give.
+
+| Query param | |
+|---|---|
+| `station_id` | Optional. Narrows to "what's live on this station" |
+
+```json
+{
+  "count": 2,
+  "live": [
+    {
+      "id": "uuid", "show_title": "সকালের শো", "status": "live",
+      "started_at": "2026-09-06T04:00:00.000Z",
+      "stream_url": "https://...",
+      "station": { "id": "uuid", "name": "Station A", "artwork_url": "..." },
+      "rj_profile": { "stage_name": "RJ আলফা", "avatar_url": null, "bio": "...", "specialty": "..." },
+      "listener_count": 42
+    }
+  ]
+}
+```
+
+- Ordered **oldest first**, so the longest-running broadcast leads and the
+  order stays stable as other stations join.
+- `count` is `live.length`, there for a cheap "is anything on air?" check.
+- Returns `{ "count": 0, "live": [] }` when nothing is broadcasting — always
+  an array, so `station_id` filtering needs no separate code path.
+- Private test broadcasts are never included.
+- `stream_url` and `listener_count` obey exactly the same gates as `/live`
+  (guest-listening off ⇒ `stream_url` is `null` for anonymous callers;
+  listener count hidden ⇒ `listener_count` is `null`).
+
+---
+
+## One specific broadcast by id
+
+**`GET /api/v1/radio/live/{sessionId}`**
+
+Public. The deep-link target for go-live push notifications (`rj_live` →
+`/live/{sessionId}`) and shared links. Resolves the broadcast it was sent
+for, whether that is still on air or already finished — rather than
+whichever session happens to be live when the link is opened.
+
+```json
+{ "live": { "id": "uuid", "show_title": "…", "status": "ended", "is_live": false, "stream_url": null, "…": "…" } }
+```
+
+- `is_live` is `true` only for `live` / `reconnecting`, so clients need not
+  re-derive it from the status string.
+- Once the show has ended `stream_url` is `null` — there is nothing to play.
+  The recording, if an admin published one, is served separately under
+  `/api/v1/radio/shows` (see RECORDED_SHOWS_MOBILE_API.md).
+- `404` for an unknown id, and for private test broadcasts.
 
 ### Playback notes
 - Streams may be plain MP3/AAC/OGG (play directly) or HLS (`.m3u8`). Use

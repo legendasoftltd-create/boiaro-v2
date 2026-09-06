@@ -62,24 +62,91 @@ radioRestRouter.get("/stations", async (req: AuthenticatedRequest, res) => {
   }
 });
 
+// The listener-facing policy every live-session response has to apply:
+// hide the stream URL from guests when guest listening is off, and hide the
+// listener count when an admin has turned it off. Shared so /live, /live/all
+// and /live/:sessionId can't drift apart on either — they did before, which
+// is how /live ended up the only endpoint mobile could use at all.
+async function liveSessionPolicy(req: AuthenticatedRequest) {
+  const [guestAllowed, countVisible] = await Promise.all([
+    getRadioSettingBool("radio_guest_listening_enabled"),
+    getRadioSettingBool("radio_listener_count_visible"),
+  ]);
+  return { canHearStream: guestAllowed || !!req.auth?.userId, countVisible };
+}
+
+function shapeLiveSession(
+  session: any,
+  rjProfile: unknown,
+  policy: { canHearStream: boolean; countVisible: boolean }
+) {
+  return {
+    ...session,
+    stream_url: policy.canHearStream ? session.stream_url : null,
+    rj_profile: rjProfile ?? null,
+    listener_count: policy.countVisible ? getListenerCount(session.id) : null,
+  };
+}
+
+const LIVE_STATUSES = ["live", "reconnecting"];
+
 // ── GET /api/v1/radio/live ──────────────────────────────────────────────────────
-// Public. The currently-live (non-test) session, if any.
+// Public. The single most-recently-started live (non-test) session.
+//
+// Kept exactly as it was for backward compatibility with shipped app builds.
+// It cannot represent several stations broadcasting at once — use /live/all
+// for that.
 radioRestRouter.get("/live", async (req: AuthenticatedRequest, res) => {
   try {
     const session = await prisma.liveSession.findFirst({
-      where: { status: { in: ["live", "reconnecting"] }, is_test: false },
+      where: { status: { in: LIVE_STATUSES }, is_test: false },
       include: { station: true },
       orderBy: { started_at: "desc" },
     });
     if (!session) { res.json({ live: null }); return; }
     const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id }, select: PUBLIC_RJ_PROFILE_SELECT });
+    res.json({ live: shapeLiveSession(session, rjProfile, await liveSessionPolicy(req)) });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
 
-    const guestAllowed = await getRadioSettingBool("radio_guest_listening_enabled");
-    const isAuthed = !!req.auth?.userId;
-    const streamUrl = guestAllowed || isAuthed ? session.stream_url : null;
+// ── GET /api/v1/radio/live/all ──────────────────────────────────────────────────
+// Public. EVERY currently-live (non-test) session, one per broadcasting
+// station — the multi-station answer /live structurally cannot give.
+//
+// Optional ?station_id=<id> narrows it to "what's live on this station",
+// which returns an array of 0 or 1 rather than a different shape, so the
+// client can use one code path either way.
+//
+// Registered before /live/:sessionId below so "all" is never read as an id.
+radioRestRouter.get("/live/all", async (req: AuthenticatedRequest, res) => {
+  try {
+    const stationId = req.query.station_id ? String(req.query.station_id) : undefined;
+    const sessions = await prisma.liveSession.findMany({
+      where: {
+        status: { in: LIVE_STATUSES },
+        is_test: false,
+        ...(stationId ? { station_id: stationId } : {}),
+      },
+      include: { station: true },
+      // Oldest first: a station that has been on air longest reads as the
+      // established broadcast, and the order stays stable as others join.
+      orderBy: { started_at: "asc" },
+    });
+    if (!sessions.length) { res.json({ live: [], count: 0 }); return; }
 
-    const countVisible = await getRadioSettingBool("radio_listener_count_visible");
-    res.json({ live: { ...session, stream_url: streamUrl, rj_profile: rjProfile, listener_count: countVisible ? getListenerCount(session.id) : null } });
+    const [profiles, policy] = await Promise.all([
+      prisma.rjProfile.findMany({
+        where: { user_id: { in: [...new Set(sessions.map((s) => s.rj_user_id))] } },
+        select: PUBLIC_RJ_PROFILE_SELECT,
+      }),
+      liveSessionPolicy(req),
+    ]);
+    const profileMap = new Map(profiles.map((p) => [p.user_id, p]));
+
+    const live = sessions.map((s) => shapeLiveSession(s, profileMap.get(s.rj_user_id), policy));
+    res.json({ live, count: live.length });
   } catch (error) {
     sendHttpError(res, error);
   }
@@ -797,6 +864,44 @@ radioRestRouter.get("/catchup/history", requireAuth, async (req: AuthenticatedRe
       include: { session: { select: { id: true, show_title: true, started_at: true, recording_url: true } } },
     });
     res.json({ history: rows });
+  } catch (error) {
+    sendHttpError(res, error);
+  }
+});
+
+// NOTE: this must stay BELOW every literal /live/... route (notably
+// /live/all and /live/pending-recordings). Express matches in registration
+// order, so a bare :sessionId placed above them would swallow "all" and
+// "pending-recordings" as if they were session ids.
+// ── GET /api/v1/radio/live/:sessionId ───────────────────────────────────────────
+// Public. One specific broadcast by id, whether it's still live or already
+// ended — the deep-link target for go-live push notifications and shared
+// /live/{id} links, which must keep pointing at the broadcast they were sent
+// for rather than whichever session happens to be live when they're opened.
+//
+// `is_live` saves every client re-deriving it from the status string.
+radioRestRouter.get("/live/:sessionId", async (req: AuthenticatedRequest, res) => {
+  try {
+    const session = await prisma.liveSession.findUnique({
+      where: { id: String(req.params.sessionId) },
+      include: { station: true },
+    });
+    // A private test broadcast is never publicly addressable, same as it is
+    // never listed.
+    if (!session || session.is_test) { res.status(404).json({ message: "Session not found" }); return; }
+
+    const rjProfile = await prisma.rjProfile.findUnique({ where: { user_id: session.rj_user_id }, select: PUBLIC_RJ_PROFILE_SELECT });
+    const shaped = shapeLiveSession(session, rjProfile, await liveSessionPolicy(req));
+    const isLive = LIVE_STATUSES.includes(session.status);
+    res.json({
+      live: {
+        ...shaped,
+        is_live: isLive,
+        // Nothing to play once it's over — the recording, if any, is
+        // published separately under /shows.
+        stream_url: isLive ? shaped.stream_url : null,
+      },
+    });
   } catch (error) {
     sendHttpError(res, error);
   }
